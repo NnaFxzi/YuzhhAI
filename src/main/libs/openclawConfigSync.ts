@@ -6,6 +6,13 @@ import path from 'path';
 import { buildScheduledTaskEnginePrompt } from '../../scheduledTask/enginePrompt';
 import { AgentId, DefaultAgentProfile } from '../../shared/agent';
 import {
+  BrowserNetworkMode,
+  BrowserRuntimeProfile,
+  type BrowserWebAccessConfig,
+  normalizeBrowserHostnamePolicyList,
+  normalizeBrowserWebAccessConfig,
+} from '../../shared/browserWebAccess/constants';
+import {
   AuthType,
   OpenClawApi as OpenClawApiConst,
   OpenClawProviderId,
@@ -232,11 +239,22 @@ const MANAGED_WEB_SEARCH_POLICY_PROMPT = [
   '',
   'When you need live web information:',
   '- If you already have a specific URL, use `web_fetch`.',
+  '- Do not use `web_fetch` to fetch Google/Bing search result pages as a search substitute; use `browser` or an available search skill instead.',
   '- If you need search discovery, dynamic pages, or interactive browsing, use the built-in `browser` tool.',
+  '- For login-required, JavaScript-heavy, or anti-automation pages, use `browser` instead of `web_fetch`.',
   '- Only use the LobsterAI `web-search` skill when local command execution is available. Native channel sessions may deny `exec`, so prefer `browser` or `web_fetch` there.',
   '- Exception: the `imap-smtp-email` skill must always use `exec` to run its scripts, even in native channel sessions. Do not skip it because of exec restrictions.',
   '',
   'Do not claim you searched the web unless you actually used `browser`, `web_fetch`, or the LobsterAI `web-search` skill.',
+].join('\n');
+
+const MANAGED_BROWSER_POLICY_PROMPT = [
+  '## Browser Policy',
+  '',
+  'LobsterAI does not support sandbox browser execution in this version.',
+  '- For every `browser` tool call, set `target="host"` explicitly.',
+  '- Do not use `target="sandbox"` or `target="node"` unless a future LobsterAI version explicitly enables it.',
+  '- If a browser call fails because the sandbox browser is unavailable, retry the same action with `target="host"`.',
 ].join('\n');
 
 const MANAGED_EXEC_SAFETY_PROMPT = [
@@ -988,6 +1006,7 @@ const buildStreamingModeConfig = (
 type OpenClawConfigSyncDeps = {
   engineManager: OpenClawEngineManager;
   getCoworkConfig: () => CoworkConfig;
+  getBrowserWebAccessConfig?: () => Partial<BrowserWebAccessConfig> | null | undefined;
   isEnterprise: () => boolean;
   getOpenClawSessionPolicy?: () => { keepAlive: OpenClawSessionKeepAlive };
   getTelegramInstances?: () => TelegramInstanceConfig[];
@@ -1013,6 +1032,7 @@ type OpenClawConfigSyncDeps = {
 export class OpenClawConfigSync {
   private readonly engineManager: OpenClawEngineManager;
   private readonly getCoworkConfig: () => CoworkConfig;
+  private readonly getBrowserWebAccessConfig: () => Partial<BrowserWebAccessConfig> | null | undefined;
   private readonly isEnterprise: () => boolean;
   private readonly getOpenClawSessionPolicy?: () => { keepAlive: OpenClawSessionKeepAlive };
   private readonly getTelegramInstances: () => TelegramInstanceConfig[];
@@ -1039,6 +1059,7 @@ export class OpenClawConfigSync {
   constructor(deps: OpenClawConfigSyncDeps) {
     this.engineManager = deps.engineManager;
     this.getCoworkConfig = deps.getCoworkConfig;
+    this.getBrowserWebAccessConfig = deps.getBrowserWebAccessConfig ?? (() => null);
     this.isEnterprise = deps.isEnterprise;
     this.getOpenClawSessionPolicy = deps.getOpenClawSessionPolicy;
     this.getTelegramInstances = deps.getTelegramInstances ?? (() => []);
@@ -1097,9 +1118,58 @@ export class OpenClawConfigSync {
     return buildOpenClawSessionConfig(policy);
   }
 
+  private buildBrowserConfig(browserWebAccess: BrowserWebAccessConfig): Record<string, unknown> {
+    const allowedHostnames = normalizeBrowserHostnamePolicyList(browserWebAccess.allowedHostnames);
+    const ssrfPolicy = browserWebAccess.networkMode === BrowserNetworkMode.Strict
+      ? {
+          dangerouslyAllowPrivateNetwork: false,
+          ...(allowedHostnames.length > 0
+            ? { allowedHostnames, hostnameAllowlist: allowedHostnames }
+            : {}),
+        }
+      : {
+          dangerouslyAllowPrivateNetwork: true,
+        };
+
+    return {
+      enabled: true,
+      defaultProfile: BrowserRuntimeProfile.Managed,
+      evaluateEnabled: browserWebAccess.evaluateEnabled,
+      ...(browserWebAccess.headless === true ? { headless: true } : {}),
+      ssrfPolicy,
+    };
+  }
+
+  private buildWebToolsConfig(browserWebAccess: BrowserWebAccessConfig): Record<string, unknown> {
+    const fetch = browserWebAccess.webFetch;
+    const fetchConfig = {
+      enabled: fetch.enabled,
+      readability: fetch.readability,
+      useEnvProxy: fetch.followGlobalProxy && isSystemProxyEnabled(),
+      ...(fetch.timeoutSeconds ? { timeoutSeconds: fetch.timeoutSeconds } : {}),
+      ...(fetch.maxRedirects ? { maxRedirects: fetch.maxRedirects } : {}),
+      ...(fetch.maxChars ? { maxChars: fetch.maxChars } : {}),
+      ...(fetch.userAgent ? { userAgent: fetch.userAgent } : {}),
+      ...(fetch.allowRfc2544BenchmarkRange === true
+        ? { ssrfPolicy: { allowRfc2544BenchmarkRange: true } }
+        : {}),
+    };
+
+    return {
+      deny: [...MANAGED_TOOL_DENY],
+      web: {
+        search: {
+          enabled: false,
+        },
+        fetch: fetchConfig,
+      },
+    };
+  }
+
   sync(reason: string): OpenClawConfigSyncResult {
     const configPath = this.engineManager.getConfigPath();
     const coworkConfig = this.getCoworkConfig();
+    const browserWebAccess = normalizeBrowserWebAccessConfig(this.getBrowserWebAccessConfig());
     const apiResolution = resolveRawApiConfig();
 
     if (!apiResolution.config) {
@@ -1407,17 +1477,8 @@ export class OpenClawConfigSync {
       commands: {
         ownerAllowFrom: MANAGED_OWNER_ALLOW_FROM,
       },
-      tools: {
-        deny: [...MANAGED_TOOL_DENY],
-        web: {
-          search: {
-            enabled: false,
-          },
-        },
-      },
-      browser: {
-        enabled: true,
-      },
+      tools: this.buildWebToolsConfig(browserWebAccess),
+      browser: this.buildBrowserConfig(browserWebAccess),
       skills: {
         entries: {
           ...this.buildSkillEntries(),
@@ -2593,6 +2654,7 @@ export class OpenClawConfigSync {
       // in openclaw.json, so we no longer embed the skills routing prompt here.
 
       sections.push(MANAGED_WEB_SEARCH_POLICY_PROMPT);
+      sections.push(MANAGED_BROWSER_POLICY_PROMPT);
       sections.push(MANAGED_EXEC_SAFETY_PROMPT);
       sections.push(MANAGED_MEMORY_POLICY_PROMPT);
       sections.push(buildManagedSkillCreationPrompt(resolveSkillCreationPath()));

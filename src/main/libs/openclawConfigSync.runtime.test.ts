@@ -987,4 +987,142 @@ describe('OpenClawConfigSync runtime config output', () => {
     });
     expect(config.channels['openclaw-weixin']).not.toHaveProperty('accountId');
   });
+
+  test('writes managed browser policy forcing host target', async () => {
+    const { OpenClawConfigSync } = await import('./openclawConfigSync');
+
+    const sync = new OpenClawConfigSync({
+      engineManager: {
+        getConfigPath: () => configPath,
+        getGatewayToken: () => 'gateway-token',
+        getStateDir: () => stateDir,
+        getBaseDir: () => tmpDir,
+      } as never,
+      getCoworkConfig: () => ({
+        workingDirectory: tmpDir,
+        systemPrompt: '',
+        executionMode: 'local',
+        agentEngine: 'openclaw',
+        memoryEnabled: false,
+        memoryImplicitUpdateEnabled: false,
+        memoryLlmJudgeEnabled: false,
+        memoryGuardLevel: 'balanced',
+        memoryUserMemoriesMaxItems: 100,
+        skipMissedJobs: false,
+      }),
+      isEnterprise: () => false,
+      getPopoInstances: () => [],
+      getNeteaseBeeChanConfig: () => null,
+      getWeixinConfig: () => null,
+      getIMSettings: () => null,
+      getSkillsList: () => [],
+      getAgents: () => [],
+    } as never);
+
+    const result = sync.sync('browser-policy');
+    expect(result.ok).toBe(true);
+
+    const agentsMdPath = path.join(stateDir, 'workspace-main', 'AGENTS.md');
+    const agentsMd = fs.readFileSync(agentsMdPath, 'utf8');
+    expect(agentsMd).toContain('LobsterAI does not support sandbox browser execution in this version.');
+    expect(agentsMd).toContain('For every `browser` tool call, set `target="host"` explicitly.');
+  });
+
+  test('writes browser and web fetch access settings', async () => {
+    const { setSystemProxyEnabled } = await import('./systemProxy');
+    const {
+      BrowserNetworkMode,
+      BrowserProfileMode,
+      BrowserRuntimeProfile,
+      BrowserSnapshotMode,
+    } = await import('../../shared/browserWebAccess/constants');
+    const { OpenClawConfigSync } = await import('./openclawConfigSync');
+    setSystemProxyEnabled(true);
+
+    const sync = new OpenClawConfigSync({
+      engineManager: {
+        getConfigPath: () => configPath,
+        getGatewayToken: () => 'gateway-token',
+        getStateDir: () => stateDir,
+        getBaseDir: () => tmpDir,
+      } as never,
+      getCoworkConfig: () => ({
+        workingDirectory: tmpDir,
+        systemPrompt: '',
+        executionMode: 'local',
+        agentEngine: 'openclaw',
+        memoryEnabled: false,
+        memoryImplicitUpdateEnabled: false,
+        memoryLlmJudgeEnabled: false,
+        memoryGuardLevel: 'balanced',
+        memoryUserMemoriesMaxItems: 100,
+        skipMissedJobs: false,
+      }),
+      getBrowserWebAccessConfig: () => ({
+        browserEnabled: true,
+        profileMode: BrowserProfileMode.User,
+        networkMode: BrowserNetworkMode.Strict,
+        followGlobalProxy: true,
+        allowedHostnames: ['https://Localhost:8443/path'],
+        blockedHostnames: [],
+        snapshotMode: BrowserSnapshotMode.Efficient,
+        evaluateEnabled: false,
+        executablePath: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+        cdpUrl: 'http://127.0.0.1:9222',
+        attachOnly: true,
+        remoteCdpTimeoutMs: 1500,
+        remoteCdpHandshakeTimeoutMs: 3000,
+        extraArgs: ['--disable-infobars'],
+        webFetch: {
+          enabled: true,
+          followGlobalProxy: true,
+          timeoutSeconds: 25,
+          maxRedirects: 4,
+          maxChars: 12000,
+          userAgent: 'LobsterAI Test',
+          readability: false,
+          allowRfc2544BenchmarkRange: true,
+        },
+      }),
+      isEnterprise: () => false,
+      getPopoInstances: () => [],
+      getNeteaseBeeChanConfig: () => null,
+      getWeixinConfig: () => null,
+      getIMSettings: () => null,
+      getSkillsList: () => [],
+      getAgents: () => [],
+    } as never);
+
+    const result = sync.sync('browser-web-access');
+    expect(result.ok).toBe(true);
+
+    const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    expect(config.browser).toMatchObject({
+      enabled: true,
+      defaultProfile: BrowserRuntimeProfile.Managed,
+      evaluateEnabled: false,
+      ssrfPolicy: {
+        dangerouslyAllowPrivateNetwork: false,
+        allowedHostnames: ['localhost'],
+        hostnameAllowlist: ['localhost'],
+      },
+    });
+    expect(config.browser.cdpUrl).toBeUndefined();
+    expect(config.browser.executablePath).toBeUndefined();
+    expect(config.browser.attachOnly).toBeUndefined();
+    expect(config.browser.remoteCdpTimeoutMs).toBeUndefined();
+    expect(config.browser.remoteCdpHandshakeTimeoutMs).toBeUndefined();
+    expect(config.browser.extraArgs).toBeUndefined();
+    expect(config.browser.snapshotDefaults).toBeUndefined();
+    expect(config.tools.web.fetch).toMatchObject({
+      enabled: true,
+      readability: false,
+      useEnvProxy: true,
+      timeoutSeconds: 25,
+      maxRedirects: 4,
+      maxChars: 12000,
+      userAgent: 'LobsterAI Test',
+      ssrfPolicy: { allowRfc2544BenchmarkRange: true },
+    });
+  });
 });

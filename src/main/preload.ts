@@ -4,6 +4,7 @@ import { IpcChannel as ScheduledTaskIpc } from '../scheduledTask/constants';
 import { AgentIpcChannel } from '../shared/agent/constants';
 import { AppUpdateIpc } from '../shared/appUpdate/constants';
 import { ArtifactPreviewIpc } from '../shared/artifactPreview/constants';
+import { BrowserIpc, type BrowserRuntimeProfile } from '../shared/browserWebAccess/constants';
 import { ClipboardIpc } from '../shared/clipboard/constants';
 import { DialogIpc } from '../shared/dialog/constants';
 import type { ListLocalWebServicesOptions, LocalWebService } from '../shared/localWebServices/constants';
@@ -184,6 +185,12 @@ contextBridge.exposeInMainWorld('electron', {
           sendPolicy?: 'allow' | 'deny' | null;
         };
       }) => ipcRenderer.invoke(OpenClawSessionIpc.Patch, options),
+    },
+    browser: {
+      getStatus: (options?: { profile?: BrowserRuntimeProfile }) => ipcRenderer.invoke(BrowserIpc.GetStatus, options),
+      listProfiles: () => ipcRenderer.invoke(BrowserIpc.ListProfiles),
+      test: (options?: { profile?: BrowserRuntimeProfile }) => ipcRenderer.invoke(BrowserIpc.Test, options),
+      resetProfile: (options?: { profile?: BrowserRuntimeProfile }) => ipcRenderer.invoke(BrowserIpc.ResetProfile, options),
     },
   },
   agents: {

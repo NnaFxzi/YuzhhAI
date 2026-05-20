@@ -1,5 +1,9 @@
 import type { OpenClawSessionPatch } from '../../common/openclawSession';
 import type { AppUpdateCheckResult, AppUpdateRuntimeState } from '../../shared/appUpdate/constants';
+import type {
+  BrowserDiagnosticResult,
+  BrowserRuntimeProfile,
+} from '../../shared/browserWebAccess/constants';
 import type { ListLocalWebServicesOptions, LocalWebService } from '../../shared/localWebServices/constants';
 interface ApiResponse {
   ok: boolean;
@@ -413,6 +417,12 @@ interface IElectronAPI {
         sessionId: string;
         patch: OpenClawSessionPatch;
       }) => Promise<{ success: boolean; session?: CoworkSession; error?: string }>;
+    };
+    browser: {
+      getStatus: (options?: { profile?: BrowserRuntimeProfile }) => Promise<{ success: boolean; status?: Record<string, unknown>; error?: string }>;
+      listProfiles: () => Promise<{ success: boolean; profiles?: unknown[]; error?: string }>;
+      test: (options?: { profile?: BrowserRuntimeProfile }) => Promise<BrowserDiagnosticResult>;
+      resetProfile: (options?: { profile?: BrowserRuntimeProfile }) => Promise<{ success: boolean; result?: Record<string, unknown>; error?: string }>;
     };
   };
   ipcRenderer: {
