@@ -1,4 +1,9 @@
 import { classifyErrorKey } from '../../common/coworkErrorClassify';
+import {
+  ContextCompactionMode,
+  ContextCompactionStatus,
+  CoworkSystemMessageKind,
+} from '../../common/coworkSystemMessages';
 import type { OpenClawSessionPatch } from '../../common/openclawSession';
 import { COWORK_SESSION_PAGE_SIZE } from '../../shared/cowork/constants';
 import { store } from '../store';
@@ -104,7 +109,7 @@ class CoworkService {
     this.cleanupListeners();
 
     // Message listener - also check if session exists (for IM-created sessions)
-    const messageCleanup = cowork.onStreamMessage(async ({ sessionId, message }) => {
+    const messageCleanup = cowork.onStreamMessage(async ({ sessionId, message, beforeMessageId }) => {
       // Debug: log user messages to check if imageAttachments are preserved
       if (message.type === 'user') {
         const meta = message.metadata as Record<string, unknown> | undefined;
@@ -136,7 +141,10 @@ class CoworkService {
       if (message.type === 'user' || message.type === 'assistant' || message.type === 'tool_use' || message.type === 'tool_result') {
         store.dispatch(updateSessionStatus({ sessionId, status: 'running' }));
       }
-      store.dispatch(addMessage({ sessionId, message }));
+      if (beforeMessageId) {
+        console.log('[ThinkingOrder] renderer received message with beforeMessageId=', beforeMessageId, 'messageId=', message.id, 'isThinking=', !!(message.metadata as any)?.isThinking);
+      }
+      store.dispatch(addMessage({ sessionId, message, beforeMessageId }));
       this.scheduleContextUsageRefresh(sessionId, true);
     });
     this.streamListenerCleanups.push(messageCleanup);
@@ -297,20 +305,6 @@ class CoworkService {
         sessionId: usage.sessionId,
         compactionCount: nextCount,
       }));
-      store.dispatch(addMessage({
-        sessionId: usage.sessionId,
-        message: {
-          id: `context-compaction-${usage.sessionId}-${nextCount}-${Date.now()}`,
-          type: 'system',
-          content: i18nService.t('coworkContextAutoCompacted'),
-          timestamp: Date.now(),
-          metadata: {
-            kind: 'context_compaction',
-            mode: 'auto',
-            compactionCount: nextCount,
-          },
-        },
-      }));
     }
   }
 
@@ -377,8 +371,12 @@ class CoworkService {
               : i18nService.t('coworkContextManualCompactNoop'),
             timestamp: Date.now(),
             metadata: {
-              kind: 'context_compaction',
-              mode: 'manual',
+              kind: CoworkSystemMessageKind.ContextCompaction,
+              mode: ContextCompactionMode.Manual,
+              status: result.compacted
+                ? ContextCompactionStatus.Completed
+                : ContextCompactionStatus.Failed,
+              compacted: result.compacted === true,
             },
           },
         }));
