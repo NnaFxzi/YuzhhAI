@@ -408,7 +408,21 @@ export class PluginManager {
       return { ok: false, error: `Failed to remove plugin directory: ${message}` };
     }
 
+    // Also remove from OpenClaw state extensions dir (plugins installed via Web UI/CLI)
+    const stateExtDir = getOpenClawStateExtensionsDir();
+    if (stateExtDir) {
+      const statePluginDir = path.join(stateExtDir, pluginId);
+      try {
+        if (fs.existsSync(statePluginDir)) {
+          await fs.promises.rm(statePluginDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 500 });
+        }
+      } catch {
+        // Best-effort: state dir cleanup failure is non-fatal
+      }
+    }
+
     this.store.removeUserPlugin(pluginId);
+    removeOpenClawConfigEntry(pluginId);
     return { ok: true };
   }
 
@@ -773,5 +787,20 @@ function readOpenClawConfigEntries(): Record<string, unknown> {
     return (config?.plugins?.entries ?? {}) as Record<string, unknown>;
   } catch {
     return {};
+  }
+}
+
+/** Remove a plugin entry from openclaw.json plugins.entries so it won't be re-discovered. */
+function removeOpenClawConfigEntry(pluginId: string): void {
+  try {
+    const configPath = path.join(app.getPath('userData'), 'openclaw', 'state', 'openclaw.json');
+    const raw = fs.readFileSync(configPath, 'utf8');
+    const config = JSON.parse(raw);
+    if (config?.plugins?.entries && pluginId in config.plugins.entries) {
+      delete config.plugins.entries[pluginId];
+      fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf8');
+    }
+  } catch {
+    // Config file missing or unreadable — nothing to clean up
   }
 }

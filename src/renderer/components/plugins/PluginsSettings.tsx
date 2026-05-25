@@ -245,7 +245,7 @@ export default function PluginsSettings() {
         </div>
         <button
           type="button"
-          onClick={() => { setShowInstallModal(true); setInstallLog(''); setInstallError(null); }}
+          onClick={() => { setShowInstallModal(true); setInstallLog(''); setInstallError(null); setDiscoverResult(null); }}
           className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
         >
           <PlusIcon className="h-4 w-4" />
