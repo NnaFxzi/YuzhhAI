@@ -323,6 +323,28 @@ index 5c9125a..6648908 100644
    it("coalesces repeated generic warning events into threshold buckets", async () => {
      await withToolLoopEvents(
        async (emitted) => {
+diff --git a/src/infra/diagnostic-events.ts b/src/infra/diagnostic-events.ts
+--- a/src/infra/diagnostic-events.ts
++++ b/src/infra/diagnostic-events.ts
+@@ -145,6 +145,7 @@ export type DiagnosticToolLoopEvent = DiagnosticBaseEvent & {
+     | "generic_repeat"
+     | "unknown_tool_repeat"
+     | "known_poll_no_progress"
++    | "aborted_tool_loop"
+     | "global_circuit_breaker"
+     | "ping_pong";
+   count: number;
+diff --git a/src/logging/diagnostic.ts b/src/logging/diagnostic.ts
+--- a/src/logging/diagnostic.ts
++++ b/src/logging/diagnostic.ts
+@@ -270,6 +270,7 @@ export function logToolLoopAction(
+       | "generic_repeat"
+       | "unknown_tool_repeat"
+       | "known_poll_no_progress"
++      | "aborted_tool_loop"
+       | "global_circuit_breaker"
+       | "ping_pong";
+     count: number;
 diff --git a/src/agents/tool-loop-detection.ts b/src/agents/tool-loop-detection.ts
 index a239ff6..530b81c 100644
 --- a/src/agents/tool-loop-detection.ts
