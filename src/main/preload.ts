@@ -481,6 +481,16 @@ contextBridge.exposeInMainWorld('electron', {
       title: string;
       accessMode: HtmlShareAccessMode;
     }) => ipcRenderer.invoke(HtmlShareIpc.CreateFromHtmlFile, options),
+    updateFromHtmlFile: (options: {
+      shareId: string;
+      sessionId: string;
+      artifactId: string;
+      filePath: string;
+      title: string;
+      accessMode: HtmlShareAccessMode;
+    }) => ipcRenderer.invoke(HtmlShareIpc.UpdateFromHtmlFile, options),
+    getByHtmlFile: (options: { filePath: string }) =>
+      ipcRenderer.invoke(HtmlShareIpc.GetByHtmlFile, options),
     disable: (shareId: string) => ipcRenderer.invoke(HtmlShareIpc.Disable, shareId),
     get: (shareId: string) => ipcRenderer.invoke(HtmlShareIpc.Get, shareId),
   },

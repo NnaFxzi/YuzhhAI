@@ -1,5 +1,7 @@
 export const HtmlShareIpc = {
   CreateFromHtmlFile: 'htmlShare:createFromHtmlFile',
+  UpdateFromHtmlFile: 'htmlShare:updateFromHtmlFile',
+  GetByHtmlFile: 'htmlShare:getByHtmlFile',
   Disable: 'htmlShare:disable',
   Get: 'htmlShare:get',
 } as const;
@@ -32,6 +34,7 @@ export const HtmlShareErrorCode = {
   AccessCodeInvalid: 41308,
   AccessCodeRateLimited: 41309,
   AccessModeInvalid: 41310,
+  FeatureUnavailable: 41311,
 } as const;
 
 export const HtmlSharePublicRoute = {

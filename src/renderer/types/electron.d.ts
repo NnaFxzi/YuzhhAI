@@ -287,7 +287,10 @@ interface HtmlShareResult {
   url?: string;
   accessMode?: HtmlShareAccessMode;
   shareCode?: string;
+  shareCodeUnavailable?: boolean;
   status?: HtmlShareStatus;
+  updatedAt?: string;
+  contentUpdatedAt?: string;
   error?: string;
   code?: number;
   warnings?: string[];
@@ -708,6 +711,17 @@ interface IElectronAPI {
       title: string;
       accessMode: HtmlShareAccessMode;
     }) => Promise<HtmlShareResult>;
+    updateFromHtmlFile: (options: {
+      shareId: string;
+      sessionId: string;
+      artifactId: string;
+      filePath: string;
+      title: string;
+      accessMode: HtmlShareAccessMode;
+    }) => Promise<HtmlShareResult>;
+    getByHtmlFile: (options: {
+      filePath: string;
+    }) => Promise<{ success: boolean; share?: HtmlShareResult | null; error?: string; code?: number }>;
     disable: (shareId: string) => Promise<{ success: boolean; error?: string }>;
     get: (shareId: string) => Promise<{ success: boolean; share?: unknown; error?: string }>;
   };

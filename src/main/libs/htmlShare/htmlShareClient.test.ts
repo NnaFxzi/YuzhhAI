@@ -8,7 +8,7 @@ import {
   HtmlShareSourceType,
   HtmlShareStatus,
 } from '../../../shared/htmlShare/constants';
-import { buildHtmlSharePublicUrl, uploadHtmlShare } from './htmlShareClient';
+import { buildHtmlSharePublicUrl, getHtmlShareBySource, updateHtmlShare, uploadHtmlShare } from './htmlShareClient';
 
 const tempRoots: string[] = [];
 
@@ -36,7 +36,7 @@ describe('htmlShareClient', () => {
     );
   });
 
-  test('uploads to the selected server and returns the selected public URL', async () => {
+  test('uploads to the selected server and returns the server share URL', async () => {
     const archivePath = await createArchiveFile();
     let requestedUrl = '';
 
@@ -66,6 +66,7 @@ describe('htmlShareClient', () => {
         archivePath,
         sourceType: HtmlShareSourceType.HtmlFile,
         accessMode: HtmlShareAccessMode.Code,
+        clientSourceKey: 'source-key',
         sessionId: 'session-1',
         artifactId: 'artifact-1',
         title: 'Preview',
@@ -76,7 +77,124 @@ describe('htmlShareClient', () => {
 
     expect(requestedUrl).toBe('https://lobsterai-server.inner.youdao.com/api/html-shares');
     expect(result.success).toBe(true);
-    expect(result.url).toBe('https://lobsterai-server.inner.youdao.com/s/shr_test/');
+    expect(result.url).toBe('https://lobsterai-server.youdao.com/s/shr_test/');
     expect(result.shareCode).toBe('K7Q9P2');
+  });
+
+  test('falls back to the selected public base URL when the server omits the share URL', async () => {
+    const archivePath = await createArchiveFile();
+
+    const result = await uploadHtmlShare(
+      'https://lobsterai-server.inner.youdao.com',
+      'https://lobsterai-server.inner.youdao.com/s',
+      async () =>
+        new Response(
+          JSON.stringify({
+            code: 0,
+            data: {
+              shareId: 'shr_test',
+              accessMode: HtmlShareAccessMode.Public,
+              status: HtmlShareStatus.Live,
+            },
+          }),
+          {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          },
+        ),
+      {
+        archivePath,
+        sourceType: HtmlShareSourceType.HtmlFile,
+        accessMode: HtmlShareAccessMode.Public,
+        clientSourceKey: 'source-key',
+        title: 'Preview',
+        entryFile: 'index.html',
+        sourceSha256: 'hash',
+      },
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.url).toBe('https://lobsterai-server.inner.youdao.com/s/shr_test/');
+  });
+
+  test('updates an existing share with PUT and keeps the server share URL', async () => {
+    const archivePath = await createArchiveFile();
+    let requestedUrl = '';
+    let requestedMethod = '';
+
+    const result = await updateHtmlShare(
+      'https://lobsterai-server.inner.youdao.com',
+      'https://lobsterai-server.inner.youdao.com/s',
+      async (url, options) => {
+        requestedUrl = url;
+        requestedMethod = options?.method || '';
+        return new Response(
+          JSON.stringify({
+            code: 0,
+            data: {
+              shareId: 'shr_test',
+              url: 'https://lobsterai-server.youdao.com/s/shr_test/',
+              accessMode: HtmlShareAccessMode.Public,
+              status: HtmlShareStatus.Live,
+            },
+          }),
+          {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          },
+        );
+      },
+      'shr_test',
+      {
+        archivePath,
+        sourceType: HtmlShareSourceType.HtmlFile,
+        accessMode: HtmlShareAccessMode.Public,
+        clientSourceKey: 'source-key',
+        title: 'Preview',
+        entryFile: 'index.html',
+        sourceSha256: 'hash',
+      },
+    );
+
+    expect(requestedUrl).toBe('https://lobsterai-server.inner.youdao.com/api/html-shares/shr_test');
+    expect(requestedMethod).toBe('PUT');
+    expect(result.success).toBe(true);
+    expect(result.url).toBe('https://lobsterai-server.youdao.com/s/shr_test/');
+  });
+
+  test('loads an existing share by source key', async () => {
+    let requestedUrl = '';
+
+    const result = await getHtmlShareBySource(
+      'https://lobsterai-server.inner.youdao.com',
+      'https://lobsterai-server.inner.youdao.com/s',
+      async url => {
+        requestedUrl = url;
+        return new Response(
+          JSON.stringify({
+            code: 0,
+            data: {
+              shareId: 'shr_test',
+              accessMode: HtmlShareAccessMode.Code,
+              shareCode: 'K7Q9P2',
+              status: HtmlShareStatus.Live,
+            },
+          }),
+          {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          },
+        );
+      },
+      HtmlShareSourceType.HtmlFile,
+      'source-key',
+    );
+
+    expect(requestedUrl).toBe(
+      'https://lobsterai-server.inner.youdao.com/api/html-shares/source?sourceType=html_file&clientSourceKey=source-key',
+    );
+    expect(result.success).toBe(true);
+    expect(result.share?.url).toBe('https://lobsterai-server.inner.youdao.com/s/shr_test/');
+    expect(result.share?.shareCode).toBe('K7Q9P2');
   });
 });

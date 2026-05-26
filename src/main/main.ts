@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import type { WebContents } from 'electron';
 import {
   app,
@@ -36,6 +37,7 @@ import { COWORK_MESSAGE_PAGE_SIZE, COWORK_SESSION_PAGE_SIZE } from '../shared/co
 import {
   HtmlShareAccessMode,
   type HtmlShareAccessMode as HtmlShareAccessModeType,
+  HtmlShareErrorCode,
   HtmlShareIpc,
   HtmlShareSourceType,
 } from '../shared/htmlShare/constants';
@@ -118,6 +120,7 @@ import {
   getHtmlSharePublicBaseUrl,
   getServerApiBaseUrl,
   getSkillStoreUrl,
+  isTestModeEnabled,
   refreshEndpointsTestMode,
 } from './libs/endpoints';
 import {
@@ -132,7 +135,7 @@ import {
   isPreviewServerUrl,
   stopHtmlPreviewServer,
 } from './libs/htmlPreviewServer';
-import { uploadHtmlShare } from './libs/htmlShare/htmlShareClient';
+import { getHtmlShareBySource, updateHtmlShare, uploadHtmlShare } from './libs/htmlShare/htmlShareClient';
 import { packageHtmlFile } from './libs/htmlShare/htmlSharePackager';
 import { getKeyfromAttribution, initializeKeyfromAttribution } from './libs/keyfromAttribution';
 import { exportLogsZip } from './libs/logExport';
@@ -251,6 +254,14 @@ interface HtmlShareCreateFromHtmlFileInput {
   accessMode: HtmlShareAccessModeType;
 }
 
+interface HtmlShareUpdateFromHtmlFileInput extends HtmlShareCreateFromHtmlFileInput {
+  shareId: string;
+}
+
+interface HtmlShareGetByHtmlFileInput {
+  filePath: string;
+}
+
 function sanitizeHtmlShareString(
   value: unknown,
   fieldName: string,
@@ -293,6 +304,45 @@ function sanitizeCreateFromHtmlFileInput(input: unknown): HtmlShareCreateFromHtm
     title: sanitizeHtmlShareTitle(source.title),
     accessMode: sanitizeHtmlShareAccessMode(source.accessMode),
   };
+}
+
+function sanitizeUpdateFromHtmlFileInput(input: unknown): HtmlShareUpdateFromHtmlFileInput {
+  const source = sanitizeCreateFromHtmlFileInput(input);
+  const record = input as Record<string, unknown>;
+  return {
+    ...source,
+    shareId: sanitizeHtmlShareString(record.shareId, 'shareId', 64),
+  };
+}
+
+function sanitizeGetByHtmlFileInput(input: unknown): HtmlShareGetByHtmlFileInput {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+    throw new Error('Invalid HTML share lookup request.');
+  }
+  const source = input as Record<string, unknown>;
+  return {
+    filePath: sanitizeHtmlShareString(source.filePath, 'filePath', 4096),
+  };
+}
+
+function normalizeHtmlShareSourceFilePath(filePath: string): string {
+  let normalized = filePath.trim();
+  if (/^file:\/\//i.test(normalized)) {
+    normalized = safeDecodeURIComponent(normalized.replace(/^file:\/\//i, ''));
+  }
+  if (/^\/[A-Za-z]:/.test(normalized)) {
+    normalized = normalized.slice(1);
+  }
+  normalized = path.resolve(normalized).replace(/\\/g, '/');
+  return normalized.toLowerCase();
+}
+
+function buildHtmlShareClientSourceKey(filePath: string): string {
+  const normalizedPath = normalizeHtmlShareSourceFilePath(filePath);
+  return crypto
+    .createHash('sha256')
+    .update(`${HtmlShareSourceType.HtmlFile}:${normalizedPath}`)
+    .digest('hex');
 }
 
 const cleanHtmlTitle = (value: string): string =>
@@ -3013,6 +3063,9 @@ if (!gotTheLock) {
   ipcMain.handle(HtmlShareIpc.CreateFromHtmlFile, async (_event, input: unknown) => {
     let archivePath: string | undefined;
     try {
+      if (!isTestModeEnabled()) {
+        return { success: false, code: HtmlShareErrorCode.FeatureUnavailable };
+      }
       const options = sanitizeCreateFromHtmlFileInput(input);
       console.debug(
         `[HtmlShare] received HTML file share request for session ${options.sessionId} and artifact ${options.artifactId}`,
@@ -3020,6 +3073,7 @@ if (!gotTheLock) {
       console.debug(
         `[HtmlShare] HTML file share uses ${options.accessMode} access and source file ${options.filePath}`,
       );
+      const clientSourceKey = buildHtmlShareClientSourceKey(options.filePath);
       const packaged = await packageHtmlFile(options.filePath);
       archivePath = packaged.archivePath;
       console.debug(
@@ -3033,6 +3087,7 @@ if (!gotTheLock) {
           archivePath: packaged.archivePath,
           sourceType: HtmlShareSourceType.HtmlFile,
           accessMode: options.accessMode,
+          clientSourceKey,
           sessionId: options.sessionId,
           artifactId: options.artifactId,
           title: options.title,
@@ -3066,8 +3121,84 @@ if (!gotTheLock) {
     }
   });
 
+  ipcMain.handle(HtmlShareIpc.GetByHtmlFile, async (_event, input: unknown) => {
+    try {
+      if (!isTestModeEnabled()) {
+        return { success: false, code: HtmlShareErrorCode.FeatureUnavailable };
+      }
+      const options = sanitizeGetByHtmlFileInput(input);
+      const clientSourceKey = buildHtmlShareClientSourceKey(options.filePath);
+      return await getHtmlShareBySource(
+        getServerApiBaseUrl(),
+        getHtmlSharePublicBaseUrl(),
+        fetchWithAuth,
+        HtmlShareSourceType.HtmlFile,
+        clientSourceKey,
+      );
+    } catch (error) {
+      console.error('[HtmlShare] failed to look up share from HTML file:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to load share',
+      };
+    }
+  });
+
+  ipcMain.handle(HtmlShareIpc.UpdateFromHtmlFile, async (_event, input: unknown) => {
+    let archivePath: string | undefined;
+    try {
+      if (!isTestModeEnabled()) {
+        return { success: false, code: HtmlShareErrorCode.FeatureUnavailable };
+      }
+      const options = sanitizeUpdateFromHtmlFileInput(input);
+      const clientSourceKey = buildHtmlShareClientSourceKey(options.filePath);
+      const packaged = await packageHtmlFile(options.filePath);
+      archivePath = packaged.archivePath;
+      const result = await updateHtmlShare(
+        getServerApiBaseUrl(),
+        getHtmlSharePublicBaseUrl(),
+        fetchWithAuth,
+        options.shareId,
+        {
+          archivePath: packaged.archivePath,
+          sourceType: HtmlShareSourceType.HtmlFile,
+          accessMode: options.accessMode,
+          clientSourceKey,
+          sessionId: options.sessionId,
+          artifactId: options.artifactId,
+          title: options.title,
+          entryFile: packaged.entryFile,
+          sourceSha256: packaged.sourceSha256,
+        },
+      );
+      return { ...result, warnings: packaged.warnings };
+    } catch (error) {
+      console.error('[HtmlShare] failed to update share from HTML file:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to update share',
+      };
+    } finally {
+      if (archivePath) {
+        const archiveDir = path.dirname(archivePath);
+        fs.promises
+          .rm(archiveDir, { recursive: true, force: true })
+          .then(() => {
+            console.debug(`[HtmlShare] cleaned temporary archive directory ${archiveDir}`);
+          })
+          .catch((cleanupError): undefined => {
+            console.warn('[HtmlShare] temporary archive cleanup failed:', cleanupError);
+            return undefined;
+          });
+      }
+    }
+  });
+
   ipcMain.handle(HtmlShareIpc.Get, async (_event, shareId: unknown) => {
     try {
+      if (!isTestModeEnabled()) {
+        return { success: false, code: HtmlShareErrorCode.FeatureUnavailable };
+      }
       const id = sanitizeHtmlShareString(shareId, 'shareId', 64);
       const resp = await fetchWithAuth(
         `${getServerApiBaseUrl()}/api/html-shares/${encodeURIComponent(id)}`,
@@ -3091,6 +3222,9 @@ if (!gotTheLock) {
 
   ipcMain.handle(HtmlShareIpc.Disable, async (_event, shareId: unknown) => {
     try {
+      if (!isTestModeEnabled()) {
+        return { success: false, code: HtmlShareErrorCode.FeatureUnavailable };
+      }
       const id = sanitizeHtmlShareString(shareId, 'shareId', 64);
       const resp = await fetchWithAuth(
         `${getServerApiBaseUrl()}/api/html-shares/${encodeURIComponent(id)}`,
