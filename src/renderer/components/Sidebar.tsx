@@ -19,6 +19,7 @@ import CoworkSearchModal from './cowork/CoworkSearchModal';
 import Cog6ToothIcon from './icons/Cog6ToothIcon';
 import ComposeIcon from './icons/ComposeIcon';
 import SidebarAutomationIcon from './icons/SidebarAutomationIcon';
+import SidebarKitsIcon from './icons/SidebarKitsIcon';
 import SidebarMcpIcon from './icons/SidebarMcpIcon';
 import SidebarSearchIcon from './icons/SidebarSearchIcon';
 import SidebarToggleIcon from './icons/SidebarToggleIcon';
@@ -29,10 +30,11 @@ import LoginButton from './LoginButton';
 interface SidebarProps {
   onShowSettings: () => void;
   onShowLogin?: () => void;
-  activeView: 'cowork' | 'skills' | 'scheduledTasks' | 'mcp';
+  activeView: 'cowork' | 'skills' | 'scheduledTasks' | 'kits' | 'mcp';
   onShowSkills: () => void;
   onShowCowork: () => void;
   onShowScheduledTasks: () => void;
+  onShowKits: () => void;
   onShowMcp: () => void;
   onNewChat: () => void;
   isCollapsed: boolean;
@@ -58,6 +60,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   onShowSkills,
   onShowCowork,
   onShowScheduledTasks,
+  onShowKits,
   onShowMcp,
   onNewChat,
   isCollapsed,
@@ -345,6 +348,18 @@ const Sidebar: React.FC<SidebarProps> = ({
           >
             <SkillIcon className="h-4 w-4 shrink-0" />
             {i18nService.t('skills')}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setIsSearchOpen(false);
+              onShowKits();
+            }}
+            className={activeView === 'kits' ? activeSidebarNavItemClassName : sidebarNavItemClassName}
+            aria-current={activeView === 'kits' ? 'page' : undefined}
+          >
+            <SidebarKitsIcon className="h-4 w-4 shrink-0" />
+            {i18nService.t('kits')}
           </button>
           <button
             type="button"

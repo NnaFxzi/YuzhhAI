@@ -1235,6 +1235,16 @@ const translations: Record<LanguageType, Record<string, string>> = {
     skillsSyncSuccess: '已成功同步技能',
     skillsSyncFailed: '同步技能失败',
 
+    // 专家套件 (Kits)
+    kits: '专家套件',
+    kitSearchPlaceholder: '搜索套件',
+    kitInstall: '安装',
+    kitLoading: '加载中...',
+    kitEmpty: '暂无套件',
+    kitBack: '返回',
+    kitTryAsking: '试试这样问...',
+    kitSkills: '技能',
+
     // MCP 服务
     mcpServers: 'MCP',
     mcpDescription: '配置和管理 MCP（Model Context Protocol）服务器，为您的智能体扩展工具能力',
@@ -3491,6 +3501,16 @@ const translations: Record<LanguageType, Record<string, string>> = {
     skillsSyncing: 'Syncing skills...',
     skillsSyncSuccess: 'Skills synced successfully',
     skillsSyncFailed: 'Failed to sync skills',
+
+    // Kits
+    kits: 'Kits',
+    kitSearchPlaceholder: 'Search kits',
+    kitInstall: 'Install',
+    kitLoading: 'Loading...',
+    kitEmpty: 'No kits available',
+    kitBack: 'Back',
+    kitTryAsking: 'Try asking...',
+    kitSkills: 'Skills',
 
     // MCP Servers
     mcpServers: 'MCP',
