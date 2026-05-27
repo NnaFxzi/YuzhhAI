@@ -27,7 +27,7 @@ export interface PermissionRequest {
 }
 
 export interface CoworkRuntimeEvents {
-  message: (sessionId: string, message: CoworkMessage) => void;
+  message: (sessionId: string, message: CoworkMessage, beforeMessageId?: string) => void;
   messageUpdate: (sessionId: string, messageId: string, content: string, metadata?: Record<string, unknown>) => void;
   sessionStatus: (sessionId: string, status: CoworkSessionStatus) => void;
   contextUsageUpdate: (sessionId: string, usage: CoworkContextUsage) => void;
@@ -59,6 +59,14 @@ export type CoworkImageAttachment = {
   base64Data: string;
 };
 
+export type CoworkMediaSelection = {
+  mode: 'auto' | 'image' | 'video' | 'none';
+  modelId?: string;
+  modelName?: string;
+  imageModelId?: string;
+  videoModelId?: string;
+};
+
 export type CoworkStartOptions = {
   skipInitialUserMessage?: boolean;
   skillIds?: string[];
@@ -68,12 +76,14 @@ export type CoworkStartOptions = {
   confirmationMode?: 'modal' | 'text';
   imageAttachments?: CoworkImageAttachment[];
   agentId?: string;
+  mediaSelection?: CoworkMediaSelection;
 };
 
 export type CoworkContinueOptions = {
   systemPrompt?: string;
   skillIds?: string[];
   imageAttachments?: CoworkImageAttachment[];
+  mediaSelection?: CoworkMediaSelection;
 };
 
 export interface CoworkRuntime {

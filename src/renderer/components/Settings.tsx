@@ -1,9 +1,14 @@
-import { ChatBubbleLeftIcon, CpuChipIcon, CubeIcon, EnvelopeIcon, InformationCircleIcon, SunIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import { ChatBubbleLeftIcon, CpuChipIcon, CubeIcon, EnvelopeIcon, GlobeAltIcon, InformationCircleIcon, SunIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import React, { useCallback,useEffect, useMemo, useRef, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 
 import { type AppUpdateInfo,type AppUpdateRuntimeState,AppUpdateSource,AppUpdateStatus } from '../../shared/appUpdate/constants';
-import { ProviderRegistry, resolveCodingPlanBaseUrl } from '../../shared/providers';
+import {
+  type BrowserWebAccessConfig,
+  defaultBrowserWebAccessConfig,
+  normalizeBrowserWebAccessConfig,
+} from '../../shared/browserWebAccess/constants';
+import { ProviderAuthType, ProviderName, ProviderRegistry, resolveCodingPlanBaseUrl } from '../../shared/providers';
 import { type AppConfig, defaultConfig, getProviderDisplayName, getVisibleProviders } from '../config';
 import { APP_ID, EXPORT_FORMAT_TYPE, EXPORT_PASSWORD } from '../constants/app';
 import { apiService } from '../services/api';
@@ -33,6 +38,7 @@ import PlugIcon from './icons/PlugIcon';
 import PlusCircleIcon from './icons/PlusCircleIcon';
 import IMSettings from './im/IMSettings';
 import PluginsSettings from './plugins/PluginsSettings';
+import BrowserWebAccessSettings from './settings/BrowserWebAccessSettings';
 import {
   buildOpenAICompatibleChatCompletionsUrl,
   buildOpenAIResponsesUrl,
@@ -56,11 +62,11 @@ import {
   shouldUseMaxCompletionTokensForOpenAI,
   shouldUseOpenAIResponsesForProvider,
 } from './settings/modelProviderUtils';
-import ModelSettingsSection from './settings/ModelSettingsSection';
+import ModelSettingsSection, { ModelEditorDialog } from './settings/ModelSettingsSection';
 import EmailSkillConfig from './skills/EmailSkillConfig';
 import ThemedSelect from './ui/ThemedSelect';
 
-type TabType = 'general' | 'appearance' | 'coworkAgentEngine' | 'model' | 'coworkMemory' | 'coworkDreaming' | 'shortcuts' | 'im' | 'email' | 'plugins' | 'about';
+type TabType = 'general' | 'appearance' | 'coworkAgentEngine' | 'model' | 'browserWebAccess' | 'coworkMemory' | 'coworkDreaming' | 'shortcuts' | 'im' | 'email' | 'plugins' | 'about';
 
 const SettingsSlidersIcon: React.FC<{ className?: string }> = ({ className }) => (
   <svg
@@ -400,6 +406,62 @@ const SendShortcutSelect: React.FC<{ value: string; onChange: (v: string) => voi
   );
 };
 
+const SettingsSwitch: React.FC<{
+  checked: boolean;
+  label: string;
+  disabled?: boolean;
+  onClick: () => void | Promise<void>;
+}> = ({ checked, label, disabled, onClick }) => (
+  <button
+    type="button"
+    role="switch"
+    aria-checked={checked}
+    aria-label={label}
+    onClick={() => {
+      void onClick();
+    }}
+    disabled={disabled}
+    className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors ${
+      disabled ? 'opacity-50 cursor-not-allowed' : ''
+    } ${
+      checked
+        ? 'bg-primary'
+        : 'bg-gray-300 dark:bg-gray-600'
+    }`}
+  >
+    <span
+      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+        checked ? 'translate-x-6' : 'translate-x-1'
+      }`}
+    />
+  </button>
+);
+
+const SettingsToggleRow: React.FC<{
+  title: string;
+  description: string;
+  checked: boolean;
+  disabled?: boolean;
+  onToggle: () => void | Promise<void>;
+}> = ({ title, description, checked, disabled, onToggle }) => (
+  <div>
+    <div className="flex items-center justify-between gap-4">
+      <h4 className="min-w-0 flex-1 text-sm font-medium text-foreground">
+        {title}
+      </h4>
+      <SettingsSwitch
+        checked={checked}
+        label={title}
+        disabled={disabled}
+        onClick={onToggle}
+      />
+    </div>
+    <p className="mt-3 text-sm text-secondary">
+      {description}
+    </p>
+  </div>
+);
+
 const Settings: React.FC<SettingsProps> = ({ onClose, initialTab, notice, noticeI18nKey, noticeExtra, onUpdateFound, enterpriseConfig }) => {
   const dispatch = useDispatch();
   // 状态
@@ -410,6 +472,10 @@ const Settings: React.FC<SettingsProps> = ({ onClose, initialTab, notice, notice
   const [autoLaunch, setAutoLaunchState] = useState(false);
   const [useSystemProxy, setUseSystemProxy] = useState(false);
   const [sqliteAutoBackupEnabled, setSqliteAutoBackupEnabled] = useState(false);
+  const [browserWebAccess, setBrowserWebAccess] = useState<BrowserWebAccessConfig>(() => ({
+    ...defaultBrowserWebAccessConfig,
+    webFetch: { ...defaultBrowserWebAccessConfig.webFetch },
+  }));
   const [isUpdatingAutoLaunch, setIsUpdatingAutoLaunch] = useState(false);
   const [preventSleep, setPreventSleepState] = useState(false);
   const [isUpdatingPreventSleep, setIsUpdatingPreventSleep] = useState(false);
@@ -496,6 +562,7 @@ const Settings: React.FC<SettingsProps> = ({ onClose, initialTab, notice, notice
   const [newModelId, setNewModelId] = useState('');
   const [newModelSupportsImage, setNewModelSupportsImage] = useState(false);
   const [newModelContextWindow, setNewModelContextWindow] = useState<number | undefined>(undefined);
+  const [newModelCustomParams, setNewModelCustomParams] = useState<string>('');
   const [modelFormError, setModelFormError] = useState<string | null>(null);
 
   // About tab
@@ -778,6 +845,7 @@ const Settings: React.FC<SettingsProps> = ({ onClose, initialTab, notice, notice
       setLanguage(config.language);
       setUseSystemProxy(config.useSystemProxy ?? false);
       setSqliteAutoBackupEnabled(config.sqliteAutoBackupEnabled === true);
+      setBrowserWebAccess(normalizeBrowserWebAccessConfig(config.browserWebAccess));
       const savedTestMode = config.app?.testMode ?? false;
       setTestMode(savedTestMode);
       if (savedTestMode) setTestModeUnlocked(true);
@@ -987,6 +1055,9 @@ const Settings: React.FC<SettingsProps> = ({ onClose, initialTab, notice, notice
                 {
                   ...providerConfig,
                   apiFormat: getEffectiveApiFormat(providerKey, (providerConfig as ProviderConfig).apiFormat),
+                  ...(providerKey === ProviderName.Copilot && providerConfig.apiKey?.trim()
+                    ? { authType: ProviderAuthType.OAuth, apiKey: '' }
+                    : {}),
                   models,
                 },
               ];
@@ -1475,9 +1546,7 @@ const Settings: React.FC<SettingsProps> = ({ onClose, initialTab, notice, notice
     || embeddingRemoteBaseUrl !== (coworkConfig.embeddingRemoteBaseUrl ?? '')
     || embeddingRemoteApiKey !== (coworkConfig.embeddingRemoteApiKey ?? '')
     || dreamingEnabled !== (coworkConfig.dreamingEnabled ?? false)
-    || dreamingFrequency !== (coworkConfig.dreamingFrequency ?? '0 3 * * *')
-    || dreamingModel !== (coworkConfig.dreamingModel ?? '')
-    || dreamingTimezone !== (coworkConfig.dreamingTimezone ?? '');
+    || dreamingFrequency !== (coworkConfig.dreamingFrequency ?? '0 3 * * *');
   const isOpenClawAgentEngine = coworkAgentEngine === 'openclaw';
 
   const openClawProgressPercent = useMemo(() => {
@@ -1602,7 +1671,7 @@ const Settings: React.FC<SettingsProps> = ({ onClose, initialTab, notice, notice
     const hasValidAuth = hasProviderAuthConfigured(provider, providerConfig);
 
     // GitHub Copilot requires device code auth — redirect to sign-in flow
-    if (provider === 'github-copilot' && isEnabling && !providerConfig.apiKey.trim()) {
+    if (provider === ProviderName.Copilot && isEnabling && !hasValidAuth) {
       handleCopilotSignIn();
       return;
     }
@@ -1662,13 +1731,19 @@ const Settings: React.FC<SettingsProps> = ({ onClose, initialTab, notice, notice
         setCopilotGithubUser(result.githubUser || '');
         setCopilotAuthStatus('authenticated');
 
-        // Store the Copilot API token in the provider's apiKey field
-        handleProviderConfigChange('github-copilot', 'apiKey', result.token);
-        if (result.baseUrl) {
-          handleProviderConfigChange('github-copilot', 'baseUrl', result.baseUrl);
-        }
-        // Auto-enable the provider
-        enableProvider('github-copilot');
+        apiService.setProviderRuntimeCredential(ProviderName.Copilot, {
+          apiKey: result.token,
+          ...(result.baseUrl ? { baseUrl: result.baseUrl } : {}),
+        });
+        setProviders(prev => ({
+          ...prev,
+          [ProviderName.Copilot]: {
+            ...prev[ProviderName.Copilot],
+            enabled: true,
+            authType: ProviderAuthType.OAuth,
+            apiKey: '',
+          },
+        }));
       } else {
         setCopilotError(result.error || 'Authentication failed');
         setCopilotAuthStatus('error');
@@ -1686,12 +1761,15 @@ const Settings: React.FC<SettingsProps> = ({ onClose, initialTab, notice, notice
       setCopilotGithubUser('');
       setCopilotUserCode('');
       setCopilotError(null);
-      // Clear the token from provider config
-      handleProviderConfigChange('github-copilot', 'apiKey', '');
-      // Disable the provider
+      apiService.setProviderRuntimeCredential(ProviderName.Copilot, null);
       setProviders(prev => ({
         ...prev,
-        'github-copilot': { ...prev['github-copilot'], enabled: false },
+        [ProviderName.Copilot]: {
+          ...prev[ProviderName.Copilot],
+          enabled: false,
+          authType: ProviderAuthType.ApiKey,
+          apiKey: '',
+        },
       }));
     } catch (error) {
       console.error('[Settings] GitHub Copilot sign-out failed:', error);
@@ -1725,6 +1803,7 @@ const Settings: React.FC<SettingsProps> = ({ onClose, initialTab, notice, notice
               ...providerConfig,
               enabled: providerConfig.enabled && hasValidAuth,
               apiFormat,
+              ...(providerKey === ProviderName.Copilot ? { apiKey: '' } : {}),
               baseUrl: resolveBaseUrl(providerKey as ProviderType, providerConfig.baseUrl, apiFormat),
             },
           ];
@@ -1739,6 +1818,20 @@ const Settings: React.FC<SettingsProps> = ({ onClose, initialTab, notice, notice
       const primaryProvider = firstEnabledProvider
         ? firstEnabledProvider[1]
         : normalizedProviders[activeProvider];
+      const normalizedBrowserWebAccess = normalizeBrowserWebAccessConfig({
+        ...browserWebAccess,
+        browserEnabled: true,
+        profileMode: defaultBrowserWebAccessConfig.profileMode,
+        followGlobalProxy: defaultBrowserWebAccessConfig.followGlobalProxy,
+        snapshotMode: defaultBrowserWebAccessConfig.snapshotMode,
+        executablePath: undefined,
+        cdpUrl: undefined,
+        attachOnly: undefined,
+        remoteCdpTimeoutMs: undefined,
+        remoteCdpHandshakeTimeoutMs: undefined,
+        extraArgs: [],
+        webFetch: defaultBrowserWebAccessConfig.webFetch,
+      });
 
       await configService.updateConfig({
         api: {
@@ -1750,6 +1843,7 @@ const Settings: React.FC<SettingsProps> = ({ onClose, initialTab, notice, notice
         language,
         useSystemProxy,
         sqliteAutoBackupEnabled,
+        browserWebAccess: normalizedBrowserWebAccess,
         shortcuts,
         app: {
           ...configService.getConfig().app,
@@ -1821,9 +1915,9 @@ const Settings: React.FC<SettingsProps> = ({ onClose, initialTab, notice, notice
         }
       }
 
-      // Sync IM gateway config (regenerate openclaw.json and restart gateway if running).
-      // This is done on every save regardless of activeTab, because the user may have
-      // edited IM config then switched tabs before clicking Save.
+      // Ask main to sync IM/OpenClaw config. The main process skips this when
+      // the IM fingerprint has not changed, so unrelated settings saves do not
+      // restart the gateway.
       const syncSucceeded = await imService.saveAndSyncConfig();
       if (!syncSucceeded) {
         throw new Error(i18nService.t('settingsSavedButOpenClawSyncFailed'));
@@ -1893,10 +1987,11 @@ const Settings: React.FC<SettingsProps> = ({ onClose, initialTab, notice, notice
     setNewModelId('');
     setNewModelSupportsImage(false);
     setNewModelContextWindow(undefined);
+    setNewModelCustomParams('');
     setModelFormError(null);
   };
 
-  const handleEditModel = (modelId: string, modelName: string, supportsImage?: boolean, contextWindow?: number) => {
+  const handleEditModel = (modelId: string, modelName: string, supportsImage?: boolean, contextWindow?: number, customParams?: Record<string, unknown>) => {
     setIsAddingModel(false);
     setIsEditingModel(true);
     setEditingModelId(modelId);
@@ -1904,6 +1999,11 @@ const Settings: React.FC<SettingsProps> = ({ onClose, initialTab, notice, notice
     setNewModelId(modelId);
     setNewModelSupportsImage(!!supportsImage);
     setNewModelContextWindow(contextWindow);
+    setNewModelCustomParams(
+      customParams && Object.keys(customParams).length > 0
+        ? JSON.stringify(customParams, null, 2)
+        : '',
+    );
     setModelFormError(null);
   };
 
@@ -1954,6 +2054,22 @@ const Settings: React.FC<SettingsProps> = ({ onClose, initialTab, notice, notice
       return;
     }
 
+    // Parse custom params JSON (validate before saving)
+    let parsedCustomParams: Record<string, unknown> | undefined;
+    const trimmedParams = newModelCustomParams.trim();
+    if (trimmedParams) {
+      try {
+        parsedCustomParams = JSON.parse(trimmedParams);
+        if (typeof parsedCustomParams !== 'object' || parsedCustomParams === null || Array.isArray(parsedCustomParams)) {
+          setModelFormError(i18nService.t('customParamsInvalidJson'));
+          return;
+        }
+      } catch {
+        setModelFormError(i18nService.t('customParamsInvalidJson'));
+        return;
+      }
+    }
+
     const nextModel = {
       id: modelId,
       name: modelName,
@@ -1963,6 +2079,9 @@ const Settings: React.FC<SettingsProps> = ({ onClose, initialTab, notice, notice
         newModelSupportsImage,
       ),
       ...(newModelContextWindow !== undefined ? { contextWindow: newModelContextWindow } : {}),
+      ...(parsedCustomParams && Object.keys(parsedCustomParams).length > 0
+        ? { customParams: parsedCustomParams }
+        : {}),
     };
     const updatedModels = isEditingModel && editingModelId
       ? currentModels.map(model => (model.id === editingModelId ? nextModel : model))
@@ -1982,6 +2101,7 @@ const Settings: React.FC<SettingsProps> = ({ onClose, initialTab, notice, notice
     setNewModelName('');
     setNewModelId('');
     setNewModelSupportsImage(false);
+    setNewModelCustomParams('');
     setModelFormError(null);
   };
 
@@ -1993,6 +2113,7 @@ const Settings: React.FC<SettingsProps> = ({ onClose, initialTab, notice, notice
     setNewModelId('');
     setNewModelSupportsImage(false);
     setNewModelContextWindow(undefined);
+    setNewModelCustomParams('');
     setModelFormError(null);
   };
 
@@ -2064,6 +2185,26 @@ const Settings: React.FC<SettingsProps> = ({ onClose, initialTab, notice, notice
       // Determine effective API key
       let effectiveApiKey = providerConfig.apiKey;
 
+      if (testingProvider === ProviderName.Copilot) {
+        const result = await window.electron.githubCopilot.refreshToken();
+        if (!result.success || !result.token) {
+          showTestResultModal({
+            success: false,
+            message: result.error || i18nService.t('apiKeyRequired'),
+          }, testingProvider);
+          return;
+        }
+        effectiveApiKey = result.token;
+        if (result.baseUrl) {
+          effectiveBaseUrl = result.baseUrl;
+          normalizedBaseUrl = effectiveBaseUrl.replace(/\/+$/, '');
+        }
+        apiService.setProviderRuntimeCredential(ProviderName.Copilot, {
+          apiKey: result.token,
+          ...(result.baseUrl ? { baseUrl: result.baseUrl } : {}),
+        });
+      }
+
       if (testingProvider === 'qwen') {
         // Use regular API Key mode
         effectiveApiKey = providerConfig.apiKey;
@@ -2112,12 +2253,12 @@ const Settings: React.FC<SettingsProps> = ({ onClose, initialTab, notice, notice
         if (effectiveApiKey) {
           headers.Authorization = `Bearer ${effectiveApiKey}`;
         }
-        if (testingProvider === 'github-copilot') {
-                  headers['Copilot-Integration-Id'] = 'vscode-chat';
-                  headers['Editor-Version'] = 'vscode/1.96.2';
-                  headers['Editor-Plugin-Version'] = 'copilot-chat/0.26.7';
-                  headers['User-Agent'] = 'GitHubCopilotChat/0.26.7';
-                  headers['Openai-Intent'] = 'conversation-panel';
+        if (testingProvider === ProviderName.Copilot) {
+          headers['Copilot-Integration-Id'] = 'vscode-chat';
+          headers['Editor-Version'] = 'vscode/1.96.2';
+          headers['Editor-Plugin-Version'] = 'copilot-chat/0.26.7';
+          headers['User-Agent'] = 'GitHubCopilotChat/0.26.7';
+          headers['Openai-Intent'] = 'conversation-panel';
         }
         const openAIRequestBody: Record<string, unknown> = useResponsesApi
           ? {
@@ -2470,8 +2611,9 @@ const Settings: React.FC<SettingsProps> = ({ onClose, initialTab, notice, notice
       { key: 'general' as TabType,        label: i18nService.t('general'),        icon: <SettingsSlidersIcon className="h-5 w-5" /> },
       { key: 'appearance' as TabType,     label: i18nService.t('appearance'),     icon: <SunIcon className="h-5 w-5" /> },
       { key: 'coworkAgentEngine' as TabType, label: i18nService.t('coworkAgentEngine'), icon: <CpuChipIcon className="h-5 w-5" /> },
-      { key: 'model' as TabType,          label: i18nService.t('model'),          icon: <CubeIcon className="h-5 w-5" /> },
+      { key: 'model' as TabType,          label: i18nService.t('settingsCustomModel'), icon: <CubeIcon className="h-5 w-5" /> },
       { key: 'im' as TabType,             label: i18nService.t('imBot'),          icon: <ChatBubbleLeftIcon className="h-5 w-5" /> },
+      { key: 'browserWebAccess' as TabType, label: i18nService.t('browserWebAccessTab'), icon: <GlobeAltIcon className="h-5 w-5" /> },
       { key: 'email' as TabType,          label: i18nService.t('emailTab'),       icon: <EnvelopeIcon className="h-5 w-5" /> },
       { key: 'coworkMemory' as TabType,   label: i18nService.t('coworkMemoryTitle'), icon: <BrainIcon className="h-5 w-5" /> },
       { key: 'coworkDreaming' as TabType, label: i18nService.t('coworkMemoryTabDreaming'), icon: <DreamingTabIcon className="h-5 w-5" /> },
@@ -2687,195 +2829,82 @@ const Settings: React.FC<SettingsProps> = ({ onClose, initialTab, notice, notice
               </div>
             </div>
 
-            {/* Auto-launch Section */}
-            <div>
-              <h4 className="text-sm font-medium text-foreground mb-3">
-                {i18nService.t('autoLaunch')}
-              </h4>
-              <label className="flex items-center justify-between cursor-pointer">
-                <span className="text-sm text-secondary">
-                  {i18nService.t('autoLaunchDescription')}
-                </span>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={autoLaunch}
-                  onClick={async () => {
-                    if (isUpdatingAutoLaunch) return;
-                    const next = !autoLaunch;
-                    setIsUpdatingAutoLaunch(true);
-                    try {
-                      const result = await window.electron.autoLaunch.set(next);
-                      if (result.success) {
-                        setAutoLaunchState(next);
-                      } else {
-                        setError(result.error || 'Failed to update auto-launch setting');
-                      }
-                    } catch (err) {
-                      console.error('Failed to set auto-launch:', err);
-                      setError('Failed to update auto-launch setting');
-                    } finally {
-                      setIsUpdatingAutoLaunch(false);
-                    }
-                  }}
-                  disabled={isUpdatingAutoLaunch}
-                  className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors ${
-                    isUpdatingAutoLaunch ? 'opacity-50 cursor-not-allowed' : ''
-                  } ${
-                    autoLaunch
-                      ? 'bg-primary'
-                      : 'bg-gray-300 dark:bg-gray-600'
-                  }`}
-                >
-                  <span
-                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                      autoLaunch ? 'translate-x-6' : 'translate-x-1'
-                    }`}
-                  />
-                </button>
-              </label>
-            </div>
+            <SettingsToggleRow
+              title={i18nService.t('autoLaunch')}
+              description={i18nService.t('autoLaunchDescription')}
+              checked={autoLaunch}
+              disabled={isUpdatingAutoLaunch}
+              onToggle={async () => {
+                if (isUpdatingAutoLaunch) return;
+                const next = !autoLaunch;
+                setIsUpdatingAutoLaunch(true);
+                try {
+                  const result = await window.electron.autoLaunch.set(next);
+                  if (result.success) {
+                    setAutoLaunchState(next);
+                  } else {
+                    setError(result.error || 'Failed to update auto-launch setting');
+                  }
+                } catch (err) {
+                  console.error('Failed to set auto-launch:', err);
+                  setError('Failed to update auto-launch setting');
+                } finally {
+                  setIsUpdatingAutoLaunch(false);
+                }
+              }}
+            />
 
-            {/* Prevent Sleep Section */}
-            <div>
-              <h4 className="text-sm font-medium text-foreground mb-3">
-                {i18nService.t('preventSleep')}
-              </h4>
-              <label className="flex items-center justify-between cursor-pointer">
-                <span className="text-sm text-secondary">
-                  {i18nService.t('preventSleepDescription')}
-                </span>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={preventSleep}
-                  onClick={async () => {
-                    if (isUpdatingPreventSleep) return;
-                    const next = !preventSleep;
-                    setIsUpdatingPreventSleep(true);
-                    try {
-                      const result = await window.electron.preventSleep.set(next);
-                      if (result.success) {
-                        setPreventSleepState(next);
-                      } else {
-                        setError(result.error || 'Failed to update prevent-sleep setting');
-                      }
-                    } catch (err) {
-                      console.error('Failed to set prevent-sleep:', err);
-                      setError('Failed to update prevent-sleep setting');
-                    } finally {
-                      setIsUpdatingPreventSleep(false);
-                    }
-                  }}
-                  disabled={isUpdatingPreventSleep}
-                  className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors ${
-                    isUpdatingPreventSleep ? 'opacity-50 cursor-not-allowed' : ''
-                  } ${
-                    preventSleep
-                      ? 'bg-primary'
-                      : 'bg-gray-300 dark:bg-gray-600'
-                  }`}
-                >
-                  <span
-                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                      preventSleep ? 'translate-x-6' : 'translate-x-1'
-                    }`}
-                  />
-                </button>
-              </label>
-            </div>
+            <SettingsToggleRow
+              title={i18nService.t('preventSleep')}
+              description={i18nService.t('preventSleepDescription')}
+              checked={preventSleep}
+              disabled={isUpdatingPreventSleep}
+              onToggle={async () => {
+                if (isUpdatingPreventSleep) return;
+                const next = !preventSleep;
+                setIsUpdatingPreventSleep(true);
+                try {
+                  const result = await window.electron.preventSleep.set(next);
+                  if (result.success) {
+                    setPreventSleepState(next);
+                  } else {
+                    setError(result.error || 'Failed to update prevent-sleep setting');
+                  }
+                } catch (err) {
+                  console.error('Failed to set prevent-sleep:', err);
+                  setError('Failed to update prevent-sleep setting');
+                } finally {
+                  setIsUpdatingPreventSleep(false);
+                }
+              }}
+            />
 
-            {/* System proxy Section */}
-            <div>
-              <h4 className="text-sm font-medium text-foreground mb-3">
-                {i18nService.t('useSystemProxy')}
-              </h4>
-              <label className="flex items-center justify-between cursor-pointer">
-                <span className="text-sm text-secondary">
-                  {i18nService.t('useSystemProxyDescription')}
-                </span>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={useSystemProxy}
-                  onClick={() => {
-                    setUseSystemProxy((prev) => !prev);
-                  }}
-                  className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors ${
-                    useSystemProxy
-                      ? 'bg-primary'
-                      : 'bg-gray-300 dark:bg-gray-600'
-                  }`}
-                >
-                  <span
-                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                      useSystemProxy ? 'translate-x-6' : 'translate-x-1'
-                    }`}
-                  />
-                </button>
-              </label>
-            </div>
+            <SettingsToggleRow
+              title={i18nService.t('useSystemProxy')}
+              description={i18nService.t('useSystemProxyDescription')}
+              checked={useSystemProxy}
+              onToggle={() => {
+                setUseSystemProxy((prev) => !prev);
+              }}
+            />
 
-            <div>
-              <h4 className="text-sm font-medium text-foreground mb-3">
-                {i18nService.t('sqliteAutoBackupEnabled')}
-              </h4>
-              <label className="flex items-center justify-between cursor-pointer">
-                <span className="text-sm text-secondary">
-                  {i18nService.t('sqliteAutoBackupEnabledDescription')}
-                </span>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={sqliteAutoBackupEnabled}
-                  onClick={() => {
-                    setSqliteAutoBackupEnabled((prev) => !prev);
-                  }}
-                  className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors ${
-                    sqliteAutoBackupEnabled
-                      ? 'bg-primary'
-                      : 'bg-gray-300 dark:bg-gray-600'
-                  }`}
-                >
-                  <span
-                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                      sqliteAutoBackupEnabled ? 'translate-x-6' : 'translate-x-1'
-                    }`}
-                  />
-                </button>
-              </label>
-            </div>
+            <SettingsToggleRow
+              title={i18nService.t('sqliteAutoBackupEnabled')}
+              description={i18nService.t('sqliteAutoBackupEnabledDescription')}
+              checked={sqliteAutoBackupEnabled}
+              onToggle={() => {
+                setSqliteAutoBackupEnabled((prev) => !prev);
+              }}
+            />
 
-            {/* Skip Missed Jobs Section */}
-            <div>
-              <h4 className="text-sm font-medium text-foreground mb-3">
-                {i18nService.t('skipMissedJobs')}
-              </h4>
-              <label className="flex items-center justify-between cursor-pointer">
-                <span className="text-sm text-secondary">
-                  {i18nService.t('skipMissedJobsDescription')}
-                </span>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={skipMissedJobs}
-                  onClick={() => {
-                    setSkipMissedJobs((prev) => !prev);
-                  }}
-                  className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors ${
-                    skipMissedJobs
-                      ? 'bg-primary'
-                      : 'bg-gray-300 dark:bg-gray-600'
-                  }`}
-                >
-                  <span
-                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                      skipMissedJobs ? 'translate-x-6' : 'translate-x-1'
-                    }`}
-                  />
-                </button>
-              </label>
-            </div>
+            <SettingsToggleRow
+              title={i18nService.t('skipMissedJobs')}
+              description={i18nService.t('skipMissedJobsDescription')}
+              checked={skipMissedJobs}
+              onToggle={() => {
+                setSkipMissedJobs((prev) => !prev);
+              }}
+            />
 
           </div>
         );
@@ -2945,15 +2974,21 @@ const Settings: React.FC<SettingsProps> = ({ onClose, initialTab, notice, notice
         ];
         return (
           <div className="flex flex-col h-full space-y-4">
-            <div className="flex gap-1 border-b border-border shrink-0">
+            <div
+              className="flex flex-wrap gap-2 border-b border-border pb-3 shrink-0"
+              role="tablist"
+              aria-label={i18nService.t('coworkMemoryTitle')}
+            >
               {memoryTabs.map((tab) => (
                 <button
                   type="button"
                   key={tab.key}
+                  role="tab"
+                  aria-selected={memoryTab === tab.key}
                   onClick={() => setMemoryTab(tab.key)}
-                  className={`px-4 py-2 text-sm font-medium transition-colors rounded-t-lg ${
+                  className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
                     memoryTab === tab.key
-                      ? 'bg-primary-muted text-primary border-b-2 border-primary'
+                      ? 'bg-primary-muted text-primary'
                       : 'text-secondary hover:text-foreground hover:bg-surface-raised'
                   }`}
                 >
@@ -3070,14 +3105,18 @@ const Settings: React.FC<SettingsProps> = ({ onClose, initialTab, notice, notice
             <DreamingSettingsSection
               dreamingEnabled={dreamingEnabled}
               dreamingFrequency={dreamingFrequency}
-              dreamingModel={dreamingModel}
-              dreamingTimezone={dreamingTimezone}
               onDreamingEnabledChange={setDreamingEnabled}
               onDreamingFrequencyChange={setDreamingFrequency}
-              onDreamingModelChange={setDreamingModel}
-              onDreamingTimezoneChange={setDreamingTimezone}
             />
           </div>
+        );
+
+      case 'browserWebAccess':
+        return (
+          <BrowserWebAccessSettings
+            value={browserWebAccess}
+            onChange={setBrowserWebAccess}
+          />
         );
 
       case 'model':
@@ -3111,19 +3150,6 @@ const Settings: React.FC<SettingsProps> = ({ onClose, initialTab, notice, notice
             setIsTestResultModalOpen={setIsTestResultModalOpen}
             pendingDeleteProvider={pendingDeleteProvider}
             setPendingDeleteProvider={setPendingDeleteProvider}
-            isAddingModel={isAddingModel}
-            isEditingModel={isEditingModel}
-            editingModelId={editingModelId}
-            newModelName={newModelName}
-            setNewModelName={setNewModelName}
-            newModelId={newModelId}
-            setNewModelId={setNewModelId}
-            newModelSupportsImage={newModelSupportsImage}
-            setNewModelSupportsImage={setNewModelSupportsImage}
-            newModelContextWindow={newModelContextWindow}
-            setNewModelContextWindow={setNewModelContextWindow}
-            modelFormError={modelFormError}
-            setModelFormError={setModelFormError}
             importInputRef={importInputRef}
             handleImportProvidersClick={handleImportProvidersClick}
             handleExportProviders={handleExportProviders}
@@ -3148,9 +3174,6 @@ const Settings: React.FC<SettingsProps> = ({ onClose, initialTab, notice, notice
             handleAddModel={handleAddModel}
             handleEditModel={handleEditModel}
             handleDeleteModel={handleDeleteModel}
-            handleSaveNewModel={handleSaveNewModel}
-            handleCancelModelEdit={handleCancelModelEdit}
-            handleModelDialogKeyDown={handleModelDialogKeyDown}
           />
         );
 
@@ -3213,9 +3236,9 @@ const Settings: React.FC<SettingsProps> = ({ onClose, initialTab, notice, notice
 
             {/* Info Card */}
             <div className="w-full mt-8 rounded-xl border border-border overflow-hidden">
-              <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-                <span className="text-sm text-foreground">{i18nService.t('aboutVersion')}</span>
-                <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-3 border-b border-border">
+                <span className="shrink-0 text-sm text-foreground">{i18nService.t('aboutVersion')}</span>
+                <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
                   <span className="text-sm text-secondary">{appVersion}</span>
                   {!enterpriseConfig?.disableUpdate && (
                   <button
@@ -3237,9 +3260,9 @@ const Settings: React.FC<SettingsProps> = ({ onClose, initialTab, notice, notice
                   )}
                 </div>
               </div>
-              <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-                <span className="text-sm text-foreground">{i18nService.t('aboutContactEmail')}</span>
-                <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-3 border-b border-border">
+                <span className="shrink-0 text-sm text-foreground">{i18nService.t('aboutContactEmail')}</span>
+                <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
                   <button
                     type="button"
                     onClick={(e) => {
@@ -3247,7 +3270,7 @@ const Settings: React.FC<SettingsProps> = ({ onClose, initialTab, notice, notice
                       void handleCopyContactEmail();
                     }}
                     title={i18nService.t('copyToClipboard')}
-                    className="text-sm text-secondary bg-transparent border-none appearance-none p-0 m-0 cursor-pointer focus:outline-none"
+                    className="min-w-0 break-all text-right text-sm text-secondary bg-transparent border-none appearance-none p-0 m-0 cursor-pointer focus:outline-none"
                   >
                     {ABOUT_CONTACT_EMAIL}
                   </button>
@@ -3258,35 +3281,35 @@ const Settings: React.FC<SettingsProps> = ({ onClose, initialTab, notice, notice
                   )}
                 </div>
               </div>
-              <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-                <span className="text-sm text-foreground">{i18nService.t('aboutUserManual')}</span>
+              <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-3 border-b border-border">
+                <span className="shrink-0 text-sm text-foreground">{i18nService.t('aboutUserManual')}</span>
                 <button
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
                     handleOpenUserManual();
                   }}
-                  className="text-sm text-secondary hover:text-primary dark:hover:text-primary bg-transparent border-none appearance-none px-1.5 py-0.5 -mx-1.5 -my-0.5 rounded-md cursor-pointer focus:outline-none hover:bg-surface-raised transition-colors"
+                  className="min-w-0 break-all text-right text-sm text-secondary hover:text-primary dark:hover:text-primary bg-transparent border-none appearance-none px-1.5 py-0.5 -mx-1.5 -my-0.5 rounded-md cursor-pointer focus:outline-none hover:bg-surface-raised transition-colors"
                 >
                   {ABOUT_USER_MANUAL_URL}
                 </button>
               </div>
-              <div className={`flex items-center justify-between px-4 py-3${testModeUnlocked ? ' border-b border-border' : ''}`}>
-                <span className="text-sm text-foreground">{i18nService.t('aboutUserCommunity')}</span>
+              <div className={`flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-3${testModeUnlocked ? ' border-b border-border' : ''}`}>
+                <span className="shrink-0 text-sm text-foreground">{i18nService.t('aboutUserCommunity')}</span>
                 <button
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
                     handleOpenUserCommunity();
                   }}
-                  className="text-sm text-secondary hover:text-primary dark:hover:text-primary bg-transparent border-none appearance-none px-1.5 py-0.5 -mx-1.5 -my-0.5 rounded-md cursor-pointer focus:outline-none hover:bg-surface-raised transition-colors"
+                  className="min-w-0 break-all text-right text-sm text-secondary hover:text-primary dark:hover:text-primary bg-transparent border-none appearance-none px-1.5 py-0.5 -mx-1.5 -my-0.5 rounded-md cursor-pointer focus:outline-none hover:bg-surface-raised transition-colors"
                 >
                   {ABOUT_USER_COMMUNITY_URL}
                 </button>
               </div>
               {testModeUnlocked && (
-                <div className="flex items-center justify-between px-4 py-3">
-                  <span className="text-sm text-foreground">{i18nService.t('testMode')}</span>
+                <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-3">
+                  <span className="shrink-0 text-sm text-foreground">{i18nService.t('testMode')}</span>
                   <button
                     type="button"
                     role="switch"
@@ -3308,7 +3331,7 @@ const Settings: React.FC<SettingsProps> = ({ onClose, initialTab, notice, notice
 
             {/* Footer */}
             <div className="mt-auto w-full pt-14 pb-2 flex flex-col items-center">
-              <div className="flex items-center justify-center text-sm text-secondary">
+              <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-2 text-sm text-secondary">
                 <button
                   type="button"
                   onClick={(e) => {
@@ -3319,7 +3342,7 @@ const Settings: React.FC<SettingsProps> = ({ onClose, initialTab, notice, notice
                 >
                   {i18nService.t('aboutServiceTerms')}
                 </button>
-                <span className="mx-3 text-xs opacity-40">|</span>
+                <span className="text-xs opacity-40">|</span>
                 <button
                   type="button"
                   onClick={(e) => {
@@ -3333,10 +3356,10 @@ const Settings: React.FC<SettingsProps> = ({ onClose, initialTab, notice, notice
                 </button>
               </div>
 
-              <p className="mt-5 text-xs text-secondary">
+              <p className="mt-5 text-center text-xs text-secondary">
                 {i18nService.t('copyrightHolder')}
               </p>
-              <p className="mt-1 text-xs text-secondary">
+              <p className="mt-1 text-center text-xs text-secondary">
                 Copyright &copy; {new Date().getFullYear()} NetEase Youdao. All Rights Reserved.
               </p>
             </div>
@@ -3349,9 +3372,13 @@ const Settings: React.FC<SettingsProps> = ({ onClose, initialTab, notice, notice
   };
 
   return (
-    <Modal onClose={onClose} overlayClassName="fixed inset-0 z-50 modal-backdrop flex items-center justify-center">
+    <Modal
+      onClose={onClose}
+      overlayClassName="fixed inset-0 z-50 modal-backdrop flex items-center justify-center p-3 sm:p-4"
+      className="w-[calc(100vw-1.5rem)] max-w-[900px] min-w-0 sm:w-[calc(100vw-2rem)]"
+    >
       <div
-        className="relative flex w-[900px] h-[80vh] rounded-2xl border-border border shadow-modal overflow-hidden modal-content"
+        className="relative flex h-[80vh] max-h-[calc(100vh-2rem)] w-full min-w-0 rounded-2xl border-border border shadow-modal overflow-hidden modal-content"
         onClick={handleSettingsClick}
       >
         {/* Left sidebar */}
@@ -3370,8 +3397,8 @@ const Settings: React.FC<SettingsProps> = ({ onClose, initialTab, notice, notice
                     : 'text-secondary hover:text-foreground hover:bg-surface-raised'
                 }`}
               >
-                {tab.icon}
-                <span>{tab.label}</span>
+                <span className="shrink-0">{tab.icon}</span>
+                <span className="min-w-0 truncate">{tab.label}</span>
               </button>
             ))}
           </nav>
@@ -3380,8 +3407,8 @@ const Settings: React.FC<SettingsProps> = ({ onClose, initialTab, notice, notice
         {/* Right content */}
         <div className="relative flex-1 flex flex-col min-w-0 overflow-hidden bg-background rounded-r-2xl">
           {/* Content header */}
-          <div className="flex justify-between items-center px-6 pt-5 pb-3 shrink-0">
-            <h3 className="text-lg font-semibold text-foreground">{activeTabLabel}</h3>
+          <div className="flex justify-between items-center gap-3 px-6 pt-5 pb-3 shrink-0">
+            <h3 className="min-w-0 truncate text-lg font-semibold text-foreground">{activeTabLabel}</h3>
             <button
               onClick={onClose}
               className="text-secondary hover:text-foreground p-1.5 hover:bg-surface-raised rounded-lg transition-colors"
@@ -3439,6 +3466,26 @@ const Settings: React.FC<SettingsProps> = ({ onClose, initialTab, notice, notice
 
         </div>
 
+        <ModelEditorDialog
+          activeProvider={activeProvider}
+          isAddingModel={isAddingModel}
+          isEditingModel={isEditingModel}
+          newModelName={newModelName}
+          setNewModelName={setNewModelName}
+          newModelId={newModelId}
+          setNewModelId={setNewModelId}
+          newModelSupportsImage={newModelSupportsImage}
+          setNewModelSupportsImage={setNewModelSupportsImage}
+          newModelContextWindow={newModelContextWindow}
+          setNewModelContextWindow={setNewModelContextWindow}
+          newModelCustomParams={newModelCustomParams}
+          setNewModelCustomParams={setNewModelCustomParams}
+          modelFormError={modelFormError}
+          setModelFormError={setModelFormError}
+          handleSaveNewModel={handleSaveNewModel}
+          handleCancelModelEdit={handleCancelModelEdit}
+          handleModelDialogKeyDown={handleModelDialogKeyDown}
+        />
 
           {/* Memory Modal */}
           {showMemoryModal && (

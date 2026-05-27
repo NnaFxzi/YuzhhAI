@@ -84,6 +84,25 @@ export class SubagentRunStore {
     }));
   }
 
+  markMessagesPersisted(id: string): void {
+    this.db.prepare('UPDATE subagent_runs SET messages_persisted = 1 WHERE id = ?')
+      .run(id);
+  }
+
+  isMessagesPersisted(id: string): boolean {
+    const row = this.db
+      .prepare('SELECT messages_persisted FROM subagent_runs WHERE id = ?')
+      .get(id) as { messages_persisted: number } | undefined;
+    return row?.messages_persisted === 1;
+  }
+
+  getRunStatus(id: string): SubagentRunStatus | null {
+    const row = this.db
+      .prepare('SELECT status FROM subagent_runs WHERE id = ?')
+      .get(id) as { status: string } | undefined;
+    return (row?.status as SubagentRunStatus) ?? null;
+  }
+
   deleteSubagentRunsByParent(parentSessionId: string): void {
     this.db.prepare('DELETE FROM subagent_runs WHERE parent_session_id = ?')
       .run(parentSessionId);

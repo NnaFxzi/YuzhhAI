@@ -1,23 +1,24 @@
 import { ArrowLeftIcon } from '@heroicons/react/20/solid';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { i18nService } from '../../services/i18n';
-import type { SubagentSessionSummary } from '../../types/cowork';
-
-interface SubTaskMessage {
-  role: string;
-  content: string;
-}
+import type { CoworkMessage, SubagentSessionSummary } from '../../types/cowork';
+import ComposeIcon from '../icons/ComposeIcon';
+import SidebarToggleIcon from '../icons/SidebarToggleIcon';
+import ConversationTurnsView from './ConversationTurnsView';
 
 interface SubagentSessionDetailProps {
   subagent: SubagentSessionSummary;
   onBack: () => void;
+  isSidebarCollapsed?: boolean;
+  onToggleSidebar?: () => void;
+  onNewChat?: () => void;
+  updateBadge?: React.ReactNode;
 }
 
-const SubagentSessionDetail: React.FC<SubagentSessionDetailProps> = ({ subagent, onBack }) => {
-  const [messages, setMessages] = useState<SubTaskMessage[]>([]);
+const SubagentSessionDetail: React.FC<SubagentSessionDetailProps> = ({ subagent, onBack, isSidebarCollapsed, onToggleSidebar, onNewChat, updateBadge }) => {
+  const isMac = window.electron.platform === 'darwin';
+  const [messages, setMessages] = useState<CoworkMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState<'running' | 'done' | 'error'>(subagent.status);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -40,7 +41,7 @@ const SubagentSessionDetail: React.FC<SubagentSessionDetailProps> = ({ subagent,
         sessionKey: subagent.sessionKey ?? undefined,
       });
       if (result?.success && result.messages) {
-        setMessages(result.messages);
+        setMessages(result.messages as CoworkMessage[]);
       }
     } catch { /* ignore */ }
     finally {
@@ -63,51 +64,65 @@ const SubagentSessionDetail: React.FC<SubagentSessionDetailProps> = ({ subagent,
     void fetchHistory();
     void fetchStatus();
 
-    const timer = setInterval(() => {
-      void fetchHistory();
-      void fetchStatus();
-    }, 5000);
-
-    return () => clearInterval(timer);
-  }, [fetchHistory, fetchStatus]);
-
-  // Stop polling when done
-  useEffect(() => {
-    if (status === 'done') {
-      void fetchHistory();
+    // Only poll while subagent is still running
+    if (status === 'running') {
+      const timer = setInterval(() => {
+        void fetchHistory();
+        void fetchStatus();
+      }, 5000);
+      return () => clearInterval(timer);
     }
-  }, [status, fetchHistory]);
+  }, [fetchHistory, fetchStatus, status]);
 
-  const displayTitle = subagent.task
-    ? subagent.task.length > 60 ? subagent.task.slice(0, 60) + '...' : subagent.task
-    : subagent.agentId ?? 'Subagent';
+  // Use agent name as title to avoid duplicating the task content shown in conversation
+  const displayTitle = subagent.agentId ?? subagent.label ?? 'Subagent';
 
-  const roleBg = (role: string) =>
-    role === 'assistant'
-      ? 'bg-blue-50/60 dark:bg-blue-950/20'
-      : role === 'tool'
-        ? 'bg-amber-50/60 dark:bg-amber-950/20'
-        : 'bg-gray-50/60 dark:bg-gray-800/20';
-
-  const roleLabel = (role: string) => {
-    if (role === 'user') return i18nService.t('subTaskRoleUser') || 'Task';
-    if (role === 'assistant') return subagent.agentId ?? 'Agent';
-    if (role === 'tool') return i18nService.t('subTaskRoleTool') || 'Tool';
-    return role;
-  };
+  // When messages are empty but task exists, synthesize a user message so
+  // the view shows the initial prompt instead of "暂无对话记录"
+  const effectiveMessages = useMemo(() => {
+    if (messages.length > 0) return messages;
+    if (!subagent.task) return messages;
+    return [{
+      id: 'synthetic-task',
+      type: 'user' as const,
+      content: subagent.task,
+      timestamp: subagent.createdAt,
+    }] as CoworkMessage[];
+  }, [messages, subagent.task, subagent.createdAt]);
 
   return (
     <div className="flex h-full flex-col">
       {/* Header */}
-      <div className="flex items-center gap-3 border-b border-border px-4 py-3">
-        <button
-          type="button"
-          onClick={onBack}
-          className="inline-flex h-7 w-7 items-center justify-center rounded-md text-foreground/60 transition-colors hover:bg-black/[0.05] hover:text-foreground dark:hover:bg-white/[0.05]"
-          aria-label={i18nService.t('back') || 'Back'}
-        >
-          <ArrowLeftIcon className="h-4 w-4" />
-        </button>
+      <div className="draggable flex h-12 items-center gap-3 border-b border-border px-4 bg-background shrink-0">
+        <div className="non-draggable flex items-center gap-2">
+          {isSidebarCollapsed && (
+            <div className={`flex items-center gap-1 mr-1 ${isMac ? 'pl-[68px]' : ''}`}>
+              <button
+                type="button"
+                onClick={onToggleSidebar}
+                className="h-8 w-8 inline-flex items-center justify-center rounded-lg text-secondary hover:bg-surface-raised transition-colors"
+              >
+                <SidebarToggleIcon className="h-4 w-4" isCollapsed={true} />
+              </button>
+              <button
+                type="button"
+                onClick={onNewChat}
+                className="h-8 w-8 inline-flex items-center justify-center rounded-lg text-secondary hover:bg-surface-raised transition-colors"
+              >
+                <ComposeIcon className="h-4 w-4" />
+              </button>
+              {updateBadge}
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={onBack}
+            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-foreground/60 transition-colors hover:bg-black/[0.05] hover:text-foreground dark:hover:bg-white/[0.05]"
+            aria-label={i18nService.t('back') || 'Back'}
+          >
+            <ArrowLeftIcon className="h-4 w-4" />
+          </button>
+        </div>
 
         <div className="flex min-w-0 flex-1 items-center gap-2">
           <span
@@ -136,7 +151,7 @@ const SubagentSessionDetail: React.FC<SubagentSessionDetailProps> = ({ subagent,
       </div>
 
       {/* Messages */}
-      <div ref={contentRef} className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
+      <div ref={contentRef} className="flex-1 overflow-y-auto">
         {loading && (
           <div className="flex items-center justify-center py-12">
             <div className="h-5 w-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
@@ -146,26 +161,13 @@ const SubagentSessionDetail: React.FC<SubagentSessionDetailProps> = ({ subagent,
           </div>
         )}
 
-        {!loading && messages.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-12">
-            <p className="text-sm text-secondary">
-              {i18nService.t('subTaskNoHistory') || 'No messages yet'}
-            </p>
-          </div>
+        {!loading && (
+          <ConversationTurnsView
+            messages={effectiveMessages}
+            isStreaming={status === 'running'}
+            readOnly={true}
+          />
         )}
-
-        {!loading && messages.map((msg, idx) => (
-          <div key={idx} className={`rounded-lg px-4 py-3 ${roleBg(msg.role)}`}>
-            <div className="mb-1.5 text-[11px] font-medium uppercase tracking-wider text-secondary/70">
-              {roleLabel(msg.role)}
-            </div>
-            <div className="prose prose-sm dark:prose-invert max-w-none text-foreground break-words">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                {msg.content}
-              </ReactMarkdown>
-            </div>
-          </div>
-        ))}
       </div>
 
       {/* Footer status bar */}

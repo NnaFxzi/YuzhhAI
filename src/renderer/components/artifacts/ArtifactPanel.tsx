@@ -42,11 +42,12 @@ const t = (key: string) => i18nService.t(key);
 
 const BROWSER_OPENABLE_TYPES = new Set<ArtifactType>(['html', 'svg', 'mermaid']);
 
-const SYSTEM_OPENABLE_TYPES = new Set<ArtifactType>(['document']);
+const SYSTEM_OPENABLE_TYPES = new Set<ArtifactType>(['document', 'video']);
 
 const NON_CODE_TYPES = new Set<ArtifactType>([
   'document',
   'image',
+  'video',
   'text',
   ArtifactTypeValue.LocalService,
 ]);
@@ -100,7 +101,7 @@ interface HtmlShareDialogState {
 }
 
 function isCopyableArtifact(artifact: Artifact): boolean {
-  if (artifact.type === 'document') return false;
+  if (artifact.type === 'document' || artifact.type === 'video') return false;
   if (artifact.type === ArtifactTypeValue.LocalService) return false;
   if (artifact.type === 'image') {
     const filename = artifact.fileName || artifact.filePath || '';
@@ -568,7 +569,16 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
         await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
       }
     } else {
-      await navigator.clipboard.writeText(selectedArtifact.content);
+      if (selectedArtifact.filePath && !selectedArtifact.content && selectedArtifact.type !== 'document') {
+        const result = await window.electron?.dialog?.readTextFile?.(selectedArtifact.filePath);
+        if (!result?.success || typeof result.content !== 'string') {
+          window.dispatchEvent(new CustomEvent('app:showToast', { detail: result?.error || t('copyFailed') }));
+          return;
+        }
+        await navigator.clipboard.writeText(result.content);
+      } else {
+        await navigator.clipboard.writeText(selectedArtifact.content);
+      }
     }
     window.dispatchEvent(new CustomEvent('app:showToast', { detail: t('messageCopied') }));
   }, [selectedArtifact]);
@@ -866,7 +876,37 @@ const ArtifactPanel: React.FC<ArtifactPanelProps> = ({
 
   const handleRefresh = useCallback(async () => {
     if (!selectedArtifact?.filePath) return;
+    if (selectedArtifact.type === 'video') {
+      dispatch(addArtifact({
+        sessionId: selectedArtifact.sessionId,
+        artifact: { ...selectedArtifact, createdAt: Date.now() },
+      }));
+      return;
+    }
     try {
+      if (selectedArtifact.type === ArtifactTypeValue.Html) {
+        dispatch(addArtifact({
+          sessionId: selectedArtifact.sessionId,
+          artifact: {
+            ...selectedArtifact,
+            contentVersion: Date.now(),
+          },
+        }));
+        return;
+      }
+
+      const isTextType = selectedArtifact.type !== 'image' && selectedArtifact.type !== 'document';
+      if (isTextType && window.electron?.dialog?.readTextFile) {
+        const result = await window.electron.dialog.readTextFile(selectedArtifact.filePath);
+        if (result?.success && typeof result.content === 'string') {
+          dispatch(addArtifact({
+            sessionId: selectedArtifact.sessionId,
+            artifact: { ...selectedArtifact, content: result.content, contentVersion: Date.now() },
+          }));
+        }
+        return;
+      }
+
       const result = await window.electron.dialog.readFileAsDataUrl(selectedArtifact.filePath);
       if (result?.success && result.dataUrl) {
         const isTextType =

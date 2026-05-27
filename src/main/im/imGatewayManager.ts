@@ -601,12 +601,13 @@ export class IMGatewayManager extends EventEmitter {
 
       const configured = weixinAccount.configured === true;
       const running = weixinAccount.running === true;
-      const enabled = weixinAccount.enabled !== false;
+      const runtimeEnabled = weixinAccount.enabled !== false;
+      const localEnabled = this.getConfig().weixin?.enabled === true;
       const accountId = readString(weixinAccount.accountId) ?? status.weixin.accountId ?? null;
       status.weixin = {
         ...status.weixin,
         accountId,
-        connected: running || (enabled && configured && status.weixin.connected),
+        connected: Boolean(localEnabled && (running || (runtimeEnabled && configured && status.weixin.connected))),
         startedAt: readNumber(weixinAccount.lastStartAt),
         lastError: readString(weixinAccount.lastError),
         lastInboundAt: readNumber(weixinAccount.lastInboundAt),
@@ -1702,14 +1703,9 @@ export class IMGatewayManager extends EventEmitter {
             },
           }, { syncGateway: false });
         }
-        // Sync config and restart gateway so the weixin channel starts with
-        // the newly saved account credentials. The gateway's web.login.wait
-        // handler called context.startChannel, but the channel may not fully
-        // initialize without a proper config-driven restart.
-        await this.syncOpenClawConfig?.('im-weixin-qr-login-connected', {
-          restartGatewayIfRunning: true,
-        });
-        await this.ensureOpenClawGatewayConnected?.();
+        // Keep QR login consistent with Settings save semantics: persist the
+        // account locally, then let the global Save action apply IM config to
+        // OpenClaw and restart the gateway once if the fingerprint changed.
       }
       return {
         ...result,

@@ -6,7 +6,7 @@
     "email": "lobsterai.project@rd.netease.com"
   },
   "license": "MIT",
-  "version": "2026.5.18",
+  "version": "2026.5.22",
   "openclaw": {
     "version": "v2026.4.14",
     "repo": "https://github.com/openclaw/openclaw.git",
@@ -163,6 +163,7 @@
     "js-yaml": "^4.1.1",
     "jszip": "^3.10.1",
     "katex": "^0.16.21",
+    "lottie-react": "^2.4.1",
     "mermaid": "^10.9.5",
     "nim-web-sdk-ng": "10.9.77-alpha.4",
     "npm": "^11.11.0",
