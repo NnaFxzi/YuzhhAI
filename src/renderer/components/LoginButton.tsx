@@ -1,7 +1,16 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useSelector } from 'react-redux';
 
+import inviteCreditsIconUrl from '../assets/icons/invite-credits.svg';
+import logoutIconUrl from '../assets/icons/logout.svg';
+import rechargeIconUrl from '../assets/icons/recharge.svg';
+import usageOverviewIconUrl from '../assets/icons/usage-overview.svg';
 import { authService } from '../services/auth';
+import {
+  getPortalInvitationUrl,
+  getPortalProfileUrl,
+  getPortalRechargeUrl,
+} from '../services/endpoints';
 import { i18nService } from '../services/i18n';
 import { RootState } from '../store';
 import type { CreditItem } from '../store/slices/authSlice';
@@ -96,6 +105,43 @@ const CreditItemRow: React.FC<{ item: CreditItem; isEn: boolean }> = ({ item, is
   );
 };
 
+interface AccountMenuActionProps {
+  icon: React.ReactNode;
+  label: string;
+  onClick: () => void | Promise<void>;
+  danger?: boolean;
+}
+
+const AccountMenuAction: React.FC<AccountMenuActionProps> = ({
+  icon,
+  label,
+  onClick,
+  danger = false,
+}) => (
+  <button
+    type="button"
+    onClick={() => void onClick()}
+    className={`w-full px-4 py-2 text-left text-sm hover:bg-surface-raised transition-colors cursor-pointer flex items-center gap-2 ${
+      danger ? 'text-red-500' : 'text-foreground'
+    }`}
+  >
+    {icon}
+    <span>{label}</span>
+  </button>
+);
+
+const PortalMenuIcon: React.FC<{ src: string; darkInvert?: boolean }> = ({
+  src,
+  darkInvert = false,
+}) => (
+  <img
+    src={src}
+    alt=""
+    className={`h-4 w-4 shrink-0 ${darkInvert ? 'dark:invert' : ''}`}
+    aria-hidden="true"
+  />
+);
+
 const UserMenu: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   const user = useSelector((state: RootState) => state.auth.user);
   const profileSummary = useSelector((state: RootState) => state.auth.profileSummary);
@@ -106,19 +152,26 @@ const UserMenu: React.FC<{ onClose: () => void }> = ({ onClose }) => {
     authService.fetchProfileSummary();
   }, []);
 
+  const openPortalUrl = async (url: string) => {
+    await window.electron.shell.openExternal(url);
+    onClose();
+  };
+
   const handleLogout = async () => {
     await authService.logout();
     onClose();
   };
 
-  const handleSubscribe = async () => {
-    const { getPortalPricingUrl } = await import('../services/endpoints');
-    await window.electron.shell.openExternal(getPortalPricingUrl());
+  const handleUsageOverview = async () => {
+    await openPortalUrl(getPortalProfileUrl());
   };
 
-  const handleLearnMore = async () => {
-    const { getPortalProfileUrl } = await import('../services/endpoints');
-    await window.electron.shell.openExternal(getPortalProfileUrl());
+  const handleRecharge = async () => {
+    await openPortalUrl(getPortalRechargeUrl());
+  };
+
+  const handleInvite = async () => {
+    await openPortalUrl(getPortalInvitationUrl());
   };
 
   const phoneSuffix = user?.phone ? user.phone.slice(-4) : '';
@@ -186,38 +239,32 @@ const UserMenu: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                 {i18nService.t('authZeroCredits')}
               </div>
             )}
-            <button
-              type="button"
-              onClick={handleLearnMore}
-              className="mt-2 text-xs text-primary hover:underline cursor-pointer"
-            >
-              {i18nService.t('authLearnMore')}
-            </button>
           </div>
         )}
       </div>
 
       {/* Actions */}
       <div className="py-1">
-        <button
-          type="button"
-          onClick={handleSubscribe}
-          className="w-full px-4 py-2 text-left text-sm text-foreground hover:bg-surface-raised transition-colors cursor-pointer"
-        >
-          {i18nService.t('authValueAddedServices')}
-        </button>
-        <button
-          type="button"
+        <AccountMenuAction
+          icon={<PortalMenuIcon src={usageOverviewIconUrl} darkInvert />}
+          label={i18nService.t('authUsageOverview')}
+          onClick={handleUsageOverview}
+        />
+        <AccountMenuAction
+          icon={<PortalMenuIcon src={rechargeIconUrl} darkInvert />}
+          label={i18nService.t('authGoRecharge')}
+          onClick={handleRecharge}
+        />
+        <AccountMenuAction
+          icon={<PortalMenuIcon src={inviteCreditsIconUrl} darkInvert />}
+          label={i18nService.t('authInviteFriendsForCredits')}
+          onClick={handleInvite}
+        />
+        <AccountMenuAction
+          icon={<PortalMenuIcon src={logoutIconUrl} darkInvert />}
+          label={i18nService.t('authLogout')}
           onClick={handleLogout}
-          className="w-full px-4 py-2 text-left text-sm text-red-500 hover:bg-surface-raised transition-colors cursor-pointer flex items-center gap-2"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
-            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-            <polyline points="16 17 21 12 16 7" />
-            <line x1="21" y1="12" x2="9" y2="12" />
-          </svg>
-          {i18nService.t('authLogout')}
-        </button>
+        />
       </div>
     </div>
   );
@@ -249,9 +296,9 @@ const LoginButton: React.FC = () => {
   const handleClick = async () => {
     if (isLoggedIn) {
       setShowMenu(!showMenu);
-    } else {
-      await authService.login();
+      return;
     }
+    await authService.login();
   };
 
   return (
@@ -277,7 +324,7 @@ const LoginButton: React.FC = () => {
           </>
         )}
       </button>
-      {showMenu && <UserMenu onClose={() => setShowMenu(false)} />}
+      {showMenu && isLoggedIn && <UserMenu onClose={() => setShowMenu(false)} />}
     </div>
   );
 };
