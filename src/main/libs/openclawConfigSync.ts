@@ -831,6 +831,11 @@ export const buildProviderSelection = (options: {
   const reasoning = descriptor.resolveModelReasoning
     ? descriptor.resolveModelReasoning(options.modelId, !!options.codingPlanEnabled)
     : descriptor.modelDefaults?.reasoning;
+  const contextWindow = ProviderRegistry.resolveModelContextWindow(
+    providerName,
+    options.modelId,
+    options.contextWindow,
+  ) ?? descriptor.modelDefaults?.contextWindow;
   const request = shouldUseEnvProxyForProviderBaseUrl(baseUrl)
     ? { proxy: { mode: 'env-proxy' as const } }
     : undefined;
@@ -859,9 +864,7 @@ export const buildProviderSelection = (options: {
           input: modelInput,
           ...(reasoning !== undefined ? { reasoning } : {}),
           ...(descriptor.modelDefaults?.cost ? { cost: descriptor.modelDefaults.cost } : {}),
-          ...((options.contextWindow ?? descriptor.modelDefaults?.contextWindow) !== undefined
-            ? { contextWindow: options.contextWindow ?? descriptor.modelDefaults!.contextWindow }
-            : {}),
+          ...(contextWindow !== undefined ? { contextWindow } : {}),
           ...(descriptor.modelDefaults?.maxTokens
             ? { maxTokens: descriptor.modelDefaults.maxTokens }
             : {}),

@@ -13,11 +13,17 @@ import {
   HtmlShareIpc,
   type HtmlShareStatus,
 } from '../shared/htmlShare/constants';
+import type {
+  KitReference,
+  KitSkillMetadata,
+  ResolvedKitCapabilities,
+} from '../shared/kit/constants';
 import {
   type ListLocalWebServicesOptions,
   type LocalWebService,
   LocalWebServicesIpc,
 } from '../shared/localWebServices/constants';
+import { McpIpcChannel } from '../shared/mcp/constants';
 import type { Platform } from '../shared/platform';
 import { NimQrLoginIpc } from './ipcHandlers/nimQrLogin';
 import { OpenClawSessionIpc } from './openclawSession/constants';
@@ -60,17 +66,31 @@ contextBridge.exposeInMainWorld('electron', {
     },
   },
   mcp: {
-    list: () => ipcRenderer.invoke('mcp:list'),
-    create: (data: any) => ipcRenderer.invoke('mcp:create', data),
-    update: (id: string, data: any) => ipcRenderer.invoke('mcp:update', id, data),
-    delete: (id: string) => ipcRenderer.invoke('mcp:delete', id),
+    list: () => ipcRenderer.invoke(McpIpcChannel.List),
+    create: (data: any) => ipcRenderer.invoke(McpIpcChannel.Create, data),
+    update: (id: string, data: any) => ipcRenderer.invoke(McpIpcChannel.Update, id, data),
+    delete: (id: string) => ipcRenderer.invoke(McpIpcChannel.Delete, id),
     setEnabled: (options: { id: string; enabled: boolean }) =>
-      ipcRenderer.invoke('mcp:setEnabled', options),
-    fetchMarketplace: () => ipcRenderer.invoke('mcp:fetchMarketplace'),
+      ipcRenderer.invoke(McpIpcChannel.SetEnabled, options),
+    retryLaunchResolution: (id: string) => ipcRenderer.invoke(McpIpcChannel.RetryLaunchResolution, id),
+    fetchMarketplace: () => ipcRenderer.invoke(McpIpcChannel.FetchMarketplace),
+    onChanged: (callback: () => void) => {
+      const handler = () => callback();
+      ipcRenderer.on(McpIpcChannel.Changed, handler);
+      return () => ipcRenderer.removeListener(McpIpcChannel.Changed, handler);
+    },
   },
   kits: {
     fetchStore: () => ipcRenderer.invoke('kits:fetchStore'),
-    install: (params: { kitId: string; bundleUrl: string; version: string; skillListIds: string[] }) =>
+    install: (params: {
+      kitId: string;
+      bundleUrl: string;
+      version: string;
+      skillListIds: string[];
+      skillList?: KitSkillMetadata[];
+      mcpServers?: unknown[] | null;
+      connectors?: unknown[] | null;
+    }) =>
       ipcRenderer.invoke('kits:install', params),
     uninstall: (kitId: string) => ipcRenderer.invoke('kits:uninstall', kitId),
     listInstalled: () => ipcRenderer.invoke('kits:listInstalled'),
@@ -280,6 +300,10 @@ contextBridge.exposeInMainWorld('electron', {
       systemPrompt?: string;
       title?: string;
       activeSkillIds?: string[];
+      runtimeSkillIds?: string[];
+      kitIds?: string[];
+      kitReferences?: KitReference[];
+      resolvedKitCapabilities?: ResolvedKitCapabilities;
       agentId?: string;
       modelOverride?: string;
       imageAttachments?: Array<{ name: string; mimeType: string; base64Data: string }>;
@@ -290,6 +314,10 @@ contextBridge.exposeInMainWorld('electron', {
       prompt: string;
       systemPrompt?: string;
       activeSkillIds?: string[];
+      runtimeSkillIds?: string[];
+      kitIds?: string[];
+      kitReferences?: KitReference[];
+      resolvedKitCapabilities?: ResolvedKitCapabilities;
       imageAttachments?: Array<{ name: string; mimeType: string; base64Data: string }>;
       mediaSelection?: { mode: string; modelId?: string; modelName?: string; imageModelId?: string; videoModelId?: string };
       mediaReferences?: Array<{
@@ -312,6 +340,11 @@ contextBridge.exposeInMainWorld('electron', {
       ipcRenderer.invoke('cowork:session:pin', options),
     renameSession: (options: { sessionId: string; title: string }) =>
       ipcRenderer.invoke('cowork:session:rename', options),
+    forkSession: (options: {
+      sessionId: string;
+      forkedFromMessageId?: string | null;
+      title?: string;
+    }) => ipcRenderer.invoke(CoworkIpcChannel.ForkSession, options),
     getSession: (sessionId: string) => ipcRenderer.invoke('cowork:session:get', sessionId),
     remoteManaged: (sessionId: string) =>
       ipcRenderer.invoke('cowork:session:remoteManaged', sessionId),
@@ -343,9 +376,11 @@ contextBridge.exposeInMainWorld('electron', {
       parentSessionId: string;
       agentId: string;
       sessionKey?: string;
-    }) => ipcRenderer.invoke('cowork:subTask:history', options),
+    }) => ipcRenderer.invoke(CoworkIpcChannel.SubTaskHistory, options),
     listSubagentSessions: (parentSessionId: string) =>
-      ipcRenderer.invoke('cowork:subagent:list', { parentSessionId }),
+      ipcRenderer.invoke(CoworkIpcChannel.SubagentList, { parentSessionId }),
+    deleteSubagentSession: (options: { parentSessionId: string; runId: string }) =>
+      ipcRenderer.invoke(CoworkIpcChannel.SubagentDelete, options),
 
     // Media task management
     cancelMediaTask: (taskId: string) =>

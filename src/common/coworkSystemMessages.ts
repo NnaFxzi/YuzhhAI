@@ -1,5 +1,6 @@
 export const CoworkSystemMessageKind = {
   ContextCompaction: 'context_compaction',
+  ForkCompactionSummary: 'fork_compaction_summary',
 } as const;
 export type CoworkSystemMessageKind =
   typeof CoworkSystemMessageKind[keyof typeof CoworkSystemMessageKind];

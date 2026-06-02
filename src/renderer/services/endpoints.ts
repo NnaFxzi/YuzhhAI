@@ -47,3 +47,5 @@ const getPortalBase = () => isTestModeEnabled() ? PORTAL_BASE_TEST : PORTAL_BASE
 export const getPortalLoginUrl = () => `${getPortalBase()}/login`;
 export const getPortalPricingUrl = () => `${getPortalBase()}/pricing`;
 export const getPortalProfileUrl = () => `${getPortalBase()}/profile`;
+export const getPortalRechargeUrl = () => `${getPortalBase()}/`;
+export const getPortalInvitationUrl = () => `${getPortalBase()}/invitation`;

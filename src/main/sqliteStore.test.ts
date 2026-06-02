@@ -188,3 +188,77 @@ test('adds agent pin columns during migration', async () => {
 
   store.close();
 });
+
+test('adds cowork fork columns during migration', async () => {
+  const userDataPath = createTempUserDataPath();
+  createLegacyDatabase(userDataPath);
+
+  const legacyDb = new Database(path.join(userDataPath, DB_FILENAME));
+  const now = Date.now();
+  legacyDb.exec(`
+    CREATE TABLE cowork_sessions (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      claude_session_id TEXT,
+      status TEXT NOT NULL DEFAULT 'idle',
+      pinned INTEGER NOT NULL DEFAULT 0,
+      pin_order INTEGER,
+      cwd TEXT NOT NULL,
+      system_prompt TEXT NOT NULL DEFAULT '',
+      model_override TEXT NOT NULL DEFAULT '',
+      execution_mode TEXT,
+      active_skill_ids TEXT,
+      agent_id TEXT NOT NULL DEFAULT 'main',
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+  `);
+  legacyDb.prepare(
+    `INSERT INTO cowork_sessions (
+      id, title, status, pinned, cwd, created_at, updated_at
+    ) VALUES ('legacy-session', 'Legacy Session', 'idle', 0, '/repo/legacy', ?, ?)`,
+  ).run(now, now);
+  legacyDb.close();
+
+  const store = await SqliteStore.create(userDataPath);
+  const columns = store.getDatabase()
+    .pragma('table_info(cowork_sessions)') as Array<{ name: string }>;
+  const columnNames = columns.map((column) => column.name);
+  const row = store.getDatabase()
+    .prepare(
+      `SELECT parent_session_id, forked_from_message_id, forked_at, fork_mode,
+              fork_workspace_path, fork_git_branch, fork_git_base_ref
+       FROM cowork_sessions
+       WHERE id = 'legacy-session'`,
+    )
+    .get() as {
+      parent_session_id: string | null;
+      forked_from_message_id: string | null;
+      forked_at: number | null;
+      fork_mode: string;
+      fork_workspace_path: string | null;
+      fork_git_branch: string | null;
+      fork_git_base_ref: string | null;
+    };
+
+  expect(columnNames).toEqual(expect.arrayContaining([
+    'parent_session_id',
+    'forked_from_message_id',
+    'forked_at',
+    'fork_mode',
+    'fork_workspace_path',
+    'fork_git_branch',
+    'fork_git_base_ref',
+  ]));
+  expect(row).toEqual({
+    parent_session_id: null,
+    forked_from_message_id: null,
+    forked_at: null,
+    fork_mode: 'none',
+    fork_workspace_path: null,
+    fork_git_branch: null,
+    fork_git_base_ref: null,
+  });
+
+  store.close();
+});

@@ -156,6 +156,7 @@ interface ProviderDefInput {
     readonly id: string;
     readonly name: string;
     readonly supportsImage: boolean;
+    readonly contextWindow?: number;
   }[];
   /**
    * Coding Plan dedicated model list (only meaningful when codingPlanSupported=true).
@@ -166,6 +167,7 @@ interface ProviderDefInput {
     readonly id: string;
     readonly name: string;
     readonly supportsImage: boolean;
+    readonly contextWindow?: number;
   }[];
   /**
    * The OpenClaw gateway provider ID used when building model refs (e.g. "provider/modelId").
@@ -182,6 +184,8 @@ interface ProviderDefInput {
 //    Array order = Chinese UI display order
 //    (CHINA first, then GLOBAL, matching existing config.ts order).
 // ═══════════════════════════════════════════════════════
+
+const DEEPSEEK_V4_CONTEXT_WINDOW = 1_000_000;
 
 const PROVIDER_DEFINITIONS = [
   // ── China ──
@@ -201,8 +205,8 @@ const PROVIDER_DEFINITIONS = [
     region: 'china',
     enPriority: 0,
     defaultModels: [
-      { id: 'deepseek-v4-flash', name: 'DeepSeek V4 Flash', supportsImage: false },
-      { id: 'deepseek-v4-pro', name: 'DeepSeek V4 Pro', supportsImage: false },
+      { id: 'deepseek-v4-flash', name: 'DeepSeek V4 Flash', supportsImage: false, contextWindow: DEEPSEEK_V4_CONTEXT_WINDOW },
+      { id: 'deepseek-v4-pro', name: 'DeepSeek V4 Pro', supportsImage: false, contextWindow: DEEPSEEK_V4_CONTEXT_WINDOW },
       { id: 'deepseek-reasoner', name: 'DeepSeek Reasoner', supportsImage: false },
     ],
   },
@@ -302,6 +306,7 @@ const PROVIDER_DEFINITIONS = [
     region: 'china',
     enPriority: 0,
     defaultModels: [
+      { id: 'MiniMax-M3', name: 'MiniMax M3', supportsImage: false, contextWindow: 1_000_000 },
       { id: 'MiniMax-M2.7', name: 'MiniMax M2.7', supportsImage: false },
       { id: 'MiniMax-M2.5', name: 'MiniMax M2.5', supportsImage: false },
     ],
@@ -370,7 +375,7 @@ const PROVIDER_DEFINITIONS = [
       { id: 'kimi-k2.5', name: 'Kimi K2.5', supportsImage: false },
       { id: 'glm-5.1', name: 'GLM 5.1', supportsImage: false },
       { id: 'minimax-m2.5', name: 'MiniMax M2.5', supportsImage: false },
-      { id: 'deepseek-v4-flash', name: 'DeepSeek V4 Flash', supportsImage: false },
+      { id: 'deepseek-v4-flash', name: 'DeepSeek V4 Flash', supportsImage: false, contextWindow: DEEPSEEK_V4_CONTEXT_WINDOW },
       { id: 'ernie-4.5-turbo-20260402', name: 'ERNIE 4.5 Turbo', supportsImage: false },
     ],
   },
@@ -407,11 +412,8 @@ const PROVIDER_DEFINITIONS = [
     region: 'china',
     enPriority: 0,
     defaultModels: [
-      { id: 'mimo-v2.5-pro', name: 'MiMo V2.5 Pro', supportsImage: false },
-      { id: 'mimo-v2.5', name: 'MiMo V2.5', supportsImage: true },
-      { id: 'mimo-v2-pro', name: 'MiMo V2 Pro', supportsImage: false },
-      { id: 'mimo-v2-omni', name: 'MiMo V2 Omni', supportsImage: true },
-      { id: 'mimo-v2-flash', name: 'MiMo V2 Flash', supportsImage: false },
+      { id: 'mimo-v2.5-pro', name: 'MiMo V2.5 Pro', supportsImage: false, contextWindow: 1_000_000 },
+      { id: 'mimo-v2.5', name: 'MiMo V2.5', supportsImage: true, contextWindow: 1_000_000 },
     ],
   },
   {
@@ -580,11 +582,13 @@ export interface ProviderDef {
     readonly id: string;
     readonly name: string;
     readonly supportsImage: boolean;
+    readonly contextWindow?: number;
   }[];
   readonly codingPlanModels?: readonly {
     readonly id: string;
     readonly name: string;
     readonly supportsImage: boolean;
+    readonly contextWindow?: number;
   }[];
   readonly openClawProviderId: OpenClawProviderId;
 }
@@ -593,24 +597,36 @@ export interface ProviderDef {
 // 5. Registry Implementation
 // ═══════════════════════════════════════════════════════
 
+const isValidContextWindow = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isFinite(value) && value > 0;
+
 class ProviderRegistryImpl {
   private readonly defs: readonly ProviderDef[];
   private readonly idIndex: ReadonlyMap<string, ProviderDef>;
   private readonly modelCapabilityIndex: ReadonlyMap<string, boolean>;
+  private readonly modelContextWindowIndex: ReadonlyMap<string, number>;
 
   constructor(definitions: readonly ProviderDef[]) {
     this.defs = definitions;
     const idx = new Map<string, ProviderDef>();
     const modelIdx = new Map<string, boolean>();
+    const contextWindowIdx = new Map<string, number>();
     for (const def of definitions) {
       idx.set(def.id, def);
       for (const model of [...def.defaultModels, ...(def.codingPlanModels ?? [])]) {
         const existing = modelIdx.get(model.id);
         modelIdx.set(model.id, existing === true || model.supportsImage);
+        if (isValidContextWindow(model.contextWindow)) {
+          const existingContextWindow = contextWindowIdx.get(model.id);
+          if (existingContextWindow === undefined || model.contextWindow > existingContextWindow) {
+            contextWindowIdx.set(model.id, model.contextWindow);
+          }
+        }
       }
     }
     this.idIndex = idx;
     this.modelCapabilityIndex = modelIdx;
+    this.modelContextWindowIndex = contextWindowIdx;
   }
 
   /** All provider IDs in definition order. */
@@ -659,6 +675,18 @@ class ProviderRegistryImpl {
     return this.modelCapabilityIndex.get(modelId);
   }
 
+  getProviderModelContextWindow(providerName: string, modelId: string): number | undefined {
+    const def = this.idIndex.get(providerName);
+    if (!def) return undefined;
+    const model = [...def.defaultModels, ...(def.codingPlanModels ?? [])]
+      .find(candidate => candidate.id === modelId);
+    return model?.contextWindow;
+  }
+
+  getKnownModelContextWindow(modelId: string): number | undefined {
+    return this.modelContextWindowIndex.get(modelId);
+  }
+
   resolveModelSupportsImage(
     providerName: string,
     modelId: string,
@@ -676,6 +704,18 @@ class ProviderRegistryImpl {
       return true;
     }
     return configuredSupportsImage ?? false;
+  }
+
+  resolveModelContextWindow(
+    providerName: string,
+    modelId: string,
+    configuredContextWindow?: number,
+  ): number | undefined {
+    if (isValidContextWindow(configuredContextWindow)) {
+      return configuredContextWindow;
+    }
+    return this.getProviderModelContextWindow(providerName, modelId)
+      ?? this.getKnownModelContextWindow(modelId);
   }
 
   /** Provider IDs filtered by region. */

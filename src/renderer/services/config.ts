@@ -4,6 +4,8 @@ import { normalizeBrowserWebAccessConfig } from '../../shared/browserWebAccess/c
 import { AppConfig, CONFIG_KEYS, defaultConfig, isCustomProvider } from '../config';
 import { localStore } from './store';
 
+type ProviderModel = NonNullable<ProviderConfig['models']>[number];
+
 const getFixedProviderApiFormat = (providerKey: string): ApiFormat | null => {
   const def = ProviderRegistry.get(providerKey);
   if (def && !def.switchableBaseUrls) {
@@ -57,14 +59,22 @@ const normalizeProviderApiFormat = (providerKey: string, apiFormat: unknown): 'a
 const normalizeProviderModels = (
   providerKey: string,
   models: ProviderConfig['models'],
-): ProviderConfig['models'] => models?.map(model => ({
-  ...model,
-  supportsImage: ProviderRegistry.resolveModelSupportsImage(
+): ProviderConfig['models'] => models?.map(model => {
+  const contextWindow = ProviderRegistry.resolveModelContextWindow(
     providerKey,
     model.id,
-    model.supportsImage,
-  ),
-}));
+    model.contextWindow,
+  );
+  return {
+    ...model,
+    supportsImage: ProviderRegistry.resolveModelSupportsImage(
+      providerKey,
+      model.id,
+      model.supportsImage,
+    ),
+    ...(contextWindow !== undefined ? { contextWindow } : {}),
+  };
+});
 
 const normalizeProvidersConfig = (providers: AppConfig['providers']): AppConfig['providers'] => {
   if (!providers) {
@@ -165,6 +175,7 @@ const REMOVED_PROVIDER_MODELS: Record<string, string[]> = {
   openai: ['gpt-5.2-2025-12-11', 'gpt-5.2', 'gpt-5.3-codex', 'gpt-5.2-codex'],
   gemini: ['gemini-3-pro-preview'],
   anthropic: ['claude-sonnet-4-5-20250929'],
+  [ProviderName.Xiaomi]: ['mimo-v2-pro', 'mimo-v2-omni', 'mimo-v2-flash'],
   openrouter: [
     'anthropic/claude-sonnet-4.5',
     'anthropic/claude-opus-4.6',
@@ -179,7 +190,7 @@ const REMOVED_PROVIDER_MODELS: Record<string, string[]> = {
 // on next launch. Once all users have upgraded, entries here should be removed
 // so the models follow normal user-editable behavior (same as other models).
 // position: 'start' inserts at the beginning, 'end' appends at the end.
-const ADDED_PROVIDER_MODELS: Record<string, { models: Array<{ id: string; name: string; supportsImage?: boolean }>; position: 'start' | 'end' }> = {
+const ADDED_PROVIDER_MODELS: Record<string, { models: ProviderModel[]; position: 'start' | 'end' }> = {
   deepseek: {
     models: [
       { id: 'deepseek-v4-flash', name: 'DeepSeek V4 Flash', supportsImage: false },
@@ -195,6 +206,7 @@ const ADDED_PROVIDER_MODELS: Record<string, { models: Array<{ id: string; name: 
   },
   minimax: {
     models: [
+      { id: 'MiniMax-M3', name: 'MiniMax M3', supportsImage: false, contextWindow: 1_000_000 },
       { id: 'MiniMax-M2.7', name: 'MiniMax M2.7', supportsImage: false },
     ],
     position: 'start',
@@ -243,12 +255,34 @@ const ADDED_PROVIDER_MODELS: Record<string, { models: Array<{ id: string; name: 
     ],
     position: 'start',
   },
-  xiaomi: {
-    models: [
-      { id: 'mimo-v2-omni', name: 'MiMo V2 Omni', supportsImage: true },
-    ],
-    position: 'end',
+};
+
+const PROVIDER_MODEL_CONTEXT_WINDOW_OVERRIDES: Record<string, Record<string, number>> = {
+  [ProviderName.Minimax]: {
+    'MiniMax-M3': 1_000_000,
   },
+  [ProviderName.Xiaomi]: {
+    'mimo-v2.5-pro': 1_000_000,
+    'mimo-v2.5': 1_000_000,
+  },
+};
+
+const applyProviderModelContextWindowOverrides = (
+  providerKey: string,
+  models: ProviderConfig['models'],
+): ProviderConfig['models'] => {
+  const overrides = PROVIDER_MODEL_CONTEXT_WINDOW_OVERRIDES[providerKey];
+  if (!models || !overrides) {
+    return models;
+  }
+
+  return models.map(model => {
+    const contextWindow = overrides[model.id];
+    if (contextWindow === undefined || model.contextWindow === contextWindow) {
+      return model;
+    }
+    return { ...model, contextWindow };
+  });
 };
 
 const REORDER_PROVIDER_MODELS = new Set([
@@ -327,6 +361,10 @@ class ConfigService {
                     }
                   }
                   if (mergedProvider.models) {
+                    mergedProvider.models = applyProviderModelContextWindowOverrides(
+                      providerKey,
+                      mergedProvider.models as ProviderConfig['models'],
+                    );
                     mergedProvider.models = alignProviderModelOrder(
                       providerKey,
                       mergedProvider.models as ProviderConfig['models'],

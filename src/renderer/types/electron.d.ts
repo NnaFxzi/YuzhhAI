@@ -14,6 +14,12 @@ import type {
   HtmlShareStatus,
 } from '../../shared/htmlShare/constants';
 import type {
+  InstalledKitRecord,
+  KitReference,
+  KitSkillMetadata,
+  ResolvedKitCapabilities,
+} from '../../shared/kit/constants';
+import type {
   ListLocalWebServicesOptions,
   LocalWebService,
 } from '../../shared/localWebServices/constants';
@@ -57,6 +63,13 @@ interface CoworkSession {
   messages: CoworkMessage[];
   messagesOffset: number;
   totalMessages: number;
+  parentSessionId?: string | null;
+  forkedFromMessageId?: string | null;
+  forkedAt?: number | null;
+  forkMode?: 'none' | 'conversation' | 'worktree';
+  forkWorkspacePath?: string | null;
+  forkGitBranch?: string | null;
+  forkGitBaseRef?: string | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -76,6 +89,9 @@ interface CoworkSessionSummary {
   pinned: boolean;
   pinOrder?: number | null;
   agentId?: string;
+  parentSessionId?: string | null;
+  forkedAt?: number | null;
+  forkMode?: 'none' | 'conversation' | 'worktree';
   createdAt: number;
   updatedAt: number;
 }
@@ -252,6 +268,25 @@ interface McpServerConfigIPC {
   isBuiltIn: boolean;
   githubUrl?: string;
   registryId?: string;
+  launchResolution?: {
+    serverId: string;
+    resolverKind: 'npx' | 'uvx' | 'python' | 'raw';
+    sourceFingerprint: string;
+    status: 'pending' | 'installing' | 'ready' | 'failed' | 'unsupported';
+    packageName?: string;
+    requestedVersion?: string;
+    resolvedVersion?: string;
+    installDir?: string;
+    command?: string;
+    args?: string[];
+    env?: Record<string, string>;
+    error?: string;
+    installedAt?: number;
+    resolvedAt?: number;
+    lastProbeAt?: number;
+    lastProbeStatus?: string;
+    updatedAt: number;
+  };
   createdAt: number;
   updatedAt: number;
 }
@@ -392,11 +427,15 @@ interface IElectronAPI {
       id: string;
       enabled: boolean;
     }) => Promise<{ success: boolean; servers?: McpServerConfigIPC[]; error?: string }>;
+    retryLaunchResolution: (
+      id: string,
+    ) => Promise<{ success: boolean; servers?: McpServerConfigIPC[]; error?: string }>;
     fetchMarketplace: () => Promise<{
       success: boolean;
       data?: McpMarketplaceData;
       error?: string;
     }>;
+    onChanged: (callback: () => void) => () => void;
   };
   kits: {
     fetchStore: () => Promise<{ success: boolean; data?: string; error?: string }>;
@@ -405,11 +444,14 @@ interface IElectronAPI {
       bundleUrl: string;
       version: string;
       skillListIds: string[];
+      skillList?: KitSkillMetadata[];
+      mcpServers?: unknown[] | null;
+      connectors?: unknown[] | null;
     }) => Promise<{ success: boolean; skillIds?: string[]; error?: string }>;
     uninstall: (kitId: string) => Promise<{ success: boolean; error?: string }>;
     listInstalled: () => Promise<{
       success: boolean;
-      installed?: Record<string, { id: string; version: string; installedAt: number; skillIds: string[] }>;
+      installed?: Record<string, InstalledKitRecord>;
       error?: string;
     }>;
   };
@@ -534,6 +576,10 @@ interface IElectronAPI {
       systemPrompt?: string;
       title?: string;
       activeSkillIds?: string[];
+      runtimeSkillIds?: string[];
+      kitIds?: string[];
+      kitReferences?: KitReference[];
+      resolvedKitCapabilities?: ResolvedKitCapabilities;
       agentId?: string;
       imageAttachments?: Array<{ name: string; mimeType: string; base64Data: string }>;
       mediaSelection?: { mode: string; modelId?: string; modelName?: string; imageModelId?: string; videoModelId?: string };
@@ -550,6 +596,10 @@ interface IElectronAPI {
       prompt: string;
       systemPrompt?: string;
       activeSkillIds?: string[];
+      runtimeSkillIds?: string[];
+      kitIds?: string[];
+      kitReferences?: KitReference[];
+      resolvedKitCapabilities?: ResolvedKitCapabilities;
       imageAttachments?: Array<{ name: string; mimeType: string; base64Data: string }>;
       mediaSelection?: { mode: string; modelId?: string; modelName?: string; imageModelId?: string; videoModelId?: string };
       mediaReferences?: Array<{ token: string; mediaType: string; index: number; fileId: string; fileName: string; mimeType: string; localPath?: string; remoteUrl?: string; dataUrl?: string; role?: string }>;
@@ -571,6 +621,11 @@ interface IElectronAPI {
       sessionId: string;
       title: string;
     }) => Promise<{ success: boolean; error?: string }>;
+    forkSession: (options: {
+      sessionId: string;
+      forkedFromMessageId?: string | null;
+      title?: string;
+    }) => Promise<{ success: boolean; session?: CoworkSession; error?: string }>;
     getSession: (
       sessionId: string,
     ) => Promise<{ success: boolean; session?: CoworkSession; error?: string }>;
@@ -670,6 +725,10 @@ interface IElectronAPI {
       }>;
       error?: string;
     }>;
+    deleteSubagentSession: (options: {
+      parentSessionId: string;
+      runId: string;
+    }) => Promise<{ success: boolean; deleted?: boolean; error?: string }>;
     respondToPermission: (options: {
       requestId: string;
       result: CoworkPermissionResult;

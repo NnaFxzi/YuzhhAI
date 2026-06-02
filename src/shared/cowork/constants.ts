@@ -6,8 +6,19 @@ export const COWORK_MESSAGE_PAGE_SIZE = 30;
 
 export const CoworkIpcChannel = {
   MediaStatusPollUpdate: 'cowork:media:statusPollUpdate',
+  ForkSession: 'cowork:session:fork',
+  SubTaskHistory: 'cowork:subTask:history',
+  SubagentList: 'cowork:subagent:list',
+  SubagentDelete: 'cowork:subagent:delete',
 } as const;
 export type CoworkIpcChannel = typeof CoworkIpcChannel[keyof typeof CoworkIpcChannel];
+
+export const CoworkForkMode = {
+  None: 'none',
+  Conversation: 'conversation',
+  Worktree: 'worktree',
+} as const;
+export type CoworkForkMode = typeof CoworkForkMode[keyof typeof CoworkForkMode];
 
 export const CoworkContextUsageSource = {
   Live: 'live',

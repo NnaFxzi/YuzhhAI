@@ -26,6 +26,7 @@ interface AgentTreeNodeProps {
   subagentsBySessionId?: Record<string, SubagentSessionSummary[]>;
   selectedSubagentId?: string | null;
   onSelectSubagent?: (subagent: SubagentSessionSummary) => void;
+  onDeleteSubagent?: (subagent: SubagentSessionSummary) => Promise<void>;
   onToggleExpanded: (agentId: string) => void;
   onEditAgent: (agent: AgentSidebarAgentNode) => void;
   onCreateTask: (agent: AgentSidebarAgentNode) => void;
@@ -36,6 +37,7 @@ interface AgentTreeNodeProps {
   onCollapseTasks: (agentId: string) => void;
   onSelectTask: (task: AgentSidebarTaskNode) => void;
   onDeleteTask: (task: AgentSidebarTaskNode) => Promise<void>;
+  onForkTask: (task: AgentSidebarTaskNode) => Promise<void>;
   onShareTask: (task: AgentSidebarTaskNode) => Promise<void>;
   onToggleTaskPin: (task: AgentSidebarTaskNode, pinned: boolean) => Promise<void>;
   onRenameTask: (task: AgentSidebarTaskNode, title: string) => Promise<void>;
@@ -73,6 +75,7 @@ const AgentTreeNode: React.FC<AgentTreeNodeProps> = ({
   subagentsBySessionId,
   selectedSubagentId,
   onSelectSubagent,
+  onDeleteSubagent,
   onToggleExpanded,
   onEditAgent,
   onCreateTask,
@@ -83,6 +86,7 @@ const AgentTreeNode: React.FC<AgentTreeNodeProps> = ({
   onCollapseTasks,
   onSelectTask,
   onDeleteTask,
+  onForkTask,
   onShareTask,
   onToggleTaskPin,
   onRenameTask,
@@ -411,6 +415,7 @@ const AgentTreeNode: React.FC<AgentTreeNodeProps> = ({
                     hasActiveSubagent={task.isSelected && selectedSubagentId != null}
                     onSelect={() => onSelectTask(task)}
                     onDelete={() => onDeleteTask(task)}
+                    onFork={() => onForkTask(task)}
                     onShare={() => onShareTask(task)}
                     onTogglePin={(pinned) => onToggleTaskPin(task, pinned)}
                     onRename={(title) => onRenameTask(task, title)}
@@ -423,6 +428,7 @@ const AgentTreeNode: React.FC<AgentTreeNodeProps> = ({
                       subagent={sub}
                       isSelected={sub.id === selectedSubagentId}
                       onSelect={() => onSelectSubagent?.(sub)}
+                      onDelete={() => onDeleteSubagent?.(sub) ?? Promise.resolve()}
                     />
                   ))}
                 </React.Fragment>

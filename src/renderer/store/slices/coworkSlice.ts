@@ -256,6 +256,9 @@ const toSessionSummary = (session: CoworkSession): CoworkSessionSummary => ({
   pinned: session.pinned ?? false,
   pinOrder: session.pinOrder ?? null,
   agentId: session.agentId,
+  parentSessionId: session.parentSessionId ?? null,
+  forkedAt: session.forkedAt ?? null,
+  forkMode: session.forkMode,
   createdAt: session.createdAt,
   updatedAt: session.updatedAt,
 });

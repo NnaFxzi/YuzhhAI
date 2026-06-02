@@ -5,6 +5,7 @@ import type {
   CoworkAgentEngine,
   CoworkContextUsage,
   CoworkContinueOptions,
+  CoworkForkCompactionSummary,
   CoworkRuntime,
   CoworkRuntimeEvents,
   CoworkStartOptions,
@@ -97,6 +98,13 @@ export class CoworkEngineRouter extends EventEmitter implements CoworkRuntime {
     return this.runtime.compactContext(sessionId);
   }
 
+  async getForkCompactionSummary(sessionId: string, beforeCreatedAt?: number): Promise<CoworkForkCompactionSummary | null> {
+    if (!this.runtime.getForkCompactionSummary) {
+      return null;
+    }
+    return this.runtime.getForkCompactionSummary(sessionId, beforeCreatedAt);
+  }
+
   stopSession(sessionId: string): void {
     this.runtime.stopSession(sessionId);
     this.sessionEngine.delete(sessionId);
@@ -130,6 +138,13 @@ export class CoworkEngineRouter extends EventEmitter implements CoworkRuntime {
 
   getSessionConfirmationMode(sessionId: string): 'modal' | 'text' | null {
     return this.runtime.getSessionConfirmationMode(sessionId);
+  }
+
+  async deleteSubagentSession(parentSessionId: string, runId: string): Promise<boolean> {
+    if (!this.runtime.deleteSubagentSession) {
+      return false;
+    }
+    return this.runtime.deleteSubagentSession(parentSessionId, runId);
   }
 
   onSessionDeleted(sessionId: string): void {

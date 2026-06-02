@@ -496,6 +496,16 @@ describe('OpenClawConfigSync runtime config output', () => {
     expect(result.ok).toBe(true);
 
     const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    expect(config.models.providers.deepseek.models).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: 'deepseek-v4-flash',
+        contextWindow: 1_000_000,
+      }),
+      expect.objectContaining({
+        id: 'deepseek-v4-pro',
+        contextWindow: 1_000_000,
+      }),
+    ]));
     const modelDefaults = config.agents.defaults.models;
 
     expect(modelDefaults).toEqual(expect.objectContaining({

@@ -48,7 +48,10 @@ const MyAgentSidebarTree: React.FC<MyAgentSidebarTreeProps> = ({
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [settingsAgentId, setSettingsAgentId] = useState<string | null>(null);
   const [selectedSubagentId, setSelectedSubagentId] = useState<string | null>(null);
-  const { subagentsBySessionId, refetchSubagents } = useSubagentSessions(currentSessionId, currentSessionStatus);
+  const { subagentsBySessionId, refetchSubagents, removeSubagent } = useSubagentSessions(
+    currentSessionId,
+    currentSessionStatus,
+  );
   const {
     agentNodes,
     patchTaskPreview,
@@ -97,6 +100,18 @@ const MyAgentSidebarTree: React.FC<MyAgentSidebarTreeProps> = ({
     }
   };
 
+  const handleDeleteSubagent = async (subagent: SubagentSessionSummary) => {
+    if (!subagent.parentSessionId) return;
+
+    const deleted = await coworkService.deleteSubagentSession(subagent.parentSessionId, subagent.id);
+    if (deleted) {
+      removeSubagent(subagent.parentSessionId, subagent.id);
+      if (selectedSubagentId === subagent.id) {
+        window.dispatchEvent(new CustomEvent(CoworkUiEvent.SelectSubagent, { detail: null }));
+      }
+    }
+  };
+
   const handleToggleTaskPin = async (task: AgentSidebarTaskNode, pinned: boolean) => {
     const result = await coworkService.setSessionPinned(task.id, pinned);
     if (result.success) {
@@ -121,6 +136,22 @@ const MyAgentSidebarTree: React.FC<MyAgentSidebarTreeProps> = ({
         { detail: { sessionId: task.id } },
       ));
     }, 0);
+  };
+
+  const handleForkTask = async (task: AgentSidebarTaskNode) => {
+    if (task.status === 'running') {
+      window.dispatchEvent(new CustomEvent('app:showToast', {
+        detail: i18nService.t('coworkForkRunningBlocked'),
+      }));
+      return;
+    }
+    if (task.agentId !== currentAgentId) {
+      agentService.switchAgent(task.agentId);
+      await coworkService.loadSessions(task.agentId);
+    }
+    const result = await coworkService.forkSession({ sessionId: task.id });
+    if (!result.session) return;
+    onShowCowork();
   };
 
   const handleEnterBatchMode = (task: AgentSidebarTaskNode) => {
@@ -181,6 +212,7 @@ const MyAgentSidebarTree: React.FC<MyAgentSidebarTreeProps> = ({
         onShowCowork();
         window.dispatchEvent(new CustomEvent(CoworkUiEvent.SelectSubagent, { detail: sub }));
       }}
+      onDeleteSubagent={handleDeleteSubagent}
       onToggleExpanded={toggleAgentExpanded}
       onEditAgent={(agent) => setSettingsAgentId(agent.id)}
       onCreateTask={(agent) => void handleCreateTask(agent)}
@@ -191,6 +223,7 @@ const MyAgentSidebarTree: React.FC<MyAgentSidebarTreeProps> = ({
       onCollapseTasks={collapseTasks}
       onSelectTask={(task) => void handleSelectTask(task)}
       onDeleteTask={handleDeleteTask}
+      onForkTask={handleForkTask}
       onShareTask={handleShareTask}
       onToggleTaskPin={handleToggleTaskPin}
       onRenameTask={handleRenameTask}

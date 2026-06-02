@@ -1,7 +1,12 @@
 import type {
   CoworkContextUsageFailureReason,
   CoworkContextUsageSource,
+  CoworkForkMode,
 } from '../../shared/cowork/constants';
+import type {
+  KitReference,
+  ResolvedKitCapabilities,
+} from '../../shared/kit/constants';
 
 // Cowork image attachment for vision-capable models
 export interface CoworkImageAttachment {
@@ -55,6 +60,8 @@ export interface CoworkMessageMetadata {
   isThinking?: boolean;
   skillIds?: string[];
   kitIds?: string[];
+  kitReferences?: KitReference[];
+  resolvedKitCapabilities?: ResolvedKitCapabilities;
   usage?: {
     inputTokens?: number;
     outputTokens?: number;
@@ -123,6 +130,13 @@ export interface CoworkSession {
   messagesOffset: number;
   /** Total number of messages stored for this session. */
   totalMessages: number;
+  parentSessionId?: string | null;
+  forkedFromMessageId?: string | null;
+  forkedAt?: number | null;
+  forkMode?: CoworkForkMode;
+  forkWorkspacePath?: string | null;
+  forkGitBranch?: string | null;
+  forkGitBaseRef?: string | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -251,8 +265,17 @@ export interface CoworkSessionSummary {
   pinned: boolean;
   pinOrder?: number | null;
   agentId?: string;
+  parentSessionId?: string | null;
+  forkedAt?: number | null;
+  forkMode?: CoworkForkMode;
   createdAt: number;
   updatedAt: number;
+}
+
+export interface CoworkForkSessionOptions {
+  sessionId: string;
+  forkedFromMessageId?: string | null;
+  title?: string;
 }
 
 // Subagent session summary for sidebar display
@@ -274,6 +297,10 @@ export interface CoworkStartOptions {
   systemPrompt?: string;
   title?: string;
   activeSkillIds?: string[];
+  runtimeSkillIds?: string[];
+  kitIds?: string[];
+  kitReferences?: KitReference[];
+  resolvedKitCapabilities?: ResolvedKitCapabilities;
   agentId?: string;
   modelOverride?: string;
   imageAttachments?: CoworkImageAttachment[];
@@ -287,6 +314,10 @@ export interface CoworkContinueOptions {
   prompt: string;
   systemPrompt?: string;
   activeSkillIds?: string[];
+  runtimeSkillIds?: string[];
+  kitIds?: string[];
+  kitReferences?: KitReference[];
+  resolvedKitCapabilities?: ResolvedKitCapabilities;
   imageAttachments?: CoworkImageAttachment[];
   mediaSelection?: { mode: string; modelId?: string; modelName?: string; imageModelId?: string; videoModelId?: string };
   mediaReferences?: import('./mediaGeneration').MediaAttachmentRef[];

@@ -41,9 +41,29 @@ describe('ProviderRegistry', () => {
     expect(xiaomi?.defaultBaseUrl).toBe('https://api.xiaomimimo.com/v1/chat/completions');
   });
 
-  test('xiaomi default models include MiMo V2 Omni', () => {
+  test('xiaomi default models are limited to MiMo V2.5 models with 1M context', () => {
     const xiaomi = ProviderRegistry.get(ProviderName.Xiaomi);
-    expect(xiaomi?.defaultModels.some(model => model.id === 'mimo-v2-omni')).toBe(true);
+    expect(xiaomi?.defaultModels).toEqual([
+      { id: 'mimo-v2.5-pro', name: 'MiMo V2.5 Pro', supportsImage: false, contextWindow: 1_000_000 },
+      { id: 'mimo-v2.5', name: 'MiMo V2.5', supportsImage: true, contextWindow: 1_000_000 },
+    ]);
+  });
+
+  test('minimax defaults to MiniMax M3 with 1M context first', () => {
+    const minimax = ProviderRegistry.get(ProviderName.Minimax);
+    expect(minimax?.defaultModels[0]).toMatchObject({
+      id: 'MiniMax-M3',
+      name: 'MiniMax M3',
+      contextWindow: 1_000_000,
+    });
+  });
+
+  test('deepseek v4 default models use 1M context', () => {
+    const deepseek = ProviderRegistry.get(ProviderName.DeepSeek);
+    expect(deepseek?.defaultModels.slice(0, 2)).toEqual([
+      { id: 'deepseek-v4-flash', name: 'DeepSeek V4 Flash', supportsImage: false, contextWindow: 1_000_000 },
+      { id: 'deepseek-v4-pro', name: 'DeepSeek V4 Pro', supportsImage: false, contextWindow: 1_000_000 },
+    ]);
   });
 
   test('get returns undefined for unknown provider', () => {
@@ -60,6 +80,12 @@ describe('ProviderRegistry', () => {
     expect(ProviderRegistry.resolveModelSupportsImage('custom_0', 'qwen3.6-plus', false)).toBe(true);
     expect(ProviderRegistry.resolveModelSupportsImage('custom_0', 'unknown-model', false)).toBe(false);
     expect(ProviderRegistry.resolveModelSupportsImage('custom_0', 'unknown-model', true)).toBe(true);
+  });
+
+  test('resolveModelContextWindow fills known defaults without overriding user values', () => {
+    expect(ProviderRegistry.resolveModelContextWindow(ProviderName.DeepSeek, 'deepseek-v4-flash')).toBe(1_000_000);
+    expect(ProviderRegistry.resolveModelContextWindow('custom_0', 'deepseek-v4-pro')).toBe(1_000_000);
+    expect(ProviderRegistry.resolveModelContextWindow(ProviderName.DeepSeek, 'deepseek-v4-pro', 200_000)).toBe(200_000);
   });
 
   test('supportsCodingPlan is true for moonshot, qwen, zhipu, volcengine, qianfan, xiaomi', () => {

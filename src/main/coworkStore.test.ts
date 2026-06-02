@@ -20,7 +20,9 @@ vi.mock('electron', () => ({
 // ---------------------------------------------------------------------------
 import BetterSqlite3 from 'better-sqlite3';
 
+import { CoworkSystemMessageKind } from '../common/coworkSystemMessages';
 import { AgentAvatarSvg, DefaultAgentAvatarIcon, encodeAgentAvatarIcon } from '../shared/agent/avatar';
+import { CoworkForkMode } from '../shared/cowork/constants';
 import { CoworkStore } from './coworkStore';
 
 // ---------------------------------------------------------------------------
@@ -48,6 +50,13 @@ function setupDb(): void {
       execution_mode TEXT NOT NULL DEFAULT 'local',
       active_skill_ids TEXT,
       agent_id TEXT NOT NULL DEFAULT 'main',
+      parent_session_id TEXT,
+      forked_from_message_id TEXT,
+      forked_at INTEGER,
+      fork_mode TEXT NOT NULL DEFAULT 'none',
+      fork_workspace_path TEXT,
+      fork_git_branch TEXT,
+      fork_git_base_ref TEXT,
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL
     );
@@ -350,6 +359,174 @@ test('deleteSession removes messages without relying on foreign key cascade', ()
     .prepare('SELECT COUNT(*) AS count FROM cowork_messages WHERE session_id = ?')
     .get(sid) as { count: number };
   expect(messageCount.count).toBe(0);
+});
+
+test('forkSession copies stable history and records fork metadata', () => {
+  const sid = 'sess-fork-source';
+  insertSession(sid);
+  insertMessage('msg-user', sid, 'user', 'start here', '{"keep":true}', 1, 1000);
+  insertMessage(
+    'msg-streaming',
+    sid,
+    'assistant',
+    'unfinished draft',
+    '{"isStreaming":true,"toolUseId":"tool-live"}',
+    2,
+    2000,
+  );
+  insertMessage(
+    'msg-assistant',
+    sid,
+    'assistant',
+    'finished answer',
+    '{"toolUseId":"tool-done","requestId":"req-1","keep":"yes"}',
+    3,
+    3000,
+  );
+
+  const fork = store.forkSession({
+    sourceSessionId: sid,
+    forkedFromMessageId: 'msg-assistant',
+  });
+
+  expect(fork.id).not.toBe(sid);
+  expect(fork.title).toBe('test (fork)');
+  expect(fork.cwd).toBe('/tmp');
+  expect(fork.status).toBe('idle');
+  expect(fork.parentSessionId).toBe(sid);
+  expect(fork.forkedFromMessageId).toBe('msg-assistant');
+  expect(fork.forkMode).toBe(CoworkForkMode.Conversation);
+  expect(fork.messages).toHaveLength(2);
+  expect(fork.messages.map((message) => message.content)).toEqual(['start here', 'finished answer']);
+  expect(fork.messages.every((message) => !['msg-user', 'msg-assistant'].includes(message.id))).toBe(true);
+  expect(fork.messages[0].metadata).toEqual({ keep: true });
+  expect(fork.messages[1].metadata).toEqual({ keep: 'yes' });
+
+  const forkRows = db
+    .prepare('SELECT content, sequence FROM cowork_messages WHERE session_id = ? ORDER BY sequence ASC')
+    .all(fork.id) as Array<{ content: string; sequence: number | null }>;
+  expect(forkRows).toEqual([
+    { content: 'start here', sequence: 1 },
+    { content: 'finished answer', sequence: 3 },
+  ]);
+});
+
+test('forkSession can persist hidden compaction bridge messages', () => {
+  const sid = 'sess-fork-compacted-source';
+  insertSession(sid);
+  insertMessage('msg-user', sid, 'user', 'continue the plan', null, 1, 1000);
+
+  const fork = store.forkSession({
+    sourceSessionId: sid,
+    contextMessages: [{
+      content: 'The source session was compacted after deciding the implementation plan.',
+      metadata: {
+        kind: CoworkSystemMessageKind.ForkCompactionSummary,
+        sourceSessionId: sid,
+        sourceSessionKey: 'agent:main:session:sess-fork-compacted-source',
+        checkpointId: 'checkpoint-1',
+      },
+    }],
+  });
+
+  expect(fork.messages).toHaveLength(2);
+  const summaryMessage = fork.messages.find((message) => (
+    message.metadata?.kind === CoworkSystemMessageKind.ForkCompactionSummary
+  ));
+  expect(summaryMessage?.type).toBe('system');
+  expect(summaryMessage?.content).toContain('source session was compacted');
+  expect(summaryMessage?.metadata).toMatchObject({
+    hidden: true,
+    kind: CoworkSystemMessageKind.ForkCompactionSummary,
+    sourceSessionId: sid,
+    checkpointId: 'checkpoint-1',
+  });
+  expect(fork.messages.some((message) => message.content === 'continue the plan')).toBe(true);
+});
+
+test('forkSession skips compaction bridge messages newer than the fork point', () => {
+  const sid = 'sess-fork-compaction-boundary';
+  insertSession(sid);
+  insertMessage('msg-early', sid, 'assistant', 'early answer', null, 1, 1000);
+  insertMessage('msg-late', sid, 'assistant', 'late answer', null, 2, 3000);
+
+  const fork = store.forkSession({
+    sourceSessionId: sid,
+    forkedFromMessageId: 'msg-early',
+    contextMessages: [{
+      content: 'This summary was created after the selected fork point.',
+      metadata: {
+        kind: CoworkSystemMessageKind.ForkCompactionSummary,
+        checkpointCreatedAt: 2000,
+      },
+    }],
+  });
+
+  expect(fork.messages.map((message) => message.content)).toEqual(['early answer']);
+  expect(fork.messages.every((message) => (
+    message.metadata?.kind !== CoworkSystemMessageKind.ForkCompactionSummary
+  ))).toBe(true);
+});
+
+test('forkSession inherits one compaction bridge message when a fork is forked again', () => {
+  const sid = 'sess-fork-compaction-inheritance';
+  insertSession(sid);
+  insertMessage('msg-answer', sid, 'assistant', 'original answer', null, 1, 1000);
+
+  const firstFork = store.forkSession({
+    sourceSessionId: sid,
+    contextMessages: [{
+      content: 'Inherited compacted context.',
+      metadata: {
+        kind: CoworkSystemMessageKind.ForkCompactionSummary,
+        checkpointCreatedAt: 500,
+      },
+    }],
+  });
+
+  const secondFork = store.forkSession({
+    sourceSessionId: firstFork.id,
+    forkedFromMessageId: firstFork.messages.find((message) => message.content === 'original answer')?.id,
+  });
+  const summaries = secondFork.messages.filter((message) => (
+    message.metadata?.kind === CoworkSystemMessageKind.ForkCompactionSummary
+  ));
+
+  expect(summaries).toHaveLength(1);
+  expect(summaries[0].content).toBe('Inherited compacted context.');
+});
+
+test('forkSession prefers a new compaction bridge over an inherited summary', () => {
+  const sid = 'sess-fork-compaction-replacement';
+  insertSession(sid);
+  insertMessage('msg-answer', sid, 'assistant', 'original answer', null, 1, 1000);
+
+  const firstFork = store.forkSession({
+    sourceSessionId: sid,
+    contextMessages: [{
+      content: 'Older compacted context.',
+      metadata: {
+        kind: CoworkSystemMessageKind.ForkCompactionSummary,
+        checkpointCreatedAt: 500,
+      },
+    }],
+  });
+  const secondFork = store.forkSession({
+    sourceSessionId: firstFork.id,
+    contextMessages: [{
+      content: 'Newer compacted context.',
+      metadata: {
+        kind: CoworkSystemMessageKind.ForkCompactionSummary,
+        checkpointCreatedAt: 1500,
+      },
+    }],
+  });
+  const summaries = secondFork.messages.filter((message) => (
+    message.metadata?.kind === CoworkSystemMessageKind.ForkCompactionSummary
+  ));
+
+  expect(summaries).toHaveLength(1);
+  expect(summaries[0].content).toBe('Newer compacted context.');
 });
 
 test('agent CRUD stores working directory independently', () => {

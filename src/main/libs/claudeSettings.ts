@@ -145,15 +145,23 @@ function buildServerFallbackModels(effectiveModelId: string): NonNullable<LocalP
 function normalizeProviderModels(providerName: string, models?: ProviderModelInputConfig[]): ProviderModelConfig[] {
   return (models ?? [])
     .filter(model => model.id?.trim())
-    .map(model => ({
-      ...model,
-      name: model.name || model.id,
-      supportsImage: ProviderRegistry.resolveModelSupportsImage(
+    .map(model => {
+      const contextWindow = ProviderRegistry.resolveModelContextWindow(
         providerName,
         model.id,
-        model.supportsImage,
-      ),
-    }));
+        model.contextWindow,
+      );
+      return {
+        ...model,
+        name: model.name || model.id,
+        supportsImage: ProviderRegistry.resolveModelSupportsImage(
+          providerName,
+          model.id,
+          model.supportsImage,
+        ),
+        ...(contextWindow !== undefined ? { contextWindow } : {}),
+      };
+    });
 }
 
 const getStore = (): SqliteStore | null => {

@@ -2,11 +2,11 @@ import {
   DocumentArrowDownIcon,
   PhotoIcon,
 } from '@heroicons/react/24/outline';
-import React, { useCallback, useEffect, useLayoutEffect, useMemo,useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useDispatch, useSelector } from 'react-redux';
 
-import { normalizeFilePathForDedup, normalizeLocalServiceUrlForDedup, parseFileLinksFromMessage, parseFilePathsFromText, parseLocalServiceUrlsFromText, parseMediaTokensFromText, parseRemoteImageArtifactsFromText, parseToolArtifact, parseToolResultMediaArtifacts, shouldParseFilePathsFromToolResult, stripFileLinksFromText } from '../../services/artifactParser';
+import { dedupeArtifactsForDisplay, normalizeFilePathForDedup, normalizeLocalServiceUrlForDedup, parseFileLinksFromMessage, parseFilePathsFromText, parseLocalServiceUrlsFromText, parseMediaTokensFromText, parseRemoteImageArtifactsFromText, parseToolArtifact, parseToolResultMediaArtifacts, shouldParseFilePathsFromToolResult, stripFileLinksFromText } from '../../services/artifactParser';
 import { coworkService } from '../../services/cowork';
 import { i18nService } from '../../services/i18n';
 import { RootState } from '../../store';
@@ -22,6 +22,7 @@ import {
   activateArtifactFileListTab,
   activateArtifactPreviewTab,
   addArtifact,
+  type ArtifactPreviewTab,
   ArtifactSpecialTab,
   closeArtifactPreviewTab,
   closePanel,
@@ -30,14 +31,13 @@ import {
   selectActivePreviewTab,
   selectIsPanelOpen,
   selectPanelWidth,
-  selectPreviewTabs,
-  selectSessionArtifacts,
   togglePanel,
 } from '../../store/slices/artifactSlice';
+import { setActiveKitIds } from '../../store/slices/kitSlice';
 import { setActiveSkillIds } from '../../store/slices/skillSlice';
 import type { Artifact } from '../../types/artifact';
 import { ArtifactTypeValue, PREVIEWABLE_ARTIFACT_TYPES } from '../../types/artifact';
-import type { CoworkImageAttachment,CoworkMessage, CoworkMessageMetadata } from '../../types/cowork';
+import type { CoworkImageAttachment, CoworkMessage, CoworkMessageMetadata } from '../../types/cowork';
 import { CoworkSessionStatusValue } from '../../types/cowork';
 import type { MediaAttachmentRef } from '../../types/mediaGeneration';
 import { ArtifactPanel, type BrowserAnnotationPayload } from '../artifacts';
@@ -46,7 +46,7 @@ import FileTypeIcon from '../icons/fileTypes/FileTypeIcon';
 import SidebarToggleIcon from '../icons/SidebarToggleIcon';
 import WindowTitleBar from '../window/WindowTitleBar';
 import AssistantTurnBlock, { ContextCompactionDivider } from './AssistantTurnBlock';
-import { type CoworkOpenShareOptionsEventDetail,CoworkUiEvent } from './constants';
+import { type CoworkOpenShareOptionsEventDetail, CoworkUiEvent } from './constants';
 import ContextUsageIndicator from './ContextUsageIndicator';
 import CoworkPromptInput, { type CoworkPromptInputRef } from './CoworkPromptInput';
 import LazyRenderTurn, { clearHeightCache } from './LazyRenderTurn';
@@ -86,6 +86,11 @@ const sanitizeExportFileName = (value: string): string => {
 const formatExportTimestamp = (value: Date): string => {
   const pad = (num: number): string => String(num).padStart(2, '0');
   return `${value.getFullYear()}${pad(value.getMonth() + 1)}${pad(value.getDate())}-${pad(value.getHours())}${pad(value.getMinutes())}${pad(value.getSeconds())}`;
+};
+
+const logDetailDiagnostic = (message: string): void => {
+  console.log(`[CoworkSessionDetail] ${message}`);
+  window.electron?.log?.fromRenderer?.('info', 'CoworkSessionDetail', message);
 };
 
 type CaptureRect = { x: number; y: number; width: number; height: number };
@@ -488,6 +493,7 @@ const toAbsolutePathFromCwd = (filePath: string, cwd: string): string => {
 };
 
 const EMPTY_ARTIFACTS: Artifact[] = [];
+const EMPTY_PREVIEW_TABS: ArtifactPreviewTab[] = [];
 
 const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
   onManageSkills,
@@ -507,6 +513,7 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
   const lastMessageContent = useSelector(selectLastMessageContent);
   const messagesLength = useSelector(selectCurrentMessagesLength);
   const skills = useSelector((state: RootState) => state.skill.skills);
+  const marketplaceKits = useSelector((state: RootState) => state.kit.marketplaceKits);
   const contextUsage = useSelector((state: RootState) =>
     currentSession?.id ? state.cowork.contextUsageBySessionId[currentSession.id] : undefined
   );
@@ -621,6 +628,26 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
     void coworkService.compactContext(currentSession.id);
   }, [currentSession?.id]);
 
+  const handleForkMessage = useCallback((messageId: string) => {
+    if (!currentSession?.id) {
+      console.warn('[CoworkFork] message fork was ignored because no session is selected');
+      return;
+    }
+    if (isStreaming || currentSession.status === CoworkSessionStatusValue.Running) {
+      window.dispatchEvent(new CustomEvent('app:showToast', {
+        detail: i18nService.t('coworkForkRunningBlocked'),
+      }));
+      console.warn('[CoworkFork] message fork was rejected because the session is still running');
+      return;
+    }
+
+    console.log(`[CoworkFork] requesting a fork from assistant message ${messageId} in session ${currentSession.id}`);
+    void coworkService.forkSession({
+      sessionId: currentSession.id,
+      forkedFromMessageId: messageId,
+    });
+  }, [currentSession?.id, currentSession?.status, isStreaming]);
+
   // ─── Artifact detection ─────────────────────────────────────────────
   const isPanelOpen = useSelector((state: RootState) => selectIsPanelOpen(state, sessionId));
   const panelWidth = useSelector(selectPanelWidth);
@@ -649,11 +676,15 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
   const artifactAddMenuRef = useRef<HTMLDivElement>(null);
   const artifactTabsScrollRef = useRef<HTMLDivElement>(null);
   const contentRowRef = useRef<HTMLDivElement>(null);
-  const sessionArtifacts = useSelector((state: RootState) =>
-    sessionId ? selectSessionArtifacts(state, sessionId) : EMPTY_ARTIFACTS
+  const rawSessionArtifacts = useSelector((state: RootState) =>
+    sessionId ? state.artifact.artifactsBySession[sessionId] ?? EMPTY_ARTIFACTS : EMPTY_ARTIFACTS
+  );
+  const sessionArtifacts = useMemo(
+    () => dedupeArtifactsForDisplay(rawSessionArtifacts),
+    [rawSessionArtifacts],
   );
   const artifactPreviewTabs = useSelector((state: RootState) =>
-    sessionId ? selectPreviewTabs(state, sessionId) : []
+    sessionId ? state.artifact.previewTabsBySession[sessionId] ?? EMPTY_PREVIEW_TABS : EMPTY_PREVIEW_TABS
   );
   const activeArtifactPreviewTab = useSelector((state: RootState) =>
     sessionId ? selectActivePreviewTab(state, sessionId) : null
@@ -1719,6 +1750,7 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
         isLoadingMoreMessagesRef.current = true;
         setIsLoadingMoreMessages(true);
         prevScrollHeightRef.current = container.scrollHeight;
+        logDetailDiagnostic(`loading older messages after scrolling near the top for session ${sessionId}; current offset is ${offset}.`);
         coworkService.loadMoreMessages(sessionId).catch(() => {
           prevScrollHeightRef.current = null;
           isLoadingMoreMessagesRef.current = false;
@@ -1790,6 +1822,9 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
       isLoadingMoreMessagesRef.current = true;
       setIsLoadingMoreMessages(true);
       prevScrollHeightRef.current = container.scrollHeight;
+      logDetailDiagnostic(
+        `auto-loading older messages because session ${sessionId} content height ${container.scrollHeight} does not exceed viewport height ${container.clientHeight}; current offset is ${offset}.`,
+      );
       coworkService.loadMoreMessages(sessionId).catch(() => {
         prevScrollHeightRef.current = null;
         isLoadingMoreMessagesRef.current = false;
@@ -1902,10 +1937,10 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
     const imageAttachments = ((message.metadata as CoworkMessageMetadata)?.imageAttachments ?? []) as CoworkImageAttachment[];
     ref.setImageAttachments(imageAttachments);
     // Restore active skills
-    const skillIds = (message.metadata as CoworkMessageMetadata)?.skillIds;
-    if (skillIds && skillIds.length > 0) {
-      dispatch(setActiveSkillIds(skillIds));
-    }
+    const skillIds = (message.metadata as CoworkMessageMetadata)?.skillIds ?? [];
+    dispatch(setActiveSkillIds(skillIds));
+    const kitIds = (message.metadata as CoworkMessageMetadata)?.kitIds ?? [];
+    dispatch(setActiveKitIds(kitIds));
     // Focus the input
     ref.focus();
   }, [dispatch]);
@@ -2021,14 +2056,11 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
       const alwaysRender = index >= turns.length - 3;
 
       // Compute rail indices for user/assistant messages (must match rail IIFE logic)
-      let asstContent = '';
-      for (const item of turn.assistantItems) {
-        if (item.type === 'assistant' && item.message?.content) {
-          asstContent += item.message.content;
-        }
-      }
+      const hasAssistantContent = turn.assistantItems.some(
+        item => item.type === 'assistant' && Boolean(item.message?.content),
+      );
       const userRailIdx = turn.userMessage ? railCounter++ : -1;
-      const asstRailIdx = asstContent ? railCounter++ : -1;
+      const asstRailIdx = hasAssistantContent ? railCounter++ : -1;
 
       const turnMessageIds = new Set<string>();
       for (const item of turn.assistantItems) {
@@ -2049,7 +2081,12 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
         <LazyRenderTurn key={turn.id} turnId={turn.id} alwaysRender={alwaysRender} data-turn-index={index}>
           {turn.userMessage && (
             <div data-export-role="user-message" className={isLastTurn ? 'animate-message-in' : undefined} {...(userRailIdx >= 0 ? { 'data-rail-index': userRailIdx } : undefined)}>
-              <UserMessageItem message={turn.userMessage} skills={skills} onReEdit={remoteManaged ? undefined : handleReEdit} />
+              <UserMessageItem
+                message={turn.userMessage}
+                skills={skills}
+                marketplaceKits={marketplaceKits}
+                onReEdit={remoteManaged ? undefined : handleReEdit}
+              />
             </div>
           )}
           {showAssistantBlock && (
@@ -2060,6 +2097,7 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
                 resolveLocalFilePath={resolveLocalFilePath}
                 mapDisplayText={mapDisplayText}
                 onOpenLocalService={handleOpenLocalServiceArtifact}
+                onForkMessage={remoteManaged ? undefined : handleForkMessage}
                 showTypingIndicator={showTypingIndicator}
                 showCopyButtons={!isStreaming || !isLastTurn}
               />

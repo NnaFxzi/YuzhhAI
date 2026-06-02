@@ -1147,12 +1147,16 @@ npx eslint src/main/libs/agentEngine/openclawRuntimeAdapter.ts src/main/libs/age
 2. 已确认：手动 compact 有专用 gateway API：`sessions.compact`。
 3. 已确认：`sessions.list` 关键字段包括 `totalTokens`、`inputTokens`、`outputTokens`、`contextTokens`、`compactionCheckpointCount`、`latestCompactionCheckpoint`。
 4. 已确认：OpenClaw store 内部维护 `compactionCount`；gateway list 对 UI 暴露 `compactionCheckpointCount` 和 `latestCompactionCheckpoint`。第一版 UI 以 checkpoint count 去重。
-5. 已处理：自动压缩期间可能与 `chat.final` / retry stream 交错，LobsterAI 通过 800ms deferred completion 和 stream cancel 处理。
-6. 仍需手测：OpenClaw 压缩失败时的错误形态是否稳定可识别。
-7. 第一版已定：上下文圈放在 `CoworkSessionDetail` 输入框发送按钮左侧，保持轻量。
-8. 第一版已定：会话 running 时不支持 pending queue；输入保持可见，发送按钮走 streaming/stop 状态，强行发送时给等待提示。
-9. 第一版已定：手动 compact 期间不硬禁用发送按钮；发送动作走软拦截和 toast，并用 watchdog 兜底清理 compacting 状态。
-10. 第一版已定：任务 running/context maintenance 时不允许主动 compact，因为 OpenClaw manual `sessions.compact` 可能先中断 active run。
+5. 已确认：OpenClaw gateway 暴露 `sessions.compaction.list` / `sessions.compaction.get`，可读取 checkpoint 列表和单个 checkpoint 的 `summary`、`tokensBefore`、`tokensAfter`、`preCompaction`、`postCompaction` 等 metadata。
+6. 已确认：OpenClaw gateway 还暴露 `sessions.compaction.branch` / `sessions.compaction.restore`，但它们操作 OpenClaw transcript/session store，不等同于 LobsterAI Cowork 会话分叉。
+7. 已确认：OpenClaw `compactionSummary` 是 assembled/model-visible context 的角色，不应与 UI `COMPACTION` 分隔符或 LobsterAI 的轻量系统提示混为一谈。
+8. 已处理：自动压缩期间可能与 `chat.final` / retry stream 交错，LobsterAI 通过 800ms deferred completion 和 stream cancel 处理。
+9. 仍需手测：OpenClaw 压缩失败时的错误形态是否稳定可识别。
+10. 第一版已定：上下文圈放在 `CoworkSessionDetail` 输入框发送按钮左侧，保持轻量。
+11. 第一版已定：会话 running 时不支持 pending queue；输入保持可见，发送按钮走 streaming/stop 状态，强行发送时给等待提示。
+12. 第一版已定：手动 compact 期间不硬禁用发送按钮；发送动作走软拦截和 toast，并用 watchdog 兜底清理 compacting 状态。
+13. 第一版已定：任务 running/context maintenance 时不允许主动 compact，因为 OpenClaw manual `sessions.compact` 可能先中断 active run。
+14. 与会话分叉的关联：分叉压缩后的会话时，应优先读取 `sessions.compaction.list/get` 中最新 checkpoint 的 `summary` 作为 fork bridge，而不是从普通聊天历史或 UI 分隔符推断摘要。
 
 ## 9. 人工测试观察与日志时间线
 

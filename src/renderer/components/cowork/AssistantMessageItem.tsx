@@ -3,6 +3,7 @@ import React, { useCallback, useState } from 'react';
 import { i18nService } from '../../services/i18n';
 import type { CoworkMessage, CoworkMessageMetadata } from '../../types/cowork';
 import { formatMessageDateTime } from '../../utils/tokenFormat';
+import ForkBranchIcon from '../icons/ForkBranchIcon';
 import MessageCopyIcon from '../icons/MessageCopyIcon';
 import MarkdownContent from '../MarkdownContent';
 import ImagePreviewModal, { type ImagePreviewSource } from './ImagePreviewModal';
@@ -66,6 +67,27 @@ const CopyButton: React.FC<{
 
 export { CopyButton };
 
+const ForkButton: React.FC<{
+  visible: boolean;
+  onFork: () => void;
+}> = ({ visible, onFork }) => (
+  <button
+    type="button"
+    onClick={(event) => {
+      event.stopPropagation();
+      onFork();
+    }}
+    className={`p-1.5 rounded-md hover:bg-surface-raised transition-all duration-200 ${
+      visible ? 'opacity-100' : 'opacity-0 pointer-events-none'
+    }`}
+    tabIndex={visible ? 0 : -1}
+    title={i18nService.t('coworkForkFromMessage')}
+    aria-label={i18nService.t('coworkForkFromMessage')}
+  >
+    <ForkBranchIcon className="w-4 h-4 text-[var(--icon-secondary)]" />
+  </button>
+);
+
 // ── AssistantMessageItem ─────────────────────────────────────────────────────
 
 const AssistantMessageItem: React.FC<{
@@ -73,12 +95,14 @@ const AssistantMessageItem: React.FC<{
   resolveLocalFilePath?: (href: string, text: string) => string | null;
   mapDisplayText?: (value: string) => string;
   showCopyButton?: boolean;
+  onFork?: (messageId: string) => void;
   turnMetadata?: CoworkMessageMetadata | null;
 }> = ({
   message,
   resolveLocalFilePath,
   mapDisplayText,
   showCopyButton = false,
+  onFork,
   turnMetadata,
 }) => {
   const [isHovered, setIsHovered] = useState(false);
@@ -120,6 +144,12 @@ const AssistantMessageItem: React.FC<{
         <div className={messageMetaClassName(isHovered)} aria-hidden={!isHovered}>
           <span>{formatMessageDateTime(message.timestamp)}</span>
           {modelLabel && <span>{modelLabel}</span>}
+          {onFork && (
+            <ForkButton
+              visible={isHovered}
+              onFork={() => onFork(message.id)}
+            />
+          )}
           <CopyButton
             content={displayContent}
             visible={isHovered}

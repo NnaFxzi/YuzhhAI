@@ -1,4 +1,8 @@
 import type { OpenClawSessionPatch } from '../../../common/openclawSession';
+import type {
+  KitReference,
+  ResolvedKitCapabilities,
+} from '../../../shared/kit/constants';
 import type { CoworkMessage, CoworkSessionStatus } from '../../coworkStore';
 
 export type CoworkAgentEngine = 'openclaw';
@@ -53,6 +57,17 @@ export type CoworkContextUsage = {
   updatedAt: number;
 };
 
+export type CoworkForkCompactionSummary = {
+  summary: string;
+  sessionKey: string;
+  checkpointId?: string;
+  reason?: string;
+  createdAt?: number;
+  tokensBefore?: number;
+  tokensAfter?: number;
+  truncated?: boolean;
+};
+
 export type CoworkImageAttachment = {
   name: string;
   mimeType: string;
@@ -83,6 +98,10 @@ export type CoworkMediaSelection = {
 export type CoworkStartOptions = {
   skipInitialUserMessage?: boolean;
   skillIds?: string[];
+  messageSkillIds?: string[];
+  kitIds?: string[];
+  kitReferences?: KitReference[];
+  resolvedKitCapabilities?: ResolvedKitCapabilities;
   systemPrompt?: string;
   autoApprove?: boolean;
   workspaceRoot?: string;
@@ -96,6 +115,10 @@ export type CoworkStartOptions = {
 export type CoworkContinueOptions = {
   systemPrompt?: string;
   skillIds?: string[];
+  messageSkillIds?: string[];
+  kitIds?: string[];
+  kitReferences?: KitReference[];
+  resolvedKitCapabilities?: ResolvedKitCapabilities;
   imageAttachments?: CoworkImageAttachment[];
   mediaSelection?: CoworkMediaSelection;
   mediaReferences?: CoworkMediaAttachmentRef[];
@@ -115,10 +138,12 @@ export interface CoworkRuntime {
   patchSession?(sessionId: string, patch: OpenClawSessionPatch): Promise<void>;
   getContextUsage?(sessionId: string): Promise<CoworkContextUsage | null>;
   compactContext?(sessionId: string): Promise<{ compacted: boolean; reason?: string; usage?: CoworkContextUsage | null }>;
+  getForkCompactionSummary?(sessionId: string, beforeCreatedAt?: number): Promise<CoworkForkCompactionSummary | null>;
   stopSession(sessionId: string): void;
   stopAllSessions(): void;
   respondToPermission(requestId: string, result: PermissionResult): void;
   isSessionActive(sessionId: string): boolean;
   getSessionConfirmationMode(sessionId: string): 'modal' | 'text' | null;
+  deleteSubagentSession?(parentSessionId: string, runId: string): Promise<boolean>;
   onSessionDeleted?(sessionId: string): void;
 }

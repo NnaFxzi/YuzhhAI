@@ -1,20 +1,135 @@
 import { ArrowDownTrayIcon, ArrowLeftIcon, TrashIcon, XMarkIcon } from '@heroicons/react/24/outline';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useDispatch } from 'react-redux';
 
 import { i18nService } from '../../services/i18n';
 import { kitService } from '../../services/kit';
 import { resolveLocalizedText } from '../../services/skill';
 import { setInstalledKits as setInstalledKitsAction, setMarketplaceKits } from '../../store/slices/kitSlice';
-import type { InstalledKit, MarketplaceKit } from '../../types/kit';
+import type { InstalledKit, KitSkillRef, MarketplaceKit } from '../../types/kit';
 import Modal from '../common/Modal';
 import SearchIcon from '../icons/SearchIcon';
-import SidebarKitsIcon from '../icons/SidebarKitsIcon';
+import KitIcon from './KitIcon';
 
+const KitOperationType = {
+  Install: 'install',
+  Uninstall: 'uninstall',
+} as const;
+
+type KitOperationType = typeof KitOperationType[keyof typeof KitOperationType];
 
 interface KitsManagerProps {
   onTryAsking?: (text: string, kitId: string) => void;
 }
+
+interface TooltipPosition {
+  left: number;
+  top: number;
+  width: number;
+}
+
+const SKILL_TOOLTIP_WIDTH = 288;
+const SKILL_TOOLTIP_MIN_WIDTH = 180;
+const SKILL_TOOLTIP_VIEWPORT_MARGIN = 12;
+const SKILL_TOOLTIP_GAP = 8;
+
+const clamp = (value: number, min: number, max: number) => (
+  Math.min(Math.max(value, min), Math.max(min, max))
+);
+
+const KitSkillPill: React.FC<{ skill: KitSkillRef }> = ({ skill }) => {
+  const name = resolveLocalizedText(skill.name).replace(/^\//, '');
+  const description = skill.description ? resolveLocalizedText(skill.description) : '';
+  const triggerRef = useRef<HTMLSpanElement>(null);
+  const tooltipRef = useRef<HTMLSpanElement>(null);
+  const [tooltipVisible, setTooltipVisible] = useState(false);
+  const [tooltipPosition, setTooltipPosition] = useState<TooltipPosition | null>(null);
+
+  const updateTooltipPosition = useCallback(() => {
+    const trigger = triggerRef.current;
+    if (!trigger || !description) return;
+
+    const triggerRect = trigger.getBoundingClientRect();
+    const tooltipHeight = tooltipRef.current?.getBoundingClientRect().height ?? 0;
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    const maxWidth = Math.max(SKILL_TOOLTIP_MIN_WIDTH, viewportWidth - SKILL_TOOLTIP_VIEWPORT_MARGIN * 2);
+    const width = Math.min(SKILL_TOOLTIP_WIDTH, maxWidth);
+    const left = clamp(
+      triggerRect.left,
+      SKILL_TOOLTIP_VIEWPORT_MARGIN,
+      viewportWidth - width - SKILL_TOOLTIP_VIEWPORT_MARGIN,
+    );
+    const hasRoomAbove = triggerRect.top >= tooltipHeight + SKILL_TOOLTIP_GAP + SKILL_TOOLTIP_VIEWPORT_MARGIN;
+    const rawTop = hasRoomAbove
+      ? triggerRect.top - tooltipHeight - SKILL_TOOLTIP_GAP
+      : triggerRect.bottom + SKILL_TOOLTIP_GAP;
+    const top = clamp(
+      rawTop,
+      SKILL_TOOLTIP_VIEWPORT_MARGIN,
+      viewportHeight - tooltipHeight - SKILL_TOOLTIP_VIEWPORT_MARGIN,
+    );
+
+    setTooltipPosition({
+      left,
+      top,
+      width,
+    });
+  }, [description]);
+
+  useLayoutEffect(() => {
+    if (!tooltipVisible || !description) return undefined;
+
+    updateTooltipPosition();
+    window.addEventListener('resize', updateTooltipPosition);
+    window.addEventListener('scroll', updateTooltipPosition, true);
+    return () => {
+      window.removeEventListener('resize', updateTooltipPosition);
+      window.removeEventListener('scroll', updateTooltipPosition, true);
+    };
+  }, [description, tooltipVisible, updateTooltipPosition]);
+
+  const showTooltip = () => {
+    if (!description) return;
+    setTooltipVisible(true);
+  };
+
+  const hideTooltip = () => {
+    setTooltipVisible(false);
+    setTooltipPosition(null);
+  };
+
+  return (
+    <span
+      ref={triggerRef}
+      className="relative inline-flex"
+      onBlur={hideTooltip}
+      onFocus={showTooltip}
+      onMouseEnter={showTooltip}
+      onMouseLeave={hideTooltip}
+    >
+      <span
+        className="inline-flex items-center rounded-lg border border-border bg-surface-raised px-2.5 py-1 text-xs font-medium text-secondary"
+      >
+        {name}
+      </span>
+      {description && tooltipVisible && (
+        <span
+          ref={tooltipRef}
+          className="pointer-events-none fixed z-50 rounded-lg border border-border bg-surface px-3 py-2 text-left text-xs font-normal leading-5 text-foreground shadow-card"
+          style={{
+            left: tooltipPosition?.left ?? 0,
+            top: tooltipPosition?.top ?? 0,
+            visibility: tooltipPosition ? 'visible' : 'hidden',
+            width: tooltipPosition?.width ?? SKILL_TOOLTIP_WIDTH,
+          }}
+        >
+          {description}
+        </span>
+      )}
+    </span>
+  );
+};
 
 const KitsManager: React.FC<KitsManagerProps> = ({ onTryAsking }) => {
   const dispatch = useDispatch();
@@ -24,8 +139,9 @@ const KitsManager: React.FC<KitsManagerProps> = ({ onTryAsking }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedKit, setSelectedKit] = useState<MarketplaceKit | null>(null);
   const [operatingKitId, setOperatingKitId] = useState<string | null>(null);
-  const [operationType, setOperationType] = useState<'install' | 'uninstall' | null>(null);
+  const [operationType, setOperationType] = useState<KitOperationType | null>(null);
   const [installPrompt, setInstallPrompt] = useState<{ kitId: string; text: string } | null>(null);
+  const [kitPendingUninstall, setKitPendingUninstall] = useState<MarketplaceKit | null>(null);
 
   const loadData = useCallback(async () => {
     setIsLoading(true);
@@ -60,7 +176,7 @@ const KitsManager: React.FC<KitsManagerProps> = ({ onTryAsking }) => {
 
   const handleInstall = async (kit: MarketplaceKit) => {
     setOperatingKitId(kit.id);
-    setOperationType('install');
+    setOperationType(KitOperationType.Install);
     try {
       const result = await kitService.installKit(kit);
       if (result.success) {
@@ -76,9 +192,18 @@ const KitsManager: React.FC<KitsManagerProps> = ({ onTryAsking }) => {
     }
   };
 
+  const handleRequestUninstall = (kit: MarketplaceKit) => {
+    setKitPendingUninstall(kit);
+  };
+
+  const handleCancelUninstall = () => {
+    if (operationType === KitOperationType.Uninstall) return;
+    setKitPendingUninstall(null);
+  };
+
   const handleUninstall = async (kitId: string) => {
     setOperatingKitId(kitId);
-    setOperationType('uninstall');
+    setOperationType(KitOperationType.Uninstall);
     try {
       const result = await kitService.uninstallKit(kitId);
       if (result.success) {
@@ -91,11 +216,18 @@ const KitsManager: React.FC<KitsManagerProps> = ({ onTryAsking }) => {
     } finally {
       setOperatingKitId(null);
       setOperationType(null);
+      setKitPendingUninstall(null);
     }
+  };
+
+  const handleConfirmUninstall = async () => {
+    if (!kitPendingUninstall || operationType === KitOperationType.Uninstall) return;
+    await handleUninstall(kitPendingUninstall.id);
   };
 
   const isKitInstalled = (kitId: string) => !!installedKits[kitId];
   const isOperating = (kitId: string) => operatingKitId === kitId;
+  const getSkillCount = (kit: MarketplaceKit) => kit.skills?.list.length ?? 0;
 
   const handleTryAskingClick = (text: string, kitId: string) => {
     if (isKitInstalled(kitId)) {
@@ -117,6 +249,42 @@ const KitsManager: React.FC<KitsManagerProps> = ({ onTryAsking }) => {
     }
   };
 
+  const uninstallConfirmModal = kitPendingUninstall ? (
+    <Modal
+      onClose={handleCancelUninstall}
+      overlayClassName="fixed inset-0 z-[9999] flex items-center justify-center modal-backdrop px-4"
+      className="modal-content w-full max-w-sm rounded-2xl border border-border bg-surface shadow-modal p-5"
+    >
+      <div className="text-lg font-semibold text-foreground">
+        {i18nService.t('kitUninstall')}
+      </div>
+      <p className="mt-2 text-sm text-secondary">
+        {i18nService.t('kitUninstallConfirm').replace(
+          '{name}',
+          resolveLocalizedText(kitPendingUninstall.name),
+        )}
+      </p>
+      <div className="mt-4 flex items-center justify-end gap-2">
+        <button
+          type="button"
+          onClick={handleCancelUninstall}
+          disabled={operationType === KitOperationType.Uninstall}
+          className="px-3 py-1.5 text-xs rounded-lg border border-border text-secondary hover:bg-surface-raised transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+        >
+          {i18nService.t('cancel')}
+        </button>
+        <button
+          type="button"
+          onClick={handleConfirmUninstall}
+          disabled={operationType === KitOperationType.Uninstall}
+          className="px-3 py-1.5 text-xs rounded-lg bg-red-500 text-white hover:bg-red-600 dark:bg-red-500 dark:hover:bg-red-400 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+        >
+          {i18nService.t('confirmDelete')}
+        </button>
+      </div>
+    </Modal>
+  ) : null;
+
   // Detail view
   if (selectedKit) {
     const installed = isKitInstalled(selectedKit.id);
@@ -128,50 +296,69 @@ const KitsManager: React.FC<KitsManagerProps> = ({ onTryAsking }) => {
         <button
           type="button"
           onClick={() => setSelectedKit(null)}
-          className="inline-flex items-center gap-1.5 text-sm text-secondary hover:text-foreground transition-colors"
+          className="non-draggable inline-flex items-center gap-1.5 text-sm text-secondary hover:text-foreground transition-colors"
         >
           <ArrowLeftIcon className="h-4 w-4" />
           {i18nService.t('kitBack')}
         </button>
 
         {/* Kit header */}
-        <div className="flex items-start justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-xl bg-surface-raised flex items-center justify-center flex-shrink-0">
-              <SidebarKitsIcon className="h-6 w-6 text-secondary" />
+        <div className="rounded-xl border border-border bg-surface p-4 shadow-card">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex min-w-0 items-center gap-4">
+              <KitIcon icon={selectedKit.icon} className="h-20 w-20" />
+              <div className="min-w-0">
+                <h2 className="text-lg font-semibold text-foreground">{resolveLocalizedText(selectedKit.name)}</h2>
+                <p className="mt-1.5 max-w-2xl text-[13px] leading-5 text-secondary">
+                  {resolveLocalizedText(selectedKit.description)}
+                </p>
+                <div className="mt-3 flex items-center gap-1.5 text-[10px] text-secondary">
+                  {selectedKit.author && (
+                    <>
+                      <span className="rounded-md bg-primary-muted px-1.5 py-0.5 font-medium text-primary">
+                        {i18nService.t('kitOfficial')}
+                      </span>
+                      <span className="text-secondary/50">·</span>
+                    </>
+                  )}
+                  {selectedKit.version && (
+                    <>
+                      <span className="rounded-md bg-surface-raised px-1.5 py-0.5 font-medium">
+                        v{selectedKit.version}
+                      </span>
+                      <span className="text-secondary/50">·</span>
+                    </>
+                  )}
+                  {getSkillCount(selectedKit) > 0 && (
+                    <span>{i18nService.t('kitSkillCount').replace('{count}', String(getSkillCount(selectedKit)))}</span>
+                  )}
+                </div>
+              </div>
             </div>
-            <div>
-              <h2 className="text-xl font-semibold text-foreground">{resolveLocalizedText(selectedKit.name)}</h2>
-            </div>
+            {installed ? (
+              <button
+                type="button"
+                disabled={operating}
+                onClick={() => handleRequestUninstall(selectedKit)}
+                className="rounded-lg p-2 text-secondary transition-colors hover:bg-red-500/10 hover:text-red-500 dark:hover:text-red-400 disabled:opacity-50"
+              >
+                <TrashIcon className="h-4 w-4" />
+              </button>
+            ) : (
+              <button
+                type="button"
+                disabled={operating}
+                onClick={() => handleInstall(selectedKit)}
+                className="inline-flex h-7 items-center gap-1.5 rounded-lg bg-primary px-2.5 text-[11px] font-medium text-white transition-colors hover:bg-primary-hover disabled:opacity-50"
+              >
+                <ArrowDownTrayIcon className="h-3 w-3" />
+                {operating && operationType === KitOperationType.Install
+                  ? i18nService.t('kitInstalling')
+                  : i18nService.t('kitInstall')}
+              </button>
+            )}
           </div>
-          {installed ? (
-            <button
-              type="button"
-              disabled={operating}
-              onClick={() => handleUninstall(selectedKit.id)}
-              className="p-1.5 rounded-lg text-secondary hover:text-red-500 dark:hover:text-red-400 transition-colors disabled:opacity-50"
-            >
-              <TrashIcon className="h-4 w-4" />
-            </button>
-          ) : (
-            <button
-              type="button"
-              disabled={operating}
-              onClick={() => handleInstall(selectedKit)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-primary text-white hover:bg-primary-hover transition-colors disabled:opacity-50"
-            >
-              <ArrowDownTrayIcon className="h-3.5 w-3.5" />
-              {operating && operationType === 'install'
-                ? i18nService.t('kitInstalling')
-                : i18nService.t('kitInstall')}
-            </button>
-          )}
         </div>
-
-        {/* Description */}
-        <p className="text-sm text-secondary leading-relaxed">
-          {resolveLocalizedText(selectedKit.description)}
-        </p>
 
         {/* Try asking */}
         {selectedKit.tryAsking && selectedKit.tryAsking.length > 0 && (
@@ -202,12 +389,7 @@ const KitsManager: React.FC<KitsManagerProps> = ({ onTryAsking }) => {
             </h3>
             <div className="flex flex-wrap gap-2">
               {selectedKit.skills.list.map((skill) => (
-                <span
-                  key={skill.id}
-                  className="inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-lg bg-surface-raised text-secondary border border-border"
-                >
-                  {skill.name.replace(/^\//, '')}
-                </span>
+                <KitSkillPill key={skill.id} skill={skill} />
               ))}
             </div>
           </div>
@@ -246,6 +428,8 @@ const KitsManager: React.FC<KitsManagerProps> = ({ onTryAsking }) => {
             </div>
           </Modal>
         )}
+
+        {uninstallConfirmModal}
       </div>
     );
   }
@@ -253,43 +437,42 @@ const KitsManager: React.FC<KitsManagerProps> = ({ onTryAsking }) => {
   // List view
   return (
     <div className="space-y-4">
-      {/* Description */}
-      <div>
-        <p className="text-sm text-secondary">
+      <div className="space-y-1.5">
+        <h1 className="text-xl font-semibold text-foreground">
+          {i18nService.t('kits')}
+        </h1>
+        <p className="text-[13px] text-secondary">
           {i18nService.t('kitDescription')}
         </p>
       </div>
 
       {/* Search */}
       <div className="relative">
-        <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-secondary pointer-events-none" />
+        <SearchIcon className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-secondary" />
         <input
           type="text"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           placeholder={i18nService.t('kitSearchPlaceholder')}
-          className="w-full pl-9 pr-3 py-2 text-sm rounded-lg border border-border bg-surface text-foreground placeholder:text-secondary/60 focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-colors"
+          className="h-10 w-full rounded-lg border border-border bg-surface px-3.5 pl-10 text-[13px] text-foreground transition-colors placeholder:text-secondary/75 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
         />
         {searchQuery && (
           <button
             type="button"
             onClick={() => setSearchQuery('')}
-            className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 rounded text-secondary hover:text-foreground transition-colors"
+            className="absolute right-3 top-1/2 -translate-y-1/2 rounded p-1 text-secondary transition-colors hover:text-foreground"
           >
             <XMarkIcon className="h-4 w-4" />
           </button>
         )}
       </div>
 
-      {/* Tab bar */}
+      {/* Market section */}
       <div className="flex items-center border-b border-border">
-        <button
-          type="button"
-          className="px-4 py-2 text-sm font-medium text-foreground transition-colors relative"
-        >
+        <h2 className="relative px-2.5 pb-2.5 pt-0.5 text-[13px] font-semibold text-foreground">
           {i18nService.t('kitMarketplace')}
-          <div className="absolute bottom-0 left-0 right-0 h-0.5 rounded-full bg-primary" />
-        </button>
+          <div className="absolute bottom-[-1px] left-0 right-0 h-0.5 rounded-full bg-primary" />
+        </h2>
       </div>
 
       {/* Kit grid */}
@@ -302,78 +485,73 @@ const KitsManager: React.FC<KitsManagerProps> = ({ onTryAsking }) => {
           {i18nService.t('kitEmpty')}
         </div>
       ) : (
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           {filteredKits.map((kit) => {
             const installed = isKitInstalled(kit.id);
             const operating = isOperating(kit.id);
+            const skillCount = getSkillCount(kit);
 
             return (
               <div
                 key={kit.id}
-                className="rounded-xl border border-border bg-surface p-3 transition-colors hover:border-primary cursor-pointer flex flex-col"
+                className="group relative min-h-[116px] cursor-pointer rounded-xl border border-border bg-surface p-4 shadow-subtle transition-all hover:border-primary/50 hover:shadow-card"
                 onClick={() => setSelectedKit(kit)}
               >
-                <div className="flex items-start justify-between mb-2">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <div className="w-7 h-7 rounded-lg bg-surface-raised flex items-center justify-center flex-shrink-0">
-                      <SidebarKitsIcon className="h-4 w-4 text-secondary" />
-                    </div>
-                    <div className="min-w-0">
-                      <span className="text-sm font-medium text-foreground truncate block">
-                        {resolveLocalizedText(kit.name)}
-                      </span>
+                <div className="flex gap-3.5">
+                  <KitIcon icon={kit.icon} className="h-16 w-16" />
+
+                  <div className="min-w-0 flex-1 pr-20">
+                    <h3 className="truncate text-sm font-semibold text-foreground">
+                      {resolveLocalizedText(kit.name)}
+                    </h3>
+                    <p className="mt-1.5 line-clamp-2 text-[13px] leading-[18px] text-secondary">
+                      {resolveLocalizedText(kit.description)}
+                    </p>
+
+                    <div className="mt-3 flex flex-wrap items-center gap-1.5 text-[10px] text-secondary">
+                      {kit.author && (
+                        <>
+                          <span className="rounded-md bg-primary-muted px-1.5 py-0.5 font-medium text-primary">
+                            {i18nService.t('kitOfficial')}
+                          </span>
+                          <span className="text-secondary/50">·</span>
+                        </>
+                      )}
+                      {kit.version && (
+                        <>
+                          <span className="rounded-md bg-surface-raised px-1.5 py-0.5 font-medium">
+                            v{kit.version}
+                          </span>
+                          <span className="text-secondary/50">·</span>
+                        </>
+                      )}
+                      {skillCount > 0 && (
+                        <span>{i18nService.t('kitSkillCount').replace('{count}', String(skillCount))}</span>
+                      )}
                     </div>
                   </div>
+
                   {installed ? (
                     <button
                       type="button"
                       disabled={operating}
-                      onClick={(e) => { e.stopPropagation(); handleUninstall(kit.id); }}
-                      className="p-1 rounded-lg text-secondary hover:text-red-500 dark:hover:text-red-400 transition-colors flex-shrink-0 disabled:opacity-50"
+                      onClick={(e) => { e.stopPropagation(); handleRequestUninstall(kit); }}
+                      className="absolute right-4 top-4 rounded-lg p-1.5 text-secondary transition-colors hover:bg-red-500/10 hover:text-red-500 dark:hover:text-red-400 disabled:opacity-50"
                     >
-                      <TrashIcon className="h-4 w-4" />
+                      <TrashIcon className="h-3.5 w-3.5" />
                     </button>
                   ) : (
                     <button
                       type="button"
                       disabled={operating}
                       onClick={(e) => { e.stopPropagation(); handleInstall(kit); }}
-                      className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-medium rounded-lg bg-primary text-white hover:bg-primary-hover transition-colors flex-shrink-0 disabled:opacity-50"
+                      className="absolute right-4 top-4 inline-flex h-7 items-center gap-1.5 rounded-lg bg-primary px-2.5 text-[11px] font-medium text-white transition-colors hover:bg-primary-hover disabled:opacity-50"
                     >
                       <ArrowDownTrayIcon className="h-3 w-3" />
-                      {operating && operationType === 'install'
+                      {operating && operationType === KitOperationType.Install
                         ? i18nService.t('kitInstalling')
                         : i18nService.t('kitInstall')}
                     </button>
-                  )}
-                </div>
-
-                <p className="text-xs text-secondary line-clamp-2 mb-2 flex-1">
-                  {resolveLocalizedText(kit.description)}
-                </p>
-
-                {/* Bottom metadata row */}
-                <div className="flex items-center gap-2 text-[10px] text-secondary">
-                  {kit.author && (
-                    <>
-                      <span className="px-1.5 py-0.5 rounded bg-primary-muted text-primary font-medium">
-                        {i18nService.t('kitOfficial')}
-                      </span>
-                      <span>·</span>
-                    </>
-                  )}
-                  {kit.version && (
-                    <>
-                      <span className="px-1.5 py-0.5 rounded bg-surface-raised font-medium">
-                        v{kit.version}
-                      </span>
-                      <span>·</span>
-                    </>
-                  )}
-                  {kit.skills && kit.skills.list.length > 0 && (
-                    <span>
-                      {i18nService.t('kitSkillCount').replace('{count}', String(kit.skills.list.length))}
-                    </span>
                   )}
                 </div>
               </div>
@@ -381,6 +559,8 @@ const KitsManager: React.FC<KitsManagerProps> = ({ onTryAsking }) => {
           })}
         </div>
       )}
+
+      {uninstallConfirmModal}
     </div>
   );
 };
