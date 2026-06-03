@@ -3,6 +3,7 @@ import { app, BrowserWindow } from 'electron';
 import path from 'path';
 
 import { McpIpcChannel } from '../../shared/mcp/constants';
+import { resolveComputerUseMcpServer } from '../computerUse/computerUseMcpServer';
 import { getElectronNodeRuntimePath } from '../libs/coworkUtil';
 import {
   type AskUserRequest,
@@ -185,6 +186,7 @@ export class McpRuntime {
     let optimizedCount = 0;
     let skippedCount = 0;
     let rawCount = 0;
+    let builtInCount = 0;
 
     const electronPath = getElectronNodeRuntimePath();
     const npmBinDir = app.isPackaged
@@ -272,8 +274,19 @@ export class McpRuntime {
         });
       }
     }
+
+    const computerUseServer = resolveComputerUseMcpServer({
+      askUserCallbackUrl: this.getAskUserCallbackUrl(),
+      bridgeSecret: this.bridgeSecret,
+      electronNodePath: electronPath,
+    });
+    if (computerUseServer) {
+      resolved.push(computerUseServer);
+      builtInCount++;
+    }
+
     console.log(
-      `[MCP] resolved ${resolved.length}/${enabledServers.length} enabled server(s) for OpenClaw in ${Date.now() - startedAt}ms; optimized=${optimizedCount}, raw=${rawCount}, skipped=${skippedCount}`,
+      `[MCP] resolved ${resolved.length}/${enabledServers.length} enabled server(s) for OpenClaw in ${Date.now() - startedAt}ms; optimized=${optimizedCount}, raw=${rawCount}, skipped=${skippedCount}, builtIn=${builtInCount}`,
     );
     return resolved;
   }
