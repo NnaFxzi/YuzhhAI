@@ -2895,9 +2895,18 @@ if (!gotTheLock) {
     try {
       if (mainWindow.isMinimized()) mainWindow.restore();
       if (!mainWindow.isVisible()) mainWindow.show();
+      mainWindow.moveTop();
       if (!mainWindow.isFocused()) mainWindow.focus();
       if (process.platform === 'darwin') {
         app.focus({ steal: true });
+      }
+      if (process.platform === 'win32') {
+        const wasAlwaysOnTop = mainWindow.isAlwaysOnTop();
+        mainWindow.setAlwaysOnTop(true, 'normal');
+        mainWindow.show();
+        mainWindow.focus();
+        mainWindow.setAlwaysOnTop(wasAlwaysOnTop, 'normal');
+        mainWindow.flashFrame(false);
       }
       console.log(`[Main] focused main window after ${reason}`);
     } catch (error) {
