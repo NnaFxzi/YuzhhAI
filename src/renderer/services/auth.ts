@@ -96,6 +96,7 @@ class AuthService {
       if (response.ok && typeof response.data === 'object' && response.data !== null) {
         const value = (response.data as any)?.data?.value;
         if (typeof value === 'string' && value.trim()) {
+          console.log('[Auth] fetched login URL from overmind');
           return value.trim();
         }
       }
@@ -104,6 +105,7 @@ class AuthService {
     }
     // Fallback: use Portal login page directly
     const { getPortalLoginUrl } = await import('./endpoints');
+    console.log('[Auth] using fallback portal login URL');
     return getPortalLoginUrl();
   }
 
