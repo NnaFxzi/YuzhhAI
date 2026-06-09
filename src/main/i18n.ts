@@ -19,8 +19,13 @@ const translations: Record<LanguageType, Record<string, string>> = {
     // Tray menu
     trayShowWindow: '打开 LobsterAI',
     trayNewTask: '新建任务',
+    trayViewCompletedTask: '查看完成的任务',
+    trayCompletedTaskTooltip: 'LobsterAI - {count} 个任务已完成',
     traySettings: '设置',
     trayQuit: '退出',
+    taskCompletionNotificationTitle: '任务已完成',
+    taskCompletionNotificationBody: '有任务已完成，点击查看结果',
+    taskCompletionOverlayDescription: '有任务已完成',
 
     // Session titles (created by ChannelSessionSync)
     coworkDefaultSessionTitle: '新对话',
@@ -280,8 +285,13 @@ const translations: Record<LanguageType, Record<string, string>> = {
     // Tray menu
     trayShowWindow: 'Open LobsterAI',
     trayNewTask: 'New Task',
+    trayViewCompletedTask: 'View Completed Task',
+    trayCompletedTaskTooltip: 'LobsterAI - {count} completed task(s)',
     traySettings: 'Settings',
     trayQuit: 'Quit',
+    taskCompletionNotificationTitle: 'Task Complete',
+    taskCompletionNotificationBody: 'A task has finished. Click to view the result.',
+    taskCompletionOverlayDescription: 'Task complete',
 
     // Session titles
     coworkDefaultSessionTitle: 'New Chat',

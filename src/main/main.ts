@@ -86,6 +86,7 @@ import {
   LocalWebServicesIpc,
 } from '../shared/localWebServices/constants';
 import { canonicalizeMediaModelId, mediaModelDisplayName } from '../shared/mediaModelAliases';
+import { normalizeNotificationSettings, type NotificationSettings } from '../shared/notifications/constants';
 import {
   OpenClawEngineIpc,
   OpenClawGatewayRepairErrorCode,
@@ -95,7 +96,7 @@ import { ProviderName } from '../shared/providers';
 import type { ShellOpenFailureReason as ShellOpenFailureReasonType } from '../shared/shell/constants';
 import { ShellOpenFailureReason } from '../shared/shell/constants';
 import { AgentManager } from './agentManager';
-import { APP_NAME } from './appConstants';
+import { APP_NAME, APP_USER_MODEL_ID } from './appConstants';
 import { authQuotaGateStateFromQuota, AuthSubscriptionStatus, createDefaultAuthQuotaGateState, normalizeAuthQuota } from './authQuota';
 import { getAutoLaunchEnabled, isAutoLaunched, setAutoLaunchEnabled } from './autoLaunchManager';
 import { type CoworkForkContextMessage, type CoworkMessage, CoworkStore } from './coworkStore';
@@ -264,6 +265,7 @@ import {
   restoreOriginalProxyEnv,
   setSystemProxyEnabled,
 } from './libs/systemProxy';
+import { TaskCompletionNotifier } from './libs/taskCompletionNotifier';
 import { getLogFilePath, getRecentMainLogEntries, initLogger } from './logger';
 import { type AskUserResponse, McpRuntime } from './mcp/mcpRuntime';
 import {
@@ -291,7 +293,7 @@ import { SqliteStore } from './sqliteStore';
 import { StartupProfiler } from './startupProfiler';
 import { SubagentMessageStore } from './subagentMessageStore';
 import { SubagentRunStore } from './subagentRunStore';
-import { createTray, destroyTray, updateTrayMenu } from './trayManager';
+import { createTray, destroyTray, updateTrayMenu, updateTrayReminder } from './trayManager';
 import {
   AppWindowStoreKey,
   MIN_APP_WINDOW_HEIGHT,
@@ -321,9 +323,12 @@ const gwDiagTs = (): string => {
   return `[GW-RESTART-DIAG] ${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}.${p(d.getMilliseconds(), 3)}${sign}${p(Math.floor(abs / 60))}:${p(abs % 60)}`;
 };
 
-// 设置应用程序名称
+// Configure the app identity before any OS-level surfaces are created.
 app.name = APP_NAME;
 app.setName(APP_NAME);
+if (process.platform === 'win32') {
+  app.setAppUserModelId(APP_USER_MODEL_ID);
+}
 
 const INVALID_FILE_NAME_PATTERN = /[<>:"/\\|?*\u0000-\u001F]/g;
 const MIN_MEMORY_USER_MEMORIES_MAX_ITEMS = 1;
@@ -2202,6 +2207,7 @@ const bindCoworkRuntimeForwarder = (): void => {
   runtime.on('complete', (sessionId: string, claudeSessionId: string | null) => {
     mediaSelectionBySession.delete(sessionId);
     mediaReferencesBySession.delete(sessionId);
+    getTaskCompletionNotifier().handleComplete(sessionId);
     const windows = BrowserWindow.getAllWindows();
     windows.forEach(win => {
       if (win.isDestroyed()) return;
@@ -2276,6 +2282,26 @@ const getCoworkEngineRouter = () => {
     });
   }
   return coworkEngineRouter;
+};
+
+const getTaskCompletionNotifier = (): TaskCompletionNotifier => {
+  if (!taskCompletionNotifier) {
+    taskCompletionNotifier = new TaskCompletionNotifier({
+      getWindow: () => mainWindow,
+      getNotificationIconPath,
+      getNotificationSettings: () =>
+        getStore().get<AppConfigSettings>('app_config')?.notificationSettings,
+      focusMainWindow: focusMainWindowForReason,
+      openSession: (sessionId: string) => {
+        if (!mainWindow || mainWindow.isDestroyed()) return;
+        mainWindow.webContents.send(CoworkIpcChannel.OpenSessionFromNotification, { sessionId });
+      },
+      updateTrayReminder: (count: number, onClick?: () => void) => {
+        updateTrayReminder(() => mainWindow, { count, onClick });
+      },
+    });
+  }
+  return taskCompletionNotifier;
 };
 
 const getSkillManager = () => {
@@ -2611,8 +2637,37 @@ const getAppIconPath = (): string | undefined => {
     : path.join(basePath, 'tray-icon.png');
 };
 
+const getNotificationIconPath = (): string | null => {
+  const candidates = app.isPackaged
+    ? [
+        path.join(process.resourcesPath, 'app-icon/512x512.png'),
+        path.join(process.resourcesPath, 'icon.icns'),
+      ]
+    : [
+        path.join(__dirname, 'build/icons/png/512x512.png'),
+        path.join(__dirname, '../build/icons/png/512x512.png'),
+      ];
+  return candidates.find(candidate => fs.existsSync(candidate)) ?? null;
+};
+
 // 保存对主窗口的引用
 let mainWindow: BrowserWindow | null = null;
+let taskCompletionNotifier: TaskCompletionNotifier | null = null;
+
+const focusMainWindowForReason = (reason: string): void => {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  try {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    if (!mainWindow.isVisible()) mainWindow.show();
+    if (!mainWindow.isFocused()) mainWindow.focus();
+    if (process.platform === 'darwin') {
+      app.focus({ steal: true });
+    }
+    console.log(`[Main] focused main window after ${reason}`);
+  } catch (error) {
+    console.warn(`[Main] failed to focus main window after ${reason}:`, error);
+  }
+};
 
 let isQuitting = false;
 
@@ -2701,6 +2756,7 @@ type AppConfigSettings = {
   language?: string;
   useSystemProxy?: boolean;
   sqliteAutoBackupEnabled?: boolean;
+  notificationSettings?: Partial<NotificationSettings>;
   browserWebAccess?: Partial<BrowserWebAccessConfig>;
 };
 
@@ -2953,6 +3009,15 @@ if (!gotTheLock) {
     getStore().set(key, value);
     if (key === 'app_config') {
       const nextAppConfig = value as AppConfigSettings | undefined;
+      const previousNotificationsEnabled = normalizeNotificationSettings(
+        previousAppConfig?.notificationSettings,
+      ).taskCompletionNotificationsEnabled;
+      const nextNotificationsEnabled = normalizeNotificationSettings(
+        nextAppConfig?.notificationSettings,
+      ).taskCompletionNotificationsEnabled;
+      if (previousNotificationsEnabled && !nextNotificationsEnabled) {
+        getTaskCompletionNotifier().clearAll('task completion notifications disabled');
+      }
       const browserWebAccessChanged = hasBrowserWebAccessConfigChanged(previousAppConfig, nextAppConfig);
       const systemProxyChanged = getUseSystemProxyFromConfig(previousAppConfig) !==
         getUseSystemProxyFromConfig(nextAppConfig);
@@ -5461,6 +5526,19 @@ if (!gotTheLock) {
     }
   });
 
+  ipcMain.handle(CoworkIpcChannel.MarkSessionViewed, async (_event, sessionId: string) => {
+    try {
+      getTaskCompletionNotifier().markSessionViewed(sessionId);
+      return { success: true };
+    } catch (error) {
+      console.warn(`[TaskCompletionNotifier] failed to mark session ${sessionId} viewed:`, error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to mark session viewed',
+      };
+    }
+  });
+
   ipcMain.handle('cowork:session:delete', async (_event, sessionId: string) => {
     try {
       getCoworkEngineRouter().stopSession(sessionId);
@@ -5468,6 +5546,7 @@ if (!gotTheLock) {
       coworkStoreInstance.deleteSession(sessionId);
       mediaSelectionBySession.delete(sessionId);
       mediaReferencesBySession.delete(sessionId);
+      getTaskCompletionNotifier().handleSessionDeleted(sessionId);
       // Remove any pending media tasks for this session
       for (const [taskId, tracker] of pendingMediaTasks) {
         if (tracker.sessionId === sessionId) pendingMediaTasks.delete(taskId);
@@ -5509,6 +5588,7 @@ if (!gotTheLock) {
       coworkStoreInstance.deleteSessions(sessionIds);
       const router = getCoworkEngineRouter();
       for (const sessionId of sessionIds) {
+        getTaskCompletionNotifier().handleSessionDeleted(sessionId);
         try {
           getIMGatewayManager()?.getIMStore()?.deleteSessionMappingByCoworkSessionId(sessionId);
         } catch {
@@ -8819,8 +8899,8 @@ if (!gotTheLock) {
 
     // 设置 macOS Dock 图标（开发模式下 Electron 默认图标不是应用 Logo）
     if (isMac && isDev) {
-      const iconPath = path.join(__dirname, '../build/icons/png/512x512.png');
-      if (fs.existsSync(iconPath)) {
+      const iconPath = getNotificationIconPath();
+      if (iconPath) {
         app.dock.setIcon(nativeImage.createFromPath(iconPath));
       }
     }
@@ -8919,6 +8999,10 @@ if (!gotTheLock) {
         e.preventDefault();
         mainWindow.hide();
       }
+    });
+
+    mainWindow.on('focus', () => {
+      getTaskCompletionNotifier().clearAll('main window focused');
     });
 
     // 处理渲染进程崩溃或退出

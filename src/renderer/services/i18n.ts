@@ -2036,6 +2036,8 @@ const translations: Record<LanguageType, Record<string, string>> = {
     browserWebFetchAllowFakeIpDescription: '仅在 Clash TUN、Surge 等代理环境需要时开启。',
     sqliteAutoBackupEnabled: '启用自动备份与恢复',
     sqliteAutoBackupEnabledDescription: '开启后将自动备份数据，并在启动时尝试恢复损坏的数据',
+    taskCompletionNotifications: '任务完成通知',
+    taskCompletionNotificationsDescription: '应用不在前台时，任务完成后显示系统提醒',
     preventSleep: '防止休眠',
     preventSleepDescription: '防止系统在应用运行时进入睡眠模式',
     skipMissedJobs: '跳过未执行任务',
@@ -4578,6 +4580,9 @@ const translations: Record<LanguageType, Record<string, string>> = {
     sqliteAutoBackupEnabled: 'Enable Auto Backup and Recovery',
     sqliteAutoBackupEnabledDescription:
       'When enabled, the app automatically backs up data and tries to restore corrupted data on startup',
+    taskCompletionNotifications: 'Task Completion Notifications',
+    taskCompletionNotificationsDescription:
+      'Show a system alert when a task completes while the app is not in the foreground',
     preventSleep: 'Prevent Sleep',
     preventSleepDescription: 'Prevent the system from sleeping while the app is running',
     skipMissedJobs: 'Skip Missed Scheduled Jobs',

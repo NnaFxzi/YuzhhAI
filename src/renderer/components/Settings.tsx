@@ -9,6 +9,7 @@ import {
   normalizeBrowserWebAccessConfig,
 } from '../../shared/browserWebAccess/constants';
 import { DataMigrationRestoreStatus } from '../../shared/dataMigration/constants';
+import { normalizeNotificationSettings } from '../../shared/notifications/constants';
 import { OpenClawEnginePhase, OpenClawGatewayRepairErrorCode } from '../../shared/openclawEngine/constants';
 import { ProviderAuthType, ProviderName, ProviderRegistry, resolveCodingPlanBaseUrl } from '../../shared/providers';
 import { type AppConfig, defaultConfig, getProviderDisplayName, getVisibleProviders, ShortcutAction, type ShortcutConfig } from '../config';
@@ -679,6 +680,7 @@ const Settings: React.FC<SettingsProps> = ({
   const [autoLaunch, setAutoLaunchState] = useState(false);
   const [useSystemProxy, setUseSystemProxy] = useState(false);
   const [sqliteAutoBackupEnabled, setSqliteAutoBackupEnabled] = useState(false);
+  const [taskCompletionNotificationsEnabled, setTaskCompletionNotificationsEnabled] = useState(true);
   const [browserWebAccess, setBrowserWebAccess] = useState<BrowserWebAccessConfig>(() => ({
     ...defaultBrowserWebAccessConfig,
     webFetch: { ...defaultBrowserWebAccessConfig.webFetch },
@@ -1083,6 +1085,9 @@ const Settings: React.FC<SettingsProps> = ({
       setLanguage(config.language);
       setUseSystemProxy(config.useSystemProxy ?? false);
       setSqliteAutoBackupEnabled(config.sqliteAutoBackupEnabled === true);
+      setTaskCompletionNotificationsEnabled(
+        normalizeNotificationSettings(config.notificationSettings).taskCompletionNotificationsEnabled,
+      );
       setBrowserWebAccess(normalizeBrowserWebAccessConfig(config.browserWebAccess));
       const savedTestMode = config.app?.testMode ?? false;
       setTestMode(savedTestMode);
@@ -2265,6 +2270,9 @@ const Settings: React.FC<SettingsProps> = ({
         language,
         useSystemProxy,
         sqliteAutoBackupEnabled,
+        notificationSettings: {
+          taskCompletionNotificationsEnabled,
+        },
         browserWebAccess: normalizedBrowserWebAccess,
         shortcuts,
         app: {
@@ -3394,6 +3402,15 @@ const Settings: React.FC<SettingsProps> = ({
               checked={sqliteAutoBackupEnabled}
               onToggle={() => {
                 setSqliteAutoBackupEnabled((prev) => !prev);
+              }}
+            />
+
+            <SettingsToggleRow
+              title={i18nService.t('taskCompletionNotifications')}
+              description={i18nService.t('taskCompletionNotificationsDescription')}
+              checked={taskCompletionNotificationsEnabled}
+              onToggle={() => {
+                setTaskCompletionNotificationsEnabled((prev) => !prev);
               }}
             />
 

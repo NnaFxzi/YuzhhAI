@@ -820,6 +820,15 @@ const App: React.FC = () => {
   }, [handleNewChat]);
 
   useEffect(() => {
+    const unsubscribe = window.electron.cowork.onOpenSessionFromNotification?.(({ sessionId }) => {
+      setShowSettings(false);
+      setMainView('cowork');
+      void coworkService.loadSession(sessionId);
+    });
+    return unsubscribe;
+  }, []);
+
+  useEffect(() => {
     if (!isInitialized) return;
 
     // Enterprise mode: completely skip update detection

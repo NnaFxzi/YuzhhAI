@@ -362,6 +362,8 @@ contextBridge.exposeInMainWorld('electron', {
       title?: string;
     }) => ipcRenderer.invoke(CoworkIpcChannel.ForkSession, options),
     getSession: (sessionId: string) => ipcRenderer.invoke('cowork:session:get', sessionId),
+    markSessionViewed: (sessionId: string) =>
+      ipcRenderer.invoke(CoworkIpcChannel.MarkSessionViewed, sessionId),
     remoteManaged: (sessionId: string) =>
       ipcRenderer.invoke('cowork:session:remoteManaged', sessionId),
     listSessions: (options?: { limit?: number; offset?: number; agentId?: string }) =>
@@ -525,6 +527,11 @@ contextBridge.exposeInMainWorld('electron', {
       const handler = () => callback();
       ipcRenderer.on('cowork:sessions:changed', handler);
       return () => ipcRenderer.removeListener('cowork:sessions:changed', handler);
+    },
+    onOpenSessionFromNotification: (callback: (data: { sessionId: string }) => void) => {
+      const handler = (_event: any, data: { sessionId: string }) => callback(data);
+      ipcRenderer.on(CoworkIpcChannel.OpenSessionFromNotification, handler);
+      return () => ipcRenderer.removeListener(CoworkIpcChannel.OpenSessionFromNotification, handler);
     },
   },
   dialog: {
