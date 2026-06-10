@@ -1,5 +1,5 @@
-import { exec, spawn } from 'child_process';
-import { app, session } from 'electron';
+import { exec } from 'child_process';
+import { app, session, shell } from 'electron';
 import fs from 'fs';
 import path from 'path';
 import { Readable } from 'stream';
@@ -24,53 +24,6 @@ export function cancelActiveDownload(): boolean {
     return true;
   }
   return false;
-}
-
-export function buildWindowsUpdateLauncherArgs(scriptPath: string): string[] {
-  return [
-    '-NoProfile',
-    '-ExecutionPolicy',
-    'Bypass',
-    '-WindowStyle',
-    'Hidden',
-    '-File',
-    scriptPath,
-  ];
-}
-
-export function spawnDetachedWindowsUpdateLauncher(scriptPath: string): Promise<number | undefined> {
-  return new Promise((resolve, reject) => {
-    let settled = false;
-    const finish = (error?: unknown, pid?: number) => {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      if (error) {
-        reject(error);
-        return;
-      }
-      resolve(pid);
-    };
-
-    let launcher: ReturnType<typeof spawn>;
-    try {
-      launcher = spawn('powershell.exe', buildWindowsUpdateLauncherArgs(scriptPath), {
-        detached: true,
-        stdio: 'ignore',
-        windowsHide: true,
-      });
-    } catch (error) {
-      finish(error);
-      return;
-    }
-
-    launcher.once('error', error => finish(error));
-    launcher.once('spawn', () => {
-      launcher.unref();
-      finish(undefined, launcher.pid);
-    });
-  });
 }
 
 /** Escape a string for safe use as a single-quoted POSIX shell argument. */
@@ -408,68 +361,26 @@ async function installMacDmg(dmgPath: string): Promise<void> {
 }
 
 async function installWindowsNsis(exePath: string): Promise<void> {
-  console.log(`[AppUpdate] Windows NSIS install (interactive mode)`);
-  console.log(`[AppUpdate]   installer: ${exePath}`);
-  console.log(`[AppUpdate]   appPid: ${process.pid}`);
-
-  // We must NOT run the installer before the app finishes quitting, because
-  // the NSIS customInit macro stops running LobsterAI processes before it
-  // replaces files. Launching through a detached waiter avoids racing app
-  // shutdown and file-handle release.
+  // Launch the installer while the app still owns the foreground so the UAC
+  // elevation prompt (the installer requests admin) appears in front of the
+  // user. Launching it from a hidden background process after the app exited
+  // left the prompt flashing in the taskbar where users never noticed it, so
+  // the elevation timed out and the update silently went nowhere.
   //
-  // Strategy: use a tiny hidden PowerShell script that
-  // waits for the app to fully exit, then opens the installer with its
-  // normal UI (no /S silent flag). This lets NSIS handle everything:
-  // desktop shortcuts, start menu entries, "Run after finish", etc.
-  const ts = Date.now();
-  const tempDir = app.getPath('temp');
-  const logPath = path.join(tempDir, `lobsterai-update-${ts}.log`);
-  const scriptPath = path.join(tempDir, `lobsterai-update-${ts}.ps1`);
+  // Quitting in parallel with the installer starting is safe: the NSIS
+  // customInit macro stops remaining LobsterAI processes by image name and
+  // polls until they are gone before replacing files. The installer process
+  // itself is named lobsterai-update-*, so it is not affected by that kill.
+  console.log(`[AppUpdate] Launching Windows installer in the foreground: ${exePath}`);
+  const launchError = await shell.openPath(exePath);
+  if (launchError) {
+    console.error(`[AppUpdate] failed to launch installer: ${launchError}`);
+    // Leave the user a manual path instead of failing silently: reveal the
+    // downloaded installer in Explorer so they can double-click it.
+    shell.showItemInFolder(exePath);
+    throw new Error(launchError);
+  }
 
-  console.log(`[AppUpdate] Script log: ${logPath}`);
-
-  const psEscape = (s: string) => s.replace(/'/g, "''");
-
-  const psScript = [
-    `$logPath = '${psEscape(logPath)}'`,
-    `$appPid = ${process.pid}`,
-    `$installerPath = '${psEscape(exePath)}'`,
-    '',
-    'function Log($msg) {',
-    "    $ts = Get-Date -Format 'yyyy-MM-dd HH:mm:ss.fff'",
-    '    Add-Content -Path $logPath -Value "[$ts] $msg" -Encoding UTF8',
-    '}',
-    '',
-    'try {',
-    '    Log "Update script started (appPid=$appPid)"',
-    '',
-    '    # Wait for the app to fully exit (by PID, max 120s)',
-    '    $waited = 0',
-    '    while ($waited -lt 120) {',
-    '        try {',
-    '            Get-Process -Id $appPid -ErrorAction Stop | Out-Null',
-    '            Start-Sleep -Seconds 1',
-    '            $waited++',
-    '        } catch {',
-    '            break',
-    '        }',
-    '    }',
-    '    Log "App exited after $waited seconds"',
-    '',
-    '    # Launch installer with normal UI (NSIS handles shortcuts & relaunch)',
-    '    Log "Launching installer: $installerPath"',
-    '    Start-Process -FilePath $installerPath',
-    '    Log "Done"',
-    '} catch {',
-    '    Log "ERROR: $($_.Exception.Message)"',
-    '}',
-  ].join('\r\n');
-
-  await fs.promises.writeFile(scriptPath, '\ufeff' + psScript, 'utf-8');
-
-  console.log('[AppUpdate] Launching installer via hidden PowerShell script...');
-  const launcherPid = await spawnDetachedWindowsUpdateLauncher(scriptPath);
-
-  console.log(`[AppUpdate] Launcher PID: ${launcherPid ?? 'unknown'}, calling app.quit()`);
+  console.log('[AppUpdate] Installer launched, quitting app');
   app.quit();
 }

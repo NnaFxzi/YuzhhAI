@@ -51,6 +51,8 @@ type StoredReadyFile = {
   filePath: string;
   fileHash: string;
   info?: AppUpdateInfo;
+  /** Set when the user launched an install; lets the next startup detect an install that never completed. */
+  installAttempted?: boolean;
 };
 
 const initialState = (): AppUpdateRuntimeState => ({
@@ -302,11 +304,26 @@ export class AppUpdateCoordinator {
     }
 
     const filePath = this.state.readyFilePath;
+    const readyInfo = this.state.info;
+    const readyFileHash = this.state.readyFileHash;
     this.setState({
       ...this.state,
       status: AppUpdateStatus.Installing,
       errorMessage: null,
     });
+
+    // Persist the attempt before launching the installer. If the app quits
+    // but the installer never completes, the next startup restores a Ready
+    // state with installIncomplete set so the UI can re-prompt the user.
+    if (readyInfo && readyFileHash) {
+      this.setStoredReadyFile({
+        version: readyInfo.latestVersion,
+        filePath,
+        fileHash: readyFileHash,
+        info: readyInfo,
+        installAttempted: true,
+      });
+    }
 
     try {
       await installUpdate(filePath);
@@ -838,6 +855,7 @@ export class AppUpdateCoordinator {
         readyFilePath: storedReadyFile.filePath,
         readyFileHash: storedReadyFile.fileHash,
         errorMessage: null,
+        installIncomplete: storedReadyFile.installAttempted === true,
       };
       void this.pruneCachedInstallerFiles(source, [storedReadyFile.filePath]);
       console.log(

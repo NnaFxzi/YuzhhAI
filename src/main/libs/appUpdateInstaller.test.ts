@@ -1,104 +1,77 @@
-import { EventEmitter } from 'events';
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import fs from 'fs';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
-  spawn: vi.fn(),
-}));
-
-vi.mock('child_process', () => ({
-  exec: vi.fn(),
-  spawn: mocks.spawn,
+  openPath: vi.fn(),
+  showItemInFolder: vi.fn(),
+  quit: vi.fn(),
 }));
 
 vi.mock('electron', () => ({
   app: {
     getPath: vi.fn(),
-    quit: vi.fn(),
+    quit: mocks.quit,
+    relaunch: vi.fn(),
   },
   session: {
     defaultSession: {
       fetch: vi.fn(),
     },
   },
+  shell: {
+    openPath: mocks.openPath,
+    showItemInFolder: mocks.showItemInFolder,
+  },
 }));
 
-import {
-  buildWindowsUpdateLauncherArgs,
-  spawnDetachedWindowsUpdateLauncher,
-} from './appUpdateInstaller';
+import { installUpdate } from './appUpdateInstaller';
 
-function createChildProcess(pid = 1234): EventEmitter & { pid?: number; unref: () => void } {
-  const child = new EventEmitter() as EventEmitter & { pid?: number; unref: () => void };
-  child.pid = pid;
-  child.unref = vi.fn();
-  return child;
-}
+const INSTALLER_PATH = 'C:\\Users\\test\\AppData\\Roaming\\LobsterAI\\updates\\lobsterai-update-manual-1.exe';
 
-beforeEach(() => {
-  mocks.spawn.mockReset();
-});
+describe('Windows update install', () => {
+  const originalPlatform = process.platform;
 
-describe('Windows update launcher', () => {
-  test('builds hidden PowerShell launcher arguments', () => {
-    expect(buildWindowsUpdateLauncherArgs('C:\\Temp\\lobsterai update.ps1')).toEqual([
-      '-NoProfile',
-      '-ExecutionPolicy',
-      'Bypass',
-      '-WindowStyle',
-      'Hidden',
-      '-File',
-      'C:\\Temp\\lobsterai update.ps1',
-    ]);
+  beforeEach(() => {
+    mocks.openPath.mockReset();
+    mocks.showItemInFolder.mockReset();
+    mocks.quit.mockReset();
+    Object.defineProperty(process, 'platform', { value: 'win32' });
+    vi.spyOn(fs.promises, 'stat').mockResolvedValue({ size: 1024 } as fs.Stats);
   });
 
-  test('spawns detached hidden PowerShell and resolves after the process starts', async () => {
-    const child = createChildProcess(4321);
-    mocks.spawn.mockReturnValue(child);
+  afterEach(() => {
+    Object.defineProperty(process, 'platform', { value: originalPlatform });
+    vi.restoreAllMocks();
+  });
 
-    const result = spawnDetachedWindowsUpdateLauncher('C:\\Temp\\lobsterai update.ps1');
+  test('launches the installer in the foreground and quits on success', async () => {
+    mocks.openPath.mockResolvedValue('');
 
-    expect(mocks.spawn).toHaveBeenCalledWith(
-      'powershell.exe',
-      [
-        '-NoProfile',
-        '-ExecutionPolicy',
-        'Bypass',
-        '-WindowStyle',
-        'Hidden',
-        '-File',
-        'C:\\Temp\\lobsterai update.ps1',
-      ],
-      {
-        detached: true,
-        stdio: 'ignore',
-        windowsHide: true,
-      },
+    await installUpdate(INSTALLER_PATH);
+
+    expect(mocks.openPath).toHaveBeenCalledWith(INSTALLER_PATH);
+    expect(mocks.quit).toHaveBeenCalledOnce();
+    expect(mocks.showItemInFolder).not.toHaveBeenCalled();
+  });
+
+  test('reveals the installer in Explorer and throws when launch fails', async () => {
+    mocks.openPath.mockResolvedValue('The operation was canceled by the user.');
+
+    await expect(installUpdate(INSTALLER_PATH)).rejects.toThrow(
+      'The operation was canceled by the user.',
     );
 
-    child.emit('spawn');
-
-    await expect(result).resolves.toBe(4321);
-    expect(child.unref).toHaveBeenCalledOnce();
+    expect(mocks.showItemInFolder).toHaveBeenCalledWith(INSTALLER_PATH);
+    expect(mocks.quit).not.toHaveBeenCalled();
   });
 
-  test('rejects when PowerShell spawn throws synchronously', async () => {
-    const error = new Error('powershell is unavailable');
-    mocks.spawn.mockImplementation(() => {
-      throw error;
-    });
+  test('rejects when the installer file is missing', async () => {
+    const enoent = Object.assign(new Error('not found'), { code: 'ENOENT' });
+    vi.spyOn(fs.promises, 'stat').mockRejectedValue(enoent);
 
-    await expect(spawnDetachedWindowsUpdateLauncher('C:\\Temp\\update.ps1')).rejects.toBe(error);
-  });
+    await expect(installUpdate(INSTALLER_PATH)).rejects.toThrow('Update file not found');
 
-  test('rejects when PowerShell emits a launch error', async () => {
-    const child = createChildProcess();
-    const error = new Error('blocked by policy');
-    mocks.spawn.mockReturnValue(child);
-
-    const result = spawnDetachedWindowsUpdateLauncher('C:\\Temp\\update.ps1');
-    child.emit('error', error);
-
-    await expect(result).rejects.toBe(error);
-    expect(child.unref).not.toHaveBeenCalled();
+    expect(mocks.openPath).not.toHaveBeenCalled();
+    expect(mocks.quit).not.toHaveBeenCalled();
   });
 });

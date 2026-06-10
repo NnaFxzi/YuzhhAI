@@ -53,6 +53,8 @@ export interface AppUpdateRuntimeState {
   readyFilePath: string | null;
   readyFileHash: string | null;
   errorMessage: string | null;
+  /** True when a previous install attempt quit the app but never completed. */
+  installIncomplete?: boolean;
 }
 
 export interface AppUpdateCheckResult {

@@ -122,6 +122,12 @@ const AppUpdateModal: React.FC<AppUpdateModalProps> = ({
         )}
 
 
+        {updateState.installIncomplete && canInstall && (
+          <p className="mt-4 text-sm text-amber-600 dark:text-amber-400">
+            {i18nService.t('updateInstallIncomplete')}
+          </p>
+        )}
+
         {updateState.errorMessage && (
           <p className="mt-4 text-sm text-secondary break-words">
             {updateState.errorMessage}
