@@ -64,6 +64,7 @@ import {
   formatCoworkMiniContinuityCapsuleBridge,
   type ContinuityCapsuleSource as ContinuityCapsuleSourceValue,
 } from './coworkContinuityCapsule';
+import { buildCoworkTopKEvidenceBridgeResult } from './coworkTopKEvidence';
 import { buildCoworkWorkspaceRehydrationBridge } from './coworkWorkspaceRehydration';
 import { SubagentTracker } from './subagentTracker';
 import type {
@@ -1722,6 +1723,40 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
       return bridge;
     } catch (error) {
       console.warn(`[CoworkWorkspaceRehydration] failed to build workspace bridge for session ${sessionId}; continuing without it.`, error);
+      return '';
+    }
+  }
+
+  private buildTopKEvidenceBridge(sessionId: string, prompt: string): string {
+    try {
+      if (typeof this.store.getSession !== 'function' || typeof this.store.getContinuityCapsule !== 'function') {
+        return '';
+      }
+      const session = this.store.getSession(sessionId, 300);
+      const capsule = this.store.getContinuityCapsule(sessionId);
+      if (!session || !capsule?.lastCompactedAt) {
+        return '';
+      }
+      const result = buildCoworkTopKEvidenceBridgeResult({
+        sessionId,
+        messages: session.messages,
+        prompt,
+        capsule,
+      });
+      const bridge = result.bridge;
+      if (!bridge.trim()) {
+        return '';
+      }
+      console.debug(
+        `[CoworkTopKEvidence] injected retrieved evidence bridge for session ${sessionId}.`,
+        `Candidates ${result.diagnostics.candidateCount}.`,
+        `Matched ${result.diagnostics.matchedCount}.`,
+        `Injected ${result.diagnostics.injectedCount}.`,
+        `Bridge length ${result.diagnostics.bridgeLength}.`,
+      );
+      return bridge;
+    } catch (error) {
+      console.warn(`[CoworkTopKEvidence] failed to build evidence bridge for session ${sessionId}; continuing without it.`, error);
       return '';
     }
   }
@@ -3568,6 +3603,7 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
     }
     const continuityCapsuleBridge = this.buildContinuityCapsuleBridge(sessionId);
     const workspaceRehydrationBridge = await this.buildWorkspaceRehydrationBridge(sessionId);
+    const topKEvidenceBridge = this.buildTopKEvidenceBridge(sessionId, prompt);
 
     if (this.bridgedSessions.has(sessionId)) {
       if (continuityCapsuleBridge) {
@@ -3575,6 +3611,9 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
       }
       if (workspaceRehydrationBridge) {
         sections.push(workspaceRehydrationBridge);
+      }
+      if (topKEvidenceBridge) {
+        sections.push(topKEvidenceBridge);
       }
       if (selectedTextSection) {
         sections.push(selectedTextSection);
@@ -3630,6 +3669,9 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
     }
     if (workspaceRehydrationBridge) {
       sections.push(workspaceRehydrationBridge);
+    }
+    if (topKEvidenceBridge) {
+      sections.push(topKEvidenceBridge);
     }
     if (selectedTextSection) {
       sections.push(selectedTextSection);

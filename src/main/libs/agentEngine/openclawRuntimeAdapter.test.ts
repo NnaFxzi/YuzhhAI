@@ -348,6 +348,68 @@ test('outbound prompt injects workspace rehydration bridge once per compaction',
   expect(secondPrompt).not.toContain('[LobsterAI workspace state after context compaction]');
 });
 
+test('outbound prompt injects top-k evidence bridge before the current request', async () => {
+  const adapter = new OpenClawRuntimeAdapter({
+    getSession: () => ({
+      cwd: '',
+      messages: [
+        {
+          id: 'user-1',
+          type: 'user',
+          content: '用户要求麦田烘焙页面支持中日双语切换。',
+          timestamp: 1,
+        },
+        {
+          id: 'tool-1',
+          type: 'tool_result',
+          content: 'npm test failed in src/pages/Bakery.tsx: expected ja copy to be visible.',
+          timestamp: 2,
+          metadata: { toolName: 'shell' },
+        },
+      ],
+    }),
+    getAgent: () => null,
+    getContinuityCapsule: () => ({
+      version: 1,
+      sessionId: 'session-1',
+      revision: 2,
+      updatedAt: 100,
+      lastSource: ContinuityCapsuleSource.PostCompaction,
+      lastCompactedAt: 100,
+      currentObjective: 'Fix the failing bakery page test.',
+      recentUserRequests: ['继续处理测试失败'],
+      userConstraints: [],
+      decisions: [],
+      recentActions: [],
+      touchedFiles: [{ path: 'src/pages/Bakery.tsx' }],
+      keySymbols: [],
+      verification: [],
+      nextSteps: ['Investigate npm test failure.'],
+      recentFailures: [],
+      activeCapabilities: [],
+      openQuestions: [],
+    }),
+  } as never, {} as never);
+  const internal = adapter as unknown as {
+    bridgedSessions: Set<string>;
+    buildOutboundPrompt: (
+      sessionId: string,
+      prompt: string,
+      systemPrompt?: string,
+      agentId?: string,
+    ) => Promise<string>;
+  };
+  internal.bridgedSessions.add('session-1');
+
+  const prompt = await internal.buildOutboundPrompt('session-1', '继续处理 src/pages/Bakery.tsx 的 npm test failed');
+
+  expect(prompt).toContain('[LobsterAI retrieved evidence after context compaction]');
+  expect(prompt).toContain('npm test failed in src/pages/Bakery.tsx');
+  expect(prompt.indexOf('[LobsterAI retrieved evidence after context compaction]')).toBeLessThan(
+    prompt.indexOf('[Current user request]'),
+  );
+});
+
 test('outbound prompt skips continuity capsule bridge before compaction', async () => {
   const adapter = new OpenClawRuntimeAdapter({
     getSession: () => null,
