@@ -439,6 +439,57 @@ test('context compaction diagnostic logs safe checkpoint metadata without summar
   expect(message).not.toContain('secret summary text');
 });
 
+test('context compaction diagnostic does not reuse checkpoint metadata for no-op compaction', async () => {
+  const sessionKey = 'agent:main:lobsterai:diag-noop';
+  const requests: string[] = [];
+  const adapter = new OpenClawRuntimeAdapter({} as never, {} as never);
+  adapter.gatewayClient = {
+    request: async (method: string) => {
+      requests.push(method);
+      return {
+        checkpoints: [{
+          checkpointId: 'stale-checkpoint',
+          createdAt: 10,
+          tokensBefore: 12_000,
+          tokensAfter: 120,
+          summary: 'stale summary text',
+        }],
+      };
+    },
+  } as never;
+  const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+  let message = '';
+
+  try {
+    await (adapter as unknown as {
+      logContextCompactionDiagnostic: (input: {
+        sessionId: string;
+        sessionKey: string;
+        mode: 'manual';
+        reason: string;
+        compacted: boolean;
+      }) => Promise<void>;
+    }).logContextCompactionDiagnostic({
+      sessionId: 'diag-noop',
+      sessionKey,
+      mode: 'manual',
+      reason: 'no real conversation messages',
+      compacted: false,
+    });
+    message = logSpy.mock.calls.map((call) => call.join(' ')).join('\n');
+  } finally {
+    logSpy.mockRestore();
+  }
+
+  expect(requests).toEqual([]);
+  expect(message).toContain('compacted false');
+  expect(message).toContain('reason no real conversation messages');
+  expect(message).toContain('checkpoint none');
+  expect(message).toContain('tokens unknown to unknown');
+  expect(message).not.toContain('stale-checkpoint');
+  expect(message).not.toContain('stale summary text');
+});
+
 test('context compaction diagnostic fetches checkpoint details when list omits summary', async () => {
   const sessionKey = 'agent:main:lobsterai:diag-get';
   const requests: Array<{ method: string; params: unknown }> = [];

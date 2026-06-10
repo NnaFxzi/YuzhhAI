@@ -2303,23 +2303,49 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
     return latest;
   }
 
-  private async logContextCompactionDiagnostic(input: ContextCompactionDiagnosticInput): Promise<void> {
-    const client = this.gatewayClient;
-    if (!client) {
-      console.debug(`[OpenClawRuntime] skipped context compaction diagnostic for session ${input.sessionId} because the gateway client is unavailable.`);
-      return;
-    }
+  private recordContextCompactionDiagnostic(diagnostic: ContextCompactionDiagnostic): void {
+    console.log(
+      `[OpenClawRuntime] recorded safe context compaction diagnostic for session ${diagnostic.sessionId}: `
+      + `mode ${diagnostic.mode}, compacted ${diagnostic.compacted ?? 'unknown'}, `
+      + `reason ${diagnostic.reason ?? 'none'}, checkpoint ${diagnostic.checkpointId ?? 'none'}, `
+      + `created at ${diagnostic.checkpointCreatedAt ?? 'unknown'}, `
+      + `summary length ${diagnostic.summaryChars ?? 0} characters, `
+      + `has summary ${diagnostic.hasSummary}, `
+      + `tokens ${diagnostic.tokensBefore ?? 'unknown'} to ${diagnostic.tokensAfter ?? 'unknown'}.`,
+    );
+  }
 
+  private async logContextCompactionDiagnostic(input: ContextCompactionDiagnosticInput): Promise<void> {
     const sessionKey = input.sessionKey ?? this.getSessionKeysForSession(input.sessionId)[0];
     if (!sessionKey) {
       console.warn(`[OpenClawRuntime] skipped context compaction diagnostic for session ${input.sessionId} because no OpenClaw session key was available.`);
       return;
     }
 
+    if (input.compacted === false) {
+      this.recordContextCompactionDiagnostic({
+        sessionId: input.sessionId,
+        sessionKey,
+        mode: input.mode,
+        ...(input.reason ? { reason: input.reason } : {}),
+        summaryChars: 0,
+        hasSummary: false,
+        compacted: false,
+        updatedAt: Date.now(),
+      });
+      return;
+    }
+
+    const client = this.gatewayClient;
+    if (!client) {
+      console.debug(`[OpenClawRuntime] skipped context compaction diagnostic for session ${input.sessionId} because the gateway client is unavailable.`);
+      return;
+    }
+
     try {
       const checkpoint = await this.lookupLatestCompactionCheckpoint(client, sessionKey);
       const summary = typeof checkpoint?.summary === 'string' ? checkpoint.summary.trim() : '';
-      const diagnostic: ContextCompactionDiagnostic = {
+      this.recordContextCompactionDiagnostic({
         sessionId: input.sessionId,
         sessionKey,
         mode: input.mode,
@@ -2332,17 +2358,7 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
         hasSummary: summary.length > 0,
         compacted: input.compacted,
         updatedAt: Date.now(),
-      };
-
-      console.log(
-        `[OpenClawRuntime] recorded safe context compaction diagnostic for session ${diagnostic.sessionId}: `
-        + `mode ${diagnostic.mode}, compacted ${diagnostic.compacted ?? 'unknown'}, `
-        + `reason ${diagnostic.reason ?? 'none'}, checkpoint ${diagnostic.checkpointId ?? 'none'}, `
-        + `created at ${diagnostic.checkpointCreatedAt ?? 'unknown'}, `
-        + `summary length ${diagnostic.summaryChars ?? 0} characters, `
-        + `has summary ${diagnostic.hasSummary}, `
-        + `tokens ${diagnostic.tokensBefore ?? 'unknown'} to ${diagnostic.tokensAfter ?? 'unknown'}.`,
-      );
+      });
     } catch (error) {
       console.warn(`[OpenClawRuntime] context compaction diagnostic lookup failed for session ${input.sessionId}; continuing without checkpoint metadata.`, error);
     }
