@@ -155,6 +155,25 @@ test('buildCoworkContinuityCapsule preserves objective for short continuation pr
   expect(next.currentObjective).toBe(previous.currentObjective);
 });
 
+test('buildCoworkContinuityCapsule cleans completed facts before storing them', () => {
+  const capsule = buildCoworkContinuityCapsule({
+    sessionId: 'session-1',
+    source: ContinuityCapsuleSource.PostRun,
+    now: 1000,
+    messages: [
+      message('assistant', '韩语版已添加完成！现在访问 [http://127.0.0.1:8910](http://127.0.0.1:8910) 点按语言切换按钮即可体验 4 种语言。'),
+      message('assistant', '**新增的日语支持：** | 项目 | 内容 | |------|------| | 字体 | Noto Sans JP |'),
+    ],
+  });
+
+  const facts = capsule.completedFacts.join('\n');
+  expect(facts).toContain('韩语版已添加完成');
+  expect(facts).toContain('现在访问 点按语言切换按钮即可体验 4 种语言');
+  expect(facts).toContain('新增的日语支持');
+  expect(facts).not.toContain('http://127');
+  expect(facts).not.toContain('|------|');
+});
+
 test('formatCoworkContinuityCapsuleBridge produces bounded hidden bridge text', () => {
   const capsule = buildCoworkContinuityCapsule({
     sessionId: 'session-1',
