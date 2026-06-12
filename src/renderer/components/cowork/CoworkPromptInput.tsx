@@ -475,13 +475,17 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
   });
 
   const handleVoiceInputClick = useCallback(() => {
+    if (isVoiceRecording) {
+      void handleVoiceInput();
+      return;
+    }
     if (disabled || isStreaming) return;
     if (!isLoggedIn) {
       setShowVoiceLoginPrompt(true);
       return;
     }
     void handleVoiceInput();
-  }, [disabled, handleVoiceInput, isLoggedIn, isStreaming]);
+  }, [disabled, handleVoiceInput, isLoggedIn, isStreaming, isVoiceRecording]);
 
   // Load skills on mount
   useEffect(() => {

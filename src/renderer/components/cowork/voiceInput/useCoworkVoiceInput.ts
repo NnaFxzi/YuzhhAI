@@ -44,6 +44,15 @@ const showToast = (message: string): void => {
   window.dispatchEvent(new CustomEvent('app:showToast', { detail: message }));
 };
 
+const logVoiceInputDiagnostic = (level: 'debug' | 'info' | 'warn', message: string): void => {
+  if (level === 'warn') {
+    console.warn(`[VoiceInput] ${message}`);
+  } else {
+    console.debug(`[VoiceInput] ${message}`);
+  }
+  window.electron?.log?.fromRenderer?.(level, 'VoiceInput', message);
+};
+
 export const useCoworkVoiceInput = ({
   draftKey,
   value,
@@ -64,12 +73,20 @@ export const useCoworkVoiceInput = ({
   const voiceRecordingMaxMsRef = useRef(VOICE_INPUT_MAX_RECORDING_MS);
   const voiceInputStartingRef = useRef(false);
   const realtimeVoiceBaseValueRef = useRef<string | null>(null);
+  const activeVoiceDraftKeyRef = useRef<string | null>(null);
+  const voiceInputGenerationRef = useRef(0);
+  const latestDraftKeyRef = useRef(draftKey);
   const valueRef = useRef(value);
+  latestDraftKeyRef.current = draftKey;
 
-  const setPromptValue = useCallback((nextValue: string) => {
+  const setPromptValue = useCallback((targetDraftKey: string, nextValue: string) => {
+    dispatch(setDraftPrompt({ sessionId: targetDraftKey, draft: nextValue }));
+    if (targetDraftKey !== latestDraftKeyRef.current) {
+      return;
+    }
+
     setValue(nextValue);
     valueRef.current = nextValue;
-    dispatch(setDraftPrompt({ sessionId: draftKey, draft: nextValue }));
     requestAnimationFrame(() => {
       const textarea = textareaRef.current;
       if (!textarea) return;
@@ -79,22 +96,22 @@ export const useCoworkVoiceInput = ({
       textarea.selectionStart = nextValue.length;
       textarea.selectionEnd = nextValue.length;
     });
-  }, [dispatch, draftKey, maxHeight, minHeight, setValue, textareaRef]);
+  }, [dispatch, maxHeight, minHeight, setValue, textareaRef]);
 
-  const appendRecognizedVoiceText = useCallback((recognizedText: string) => {
+  const appendRecognizedVoiceText = useCallback((targetDraftKey: string, recognizedText: string) => {
     const text = recognizedText.trim();
     if (!text) return;
     const currentValue = valueRef.current;
     const separator = currentValue.trim() ? (currentValue.endsWith('\n') ? '' : '\n') : '';
-    setPromptValue(`${currentValue}${separator}${text}`);
+    setPromptValue(targetDraftKey, `${currentValue}${separator}${text}`);
   }, [setPromptValue]);
 
-  const replaceRealtimeRecognizedVoiceText = useCallback((recognizedText: string) => {
+  const replaceRealtimeRecognizedVoiceText = useCallback((targetDraftKey: string, recognizedText: string) => {
     const text = recognizedText.trim();
     if (!text) return;
     const baseValue = realtimeVoiceBaseValueRef.current ?? valueRef.current;
     const separator = baseValue.trim() ? (baseValue.endsWith('\n') ? '' : '\n') : '';
-    setPromptValue(`${baseValue}${separator}${text}`);
+    setPromptValue(targetDraftKey, `${baseValue}${separator}${text}`);
   }, [setPromptValue]);
 
   const clearVoiceAutoStopTimer = useCallback(() => {
@@ -104,47 +121,89 @@ export const useCoworkVoiceInput = ({
     }
   }, []);
 
+  const cancelActiveVoiceInput = useCallback((reason: string, resetUiState = true) => {
+    const hadActiveVoiceInput = voiceInputStartingRef.current || voiceRecordingRef.current || activeVoiceDraftKeyRef.current;
+    voiceInputGenerationRef.current += 1;
+    voiceInputStartingRef.current = false;
+    clearVoiceAutoStopTimer();
+    voiceRecordingRef.current?.session.cancel();
+    voiceRecordingRef.current = null;
+    voiceRecordingStartedAtRef.current = null;
+    voiceRecordingMaxMsRef.current = VOICE_INPUT_MAX_RECORDING_MS;
+    realtimeVoiceBaseValueRef.current = null;
+    activeVoiceDraftKeyRef.current = null;
+    if (resetUiState) {
+      setVoiceInputState(VoiceInputState.Idle);
+      setRecordingElapsedSeconds(0);
+    }
+    if (hadActiveVoiceInput) {
+      logVoiceInputDiagnostic('info', `voice input was cancelled because ${reason}.`);
+    }
+  }, [clearVoiceAutoStopTimer]);
+
   const stopVoiceRecordingAndRecognize = useCallback(async () => {
     const activeRecording = voiceRecordingRef.current;
     if (!activeRecording) return;
+    const targetDraftKey = activeVoiceDraftKeyRef.current;
+    if (!targetDraftKey || targetDraftKey !== latestDraftKeyRef.current) {
+      cancelActiveVoiceInput('the active draft changed before stop');
+      return;
+    }
+    const generation = voiceInputGenerationRef.current;
+    logVoiceInputDiagnostic('info', `voice input stop requested for draft ${targetDraftKey} in ${activeRecording.mode} mode.`);
     voiceInputStartingRef.current = false;
     voiceRecordingRef.current = null;
     voiceRecordingStartedAtRef.current = null;
     voiceRecordingMaxMsRef.current = VOICE_INPUT_MAX_RECORDING_MS;
+    activeVoiceDraftKeyRef.current = null;
     clearVoiceAutoStopTimer();
     setVoiceInputState(VoiceInputState.Recognizing);
     setRecordingElapsedSeconds(0);
     try {
       if (activeRecording.mode === VoiceInputRecognitionMode.Realtime) {
         const text = await activeRecording.session.stop();
-        replaceRealtimeRecognizedVoiceText(text);
+        if (generation !== voiceInputGenerationRef.current) return;
+        replaceRealtimeRecognizedVoiceText(targetDraftKey, text);
+        logVoiceInputDiagnostic('debug', `realtime voice input was finalized for draft ${targetDraftKey}.`);
         realtimeVoiceBaseValueRef.current = null;
       } else {
         const wavBlob = await activeRecording.session.stop();
+        if (generation !== voiceInputGenerationRef.current) return;
         const result = await recognizeVoiceInput(wavBlob);
-        appendRecognizedVoiceText(result.text);
+        if (generation !== voiceInputGenerationRef.current) return;
+        appendRecognizedVoiceText(targetDraftKey, result.text);
+        logVoiceInputDiagnostic('debug', `short voice input was recognized for draft ${targetDraftKey}.`);
       }
     } catch (error) {
+      if (generation !== voiceInputGenerationRef.current) return;
       console.warn('[VoiceInput] voice input recognition failed:', error);
+      window.electron?.log?.fromRenderer?.('warn', 'VoiceInput', `voice input recognition failed for draft ${targetDraftKey}.`);
       showToast(getAsrErrorMessage(error));
     } finally {
-      realtimeVoiceBaseValueRef.current = null;
-      setVoiceInputState(VoiceInputState.Idle);
+      if (generation === voiceInputGenerationRef.current) {
+        realtimeVoiceBaseValueRef.current = null;
+        setVoiceInputState(VoiceInputState.Idle);
+      }
     }
   }, [
     appendRecognizedVoiceText,
+    cancelActiveVoiceInput,
     clearVoiceAutoStopTimer,
     replaceRealtimeRecognizedVoiceText,
   ]);
 
   const handleVoiceInput = useCallback(async () => {
-    if (!isLoggedIn || disabled || isStreaming) return;
     if (voiceInputStartingRef.current) return;
     if (voiceInputState === VoiceInputState.Recording) {
       await stopVoiceRecordingAndRecognize();
       return;
     }
+    if (!isLoggedIn || disabled || isStreaming) return;
     if (voiceInputState === VoiceInputState.Recognizing) return;
+
+    const generation = voiceInputGenerationRef.current + 1;
+    voiceInputGenerationRef.current = generation;
+    activeVoiceDraftKeyRef.current = draftKey;
 
     try {
       voiceInputStartingRef.current = true;
@@ -153,24 +212,36 @@ export const useCoworkVoiceInput = ({
       const recognitionMode = configService.getConfig().voiceInput?.recognitionMode === VoiceInputRecognitionMode.Short
         ? VoiceInputRecognitionMode.Short
         : VoiceInputRecognitionMode.Realtime;
+      logVoiceInputDiagnostic('info', `voice input start requested for draft ${draftKey} in ${recognitionMode} mode.`);
       if (recognitionMode === VoiceInputRecognitionMode.Realtime) {
         realtimeVoiceBaseValueRef.current = valueRef.current;
         const realtimeSession = await startRealtimeVoiceInput({
-          onText: replaceRealtimeRecognizedVoiceText,
+          onText: (text) => {
+            if (generation !== voiceInputGenerationRef.current) return;
+            if (activeVoiceDraftKeyRef.current !== latestDraftKeyRef.current) return;
+            replaceRealtimeRecognizedVoiceText(draftKey, text);
+          },
           onError: (error) => {
+            if (generation !== voiceInputGenerationRef.current) return;
             if (voiceRecordingRef.current?.mode !== VoiceInputRecognitionMode.Realtime) return;
             console.warn('[VoiceInput] realtime voice input session reported an error:', error);
+            window.electron?.log?.fromRenderer?.('warn', 'VoiceInput', `realtime voice input session reported an error for draft ${draftKey}.`);
             voiceInputStartingRef.current = false;
             clearVoiceAutoStopTimer();
             voiceRecordingRef.current = null;
             voiceRecordingStartedAtRef.current = null;
             voiceRecordingMaxMsRef.current = VOICE_INPUT_MAX_RECORDING_MS;
             realtimeVoiceBaseValueRef.current = null;
+            activeVoiceDraftKeyRef.current = null;
             setVoiceInputState(VoiceInputState.Idle);
             setRecordingElapsedSeconds(0);
             showToast(getAsrErrorMessage(error));
           },
         });
+        if (generation !== voiceInputGenerationRef.current || activeVoiceDraftKeyRef.current !== latestDraftKeyRef.current) {
+          realtimeSession.cancel();
+          return;
+        }
         voiceRecordingRef.current = {
           mode: VoiceInputRecognitionMode.Realtime,
           session: realtimeSession,
@@ -178,6 +249,10 @@ export const useCoworkVoiceInput = ({
         voiceRecordingMaxMsRef.current = Math.max(1, realtimeSession.maxSessionSeconds) * 1000;
       } else {
         const recording = await startVoiceRecording();
+        if (generation !== voiceInputGenerationRef.current || activeVoiceDraftKeyRef.current !== latestDraftKeyRef.current) {
+          recording.cancel();
+          return;
+        }
         voiceRecordingRef.current = {
           mode: VoiceInputRecognitionMode.Short,
           session: recording,
@@ -188,17 +263,21 @@ export const useCoworkVoiceInput = ({
       voiceInputStartingRef.current = false;
       setRecordingElapsedSeconds(0);
       setVoiceInputState(VoiceInputState.Recording);
+      logVoiceInputDiagnostic('info', `voice input started for draft ${draftKey} in ${recognitionMode} mode.`);
       voiceAutoStopTimerRef.current = setTimeout(() => {
         void stopVoiceRecordingAndRecognize();
       }, voiceRecordingMaxMsRef.current);
     } catch (error) {
+      if (generation !== voiceInputGenerationRef.current) return;
       console.warn('[VoiceInput] failed to start voice input:', error);
+      window.electron?.log?.fromRenderer?.('warn', 'VoiceInput', `failed to start voice input for draft ${draftKey}.`);
       voiceInputStartingRef.current = false;
       voiceRecordingRef.current?.session.cancel();
       voiceRecordingRef.current = null;
       voiceRecordingStartedAtRef.current = null;
       voiceRecordingMaxMsRef.current = VOICE_INPUT_MAX_RECORDING_MS;
       realtimeVoiceBaseValueRef.current = null;
+      activeVoiceDraftKeyRef.current = null;
       clearVoiceAutoStopTimer();
       setVoiceInputState(VoiceInputState.Idle);
       setRecordingElapsedSeconds(0);
@@ -207,6 +286,7 @@ export const useCoworkVoiceInput = ({
   }, [
     clearVoiceAutoStopTimer,
     disabled,
+    draftKey,
     isLoggedIn,
     isStreaming,
     stopVoiceRecordingAndRecognize,
@@ -216,16 +296,16 @@ export const useCoworkVoiceInput = ({
   ]);
 
   useEffect(() => {
+    if (!activeVoiceDraftKeyRef.current) return;
+    if (activeVoiceDraftKeyRef.current === draftKey) return;
+    cancelActiveVoiceInput('the input draft changed');
+  }, [cancelActiveVoiceInput, draftKey]);
+
+  useEffect(() => {
     return () => {
-      clearVoiceAutoStopTimer();
-      voiceInputStartingRef.current = false;
-      voiceRecordingRef.current?.session.cancel();
-      voiceRecordingRef.current = null;
-      voiceRecordingStartedAtRef.current = null;
-      voiceRecordingMaxMsRef.current = VOICE_INPUT_MAX_RECORDING_MS;
-      realtimeVoiceBaseValueRef.current = null;
+      cancelActiveVoiceInput('the input component unmounted', false);
     };
-  }, [clearVoiceAutoStopTimer]);
+  }, [cancelActiveVoiceInput]);
 
   useEffect(() => {
     if (voiceInputState !== VoiceInputState.Recording) {

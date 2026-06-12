@@ -26,6 +26,7 @@ const VoiceInputButton: React.FC<VoiceInputButtonProps> = ({
 }) => {
   const loginRequired = !isLoggedIn;
   const unavailable = disabled || isStreaming;
+  const buttonDisabled = !isRecording && (unavailable || isRecognizing);
   const title = !isLoggedIn
     ? i18nService.t('voiceInputLoginRequired')
     : isRecording
@@ -47,8 +48,8 @@ const VoiceInputButton: React.FC<VoiceInputButtonProps> = ({
     <button
       type="button"
       onClick={onClick}
-      disabled={unavailable || isRecognizing}
-      aria-disabled={unavailable || isRecognizing}
+      disabled={buttonDisabled}
+      aria-disabled={buttonDisabled}
       aria-label={title}
       title={title}
       className={`${buttonClassName} ${stateClass} transition-colors`}
