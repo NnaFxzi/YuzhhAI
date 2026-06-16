@@ -6231,16 +6231,28 @@ if (!gotTheLock) {
 
   ipcMain.handle(
     'cowork:session:list',
-    async (_event, options?: { limit?: number; offset?: number; agentId?: string }) => {
+    async (_event, options?: { limit?: number; offset?: number; agentId?: string; searchQuery?: string }) => {
       try {
         const limit = options?.limit ?? COWORK_SESSION_PAGE_SIZE;
         const offset = options?.offset ?? 0;
         const agentId = options?.agentId;
+        const searchQuery = options?.searchQuery?.trim() ?? '';
         const store = getCoworkStore();
-        const sessions = store.listSessions(limit, offset, agentId);
-        const total = store.countSessions(agentId);
+        const startedAt = searchQuery ? Date.now() : 0;
+        const sessions = searchQuery
+          ? store.searchSessions({ query: searchQuery, limit, offset, agentId })
+          : store.listSessions(limit, offset, agentId);
+        const total = searchQuery
+          ? store.countSearchSessions({ query: searchQuery, agentId })
+          : store.countSessions(agentId);
+        if (searchQuery) {
+          console.debug(
+            `[CoworkIPC] searched sessions; query length ${searchQuery.length}, returned ${sessions.length} of ${total} from offset ${offset} in ${Date.now() - startedAt}ms.`,
+          );
+        }
         return { success: true, sessions, hasMore: offset + sessions.length < total };
       } catch (error) {
+        console.error('[CoworkIPC] failed to list sessions:', error);
         return {
           success: false,
           error: error instanceof Error ? error.message : 'Failed to list sessions',

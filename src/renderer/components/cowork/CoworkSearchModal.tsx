@@ -11,9 +11,24 @@ import { getAgentDisplayNameById } from '../../utils/agentDisplay';
 import Modal from '../common/Modal';
 
 const SEARCH_SESSION_LIMIT = 100;
+const SEARCH_DEBOUNCE_MS = 180;
 
 const getSessionAgentId = (session: CoworkSessionSummary) => {
   return session.agentId?.trim() || AgentId.Main;
+};
+
+const mergeUniqueSessions = (
+  primary: CoworkSessionSummary[],
+  secondary: CoworkSessionSummary[],
+): CoworkSessionSummary[] => {
+  const seen = new Set<string>();
+  const result: CoworkSessionSummary[] = [];
+  [...primary, ...secondary].forEach((session) => {
+    if (seen.has(session.id)) return;
+    seen.add(session.id);
+    result.push(session);
+  });
+  return result;
 };
 
 interface CoworkSearchModalProps {
@@ -33,28 +48,38 @@ const CoworkSearchModal: React.FC<CoworkSearchModalProps> = ({
 }) => {
   const agents = useSelector((state: RootState) => state.agent.agents);
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
+  const [searchResultQuery, setSearchResultQuery] = useState('');
   const [searchSessions, setSearchSessions] = useState<CoworkSessionSummary[]>(sessions);
+  const [recentSessions, setRecentSessions] = useState<CoworkSessionSummary[]>(sessions);
   const [isLoading, setIsLoading] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const requestIdRef = useRef(0);
+
+  const displayedSessions = useMemo(() => {
+    const trimmedQuery = searchQuery.trim().toLowerCase();
+    if (!trimmedQuery) return recentSessions;
+    const resultQuery = searchResultQuery.trim().toLowerCase();
+    const titleMatches = resultQuery === trimmedQuery ? searchSessions : [];
+
+    const recentMatches = recentSessions.filter((session) => {
+      const agentId = getSessionAgentId(session);
+      const agentName = getAgentDisplayNameById(agentId, agents) ?? agentId;
+      return session.title.toLowerCase().includes(trimmedQuery)
+        || agentName.toLowerCase().includes(trimmedQuery);
+    });
+
+    return mergeUniqueSessions(titleMatches, recentMatches);
+  }, [agents, recentSessions, searchQuery, searchResultQuery, searchSessions]);
 
   const agentNameBySessionId = useMemo(() => {
     const names = new Map<string, string>();
-    searchSessions.forEach((session) => {
+    displayedSessions.forEach((session) => {
       const agentId = getSessionAgentId(session);
       names.set(session.id, getAgentDisplayNameById(agentId, agents) ?? agentId);
     });
     return names;
-  }, [agents, searchSessions]);
-
-  const filteredSessions = useMemo(() => {
-    const trimmedQuery = searchQuery.trim().toLowerCase();
-    if (!trimmedQuery) return searchSessions;
-    return searchSessions.filter((session) => {
-      const agentName = agentNameBySessionId.get(session.id) ?? '';
-      return session.title.toLowerCase().includes(trimmedQuery)
-        || agentName.toLowerCase().includes(trimmedQuery);
-    });
-  }, [agentNameBySessionId, searchQuery, searchSessions]);
+  }, [agents, displayedSessions]);
 
   useEffect(() => {
     if (isOpen) {
@@ -65,32 +90,53 @@ const CoworkSearchModal: React.FC<CoworkSearchModalProps> = ({
       return;
     }
     setSearchQuery('');
+    setDebouncedSearchQuery('');
+    setSearchResultQuery('');
   }, [isOpen]);
 
   useEffect(() => {
     if (!isOpen) {
       setSearchSessions(sessions);
+      setRecentSessions(sessions);
+      setSearchResultQuery('');
     }
   }, [isOpen, sessions]);
 
   useEffect(() => {
     if (!isOpen) return;
-    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery.trim());
+    }, SEARCH_DEBOUNCE_MS);
+    return () => window.clearTimeout(timer);
+  }, [isOpen, searchQuery]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const requestId = requestIdRef.current + 1;
+    requestIdRef.current = requestId;
+    const query = debouncedSearchQuery.trim();
     setIsLoading(true);
-    void coworkService.listSessionsForSearch(SEARCH_SESSION_LIMIT, 0)
+    void coworkService.listSessionsForSearch(SEARCH_SESSION_LIMIT, 0, query)
       .then((result) => {
-        if (cancelled || !result.success || !result.sessions) return;
+        if (requestId !== requestIdRef.current) return;
+        if (!result.success || !result.sessions) {
+          console.warn('[CoworkSearch] failed to load task search results:', result.error);
+          setSearchSessions([]);
+          setSearchResultQuery(query);
+          return;
+        }
         setSearchSessions(result.sessions);
+        setSearchResultQuery(query);
+        if (!query) {
+          setRecentSessions(result.sessions);
+        }
       })
       .finally(() => {
-        if (!cancelled) {
+        if (requestId === requestIdRef.current) {
           setIsLoading(false);
         }
       });
-    return () => {
-      cancelled = true;
-    };
-  }, [isOpen]);
+  }, [debouncedSearchQuery, isOpen]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -150,12 +196,12 @@ const CoworkSearchModal: React.FC<CoworkSearchModalProps> = ({
             {i18nService.t('searchRecentTasks')}
           </div>
           <div className="max-h-[320px] overflow-y-auto">
-            {filteredSessions.length === 0 ? (
+            {displayedSessions.length === 0 ? (
               <div className="py-10 text-center text-sm text-secondary">
                 {isLoading ? i18nService.t('loading') : i18nService.t('searchNoResults')}
               </div>
             ) : (
-              filteredSessions.map((session) => {
+              displayedSessions.map((session) => {
                 const agentName = agentNameBySessionId.get(session.id) ?? getSessionAgentId(session);
                 const isSelected = session.id === currentSessionId;
                 const isRunning = session.status === CoworkSessionStatusValue.Running;

@@ -647,6 +647,27 @@ interface CoworkUserMemoryRow {
   last_used_at: number | null;
 }
 
+interface CoworkSessionSummaryRow {
+  id: string;
+  title: string;
+  status: string;
+  pinned: number | null;
+  pin_order: number | null;
+  agent_id: string | null;
+  parent_session_id?: string | null;
+  forked_at?: number | null;
+  fork_mode?: string | null;
+  created_at: number;
+  updated_at: number;
+}
+
+interface CoworkSessionSearchOptions {
+  query: string;
+  limit?: number;
+  offset?: number;
+  agentId?: string;
+}
+
 export class CoworkStore {
   private db: Database.Database;
 
@@ -676,6 +697,26 @@ export class CoworkStore {
 
   private getAll<T>(sql: string, params: (string | number | null)[] = []): T[] {
     return this.db.prepare(sql).all(...params) as T[];
+  }
+
+  private escapeLikePattern(value: string): string {
+    return value.replace(/[\\%_]/g, (match) => `\\${match}`);
+  }
+
+  private mapSessionSummaryRow(row: CoworkSessionSummaryRow): CoworkSessionSummary {
+    return {
+      id: row.id,
+      title: row.title,
+      status: row.status as CoworkSessionStatus,
+      pinned: Boolean(row.pinned),
+      pinOrder: row.pin_order ?? null,
+      agentId: row.agent_id || 'main',
+      parentSessionId: row.parent_session_id ?? null,
+      forkedAt: row.forked_at ?? null,
+      forkMode: (row.fork_mode as CoworkForkModeType | undefined) ?? CoworkForkMode.None,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
   }
 
   private upsertConfig(key: string, value: string, now: number): void {
@@ -1335,23 +1376,9 @@ export class CoworkStore {
   }
 
   listSessions(limit = COWORK_SESSION_PAGE_SIZE, offset = 0, agentId?: string): CoworkSessionSummary[] {
-    interface SessionSummaryRow {
-      id: string;
-      title: string;
-      status: string;
-      pinned: number | null;
-      pin_order: number | null;
-      agent_id: string | null;
-      parent_session_id?: string | null;
-      forked_at?: number | null;
-      fork_mode?: string | null;
-      created_at: number;
-      updated_at: number;
-    }
-
-    let rows: SessionSummaryRow[];
+    let rows: CoworkSessionSummaryRow[];
     if (agentId) {
-      rows = this.getAll<SessionSummaryRow>(
+      rows = this.getAll<CoworkSessionSummaryRow>(
         `
         SELECT id, title, status, pinned, pin_order, agent_id,
                parent_session_id, forked_at, fork_mode,
@@ -1367,7 +1394,7 @@ export class CoworkStore {
         [agentId, limit, offset],
       );
     } else {
-      rows = this.getAll<SessionSummaryRow>(
+      rows = this.getAll<CoworkSessionSummaryRow>(
         `
         SELECT id, title, status, pinned, pin_order, agent_id,
                parent_session_id, forked_at, fork_mode,
@@ -1383,19 +1410,84 @@ export class CoworkStore {
       );
     }
 
-    return rows.map(row => ({
-      id: row.id,
-      title: row.title,
-      status: row.status as CoworkSessionStatus,
-      pinned: Boolean(row.pinned),
-      pinOrder: row.pin_order ?? null,
-      agentId: row.agent_id || 'main',
-      parentSessionId: row.parent_session_id ?? null,
-      forkedAt: row.forked_at ?? null,
-      forkMode: (row.fork_mode as CoworkForkModeType | undefined) ?? CoworkForkMode.None,
-      createdAt: row.created_at,
-      updatedAt: row.updated_at,
-    }));
+    return rows.map(row => this.mapSessionSummaryRow(row));
+  }
+
+  countSearchSessions(options: CoworkSessionSearchOptions): number {
+    const query = options.query.trim();
+    if (!query) return this.countSessions(options.agentId);
+
+    const pattern = `%${this.escapeLikePattern(query)}%`;
+    if (options.agentId) {
+      const row = this.db
+        .prepare(
+          `
+          SELECT COUNT(*) as count
+          FROM cowork_sessions
+          WHERE title LIKE ? ESCAPE '\\'
+            AND COALESCE(NULLIF(TRIM(agent_id), ''), 'main') = ?
+        `,
+        )
+        .get(pattern, options.agentId) as { count: number } | undefined;
+      return row?.count || 0;
+    }
+
+    const row = this.db
+      .prepare(
+        `
+        SELECT COUNT(*) as count
+        FROM cowork_sessions
+        WHERE title LIKE ? ESCAPE '\\'
+      `,
+      )
+      .get(pattern) as { count: number } | undefined;
+    return row?.count || 0;
+  }
+
+  searchSessions(options: CoworkSessionSearchOptions): CoworkSessionSummary[] {
+    const query = options.query.trim();
+    const limit = options.limit ?? COWORK_SESSION_PAGE_SIZE;
+    const offset = options.offset ?? 0;
+    if (!query) return this.listSessions(limit, offset, options.agentId);
+
+    const pattern = `%${this.escapeLikePattern(query)}%`;
+    let rows: CoworkSessionSummaryRow[];
+    if (options.agentId) {
+      rows = this.getAll<CoworkSessionSummaryRow>(
+        `
+        SELECT id, title, status, pinned, pin_order, agent_id,
+               parent_session_id, forked_at, fork_mode,
+               created_at, updated_at
+        FROM cowork_sessions
+        WHERE title LIKE ? ESCAPE '\\'
+          AND COALESCE(NULLIF(TRIM(agent_id), ''), 'main') = ?
+        ORDER BY pinned DESC,
+          CASE WHEN pinned = 1 THEN COALESCE(pin_order, updated_at, created_at) END ASC,
+          CASE WHEN pinned = 0 THEN updated_at END DESC,
+          updated_at DESC
+        LIMIT ? OFFSET ?
+      `,
+        [pattern, options.agentId, limit, offset],
+      );
+    } else {
+      rows = this.getAll<CoworkSessionSummaryRow>(
+        `
+        SELECT id, title, status, pinned, pin_order, agent_id,
+               parent_session_id, forked_at, fork_mode,
+               created_at, updated_at
+        FROM cowork_sessions
+        WHERE title LIKE ? ESCAPE '\\'
+        ORDER BY pinned DESC,
+          CASE WHEN pinned = 1 THEN COALESCE(pin_order, updated_at, created_at) END ASC,
+          CASE WHEN pinned = 0 THEN updated_at END DESC,
+          updated_at DESC
+        LIMIT ? OFFSET ?
+      `,
+        [pattern, limit, offset],
+      );
+    }
+
+    return rows.map(row => this.mapSessionSummaryRow(row));
   }
 
   resetRunningSessions(): number {

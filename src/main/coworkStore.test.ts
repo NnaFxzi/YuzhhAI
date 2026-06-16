@@ -23,8 +23,8 @@ import BetterSqlite3 from 'better-sqlite3';
 import { CoworkSystemMessageKind } from '../common/coworkSystemMessages';
 import { AgentAvatarSvg, DefaultAgentAvatarIcon, encodeAgentAvatarIcon } from '../shared/agent/avatar';
 import { CoworkForkMode } from '../shared/cowork/constants';
-import { ContinuityCapsuleSource } from './libs/agentEngine/coworkContinuityCapsule';
 import { CoworkStore } from './coworkStore';
+import { ContinuityCapsuleSource } from './libs/agentEngine/coworkContinuityCapsule';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -148,12 +148,19 @@ function setupDb(): void {
 }
 
 /** Insert a session row directly. */
-function insertSession(id: string, agentId: string | null = 'main'): void {
-  const now = Date.now();
+function insertSession(
+  id: string,
+  agentId: string | null = 'main',
+  title = 'test',
+  updatedAt = Date.now(),
+  pinned = 0,
+  pinOrder: number | null = null,
+): void {
+  const now = updatedAt;
   db.prepare(
     `INSERT INTO cowork_sessions (id, title, claude_session_id, status, pinned, pin_order, cwd, system_prompt, execution_mode, active_skill_ids, agent_id, created_at, updated_at)
-     VALUES (?, 'test', NULL, 'idle', 0, NULL, '/tmp', '', 'local', '[]', ?, ?, ?)`,
-  ).run(id, agentId, now, now);
+     VALUES (?, ?, NULL, 'idle', ?, ?, '/tmp', '', 'local', '[]', ?, ?, ?)`,
+  ).run(id, title, pinned, pinOrder, agentId, now, now);
 }
 
 /** Insert a message row directly, bypassing CoworkStore.addMessage. */
@@ -205,6 +212,78 @@ test('getSession returns all messages when one has corrupt metadata', () => {
   // Null metadata → undefined
   const nullMsg = session!.messages.find((m) => m.id === 'msg-null')!;
   expect(nullMsg.metadata).toBeUndefined();
+});
+
+test('searchSessions finds matching titles beyond the recent page', () => {
+  for (let index = 0; index < 105; index += 1) {
+    insertSession(`recent-${index}`, 'main', `Recent filler ${index}`, 2000 + index);
+  }
+  insertSession('deep-match', 'main', 'Deep history search needle', 1000);
+
+  expect(store.listSessions(100, 0).some((session) => session.id === 'deep-match')).toBe(false);
+
+  const results = store.searchSessions({
+    query: 'history search needle',
+    limit: 10,
+    offset: 0,
+  });
+
+  expect(results.map((session) => session.id)).toEqual(['deep-match']);
+  expect(store.countSearchSessions({ query: 'history search needle' })).toBe(1);
+});
+
+test('searchSessions preserves pinned ordering and pagination', () => {
+  insertSession('unpinned-old', 'main', 'Shared searchable task', 1000);
+  insertSession('unpinned-new', 'main', 'Shared searchable task', 3000);
+  insertSession('pinned-second', 'main', 'Shared searchable task', 2000, 1, 20);
+  insertSession('pinned-first', 'main', 'Shared searchable task', 1500, 1, 10);
+
+  const firstPage = store.searchSessions({
+    query: 'searchable',
+    limit: 3,
+    offset: 0,
+  });
+  const secondPage = store.searchSessions({
+    query: 'searchable',
+    limit: 3,
+    offset: 3,
+  });
+
+  expect(firstPage.map((session) => session.id)).toEqual([
+    'pinned-first',
+    'pinned-second',
+    'unpinned-new',
+  ]);
+  expect(secondPage.map((session) => session.id)).toEqual(['unpinned-old']);
+});
+
+test('searchSessions treats LIKE wildcard characters as literal input', () => {
+  insertSession('literal-wildcards', 'main', 'Report 100%_complete marker', 1000);
+  insertSession('expanded-match', 'main', 'Report 100AAcomplete marker', 2000);
+
+  const results = store.searchSessions({
+    query: '100%_complete',
+    limit: 10,
+    offset: 0,
+  });
+
+  expect(results.map((session) => session.id)).toEqual(['literal-wildcards']);
+  expect(store.countSearchSessions({ query: '100%_complete' })).toBe(1);
+});
+
+test('searchSessions can be limited to one agent', () => {
+  insertSession('main-task', 'main', 'Agent scoped search task', 1000);
+  insertSession('writer-task', 'writer', 'Agent scoped search task', 2000);
+
+  const results = store.searchSessions({
+    query: 'scoped search',
+    agentId: 'writer',
+    limit: 10,
+    offset: 0,
+  });
+
+  expect(results.map((session) => session.id)).toEqual(['writer-task']);
+  expect(store.countSearchSessions({ query: 'scoped search', agentId: 'writer' })).toBe(1);
 });
 
 test('continuity capsule upsert stores one rolling capsule per session', () => {

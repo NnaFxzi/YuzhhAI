@@ -620,9 +620,41 @@ class CoworkService {
     return result ?? { success: false, error: 'Cowork IPC is unavailable' };
   }
 
-  async listSessionsForSearch(limit: number, offset: number): Promise<CoworkSessionListResult> {
-    const result = await window.electron?.cowork?.listSessions({ limit, offset });
-    return result ?? { success: false, error: 'Cowork IPC is unavailable' };
+  async listSessionsForSearch(
+    limit: number,
+    offset: number,
+    searchQuery?: string,
+  ): Promise<CoworkSessionListResult> {
+    const trimmedQuery = searchQuery?.trim();
+    const startedAt = performance.now();
+    console.debug('[CoworkSearch] requesting task sessions for the search modal', {
+      hasQuery: !!trimmedQuery,
+      queryLength: trimmedQuery?.length ?? 0,
+      limit,
+      offset,
+    });
+
+    try {
+      const result = await window.electron?.cowork?.listSessions({
+        limit,
+        offset,
+        ...(trimmedQuery ? { searchQuery: trimmedQuery } : {}),
+      });
+      const resolved = result ?? { success: false, error: 'Cowork IPC is unavailable' };
+      console.debug('[CoworkSearch] task session request finished', {
+        success: resolved.success,
+        resultCount: resolved.sessions?.length ?? 0,
+        hasMore: resolved.hasMore ?? false,
+        durationMs: Math.round(performance.now() - startedAt),
+      });
+      return resolved;
+    } catch (error) {
+      console.warn('[CoworkSearch] task session request failed:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to search sessions',
+      };
+    }
   }
 
   async loadMoreSessions(): Promise<boolean> {
