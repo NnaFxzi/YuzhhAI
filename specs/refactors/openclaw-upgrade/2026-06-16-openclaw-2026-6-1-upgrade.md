@@ -81,6 +81,23 @@ LobsterAI 侧修复策略：
 2. 根 `package.json` 增加构建期 devDependency，保证 `scripts/precompile-openclaw-extensions.cjs` 执行 esbuild 时可解析该包。
 3. 调整 `scripts/precompile-openclaw-extensions.cjs`：对没有自带 `node_modules` 的本地扩展，预编译时将普通 npm 依赖打进 `index.js`；对已经通过插件安装流程带有 `node_modules` 的第三方插件，继续保持 package external，避免重新打包大型第三方插件。
 
+### 2.1.3 本地扩展 agent tool contract
+
+TypeBox 修复后，`lobster-media-generation` 能成功加载并打印：
+
+```text
+[lobster-media-generation] registered lobsterai_image_generate and lobsterai_video_generate tools.
+```
+
+但端侧图片生成仍实际调用 OpenClaw 原生 `image_generate`。复核 OpenClaw 6.1 的 `src/plugins/registry.ts` 后确认，6.1 已要求插件在 manifest `contracts.tools` 中声明 agent tool 名称；否则 `api.registerTool()` 会被拒绝并记录诊断：`plugin must declare contracts.tools before registering agent tools`。旧版 LobsterAI 本地扩展没有该字段，因此会出现“插件模块已加载、register() 已执行，但工具未进入有效工具列表”的状态。
+
+LobsterAI 侧处理：
+
+1. `ask-user-question/openclaw.plugin.json` 声明 `contracts.tools: ["AskUserQuestion"]`。
+2. `lobster-media-generation/openclaw.plugin.json` 声明 `contracts.tools: ["lobsterai_image_generate", "lobsterai_video_generate"]`。
+3. 不将 OpenClaw 原生 `image_generate` / `video_generate` 加入 deny。当前目标是让 LobsterAI 工具正确暴露；原生媒体工具仍保留给 OpenClaw/skill 兼容场景。
+4. `mcp-bridge` 不按同样方式修复：MCP 已迁移到 OpenClaw 原生 `mcp.servers`，当前生成的 `openclaw.json` 不包含 `plugins.entries["mcp-bridge"]`，实际工具由 OpenClaw 原生 MCP runtime 物化。旧 `mcp-bridge` 的工具名来自运行时 MCP 配置，不能用静态 `contracts.tools` 正确枚举；后续若彻底清理旧桥接，应移除扩展同步或保留为不可配置兼容项，而不是伪造静态 contract。
+
 ### 2.2 当前已迁移的 patch
 
 当前 `scripts/patches/v2026.6.1/` 中已有：
@@ -273,12 +290,15 @@ npm run build
 | `scripts/run-build-openclaw-runtime.cjs` | OpenClaw runtime 构建入口适配 |
 | `scripts/build-openclaw-runtime.sh` | runtime 构建与完整性检查 |
 | `scripts/precompile-openclaw-extensions.cjs` | 本地 OpenClaw 扩展预编译；无 `node_modules` 的本地扩展内联普通 npm 依赖 |
+| `openclaw-extensions/ask-user-question/openclaw.plugin.json` | 声明 `AskUserQuestion` agent tool contract，适配 OpenClaw 6.1 插件工具注册要求 |
+| `openclaw-extensions/lobster-media-generation/openclaw.plugin.json` | 声明 `lobsterai_image_generate` / `lobsterai_video_generate` agent tool contracts，确保工具进入有效工具列表 |
 | `openclaw-extensions/ask-user-question/package.json` | 显式声明 `@sinclair/typebox` 依赖 |
 | `openclaw-extensions/lobster-media-generation/package.json` | 显式声明 `@sinclair/typebox` 依赖 |
 | `openclaw-extensions/mcp-bridge/package.json` | 显式声明 `@sinclair/typebox` 依赖 |
 | `src/main/libs/openclawConfigSync.ts` | LobsterAI 生成 OpenClaw 配置的核心逻辑 |
 | `src/main/libs/openclawConfigSync.runtime.test.ts` | 配置输出测试 |
 | `src/main/libs/openclawPatches/` | pinned OpenClaw 版本 patch 覆盖测试 |
+| `src/main/libs/openclawExtensionManifests.test.ts` | 本地扩展 manifest tool contract 覆盖测试 |
 
 ## 6. 验证计划
 
@@ -338,6 +358,7 @@ node scripts/test-projects.mjs src/agents/tool-loop-detection.test.ts src/agents
 npm run openclaw:extensions:local
 npm run openclaw:precompile
 node -e "Promise.all(['ask-user-question','lobster-media-generation','mcp-bridge'].map(async id=>{ const p='file:///'+process.cwd().replace(/\\\\/g,'/')+'/vendor/openclaw-runtime/current/third-party-extensions/'+id+'/index.js'; const m=await import(p); console.log(id, Object.keys(m).join(',')); }))"
+npx vitest run src/main/libs/openclawExtensionManifests.test.ts
 ```
 
 | 命令 | 结果 | 说明 |
@@ -348,6 +369,7 @@ node -e "Promise.all(['ask-user-question','lobster-media-generation','mcp-bridge
 | `npm run openclaw:extensions:local` | 通过 | 三个本地扩展同步到当前 runtime |
 | `npm run openclaw:precompile` | 通过 | 3 个本地扩展编译、8 个已有 `node_modules` 的第三方插件跳过、0 errors |
 | 直接 import 三个 runtime 插件 | 通过 | `ask-user-question`、`lobster-media-generation`、`mcp-bridge` 均可加载，未再触发 `Cannot find module '@sinclair/typebox'` |
+| `npx vitest run src/main/libs/openclawExtensionManifests.test.ts` | 通过 | 覆盖 `ask-user-question` 与 `lobster-media-generation` 的 `contracts.tools` 声明；`mcp-bridge` 为已迁移前的旧动态桥接路径，当前 MCP 走 `mcp.servers`，不声明静态工具 contract |
 
 后续每迁移一个 patch，应至少完成：
 
