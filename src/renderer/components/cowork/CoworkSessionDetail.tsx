@@ -64,6 +64,7 @@ import LazyRenderTurn, { clearHeightCache } from './LazyRenderTurn';
 import {
   buildConversationTurns,
   buildDisplayItems,
+  type ConversationTurn,
   COWORK_DETAIL_CONTENT_CLASS,
   COWORK_DETAIL_GUTTER_CLASS,
   hasRenderableAssistantContent,
@@ -101,6 +102,24 @@ const SELECTED_TEXT_ACTION_SUPPRESS_MS = 250;
 const EXPANDED_CONVERSATION_PREVIEW_COLLAPSED_MAX_LENGTH = 140;
 const EXPANDED_CONVERSATION_PREVIEW_ITEM_MAX_LENGTH = 520;
 const EXPANDED_CONVERSATION_PREVIEW_ITEM_LIMIT = 8;
+const RAIL_LONG_JUMP_VIEWPORT_MULTIPLIER = 2.5;
+const RAIL_LINE_MIN_WIDTH = 6;
+const RAIL_LINE_MAX_WIDTH = 16;
+
+type RailItem = {
+  key: string;
+  turnIndex: number;
+  label: string;
+  contentLen: number;
+  isUser: boolean;
+};
+
+type RailNavigationDecision = {
+  behavior: ScrollBehavior;
+  distance: number;
+  threshold: number;
+  reason: 'long_distance' | 'nearby' | 'reduced_motion';
+};
 
 type ExpandedConversationPreviewItem = {
   id: string;
@@ -112,6 +131,108 @@ type ExpandedConversationPreviewItem = {
 type ExpandedConversationPreview = {
   latest: ExpandedConversationPreviewItem;
   items: ExpandedConversationPreviewItem[];
+};
+
+const stripRailLabelMarkdown = (value: string): string => value
+  .replace(/^#+\s+/gm, '')
+  .replace(/```[\s\S]*?```/g, ' ')
+  .replace(/`[^`]*`/g, ' ')
+  .replace(/[*_~>]/g, '')
+  .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+  .replace(/\s+/g, ' ')
+  .trim();
+
+const getRailLabel = (content: string, fallback: string): string => {
+  const stripped = stripRailLabelMarkdown(content);
+  return stripped.slice(0, 50) || fallback;
+};
+
+const buildRailItems = (turns: ConversationTurn[]): RailItem[] => {
+  const items: RailItem[] = [];
+
+  for (let index = 0; index < turns.length; index += 1) {
+    const turn = turns[index];
+    if (turn.userMessage) {
+      const content = turn.userMessage.content ?? '';
+      items.push({
+        key: `${turn.id}-user`,
+        turnIndex: index,
+        label: getRailLabel(content, `Turn ${index + 1}`),
+        contentLen: content.length,
+        isUser: true,
+      });
+    }
+
+    let assistantContent = '';
+    for (const item of turn.assistantItems) {
+      if (item.type === 'assistant' && item.message?.content) {
+        assistantContent += item.message.content;
+      }
+    }
+
+    if (assistantContent) {
+      items.push({
+        key: `${turn.id}-asst`,
+        turnIndex: index,
+        label: getRailLabel(assistantContent, 'LobsterAI'),
+        contentLen: assistantContent.length,
+        isUser: false,
+      });
+    }
+  }
+
+  return items;
+};
+
+const buildTurnToRailRange = (railItems: RailItem[]): { first: number; last: number }[] => {
+  const rangeMap: { first: number; last: number }[] = [];
+  for (let index = 0; index < railItems.length; index += 1) {
+    const turnIndex = railItems[index].turnIndex;
+    if (!rangeMap[turnIndex]) {
+      rangeMap[turnIndex] = { first: index, last: index };
+    } else {
+      rangeMap[turnIndex].last = index;
+    }
+  }
+  return rangeMap;
+};
+
+const prefersReducedMotion = (): boolean => (
+  typeof window.matchMedia === 'function'
+    && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+);
+
+const getRailNavigationDecision = (
+  container: HTMLDivElement,
+  targetElement: HTMLElement,
+): RailNavigationDecision => {
+  const containerRect = container.getBoundingClientRect();
+  const targetRect = targetElement.getBoundingClientRect();
+  const targetScrollTop = container.scrollTop + targetRect.top - containerRect.top;
+  const distance = Math.abs(targetScrollTop - container.scrollTop);
+  const threshold = Math.max(1, container.clientHeight) * RAIL_LONG_JUMP_VIEWPORT_MULTIPLIER;
+  if (prefersReducedMotion()) {
+    return {
+      behavior: 'auto',
+      distance,
+      threshold,
+      reason: 'reduced_motion',
+    };
+  }
+  if (distance > threshold) {
+    return {
+      behavior: 'auto',
+      distance,
+      threshold,
+      reason: 'long_distance',
+    };
+  }
+  return {
+    behavior: 'smooth',
+    distance,
+    threshold,
+    reason: 'nearby',
+  };
 };
 
 function normalizeExpandedConversationPreviewText(value: string): string {
@@ -224,6 +345,11 @@ const formatExportTimestamp = (value: Date): string => {
 const logDetailDiagnostic = (message: string): void => {
   console.log(`[CoworkSessionDetail] ${message}`);
   window.electron?.log?.fromRenderer?.('info', 'CoworkSessionDetail', message);
+};
+
+const logRailNavigationDiagnostic = (message: string): void => {
+  console.debug(`[CoworkSessionDetail] ${message}`);
+  window.electron?.log?.fromRenderer?.('debug', 'CoworkSessionDetail', message);
 };
 
 const getSelectionAnchorRect = (range: Range): DOMRect => {
@@ -2403,13 +2529,30 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
     if (container) {
       const el = container.querySelector<HTMLElement>(`[data-rail-index="${railIndex}"]`);
       if (el) {
-        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        const decision = getRailNavigationDecision(container, el);
+        if (decision.behavior === 'auto') {
+          logRailNavigationDiagnostic(
+            `rail navigation used instant scroll for item ${railIndex}; reason=${decision.reason}; distance=${Math.round(decision.distance)}px; threshold=${Math.round(decision.threshold)}px.`,
+          );
+        }
+        el.scrollIntoView({ behavior: decision.behavior, block: 'start' });
       } else if (targetTurnIdx >= 0) {
         // Fallback: scroll to the turn element (always in DOM)
         const turnEls = turnElsCacheRef.current;
         if (targetTurnIdx < turnEls.length) {
-          turnEls[targetTurnIdx].scrollIntoView({ behavior: 'smooth', block: 'start' });
+          const targetEl = turnEls[targetTurnIdx];
+          const decision = getRailNavigationDecision(container, targetEl);
+          if (decision.behavior === 'auto') {
+            logRailNavigationDiagnostic(
+              `rail navigation used instant fallback scroll for item ${railIndex}; reason=${decision.reason}; distance=${Math.round(decision.distance)}px; threshold=${Math.round(decision.threshold)}px.`,
+            );
+          }
+          targetEl.scrollIntoView({ behavior: decision.behavior, block: 'start' });
+        } else {
+          logRailNavigationDiagnostic(`rail navigation skipped item ${railIndex} because target turn ${targetTurnIdx} is not mounted.`);
         }
+      } else {
+        logRailNavigationDiagnostic(`rail navigation skipped item ${railIndex} because no target turn was found.`);
       }
     }
 
@@ -2531,6 +2674,11 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
   const messages = currentSession?.messages;
   const displayItems = useMemo(() => messages ? buildDisplayItems(messages) : [], [messages]);
   const turns = useMemo(() => buildConversationTurns(displayItems), [displayItems]);
+  const railItems = useMemo(() => buildRailItems(turns), [turns]);
+  const railMaxContentLength = useMemo(
+    () => railItems.reduce((acc, item) => Math.max(acc, item.contentLen), 1),
+    [railItems],
+  );
 
   // Cache turn-level DOM elements (data-turn-index, always in DOM even for lazy turns)
   useEffect(() => {
@@ -2540,6 +2688,11 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
       container.querySelectorAll<HTMLElement>('[data-turn-index]')
     );
   }, [turns]);
+
+  useLayoutEffect(() => {
+    railItemCountRef.current = railItems.length;
+    turnToRailRangeRef.current = buildTurnToRailRange(railItems);
+  }, [railItems]);
 
   // Sync rail index when turns change or rail first appears (isScrollable becomes true)
   useEffect(() => {
@@ -2632,6 +2785,9 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
   const shouldShowTurnNavigationRail = turns.length > 1 && isScrollable;
   const shouldShowScrollToBottom = isScrollable && !shouldAutoScroll;
   const expandedConversationPreview = getExpandedConversationPreview(currentSession.messages);
+  const resolvedRailIndex = currentRailIndex < 0 || currentRailIndex >= railItems.length
+    ? railItems.length - 1
+    : currentRailIndex;
 
   const renderConversationTurns = () => {
     let railCounter = 0;
@@ -3145,79 +3301,11 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
               className="overflow-y-auto min-h-0 flex-1"
               style={{ scrollbarWidth: 'none' }}
             >
-            {(() => {
-              // Build flat list of messages with their content length and turn index
-              const MIN_W = 6;  // px
-              const MAX_W = 16; // px
-              // Strip common markdown syntax for tooltip display
-              const stripMd = (s: string) => s
-                .replace(/^#+\s+/gm, '')
-                .replace(/```[\s\S]*?```/g, ' ')
-                .replace(/`[^`]*`/g, ' ')
-                .replace(/[*_~>]/g, '')
-                .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
-                .replace(/\s+/g, ' ')
-                .trim();
-              // Get first meaningful text snippet from content
-              const getLabel = (content: string, fallback: string) => {
-                const stripped = stripMd(content);
-                return stripped.slice(0, 50) || fallback;
-              };
-              type RailItem = { key: string; turnIndex: number; label: string; contentLen: number; isUser: boolean };
-              const items: RailItem[] = [];
-              for (let i = 0; i < turns.length; i++) {
-                const turn = turns[i];
-                if (turn.userMessage) {
-                  const content = turn.userMessage.content ?? '';
-                  items.push({
-                    key: `${turn.id}-user`,
-                    turnIndex: i,
-                    label: getLabel(content, `Turn ${i + 1}`),
-                    contentLen: content.length,
-                    isUser: true,
-                  });
-                }
-                // Aggregate all assistant content into one line per turn
-                let asstContent = '';
-                for (const item of turn.assistantItems) {
-                  if (item.type === 'assistant' && item.message?.content) {
-                    asstContent += item.message.content;
-                  }
-                }
-                if (asstContent) {
-                  items.push({
-                    key: `${turn.id}-asst`,
-                    turnIndex: i,
-                    label: getLabel(asstContent, 'LobsterAI'),
-                    contentLen: asstContent.length,
-                    isUser: false,
-                  });
-                }
-              }
-              const maxLen = items.reduce((acc, m) => Math.max(acc, m.contentLen), 1);
-              // Sync rail item count and turn-to-rail mapping
-              railItemCountRef.current = items.length;
-              const rangeMap: { first: number; last: number }[] = [];
-              for (let ri = 0; ri < items.length; ri++) {
-                const ti = items[ri].turnIndex;
-                if (!rangeMap[ti]) {
-                  rangeMap[ti] = { first: ri, last: ri };
-                } else {
-                  rangeMap[ti].last = ri;
-                }
-              }
-              turnToRailRangeRef.current = rangeMap;
-
-              // Clamp rail index to valid range
-              const resolvedRailIndex = currentRailIndex < 0 || currentRailIndex >= items.length
-                ? items.length - 1
-                : currentRailIndex;
-
-              return items.map((msg, idx) => {
+              {railItems.map((msg, idx) => {
                 const isActive = idx === resolvedRailIndex;
                 const isHovered = idx === hoveredRailIndex;
-                const ratio = msg.contentLen / maxLen;
-                const lineW = Math.round(MIN_W + ratio * (MAX_W - MIN_W));
+                const ratio = msg.contentLen / railMaxContentLength;
+                const lineW = Math.round(RAIL_LINE_MIN_WIDTH + ratio * (RAIL_LINE_MAX_WIDTH - RAIL_LINE_MIN_WIDTH));
                 return (
                   <button
                     key={msg.key}
@@ -3245,12 +3333,11 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
                           ? 'bg-neutral-800 dark:bg-neutral-200'
                           : 'bg-neutral-300 dark:bg-neutral-600'
                       }`}
-                      style={{ width: isActive || isHovered ? MAX_W : lineW }}
+                      style={{ width: isActive || isHovered ? RAIL_LINE_MAX_WIDTH : lineW }}
                     />
                   </button>
                 );
-              });
-            })()}
+              })}
             </div>
 
             {/* Down Arrow */}
