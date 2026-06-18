@@ -259,6 +259,8 @@ function getHtmlShareSourceTypeForArtifact(artifact: Artifact): HtmlShareSourceT
   if (artifact.type === ArtifactTypeValue.Image) return HtmlShareSourceType.ImageFile;
   if (artifact.type === ArtifactTypeValue.Svg) return HtmlShareSourceType.SvgFile;
   if (artifact.type === ArtifactTypeValue.Document) return HtmlShareSourceType.DocumentFile;
+  if (artifact.type === ArtifactTypeValue.Markdown) return HtmlShareSourceType.MarkdownFile;
+  if (artifact.type === ArtifactTypeValue.Mermaid) return HtmlShareSourceType.MermaidFile;
   return null;
 }
 
@@ -269,6 +271,12 @@ function hasShareableArtifactSource(
   if (!sourceType) return false;
   if (sourceType === HtmlShareSourceType.HtmlFile) return Boolean(artifact.filePath);
   if (sourceType === HtmlShareSourceType.DocumentFile) {
+    return Boolean(artifact.filePath || artifact.content?.trim());
+  }
+  if (
+    sourceType === HtmlShareSourceType.MarkdownFile ||
+    sourceType === HtmlShareSourceType.MermaidFile
+  ) {
     return Boolean(artifact.filePath || artifact.content?.trim());
   }
   return Boolean(artifact.filePath || artifact.content?.trim() || artifact.remoteUrl?.trim());
@@ -316,7 +324,11 @@ function buildHtmlSharePendingRequest(
     filePath: artifact.filePath,
     content: artifact.content,
     remoteUrl:
-      sourceType === HtmlShareSourceType.DocumentFile ? undefined : artifact.remoteUrl,
+      sourceType === HtmlShareSourceType.DocumentFile ||
+      sourceType === HtmlShareSourceType.MarkdownFile ||
+      sourceType === HtmlShareSourceType.MermaidFile
+        ? undefined
+        : artifact.remoteUrl,
   };
 }
 
