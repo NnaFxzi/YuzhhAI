@@ -6,6 +6,7 @@ import { useSelector } from 'react-redux';
 import { agentService } from '../services/agent';
 import { coworkService } from '../services/cowork';
 import { i18nService } from '../services/i18n';
+import { LogReporterAction, reportYdAnalyzer } from '../services/logReporter';
 import { RootState } from '../store';
 import {
   selectCoworkSessions,
@@ -65,6 +66,24 @@ const sidebarNavItemClassName =
 const activeSidebarNavItemClassName =
   `${sidebarNavItemClassName} bg-black/[0.06] hover:bg-black/[0.06] dark:bg-white/[0.07] dark:hover:bg-white/[0.07]`;
 const sidebarCreateIconClassName = 'h-4 w-4 shrink-0';
+
+const reportSidebarAction = (
+  actionType: string,
+  options: {
+    activeView?: SidebarProps['activeView'];
+    isCollapsed?: boolean;
+    source?: 'home_sidebar' | 'home_agent_sidebar';
+  } = {},
+): void => {
+  console.debug('[Sidebar] reporting sidebar action analytics');
+  void reportYdAnalyzer({
+    action: LogReporterAction.SidebarAction,
+    source: options.source ?? 'home_sidebar',
+    actionType,
+    activeView: options.activeView,
+    isCollapsed: options.isCollapsed,
+  });
+};
 
 const Sidebar: React.FC<SidebarProps> = ({
   onShowSettings,
@@ -381,7 +400,13 @@ const Sidebar: React.FC<SidebarProps> = ({
           <div className={`${isMac ? 'pl-[68px]' : ''}`}>{updateBadge}</div>
           <button
             type="button"
-            onClick={onToggleCollapse}
+            onClick={() => {
+              reportSidebarAction(isCollapsed ? 'expand_sidebar' : 'collapse_sidebar', {
+                activeView,
+                isCollapsed,
+              });
+              onToggleCollapse();
+            }}
             className="non-draggable h-8 w-8 inline-flex items-center justify-center rounded-lg text-secondary hover:bg-surface-raised transition-colors"
             aria-label={isCollapsed ? i18nService.t('expand') : i18nService.t('collapse')}
           >
@@ -391,7 +416,10 @@ const Sidebar: React.FC<SidebarProps> = ({
         <div className="mt-[5px] space-y-0.5 px-3">
           <button
             type="button"
-            onClick={onNewChat}
+            onClick={() => {
+              reportSidebarAction('new_task', { activeView, isCollapsed });
+              onNewChat();
+            }}
             className={sidebarNavItemClassName}
           >
             <ComposeIcon className={sidebarCreateIconClassName} />
@@ -400,6 +428,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           <button
             type="button"
             onClick={() => {
+              reportSidebarAction('open_search', { activeView, isCollapsed });
               onShowCowork();
               setIsSearchOpen(true);
             }}
@@ -411,6 +440,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           <button
             type="button"
             onClick={() => {
+              reportSidebarAction('open_scheduled_tasks', { activeView, isCollapsed });
               setIsSearchOpen(false);
               onShowScheduledTasks();
             }}
@@ -423,6 +453,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           <button
             type="button"
             onClick={() => {
+              reportSidebarAction('open_kits', { activeView, isCollapsed });
               setIsSearchOpen(false);
               dismissKitsNewBadge();
               onShowKits();
@@ -441,6 +472,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           <button
             type="button"
             onClick={() => {
+              reportSidebarAction('open_skills', { activeView, isCollapsed });
               setIsSearchOpen(false);
               onShowSkills();
             }}
@@ -453,6 +485,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           <button
             type="button"
             onClick={() => {
+              reportSidebarAction('open_mcp', { activeView, isCollapsed });
               setIsSearchOpen(false);
               onShowMcp();
             }}
@@ -477,6 +510,16 @@ const Sidebar: React.FC<SidebarProps> = ({
             deletedSubagentItems={deletedSubagentItems}
             selectedKeys={selectedKeys}
             onShowCowork={onShowCowork}
+            onTaskSelected={(params) => {
+              console.debug('[Sidebar] reporting agent sidebar task selection analytics');
+              void reportYdAnalyzer({
+                action: LogReporterAction.SidebarAction,
+                source: 'home_agent_sidebar',
+                actionType: 'select_task',
+                activeView,
+                ...params,
+              });
+            }}
             onToggleSelection={handleToggleSelection}
             onEnterBatchMode={handleEnterBatchMode}
             onBatchSelectableItemsChange={handleBatchSelectableItemsChange}

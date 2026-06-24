@@ -527,6 +527,38 @@ export const LogReporterActionPrefix = {
   - 不上传手机号、手机号后四位、昵称、头像 URL、具体剩余额度数值、额度明细 label、额度类型、到期时间、Portal URL、登录 URL 或退出登录错误详情。
   - 额度相关字段只记录是否有额度明细和明细数量，不记录资产金额。
 
+#### 2.4.29 `lobsterai_sidebar_action`
+
+- 状态：已实现。
+- 触发时机：用户在首页左侧边栏执行主动动作后发送。包括新建任务、打开任务搜索、切换到定时任务/专家套件/技能/MCP、折叠或展开侧边栏、从 Agent 任务列表选择任务。
+- 事件含义：统计首页侧边栏主要入口和任务列表选择行为。
+- 业务参数：
+  - `source`：string，触发来源。当前取值包括 `home_sidebar`、`home_agent_sidebar`。
+  - `actionType`：string，动作类型。当前取值包括 `new_task`、`open_search`、`open_scheduled_tasks`、`open_kits`、`open_skills`、`open_mcp`、`collapse_sidebar`、`expand_sidebar`、`select_task`。
+  - `activeView`：string，触发时当前主视图。当前取值包括 `cowork`、`skills`、`scheduledTasks`、`kits`、`mcp`。
+  - `isCollapsed`：boolean，触发时侧边栏是否折叠；仅顶部侧边栏入口发送。
+  - `agentType`：string，任务所属 Agent 类型。当前取值为 `main` 或 `custom`；仅选择任务时发送。
+  - `isCurrentSession`：boolean，被选择任务是否为当前会话；仅选择任务时发送。
+  - `taskStatus`：string，被选择任务的状态摘要；仅选择任务时发送。
+- 隐私边界：不上传任务标题、sessionId、agentId、agentName、消息内容、创建/更新时间、用户输入或本地路径。
+
+#### 2.4.30 `lobsterai_task_search_action`
+
+- 状态：已实现。
+- 触发时机：用户打开/关闭首页任务搜索弹窗、搜索结果为空、或点击搜索结果任务后发送。
+- 事件含义：统计任务搜索入口使用情况和搜索结果点击情况。
+- 业务参数：
+  - `source`：string，触发来源。当前固定为 `home_task_search`。
+  - `actionType`：string，动作类型。当前取值包括 `open`、`close`、`empty_result`、`select_result`。
+  - `hasQuery`：boolean，触发时搜索框是否有输入。
+  - `resultCount`：number，触发时展示的结果数量。
+  - `isCurrentSession`：boolean，被点击结果是否为当前会话；仅 `select_result` 时发送。
+  - `sessionStatus`：string，被点击结果的状态摘要；仅 `select_result` 时发送。
+  - `agentType`：string，被点击结果所属 Agent 类型。当前取值为 `main` 或 `custom`；仅 `select_result` 时发送。
+- 隐私边界：
+  - 不上传搜索词、任务标题、sessionId、agentId、agentName、消息内容、创建/更新时间或本地路径。
+  - 不记录每次输入变化，避免产生高频噪音和隐私风险。
+
 ### 2.5 请求流程
 
 ```text

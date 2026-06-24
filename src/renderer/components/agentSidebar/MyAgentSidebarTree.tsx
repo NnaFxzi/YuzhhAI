@@ -38,6 +38,11 @@ interface MyAgentSidebarTreeProps {
   deletedSubagentItems: AgentSidebarSubagentBatchItem[];
   selectedKeys: Set<string>;
   onShowCowork: () => void;
+  onTaskSelected?: (params: {
+    agentType: 'main' | 'custom';
+    isCurrentSession: boolean;
+    taskStatus: string;
+  }) => void;
   onToggleSelection: (selectionKey: string, agentId: string) => void;
   onEnterBatchMode: (sessionId: string, agentId: string) => void;
   onBatchSelectableItemsChange: (items: AgentSidebarBatchItem[]) => void;
@@ -51,6 +56,7 @@ const MyAgentSidebarTree: React.FC<MyAgentSidebarTreeProps> = ({
   deletedSubagentItems,
   selectedKeys,
   onShowCowork,
+  onTaskSelected,
   onToggleSelection,
   onEnterBatchMode,
   onBatchSelectableItemsChange,
@@ -102,6 +108,11 @@ const MyAgentSidebarTree: React.FC<MyAgentSidebarTreeProps> = ({
   }, [currentSessionId, refetchSubagents]);
 
   const handleSelectTask = useCallback(async (task: AgentSidebarTaskNode) => {
+    onTaskSelected?.({
+      agentType: isDefaultAgentId(task.agentId) ? 'main' : 'custom',
+      isCurrentSession: task.id === currentSessionId,
+      taskStatus: task.status,
+    });
     if (task.agentId !== currentAgentId) {
       agentService.switchAgent(task.agentId);
       await coworkService.loadSessions(task.agentId);
@@ -110,7 +121,7 @@ const MyAgentSidebarTree: React.FC<MyAgentSidebarTreeProps> = ({
     // Clear subagent detail view so the main session detail is shown
     window.dispatchEvent(new CustomEvent(CoworkUiEvent.SelectSubagent, { detail: null }));
     return coworkService.loadSession(task.id);
-  }, [currentAgentId, onShowCowork]);
+  }, [currentAgentId, currentSessionId, onShowCowork, onTaskSelected]);
 
   useEffect(() => {
     const handleSwitchAgent = (event: Event) => {

@@ -45,7 +45,9 @@ export const LogReporterAction = {
   PluginAction: 'lobsterai_plugin_action',
   PluginSettingsSaved: 'lobsterai_plugin_settings_saved',
   ShortcutSettingChanged: 'lobsterai_shortcut_setting_changed',
+  SidebarAction: 'lobsterai_sidebar_action',
   SkillEnabled: 'lobsterai_skill_enabled',
+  TaskSearchAction: 'lobsterai_task_search_action',
   UsageAnalyticsEnabled: 'lobsterai_usage_analytics_enabled',
 } as const;
 
