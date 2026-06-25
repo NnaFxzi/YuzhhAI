@@ -62,6 +62,7 @@ import {
 import type { MediaAttachmentRef } from '../../types/mediaGeneration';
 import { parseUserMessageForDisplay } from '../../utils/userMessageDisplay';
 import { ArtifactPanel, type BrowserAnnotationPayload } from '../artifacts';
+import { reportArtifactPreviewAction } from '../artifacts/artifactAnalytics';
 import ComposeIcon from '../icons/ComposeIcon';
 import FileTypeIcon from '../icons/fileTypes/FileTypeIcon';
 import SidebarToggleIcon from '../icons/SidebarToggleIcon';
@@ -1570,38 +1571,70 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
   }, [clearBrowserHtmlPreviewState, sessionId]);
 
   const handleOpenArtifactFileListTab = useCallback(() => {
+    reportArtifactPreviewAction({
+      actionType: 'panel_tab_open',
+      source: 'artifact_panel',
+      params: {
+        tabType: 'file_list',
+        tabCount: artifactTabsWithArtifacts.length,
+      },
+    });
     setSessionFileListPreviewTabOpen(true);
     setSessionActiveSpecialPreviewTab(ArtifactSpecialTab.FileList);
     if (sessionId) {
       dispatch(activateArtifactFileListTab({ sessionId }));
     }
-  }, [dispatch, sessionId, setSessionActiveSpecialPreviewTab, setSessionFileListPreviewTabOpen]);
+  }, [artifactTabsWithArtifacts.length, dispatch, sessionId, setSessionActiveSpecialPreviewTab, setSessionFileListPreviewTabOpen]);
 
   const handleActivateArtifactFileListTab = useCallback(() => {
     if (!sessionId) return;
+    reportArtifactPreviewAction({
+      actionType: 'panel_tab_switch',
+      source: 'artifact_panel',
+      params: {
+        tabType: 'file_list',
+        tabCount: artifactTabsWithArtifacts.length,
+      },
+    });
     setSessionFileListPreviewTabOpen(true);
     setSessionActiveSpecialPreviewTab(ArtifactSpecialTab.FileList);
     dispatch(activateArtifactFileListTab({ sessionId }));
-  }, [dispatch, sessionId, setSessionActiveSpecialPreviewTab, setSessionFileListPreviewTabOpen]);
+  }, [artifactTabsWithArtifacts.length, dispatch, sessionId, setSessionActiveSpecialPreviewTab, setSessionFileListPreviewTabOpen]);
 
   const handleOpenArtifactBrowserTab = useCallback(() => {
+    reportArtifactPreviewAction({
+      actionType: 'panel_tab_open',
+      source: 'artifact_panel',
+      params: {
+        tabType: 'browser',
+        tabCount: artifactTabsWithArtifacts.length,
+      },
+    });
     setShowArtifactAddMenu(false);
     if (!sessionId) return;
     setSessionBrowserPreviewTabOpen(true);
     setSessionActiveSpecialPreviewTab(ArtifactSpecialTab.Browser);
     dispatch(activateArtifactBrowserTab({ sessionId }));
-  }, [dispatch, sessionId, setSessionActiveSpecialPreviewTab, setSessionBrowserPreviewTabOpen]);
+  }, [artifactTabsWithArtifacts.length, dispatch, sessionId, setSessionActiveSpecialPreviewTab, setSessionBrowserPreviewTabOpen]);
 
   const handleToggleArtifactPanelExpanded = useCallback(() => {
     setIsArtifactPanelExpanded(value => {
       const nextValue = !value;
+      reportArtifactPreviewAction({
+        actionType: 'panel_expand_toggle',
+        source: 'artifact_panel',
+        params: {
+          targetExpanded: nextValue,
+          tabCount: artifactTabsWithArtifacts.length,
+        },
+      });
       if (!nextValue) {
         setIsExpandedPromptInputHidden(false);
         setIsExpandedConversationPreviewOpen(false);
       }
       return nextValue;
     });
-  }, []);
+  }, [artifactTabsWithArtifacts.length]);
 
   const handleToggleExpandedPromptInput = useCallback(() => {
     setIsExpandedPromptInputHidden(value => {
@@ -1615,6 +1648,14 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
 
   const handleOpenHtmlFileInBrowser = useCallback(async (artifact: Artifact) => {
     if (!sessionId || artifact.type !== ArtifactTypeValue.Html || !artifact.filePath) return;
+    reportArtifactPreviewAction({
+      actionType: 'open_lobster_browser',
+      source: 'artifact_panel',
+      artifact,
+      params: {
+        openTarget: 'lobster_browser',
+      },
+    });
 
     setShowArtifactAddMenu(false);
     setSessionBrowserPreviewTabOpen(true);
@@ -1648,6 +1689,14 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
       handleBrowserPreviewAddressChange(artifact.filePath);
       handleBrowserPreviewUrlChange(result.url);
       handleBrowserPreviewTitleChange('');
+      reportArtifactPreviewAction({
+        actionType: 'browser_preview_session_create',
+        source: 'artifact_panel',
+        artifact,
+        params: {
+          result: 'success',
+        },
+      });
     } catch (error) {
       if (!previousPreviewSessionId) {
         clearBrowserHtmlPreviewState(sessionId);
@@ -1655,6 +1704,14 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
       window.dispatchEvent(new CustomEvent('app:showToast', {
         detail: error instanceof Error ? error.message : i18nService.t('artifactSourceLoadFailed'),
       }));
+      reportArtifactPreviewAction({
+        actionType: 'browser_preview_session_create',
+        source: 'artifact_panel',
+        artifact,
+        params: {
+          result: 'failed',
+        },
+      });
     }
   }, [
     clearBrowserHtmlPreviewState,
@@ -1671,6 +1728,14 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
   const handleOpenLocalServiceArtifact = useCallback((artifact: Artifact) => {
     const url = artifact.url || artifact.content;
     if (!url) return;
+    reportArtifactPreviewAction({
+      actionType: 'open_local_service',
+      source: 'artifact_panel',
+      artifact,
+      params: {
+        openTarget: 'lobster_browser',
+      },
+    });
     handleOpenArtifactBrowserTab();
     handleBrowserPreviewAddressChange(url);
     handleBrowserPreviewUrlChange(url);
@@ -1689,6 +1754,15 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
 
   const handleCloseArtifactFileListTab = useCallback(() => {
     const wasActive = !activeArtifactPreviewTab && activeSpecialPreviewTab === ArtifactSpecialTab.FileList;
+    reportArtifactPreviewAction({
+      actionType: 'panel_tab_close',
+      source: 'artifact_panel',
+      params: {
+        tabType: 'file_list',
+        wasActive,
+        tabCount: artifactTabsWithArtifacts.length,
+      },
+    });
     setSessionFileListPreviewTabOpen(false);
     if (!sessionId) {
       dispatch(closePanel(undefined));
@@ -1723,13 +1797,30 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
 
   const handleActivateArtifactBrowserTab = useCallback(() => {
     if (!sessionId) return;
+    reportArtifactPreviewAction({
+      actionType: 'panel_tab_switch',
+      source: 'artifact_panel',
+      params: {
+        tabType: 'browser',
+        tabCount: artifactTabsWithArtifacts.length,
+      },
+    });
     setSessionBrowserPreviewTabOpen(true);
     setSessionActiveSpecialPreviewTab(ArtifactSpecialTab.Browser);
     dispatch(activateArtifactBrowserTab({ sessionId }));
-  }, [dispatch, sessionId, setSessionActiveSpecialPreviewTab, setSessionBrowserPreviewTabOpen]);
+  }, [artifactTabsWithArtifacts.length, dispatch, sessionId, setSessionActiveSpecialPreviewTab, setSessionBrowserPreviewTabOpen]);
 
   const handleCloseArtifactBrowserTab = useCallback(() => {
     const wasActive = !activeArtifactPreviewTab && activeSpecialPreviewTab === ArtifactSpecialTab.Browser;
+    reportArtifactPreviewAction({
+      actionType: 'panel_tab_close',
+      source: 'artifact_panel',
+      params: {
+        tabType: 'browser',
+        wasActive,
+        tabCount: artifactTabsWithArtifacts.length,
+      },
+    });
     setSessionBrowserPreviewTabOpen(false);
     clearBrowserPreviewState();
     if (!sessionId) {
@@ -1766,12 +1857,32 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
 
   const handleActivateArtifactTab = useCallback((tabId: string) => {
     if (!sessionId) return;
+    const artifact = artifactTabsWithArtifacts.find(item => item.tab.id === tabId)?.artifact;
+    reportArtifactPreviewAction({
+      actionType: 'panel_tab_switch',
+      source: 'artifact_panel',
+      artifact,
+      params: {
+        tabType: 'artifact',
+        tabCount: artifactTabsWithArtifacts.length,
+      },
+    });
     dispatch(activateArtifactPreviewTab({ sessionId, tabId }));
-  }, [dispatch, sessionId]);
+  }, [artifactTabsWithArtifacts, dispatch, sessionId]);
 
   const handleCloseArtifactTab = useCallback((tabId: string) => {
     if (!sessionId) return;
+    const artifact = artifactTabsWithArtifacts.find(item => item.tab.id === tabId)?.artifact;
     const remainingTabs = artifactTabsWithArtifacts.filter(({ tab }) => tab.id !== tabId);
+    reportArtifactPreviewAction({
+      actionType: 'panel_tab_close',
+      source: 'artifact_panel',
+      artifact,
+      params: {
+        tabType: 'artifact',
+        tabCount: artifactTabsWithArtifacts.length,
+      },
+    });
     dispatch(closeArtifactPreviewTab({ sessionId, tabId }));
     if (remainingTabs.length === 0 && !isFileListPreviewTabOpen && !isBrowserPreviewTabOpen) {
       dispatch(closePanel({ sessionId }));
@@ -1779,6 +1890,14 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
   }, [artifactTabsWithArtifacts, dispatch, isBrowserPreviewTabOpen, isFileListPreviewTabOpen, sessionId]);
 
   const handleToggleArtifactPanel = useCallback(() => {
+    reportArtifactPreviewAction({
+      actionType: 'panel_toggle',
+      source: 'artifact_panel',
+      params: {
+        targetOpen: !isPanelOpen,
+        tabCount: artifactTabsWithArtifacts.length,
+      },
+    });
     if (isPanelOpen) {
       setShowArtifactAddMenu(false);
       dispatch(closePanel(sessionId ? { sessionId } : undefined));
@@ -1817,8 +1936,19 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
   }, [handleToggleArtifactPanel]);
 
   const handleToggleArtifactAddMenu = useCallback(() => {
-    setShowArtifactAddMenu(open => !open);
-  }, []);
+    setShowArtifactAddMenu(open => {
+      const nextOpen = !open;
+      reportArtifactPreviewAction({
+        actionType: 'panel_add_menu_toggle',
+        source: 'artifact_panel',
+        params: {
+          targetOpen: nextOpen,
+          tabCount: artifactTabsWithArtifacts.length,
+        },
+      });
+      return nextOpen;
+    });
+  }, [artifactTabsWithArtifacts.length]);
 
   useLayoutEffect(() => {
     if (!showArtifactAddMenu) {

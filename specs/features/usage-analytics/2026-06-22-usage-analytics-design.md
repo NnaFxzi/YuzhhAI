@@ -990,6 +990,43 @@ export const LogReporterActionPrefix = {
   - 不上传代码正文、思考过程正文、计划正文、下载文件名、消息正文、sessionId 或 messageId。
   - 会上传语言、长度/行数分桶、区块类型和动作结果，用于分析代码、计划和思考过程等富内容的真实使用情况。
 
+#### 2.4.35 `lobsterai_artifact_preview_action`
+
+- 状态：已实现。
+- 触发时机：用户在会话中的 artifact 卡片、右侧 artifact 预览面板、内置浏览器 tab 和浏览器工具栏中操作时发送。
+- 事件含义：统计 artifact 从生成后的点击、打开、预览、切换、复用、浏览和导出链路。
+- 业务参数：
+  - `source`：string，触发来源。当前取值包括 `conversation_artifact_card`、`artifact_panel`、`artifact_browser`。
+  - `actionType`：string，动作类型。当前取值包括 `card_open`、`open_menu_toggle`、`open_lobster_browser`、`open_external_app`、`open_with_app`、`open_in_browser`、`open_local_service`、`reveal_in_folder`、`panel_toggle`、`panel_expand_toggle`、`panel_add_menu_toggle`、`panel_tab_open`、`panel_tab_switch`、`panel_tab_close`、`file_list_drawer_toggle`、`file_list_select_artifact`、`actions_menu_toggle`、`content_view_change`、`copy_content`、`refresh_preview`、`share_html_click`、`browser_preview_session_create`、`browser_back`、`browser_forward`、`browser_reload`、`browser_stop`、`browser_address_submit`、`browser_open_external`、`browser_more_menu_toggle`、`browser_open_blank_page`、`browser_open_local_service`、`browser_device_toolbar_toggle`、`browser_device_preset_change`、`browser_device_size_change`、`browser_device_rotate`、`browser_device_scale_change`、`browser_zoom_in`、`browser_zoom_out`、`browser_zoom_reset`、`browser_clear_cookies`、`browser_clear_cache`、`browser_screenshot`、`browser_annotate_start`、`browser_annotate_cancel`、`browser_annotate_end`、`browser_annotate_send`。
+  - `artifactType`：string，artifact 类型。当前取值包括 `html`、`svg`、`image`、`video`、`mermaid`、`code`、`markdown`、`text`、`document`、`local-service`。
+  - `artifactSource`：string，artifact 来源。当前取值包括 `inline`、`tool`、`file`。
+  - `artifactTitleLength` / `artifactTitleLengthBucket`：number/string，artifact 标题或文件名长度及分桶。
+  - `fileExtension`：string，文件扩展名，例如 `html`、`png`、`pdf`。
+  - `hasFilePath` / `hasUrl` / `hasContent`：boolean，artifact 是否有本地文件路径、URL 或内联内容。
+  - `contentLengthBucket`：string，artifact 内容长度分桶。
+  - `isWebsite`：boolean，是否为网页/本地服务类 artifact。
+  - `openTarget`：string，打开目标。当前取值包括 `preview_panel`、`lobster_browser`、`external_browser`、`external_app`、`folder`。
+  - `appName`：string，用户选择的系统 App 名称，例如 `Google Chrome`、`Safari`；不上传 App 路径。
+  - `isDefaultApp`：boolean，是否为系统默认 App。
+  - `tabType`：string，右侧面板 tab 类型。当前取值包括 `artifact`、`browser`、`file_list`。
+  - `tabCount`：number，当前会话 artifact tab 数量。
+  - `isPanelExpanded` / `targetExpanded` / `targetOpen`：boolean，面板或菜单当前/目标状态。
+  - `contentView` / `targetContentView`：string，artifact 预览视图，例如 `preview`、`code`。
+  - `browserUrlType`：string，浏览器地址类型。当前取值包括 `blank`、`local_file`、`localhost`、`external_url`、`other`。
+  - `hasCurrentUrl`：boolean，内置浏览器是否存在当前 URL。
+  - `browserZoomPercent` / `targetBrowserZoomPercent`：number，浏览器缩放百分比。
+  - `isDeviceToolbarVisible`：boolean，设备工具栏是否显示。
+  - `devicePreset` / `targetDevicePreset`：string，设备预设。
+  - `targetDeviceWidth` / `targetDeviceHeight` / `targetDeviceSize`：number，设备预览目标尺寸。
+  - `deviceScalePercent` / `targetDeviceScalePercent`：number，设备预览缩放百分比。
+  - `servicePort` / `serviceOnline`：number/boolean，本地服务端口和在线状态。
+  - `shareSourceType` / `hasExistingShare`：string/boolean，HTML 分享来源类型和是否已有分享。
+  - `hasComment` / `annotationElementTag`：boolean/string，浏览器标注是否有评论、标注元素标签。
+  - `result`：string，动作结果。当前取值包括 `success`、`failed`、`cancelled`。
+- 隐私边界：
+  - 不上传完整本地路径、完整 URL、URL query、文件名全文、HTML/代码/图片/文档内容、sessionId、artifactId、messageId、App 可执行路径或错误详情。
+  - 会上传 artifact 类型、扩展名、标题长度、来源、打开目标、App 展示名称、tab/面板状态、浏览器 URL 类型、设备/缩放参数和动作结果，用于分析 artifact 预览链路是否被用户持续使用。
+
 ### 2.5 请求流程
 
 ```text
