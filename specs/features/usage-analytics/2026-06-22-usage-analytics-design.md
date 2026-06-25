@@ -845,7 +845,7 @@ export const LogReporterActionPrefix = {
   - 会上传模型 ID/名称、provider、cron 表达式、通知渠道/platform、模板 ID/名称、payload 长度、计划时间和任务状态摘要，用于分析定时任务功能使用偏好。
   - 历史页只记录筛选和是否查看关联会话，不上传运行记录 ID、任务名或会话标识。
 
-#### 2.4.29 `lobsterai_prompt_submit`
+#### 2.4.34 `lobsterai_prompt_submit`
 
 - 状态：已实现。
 - 触发时机：用户从首页初始输入框或历史对话输入框成功发起一次任务/继续对话后发送。发送前被拦截、模型权限弹窗、附件校验失败、父层提交返回 `false` 时不发送本事件，而发送 `lobsterai_prompt_control_action` 的 `submit_blocked`。
@@ -885,7 +885,7 @@ export const LogReporterActionPrefix = {
   - 不上传 prompt 正文、自动拼接的附件路径、文件名、图片/音频内容、选中文本片段内容或历史消息内容。
   - 会上传技能/专家套件/模型 ID 和名称、Agent ID、数量和分桶信息，用于分析用户在不同场景下的能力选择和提交转化。
 
-#### 2.4.30 `lobsterai_prompt_control_action`
+#### 2.4.35 `lobsterai_prompt_control_action`
 
 - 状态：已实现。
 - 触发时机：用户操作输入框附近控件或提交前被阻断时发送。
@@ -907,7 +907,7 @@ export const LogReporterActionPrefix = {
   - 不上传文件路径、文件名、文件内容、工作目录真实路径、Agent 名称、Agent system prompt/identity/userInfo、语音识别文本或错误详情。
   - 会上传技能/专家套件 ID 和名称、模型/Agent 结构化上下文、附件类型分组和数量，用于分析输入框周边控件使用率和阻断原因。
 
-#### 2.4.31 `lobsterai_prompt_template_action`
+#### 2.4.36 `lobsterai_prompt_template_action`
 
 - 状态：已实现。
 - 触发时机：用户在首页初始状态下点击输入框下方的 prompt 模板入口（例如「制作幻灯片」「数据分析」「教育学习」「创建网站」）或点击具体模板 prompt 时发送。
@@ -931,7 +931,7 @@ export const LogReporterActionPrefix = {
   - 不上传模板 prompt 完整正文，仅上传模板 ID、展示名称、prompt ID/名称、长度和映射技能信息。
   - 这些字段用于分析首页模板入口点击率、具体模板偏好、模板到技能选择的转化情况。
 
-#### 2.4.32 `lobsterai_conversation_message_action`
+#### 2.4.37 `lobsterai_conversation_message_action`
 
 - 状态：已实现。
 - 触发时机：用户在历史对话消息上执行复制、重新编辑、从助手消息分叉、打开消息图片预览等动作时发送。
@@ -952,32 +952,37 @@ export const LogReporterActionPrefix = {
   - 不上传消息正文、图片内容、文件名、本地路径、sessionId、messageId 或错误详情。
   - 会上传技能/套件 ID、模型 ID/名称、角色、长度分桶和动作结果，用于分析用户对消息复用、分叉和图片查看的行为偏好。
 
-#### 2.4.33 `lobsterai_conversation_navigation_action`
+#### 2.4.38 `lobsterai_conversation_navigation_action`
 
 - 状态：已实现。
-- 触发时机：用户点击右侧消息轨道、轨道上一条/下一条按钮、回到底部按钮时发送。
-- 事件含义：统计长对话浏览与定位行为，用于判断消息轨道、回到底部等导航能力的使用价值。
+- 触发时机：用户点击右侧消息轨道、轨道上一条/下一条按钮、回到底部按钮，以及执行会话导出、手动上下文压缩、选中文本引用等会话级操作时发送。
+- 事件含义：统计长对话浏览、定位和会话级复用行为，用于判断消息轨道、回到底部、导出、上下文压缩和选中文本引用等能力的使用价值。
 - 业务参数：
   - `surface`：string，当前固定为 `conversation`。
-  - `actionType`：string，动作类型。当前取值包括 `rail_item_click`、`rail_prev_click`、`rail_next_click`、`scroll_to_bottom_click`。
+  - `actionType`：string，动作类型。当前取值包括 `rail_item_click`、`rail_prev_click`、`rail_next_click`、`scroll_to_bottom_click`、`export_options_open`、`export_text_submit`、`export_text_result`、`export_image_submit`、`export_image_result`、`context_compact_confirm_open`、`context_compact_confirm_close`、`context_compact_blocked`、`context_compact_cancel`、`context_compact_confirm`、`selected_text_add_to_prompt`、`selected_text_add_blocked`、`selected_text_locate_source`。
   - `currentRailIndex` / `targetRailIndex`：number，当前轨道位置和目标轨道位置。
   - `railItemCount`：number，当前轨道消息项数量。
   - `distanceToBottomBucket`：string，回到底部前距离底部分桶。
   - `sessionMessageCountBucket` / `totalMessageCountBucket`：string，当前已加载消息数和总消息数分桶。
   - `isStreaming`：boolean，操作时会话是否仍在生成中。
+  - `exportFormat`：string，导出格式。当前取值包括 `markdown`、`json`。
+  - `result`：string，动作结果。当前取值包括 `success`、`failed`、`cancelled`。
+  - `reason` / `errorCode`：string，会话级动作被阻止或失败时的分类原因，不上传错误详情。
+  - `selectedTextLengthBucket` / `selectedTextTotalLengthBucket`：string，选中文本长度和当前已引用文本总长度分桶。
+  - `selectedSnippetCount`：number，当前输入框引用的选中文本片段数量。
 - 隐私边界：
-  - 不上传消息正文、轨道 tooltip 文本、sessionId、messageId 或滚动容器具体 DOM 信息。
-  - 会上传轨道序号、数量、距离和消息数分桶，用于分析长对话导航是否有效。
+  - 不上传消息正文、轨道 tooltip 文本、选中文本正文、导出文件名、sessionId、messageId 或滚动容器具体 DOM 信息。
+  - 会上传轨道序号、数量、距离、消息数分桶、导出格式、选中文本长度分桶和动作结果，用于分析长对话导航、导出和引用链路是否有效。
 
-#### 2.4.34 `lobsterai_conversation_block_action`
+#### 2.4.39 `lobsterai_conversation_block_action`
 
 - 状态：已实现。
-- 触发时机：用户在对话内容区操作代码块、思考过程块、计划模式输出块时发送。覆盖代码块展开/收起、换行、全屏、复制、下载、全屏搜索；思考过程展开/收起；计划模式复制、下载、展开/收起、确认执行、继续调整。
+- 触发时机：用户在对话内容区操作代码块、思考过程块、计划模式输出块和工具调用块时发送。覆盖代码块展开/收起、换行、全屏、复制、下载、全屏搜索；思考过程展开/收起；计划模式复制、下载、展开/收起、确认执行、继续调整；工具调用展开/收起。
 - 事件含义：统计对话内富内容区块的阅读、复用和导出行为。
 - 业务参数：
   - `surface`：string，当前固定为 `conversation`。
-  - `blockType`：string，区块类型。当前取值为 `code`、`thinking`、`proposed_plan`。
-  - `actionType`：string，动作类型。当前取值包括 `code_copy`、`code_download`、`code_collapse`、`code_expand`、`code_wrap_enabled`、`code_wrap_disabled`、`code_fullscreen_open`、`code_fullscreen_close`、`code_search_open`、`code_search_close`、`thinking_expand`、`thinking_collapse`、`plan_copy`、`plan_download`、`plan_expand`、`plan_collapse`、`plan_confirm_execute`、`plan_adjust`。
+  - `blockType`：string，区块类型。当前取值为 `code`、`thinking`、`proposed_plan`、`tool`。
+  - `actionType`：string，动作类型。当前取值包括 `code_copy`、`code_download`、`code_collapse`、`code_expand`、`code_wrap_enabled`、`code_wrap_disabled`、`code_fullscreen_open`、`code_fullscreen_close`、`code_search_open`、`code_search_close`、`thinking_expand`、`thinking_collapse`、`plan_copy`、`plan_download`、`plan_expand`、`plan_collapse`、`plan_confirm_execute`、`plan_adjust`、`tool_expand`、`tool_collapse`。
   - `result`：string，动作结果。当前取值包括 `success`、`failed`。
   - `source`：string，动作来源。代码块当前取值包括 `inline`、`fullscreen`。
   - `language`：string，代码块语言；无语言时为 `text`。
@@ -985,19 +990,23 @@ export const LogReporterActionPrefix = {
   - `codeLength` / `codeLengthBucket` / `codeLineCount`：number/string/number，代码块长度、长度分桶和行数。
   - `thinkingLength` / `thinkingLengthBucket` / `thinkingLineCount`：number/string/number，思考过程长度、长度分桶和行数。
   - `planLength` / `planLengthBucket` / `planLineCount`：number/string/number，计划内容长度、长度分桶和行数。
+  - `toolName` / `displayToolName`：string，工具调用名称和展示名称。
+  - `hasResult` / `hasResultText` / `isError`：boolean，工具调用是否已有结果、是否有可展示结果文本、是否失败。
+  - `resultLengthBucket` / `resultLineCount`：string/number，工具结果展示内容长度分桶和行数。
+  - `isBashTool` / `isTodoWriteTool` / `isEditWithDiff`：boolean，工具调用展示类型摘要。
   - `isStreaming`：boolean，思考过程操作时消息是否仍在生成中。
 - 隐私边界：
-  - 不上传代码正文、思考过程正文、计划正文、下载文件名、消息正文、sessionId 或 messageId。
-  - 会上传语言、长度/行数分桶、区块类型和动作结果，用于分析代码、计划和思考过程等富内容的真实使用情况。
+  - 不上传代码正文、思考过程正文、计划正文、工具输入/输出正文、下载文件名、消息正文、sessionId 或 messageId。
+  - 会上传语言、工具名称、长度/行数分桶、区块类型和动作结果，用于分析代码、计划、思考过程和工具调用等富内容的真实使用情况。
 
-#### 2.4.35 `lobsterai_artifact_preview_action`
+#### 2.4.40 `lobsterai_artifact_preview_action`
 
 - 状态：已实现。
 - 触发时机：用户在会话中的 artifact 卡片、右侧 artifact 预览面板、内置浏览器 tab 和浏览器工具栏中操作时发送。
 - 事件含义：统计 artifact 从生成后的点击、打开、预览、切换、复用、浏览和导出链路。
 - 业务参数：
   - `source`：string，触发来源。当前取值包括 `conversation_artifact_card`、`artifact_panel`、`artifact_browser`。
-  - `actionType`：string，动作类型。当前取值包括 `card_open`、`open_menu_toggle`、`open_lobster_browser`、`open_external_app`、`open_with_app`、`open_in_browser`、`open_local_service`、`reveal_in_folder`、`panel_toggle`、`panel_expand_toggle`、`panel_add_menu_toggle`、`panel_tab_open`、`panel_tab_switch`、`panel_tab_close`、`file_list_drawer_toggle`、`file_list_select_artifact`、`actions_menu_toggle`、`content_view_change`、`copy_content`、`refresh_preview`、`share_html_click`、`browser_preview_session_create`、`browser_back`、`browser_forward`、`browser_reload`、`browser_stop`、`browser_address_submit`、`browser_open_external`、`browser_more_menu_toggle`、`browser_open_blank_page`、`browser_open_local_service`、`browser_device_toolbar_toggle`、`browser_device_preset_change`、`browser_device_size_change`、`browser_device_rotate`、`browser_device_scale_change`、`browser_zoom_in`、`browser_zoom_out`、`browser_zoom_reset`、`browser_clear_cookies`、`browser_clear_cache`、`browser_screenshot`、`browser_annotate_start`、`browser_annotate_cancel`、`browser_annotate_end`、`browser_annotate_send`。
+  - `actionType`：string，动作类型。当前取值包括 `card_open`、`badge_open`、`open_menu_toggle`、`open_lobster_browser`、`open_external_app`、`open_with_app`、`open_in_browser`、`open_local_service`、`reveal_in_folder`、`panel_toggle`、`panel_expand_toggle`、`panel_add_menu_toggle`、`panel_tab_open`、`panel_tab_switch`、`panel_tab_close`、`file_list_drawer_toggle`、`file_list_select_artifact`、`actions_menu_toggle`、`content_view_change`、`copy_content`、`refresh_preview`、`share_html_click`、`browser_preview_session_create`、`browser_back`、`browser_forward`、`browser_reload`、`browser_stop`、`browser_address_submit`、`browser_open_external`、`browser_more_menu_toggle`、`browser_open_blank_page`、`browser_open_local_service`、`browser_device_toolbar_toggle`、`browser_device_preset_change`、`browser_device_size_change`、`browser_device_rotate`、`browser_device_scale_change`、`browser_zoom_in`、`browser_zoom_out`、`browser_zoom_reset`、`browser_clear_cookies`、`browser_clear_cache`、`browser_screenshot`、`browser_annotate_start`、`browser_annotate_cancel`、`browser_annotate_end`、`browser_annotate_send`。
   - `artifactType`：string，artifact 类型。当前取值包括 `html`、`svg`、`image`、`video`、`mermaid`、`code`、`markdown`、`text`、`document`、`local-service`。
   - `artifactSource`：string，artifact 来源。当前取值包括 `inline`、`tool`、`file`。
   - `artifactTitleLength` / `artifactTitleLengthBucket`：number/string，artifact 标题或文件名长度及分桶。
@@ -1011,6 +1020,7 @@ export const LogReporterActionPrefix = {
   - `tabType`：string，右侧面板 tab 类型。当前取值包括 `artifact`、`browser`、`file_list`。
   - `tabCount`：number，当前会话 artifact tab 数量。
   - `isPanelExpanded` / `targetExpanded` / `targetOpen`：boolean，面板或菜单当前/目标状态。
+  - `wasSelected`：boolean，artifact badge 点击前是否已是当前选中项。
   - `contentView` / `targetContentView`：string，artifact 预览视图，例如 `preview`、`code`。
   - `browserUrlType`：string，浏览器地址类型。当前取值包括 `blank`、`local_file`、`localhost`、`external_url`、`other`。
   - `hasCurrentUrl`：boolean，内置浏览器是否存在当前 URL。
@@ -1079,12 +1089,10 @@ void reportYdAnalyzer({
 
 ## 3. 后续待完善内容
 
-后续讨论和实现至少需要补充：
+当前日志链路和主要功能入口已按本文实现。后续如果继续扩展，优先关注以下事项：
 
-1. 定义下一批事件名称、触发时机和允许上报的参数。
-2. 定义安装、技能、MCP、专家套件、模型和其他功能的统计口径。
-3. 确定自定义技能和自定义 MCP 信息的上报边界。
-4. 继续评估是否需要补充分发渠道之外的其他通用环境参数。
-5. 评估是否需要去重、采样、批量发送和失败重试。
-6. 补充隐私说明、数据保留周期和日志调试方式。
-7. 补充真实应用内的手动验收记录，包括开启计划模式、关闭使用统计开关和请求参数检查。
+1. 评估是否需要单独增加首次启动/首次安装事件，用于区分新增安装和普通启动。
+2. 根据真实日志分析结果，收敛低价值或过细的 `actionType`，避免分析口径过散。
+3. 继续评估是否需要去重、采样、批量发送和失败重试。
+4. 补充隐私说明、数据保留周期和日志调试方式。
+5. 补充真实应用内的手动验收记录，包括关闭使用统计开关、请求参数检查、会话导出、artifact 预览和工具调用展开/收起。

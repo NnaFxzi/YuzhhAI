@@ -74,6 +74,7 @@ import ContextUsageIndicator from './ContextUsageIndicator';
 import {
   bucketCount,
   bucketDistance,
+  bucketLength,
   reportConversationNavigationAction,
 } from './conversationAnalytics';
 import CoworkPromptInput, { type CoworkPromptInputRef } from './CoworkPromptInput';
@@ -1113,6 +1114,18 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
   const [isExportingText, setIsExportingText] = useState(false);
   const [showExportOptions, setShowExportOptions] = useState(false);
 
+  const getConversationControlAnalyticsParams = useCallback(() => ({
+    sessionMessageCountBucket: bucketCount(currentSession?.messages.length ?? 0),
+    totalMessageCountBucket: bucketCount(currentSession?.totalMessages ?? currentSession?.messages.length ?? 0),
+    isStreaming,
+    isSessionBusy,
+  }), [
+    currentSession?.messages.length,
+    currentSession?.totalMessages,
+    isSessionBusy,
+    isStreaming,
+  ]);
+
   useEffect(() => {
     setShouldAutoScroll(true);
   }, [currentSession?.id]);
@@ -1124,23 +1137,57 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
     }
     if (isContextBusy) {
       console.debug('[CoworkSessionDetail] manual context compaction was ignored because compaction is already running.');
+      reportConversationNavigationAction({
+        actionType: 'context_compact_blocked',
+        params: {
+          ...getConversationControlAnalyticsParams(),
+          reason: 'context_busy',
+        },
+      });
       return;
     }
     if (isSessionBusy || currentSession.status === CoworkSessionStatusValue.Running) {
       console.debug('[CoworkSessionDetail] manual context compaction was ignored because the session is still running.');
+      reportConversationNavigationAction({
+        actionType: 'context_compact_blocked',
+        params: {
+          ...getConversationControlAnalyticsParams(),
+          reason: 'session_running',
+        },
+      });
       window.dispatchEvent(new CustomEvent('app:showToast', {
         detail: i18nService.t('coworkContextCompactBlockedRunning'),
       }));
       return;
     }
     console.debug('[CoworkSessionDetail] manual context compaction confirmation toggled.');
-    setShowCompactConfirm(prev => !prev);
-  }, [currentSession?.id, currentSession?.status, isContextBusy, isSessionBusy]);
+    setShowCompactConfirm(prev => {
+      const targetOpen = !prev;
+      reportConversationNavigationAction({
+        actionType: targetOpen ? 'context_compact_confirm_open' : 'context_compact_confirm_close',
+        params: {
+          ...getConversationControlAnalyticsParams(),
+          targetOpen,
+        },
+      });
+      return targetOpen;
+    });
+  }, [
+    currentSession?.id,
+    currentSession?.status,
+    getConversationControlAnalyticsParams,
+    isContextBusy,
+    isSessionBusy,
+  ]);
 
   const handleCancelCompactContext = useCallback(() => {
     console.debug('[CoworkSessionDetail] manual context compaction was canceled by the user.');
+    reportConversationNavigationAction({
+      actionType: 'context_compact_cancel',
+      params: getConversationControlAnalyticsParams(),
+    });
     setShowCompactConfirm(false);
-  }, []);
+  }, [getConversationControlAnalyticsParams]);
 
   const handleConfirmCompactContext = useCallback(() => {
     if (!currentSession?.id) {
@@ -1149,9 +1196,13 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
       return;
     }
     console.log(`[CoworkSessionDetail] manual context compaction confirmed for session ${currentSession.id}.`);
+    reportConversationNavigationAction({
+      actionType: 'context_compact_confirm',
+      params: getConversationControlAnalyticsParams(),
+    });
     setShowCompactConfirm(false);
     void coworkService.compactContext(currentSession.id);
-  }, [currentSession?.id]);
+  }, [currentSession?.id, getConversationControlAnalyticsParams]);
 
   const handleForkMessage = useCallback((messageId: string) => {
     if (!currentSession?.id) {
@@ -1247,6 +1298,16 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
       || 'unknown source';
     const result = normalizeCoworkSelectedTextSnippets([...selectedDraftSnippets, snippet]);
     if (result.success === false) {
+      reportConversationNavigationAction({
+        actionType: 'selected_text_add_blocked',
+        params: {
+          ...getConversationControlAnalyticsParams(),
+          sourceType,
+          selectedTextLengthBucket: bucketLength(snippet.text.length),
+          selectedSnippetCount: selectedDraftSnippets.length,
+          errorCode: result.error,
+        },
+      });
       logDetailDiagnostic(
         `rejected a selected text excerpt for session ${currentSession.id}; `
         + `source type is ${sourceType}, source is ${sourceLabel}, and reason is ${result.error}`,
@@ -1257,13 +1318,23 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
       return;
     }
     dispatch(addDraftSelectedTextSnippet({ draftKey: currentSession.id, snippet }));
+    reportConversationNavigationAction({
+      actionType: 'selected_text_add_to_prompt',
+      params: {
+        ...getConversationControlAnalyticsParams(),
+        sourceType,
+        selectedTextLengthBucket: bucketLength(snippet.text.length),
+        selectedSnippetCount: result.snippets.length,
+        selectedTextTotalLengthBucket: bucketLength(result.snippets.reduce((total, item) => total + item.text.length, 0)),
+      },
+    });
     logDetailDiagnostic(
       `added a selected text excerpt to the draft for session ${currentSession.id}; `
       + `source type is ${sourceType}, source is ${sourceLabel}; `
       + `${result.snippets.length} excerpts now contain ${result.snippets.reduce((total, item) => total + item.text.length, 0)} characters`,
     );
     promptInputRef.current?.focus();
-  }, [currentSession?.id, dispatch, selectedDraftSnippets]);
+  }, [currentSession?.id, dispatch, getConversationControlAnalyticsParams, selectedDraftSnippets]);
 
   const handleAddSelectedText = useCallback(() => {
     if (!selectedTextAction) return;
@@ -1285,17 +1356,31 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
       container?.querySelectorAll<HTMLElement>('[data-cowork-assistant-message-id]') ?? [],
     ).find(candidate => candidate.dataset.coworkAssistantMessageId === sourceMessageId);
     if (!element) {
+      reportConversationNavigationAction({
+        actionType: 'selected_text_locate_source',
+        params: {
+          ...getConversationControlAnalyticsParams(),
+          result: 'failed',
+        },
+      });
       window.dispatchEvent(new CustomEvent('app:showToast', {
         detail: i18nService.t('coworkSelectedTextSourceUnavailable'),
       }));
       return;
     }
+    reportConversationNavigationAction({
+      actionType: 'selected_text_locate_source',
+      params: {
+        ...getConversationControlAnalyticsParams(),
+        result: 'success',
+      },
+    });
     element.scrollIntoView({ behavior: 'smooth', block: 'center' });
     element.classList.add('ring-2', 'ring-primary/50', 'rounded-lg');
     window.setTimeout(() => {
       element.classList.remove('ring-2', 'ring-primary/50', 'rounded-lg');
     }, 1600);
-  }, []);
+  }, [getConversationControlAnalyticsParams]);
 
   // ─── Artifact detection ─────────────────────────────────────────────
   const isPanelOpen = useSelector((state: RootState) => selectIsPanelOpen(state, sessionId));
@@ -2424,6 +2509,10 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
     const handleOpenShareOptions = (event: Event) => {
       const detail = (event as CustomEvent<CoworkOpenShareOptionsEventDetail>).detail;
       if (!detail?.sessionId || detail.sessionId !== currentSession?.id) return;
+      reportConversationNavigationAction({
+        actionType: 'export_options_open',
+        params: getConversationControlAnalyticsParams(),
+      });
       setShowExportOptions(true);
     };
 
@@ -2431,7 +2520,7 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
     return () => {
       window.removeEventListener(CoworkUiEvent.OpenShareOptions, handleOpenShareOptions);
     };
-  }, [currentSession?.id]);
+  }, [currentSession?.id, getConversationControlAnalyticsParams]);
 
   const loadTextExportMessages = useCallback(async (): Promise<CoworkMessage[]> => {
     if (!currentSession) return [];
@@ -2471,6 +2560,13 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
   const handleExportText = useCallback(async (format: CoworkTextExportFormatValue) => {
     if (!currentSession || isExportingText) return;
     setIsExportingText(true);
+    reportConversationNavigationAction({
+      actionType: 'export_text_submit',
+      params: {
+        ...getConversationControlAnalyticsParams(),
+        exportFormat: format,
+      },
+    });
     const timestamp = new Date().toISOString().slice(0, 10);
     const fileName = sanitizeExportFileName(`${currentSession.title}-${timestamp}.${format}`);
     try {
@@ -2484,13 +2580,38 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
         fileExtension: format,
       });
       if (result.success && !result.canceled) {
+        reportConversationNavigationAction({
+          actionType: 'export_text_result',
+          params: {
+            ...getConversationControlAnalyticsParams(),
+            exportFormat: format,
+            result: 'success',
+          },
+        });
         window.dispatchEvent(new CustomEvent('app:showToast', {
           detail: i18nService.t('coworkExportTextSuccess'),
         }));
+      } else if (result.canceled) {
+        reportConversationNavigationAction({
+          actionType: 'export_text_result',
+          params: {
+            ...getConversationControlAnalyticsParams(),
+            exportFormat: format,
+            result: 'cancelled',
+          },
+        });
       } else if (!result.success) {
         throw new Error(result.error || 'Export failed');
       }
     } catch (error) {
+      reportConversationNavigationAction({
+        actionType: 'export_text_result',
+        params: {
+          ...getConversationControlAnalyticsParams(),
+          exportFormat: format,
+          result: 'failed',
+        },
+      });
       console.error('Failed to export session text:', error);
       window.dispatchEvent(new CustomEvent('app:showToast', {
         detail: i18nService.t('coworkExportTextFailed'),
@@ -2498,12 +2619,16 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
     } finally {
       setIsExportingText(false);
     }
-  }, [currentSession, isExportingText, loadTextExportMessages]);
+  }, [currentSession, getConversationControlAnalyticsParams, isExportingText, loadTextExportMessages]);
 
   const handleShareClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (!currentSession || isExportingImage) return;
     setIsExportingImage(true);
+    reportConversationNavigationAction({
+      actionType: 'export_image_submit',
+      params: getConversationControlAnalyticsParams(),
+    });
 
     window.requestAnimationFrame(() => {
       void (async () => {
@@ -2639,6 +2764,13 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
               defaultFileName: sanitizeExportFileName(`${currentSession.title}-${timestamp}.png`),
             });
             if (saveResult.success && !saveResult.canceled) {
+              reportConversationNavigationAction({
+                actionType: 'export_image_result',
+                params: {
+                  ...getConversationControlAnalyticsParams(),
+                  result: 'success',
+                },
+              });
               window.dispatchEvent(new CustomEvent('app:showToast', {
                 detail: i18nService.t('coworkExportImageSuccess'),
               }));
@@ -2647,10 +2779,24 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
             if (!saveResult.success) {
               throw new Error(saveResult.error || 'Failed to export image');
             }
+            reportConversationNavigationAction({
+              actionType: 'export_image_result',
+              params: {
+                ...getConversationControlAnalyticsParams(),
+                result: 'cancelled',
+              },
+            });
           } finally {
             scrollContainer.scrollTop = initialScrollTop;
           }
         } catch (error) {
+          reportConversationNavigationAction({
+            actionType: 'export_image_result',
+            params: {
+              ...getConversationControlAnalyticsParams(),
+              result: 'failed',
+            },
+          });
           console.error('Failed to export session image:', error);
           window.dispatchEvent(new CustomEvent('app:showToast', {
             detail: i18nService.t('coworkExportImageFailed'),
