@@ -30,6 +30,7 @@ import {
   migrateScheduledTasksToOpenclaw,
 } from '../scheduledTask/migrate';
 import { AgentId, AgentIpcChannel } from '../shared/agent/constants';
+import { AppSettingsAutoLaunchErrorCode, AppSettingsIpc } from '../shared/appSettings/constants';
 import { AppUpdateIpc } from '../shared/appUpdate/constants';
 import { ArtifactBrowserPartition, ArtifactPreviewIpc, ArtifactPreviewProtocol } from '../shared/artifactPreview/constants';
 import { AuthIpcChannel } from '../shared/auth/constants';
@@ -100,7 +101,7 @@ import { AgentManager } from './agentManager';
 import { APP_NAME, APP_USER_MODEL_ID, DB_FILENAME } from './appConstants';
 import { createLocalFileProtocolResponse } from './artifactLocalFileProtocol';
 import { authQuotaGateStateFromQuota, AuthSubscriptionStatus, createDefaultAuthQuotaGateState, normalizeAuthQuota } from './authQuota';
-import { getAutoLaunchEnabled, isAutoLaunched, setAutoLaunchEnabled } from './autoLaunchManager';
+import { type AutoLaunchStatus, getAutoLaunchStatus, isAutoLaunched, setAutoLaunchEnabled } from './autoLaunchManager';
 import { getRecentComputerUseLogEntries } from './computerUse/computerUseLogs';
 import { type CoworkForkContextMessage, type CoworkMessage, CoworkStore } from './coworkStore';
 import { setLanguage, t } from './i18n';
@@ -1327,6 +1328,19 @@ const getOpenClawEngineManager = (): OpenClawEngineManager => {
     openClawEngineManager = new OpenClawEngineManager();
   }
   return openClawEngineManager;
+};
+
+const formatAutoLaunchStatusForLog = (status: AutoLaunchStatus): string => {
+  const launchItems = status.launchItems
+    ?.map(item => `${item.name}:${item.enabled ? 'enabled' : 'disabled'}:${item.args.join(' ') || '(no-args)'}`)
+    .join(',');
+
+  return [
+    `status=${status.status ?? 'unknown'}`,
+    `openAtLogin=${status.openAtLogin}`,
+    `executableWillLaunchAtLogin=${status.executableWillLaunchAtLogin ?? 'unknown'}`,
+    launchItems ? `launchItems=${launchItems}` : null,
+  ].filter(Boolean).join(', ');
 };
 
 const getAppUpdateCoordinator = (): AppUpdateCoordinator => {
@@ -3346,25 +3360,46 @@ if (!gotTheLock) {
   });
 
   // Auto-launch IPC handlers
-  // Use SQLite store as the source of truth for UI state, because
-  // app.getLoginItemSettings() returns unreliable values on macOS and
-  // requires matching args on Windows.
-  ipcMain.handle('app:getAutoLaunch', () => {
+  ipcMain.handle(AppSettingsIpc.GetAutoLaunch, () => {
     const stored = getStore().get<boolean>('auto_launch_enabled');
-    // Fall back to OS API if SQLite has no record yet (e.g. upgraded from older version)
-    const enabled = stored ?? getAutoLaunchEnabled();
-    return { enabled };
+    try {
+      const status = getAutoLaunchStatus();
+      if (stored !== undefined && stored !== status.enabled) {
+        console.warn(
+          `[AutoLaunch] stored state (${stored}) differs from OS state (${status.enabled}); ${formatAutoLaunchStatusForLog(status)}`,
+        );
+        getStore().set('auto_launch_enabled', status.enabled);
+      }
+      return { enabled: status.enabled };
+    } catch (error) {
+      console.error('[AutoLaunch] failed to read OS state; falling back to stored state:', error);
+      return { enabled: stored ?? false };
+    }
   });
 
-  ipcMain.handle('app:setAutoLaunch', (_event, enabled: unknown) => {
+  ipcMain.handle(AppSettingsIpc.SetAutoLaunch, (_event, enabled: unknown) => {
     if (typeof enabled !== 'boolean') {
       return { success: false, error: 'Invalid parameter: enabled must be boolean' };
     }
     try {
       setAutoLaunchEnabled(enabled);
-      getStore().set('auto_launch_enabled', enabled);
-      return { success: true };
+      const status = getAutoLaunchStatus();
+      console.log(
+        `[AutoLaunch] set requested=${enabled}, actual=${status.enabled}; ${formatAutoLaunchStatusForLog(status)}`,
+      );
+      if (status.enabled !== enabled) {
+        return {
+          success: false,
+          enabled: status.enabled,
+          errorCode: status.status === 'requires-approval'
+            ? AppSettingsAutoLaunchErrorCode.RequiresApproval
+            : AppSettingsAutoLaunchErrorCode.UpdateFailed,
+        };
+      }
+      getStore().set('auto_launch_enabled', status.enabled);
+      return { success: true, enabled: status.enabled };
     } catch (error) {
+      console.error('[AutoLaunch] failed to update auto-launch setting:', error);
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Failed to set auto-launch',
@@ -3372,12 +3407,12 @@ if (!gotTheLock) {
     }
   });
 
-  ipcMain.handle('app:getPreventSleep', () => {
+  ipcMain.handle(AppSettingsIpc.GetPreventSleep, () => {
     const enabled = getStore().get<boolean>('prevent_sleep_enabled') ?? false;
     return { enabled };
   });
 
-  ipcMain.handle('app:setPreventSleep', (_event, enabled: unknown) => {
+  ipcMain.handle(AppSettingsIpc.SetPreventSleep, (_event, enabled: unknown) => {
     if (typeof enabled !== 'boolean') {
       return { success: false, error: 'Invalid parameter: enabled must be boolean' };
     }
@@ -10390,11 +10425,22 @@ if (!gotTheLock) {
       }
     });
 
-    // 首次启动时默认开启开机自启动（先写标记再设置，避免崩溃后重复设置）
+    // 首次启动时默认开启开机自启动，并以系统登录项的实际状态回写本地标记。
     if (!getStore().get('auto_launch_initialized')) {
       getStore().set('auto_launch_initialized', true);
-      getStore().set('auto_launch_enabled', true);
-      setAutoLaunchEnabled(true);
+      try {
+        setAutoLaunchEnabled(true);
+        const status = getAutoLaunchStatus();
+        getStore().set('auto_launch_enabled', status.enabled);
+        if (!status.enabled) {
+          console.warn(
+            `[AutoLaunch] default enable did not take effect; ${formatAutoLaunchStatusForLog(status)}`,
+          );
+        }
+      } catch (error) {
+        getStore().set('auto_launch_enabled', false);
+        console.error('[AutoLaunch] default enable failed:', error);
+      }
     }
 
     // Restore prevent-sleep setting

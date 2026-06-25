@@ -971,7 +971,7 @@ interface IElectronAPI {
   };
   autoLaunch: {
     get: () => Promise<{ enabled: boolean }>;
-    set: (enabled: boolean) => Promise<{ success: boolean; error?: string }>;
+    set: (enabled: boolean) => Promise<{ success: boolean; enabled?: boolean; error?: string; errorCode?: string }>;
   };
   preventSleep: {
     get: () => Promise<{ enabled: boolean }>;

@@ -2,6 +2,7 @@ import { ArchiveBoxIcon, ArrowPathIcon, ArrowPathRoundedSquareIcon, ChatBubbleLe
 import React, { useCallback,useEffect, useMemo, useRef, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 
+import { AppSettingsAutoLaunchErrorCode } from '../../shared/appSettings/constants';
 import { type AppUpdateInfo,type AppUpdateRuntimeState,AppUpdateSource,AppUpdateStatus } from '../../shared/appUpdate/constants';
 import {
   type BrowserWebAccessConfig,
@@ -80,6 +81,16 @@ const waitForNextPaint = (): Promise<void> => new Promise(resolve => {
     window.requestAnimationFrame(() => resolve());
   });
 });
+
+const getAutoLaunchErrorMessage = (errorCode?: string): string => {
+  if (errorCode === AppSettingsAutoLaunchErrorCode.RequiresApproval) {
+    return i18nService.t('autoLaunchRequiresApproval');
+  }
+  if (errorCode === AppSettingsAutoLaunchErrorCode.UpdateFailed) {
+    return i18nService.t('autoLaunchUpdateFailed');
+  }
+  return i18nService.t('autoLaunchUpdateFailed');
+};
 
 const formatBackupSize = (sizeBytes?: number): string => {
   if (!Number.isFinite(sizeBytes) || !sizeBytes || sizeBytes <= 0) return '';
@@ -1142,6 +1153,7 @@ const Settings: React.FC<SettingsProps> = ({
 
       // Load auto-launch setting
       window.electron.autoLaunch.get().then(({ enabled }) => {
+        console.log(`[Renderer][Settings] loaded auto-launch setting: enabled=${enabled}`);
         setAutoLaunchState(enabled);
       }).catch(err => {
         console.error('Failed to load auto-launch setting:', err);
@@ -3409,15 +3421,22 @@ const Settings: React.FC<SettingsProps> = ({
                 const next = !autoLaunch;
                 setIsUpdatingAutoLaunch(true);
                 try {
+                  console.log(`[Renderer][Settings] updating auto-launch setting: requested=${next}`);
                   const result = await window.electron.autoLaunch.set(next);
+                  console.log(
+                    `[Renderer][Settings] auto-launch update result: success=${result.success}, enabled=${result.enabled ?? 'unknown'}, error=${result.error ?? 'none'}`,
+                  );
                   if (result.success) {
-                    setAutoLaunchState(next);
+                    setAutoLaunchState(result.enabled ?? next);
                   } else {
-                    setError(result.error || 'Failed to update auto-launch setting');
+                    if (typeof result.enabled === 'boolean') {
+                      setAutoLaunchState(result.enabled);
+                    }
+                    setError(getAutoLaunchErrorMessage(result.errorCode));
                   }
                 } catch (err) {
                   console.error('Failed to set auto-launch:', err);
-                  setError('Failed to update auto-launch setting');
+                  setError(i18nService.t('autoLaunchUpdateFailed'));
                 } finally {
                   setIsUpdatingAutoLaunch(false);
                 }
