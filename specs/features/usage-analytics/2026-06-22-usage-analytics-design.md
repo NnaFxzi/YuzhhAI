@@ -931,6 +931,65 @@ export const LogReporterActionPrefix = {
   - 不上传模板 prompt 完整正文，仅上传模板 ID、展示名称、prompt ID/名称、长度和映射技能信息。
   - 这些字段用于分析首页模板入口点击率、具体模板偏好、模板到技能选择的转化情况。
 
+#### 2.4.32 `lobsterai_conversation_message_action`
+
+- 状态：已实现。
+- 触发时机：用户在历史对话消息上执行复制、重新编辑、从助手消息分叉、打开消息图片预览等动作时发送。
+- 事件含义：统计对话内消息级复用行为，区分用户消息和助手消息，并保留必要的能力上下文。
+- 业务参数：
+  - `surface`：string，当前固定为 `conversation`。
+  - `actionType`：string，动作类型。当前取值包括 `copy_message`、`reedit_user_message`、`fork_from_assistant_message`、`open_message_image`。
+  - `messageRole`：string，消息角色。当前取值包括 `user`、`assistant`、`system`、`tool_result`。
+  - `messageContentLength` / `messageContentLengthBucket`：number/string，消息正文长度和长度分桶。
+  - `copySource`：string，复制来源。当前取值为 `user_message` 或 `assistant_message`。
+  - `copiedLength`：number，复制内容长度。
+  - `result`：string，动作结果。当前取值包括 `success`、`failed`。
+  - `activeSkillCount` / `activeSkillIds`：number/string，消息提交时关联的技能数量和 ID 列表。
+  - `activeKitCount` / `activeKitIds`：number/string，消息提交时关联的专家套件数量和 ID 列表。
+  - `hasAttachments` / `imageAttachmentCount`：boolean/number，消息是否包含图片附件和附件数量。
+  - `hasModelLabel` / `modelId` / `modelName` / `providerKey`：boolean/string，消息关联模型摘要。
+- 隐私边界：
+  - 不上传消息正文、图片内容、文件名、本地路径、sessionId、messageId 或错误详情。
+  - 会上传技能/套件 ID、模型 ID/名称、角色、长度分桶和动作结果，用于分析用户对消息复用、分叉和图片查看的行为偏好。
+
+#### 2.4.33 `lobsterai_conversation_navigation_action`
+
+- 状态：已实现。
+- 触发时机：用户点击右侧消息轨道、轨道上一条/下一条按钮、回到底部按钮时发送。
+- 事件含义：统计长对话浏览与定位行为，用于判断消息轨道、回到底部等导航能力的使用价值。
+- 业务参数：
+  - `surface`：string，当前固定为 `conversation`。
+  - `actionType`：string，动作类型。当前取值包括 `rail_item_click`、`rail_prev_click`、`rail_next_click`、`scroll_to_bottom_click`。
+  - `currentRailIndex` / `targetRailIndex`：number，当前轨道位置和目标轨道位置。
+  - `railItemCount`：number，当前轨道消息项数量。
+  - `distanceToBottomBucket`：string，回到底部前距离底部分桶。
+  - `sessionMessageCountBucket` / `totalMessageCountBucket`：string，当前已加载消息数和总消息数分桶。
+  - `isStreaming`：boolean，操作时会话是否仍在生成中。
+- 隐私边界：
+  - 不上传消息正文、轨道 tooltip 文本、sessionId、messageId 或滚动容器具体 DOM 信息。
+  - 会上传轨道序号、数量、距离和消息数分桶，用于分析长对话导航是否有效。
+
+#### 2.4.34 `lobsterai_conversation_block_action`
+
+- 状态：已实现。
+- 触发时机：用户在对话内容区操作代码块、思考过程块、计划模式输出块时发送。覆盖代码块展开/收起、换行、全屏、复制、下载、全屏搜索；思考过程展开/收起；计划模式复制、下载、展开/收起、确认执行、继续调整。
+- 事件含义：统计对话内富内容区块的阅读、复用和导出行为。
+- 业务参数：
+  - `surface`：string，当前固定为 `conversation`。
+  - `blockType`：string，区块类型。当前取值为 `code`、`thinking`、`proposed_plan`。
+  - `actionType`：string，动作类型。当前取值包括 `code_copy`、`code_download`、`code_collapse`、`code_expand`、`code_wrap_enabled`、`code_wrap_disabled`、`code_fullscreen_open`、`code_fullscreen_close`、`code_search_open`、`code_search_close`、`thinking_expand`、`thinking_collapse`、`plan_copy`、`plan_download`、`plan_expand`、`plan_collapse`、`plan_confirm_execute`、`plan_adjust`。
+  - `result`：string，动作结果。当前取值包括 `success`、`failed`。
+  - `source`：string，动作来源。代码块当前取值包括 `inline`、`fullscreen`。
+  - `language`：string，代码块语言；无语言时为 `text`。
+  - `isDiffBlock`：boolean，是否为 diff 代码块。
+  - `codeLength` / `codeLengthBucket` / `codeLineCount`：number/string/number，代码块长度、长度分桶和行数。
+  - `thinkingLength` / `thinkingLengthBucket` / `thinkingLineCount`：number/string/number，思考过程长度、长度分桶和行数。
+  - `planLength` / `planLengthBucket` / `planLineCount`：number/string/number，计划内容长度、长度分桶和行数。
+  - `isStreaming`：boolean，思考过程操作时消息是否仍在生成中。
+- 隐私边界：
+  - 不上传代码正文、思考过程正文、计划正文、下载文件名、消息正文、sessionId 或 messageId。
+  - 会上传语言、长度/行数分桶、区块类型和动作结果，用于分析代码、计划和思考过程等富内容的真实使用情况。
+
 ### 2.5 请求流程
 
 ```text

@@ -70,6 +70,11 @@ import WindowTitleBar from '../window/WindowTitleBar';
 import AssistantTurnBlock, { ContextCompactionDivider } from './AssistantTurnBlock';
 import { type CoworkOpenShareOptionsEventDetail, CoworkUiEvent } from './constants';
 import ContextUsageIndicator from './ContextUsageIndicator';
+import {
+  bucketCount,
+  bucketDistance,
+  reportConversationNavigationAction,
+} from './conversationAnalytics';
 import CoworkPromptInput, { type CoworkPromptInputRef } from './CoworkPromptInput';
 import LazyRenderTurn, { clearHeightCache } from './LazyRenderTurn';
 import {
@@ -2621,6 +2626,17 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
     const scrollLogMessage = `Scroll to bottom requested for session ${currentSession?.id ?? 'unknown'}; distance was ${Math.max(0, Math.round(distanceToBottom))}px.`;
     console.debug(`[CoworkSessionDetail] ${scrollLogMessage}`);
     window.electron?.log?.fromRenderer?.('debug', 'CoworkSessionDetail', scrollLogMessage);
+    reportConversationNavigationAction({
+      actionType: 'scroll_to_bottom_click',
+      params: {
+        distanceToBottomBucket: bucketDistance(Math.max(0, distanceToBottom)),
+        railItemCount: railItemCountRef.current,
+        currentRailIndex: currentRailIndexRef.current,
+        sessionMessageCountBucket: bucketCount(currentSession?.messages.length ?? 0),
+        totalMessageCountBucket: bucketCount(currentSession?.totalMessages ?? currentSession?.messages.length ?? 0),
+        isStreaming,
+      },
+    });
     clearScrollToBottomSettleTimers();
     scrollToBottomIntentRef.current = true;
     if (prefersReducedMotion) {
@@ -2654,7 +2670,7 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
       }, delayMs);
       scrollToBottomSettleTimersRef.current.push(timer);
     });
-  }, [clearScrollToBottomSettleTimers, currentSession?.id]);
+  }, [clearScrollToBottomSettleTimers, currentSession?.id, currentSession?.messages.length, currentSession?.totalMessages, isStreaming]);
 
   const handleScrollToBottomWheel = useCallback((event: React.WheelEvent<HTMLButtonElement>) => {
     const container = scrollContainerRef.current;
@@ -2715,8 +2731,22 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
     }
   }, [currentSession?.messages.length]);
 
-  const navigateToRailItem = useCallback((railIndex: number) => {
+  const navigateToRailItem = useCallback((
+    railIndex: number,
+    actionType: 'rail_item_click' | 'rail_prev_click' | 'rail_next_click' = 'rail_item_click',
+  ) => {
     if (railIndex < 0 || railIndex >= railItemCountRef.current) return;
+    reportConversationNavigationAction({
+      actionType,
+      params: {
+        currentRailIndex: currentRailIndexRef.current,
+        targetRailIndex: railIndex,
+        railItemCount: railItemCountRef.current,
+        sessionMessageCountBucket: bucketCount(currentSession?.messages.length ?? 0),
+        totalMessageCountBucket: bucketCount(currentSession?.totalMessages ?? currentSession?.messages.length ?? 0),
+        isStreaming,
+      },
+    });
 
     // Find the turn that contains this rail item
     const ranges = turnToRailRangeRef.current;
@@ -2766,7 +2796,7 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
 
     currentRailIndexRef.current = railIndex;
     setCurrentRailIndex(railIndex);
-  }, []);
+  }, [currentSession?.messages.length, currentSession?.totalMessages, isStreaming]);
 
   // lastMessageContent and messagesLength are now sourced from memoized
   // selectors (selectLastMessageContent / selectCurrentMessagesLength)
@@ -3504,7 +3534,7 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
               onClick={() => {
                 const resolvedRail = currentRailIndex < 0 ? railItemCountRef.current - 1 : currentRailIndex;
                 if (resolvedRail <= 0) return;
-                navigateToRailItem(resolvedRail - 1);
+                navigateToRailItem(resolvedRail - 1, 'rail_prev_click');
               }}
               onMouseEnter={() => { setHoveredRailIndex(null); }}
               className={`shrink-0 flex items-center justify-center w-5 h-5 mb-2 -mr-[5px] rounded-full transition-all text-neutral-600 dark:text-neutral-400
@@ -3535,7 +3565,7 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
                     key={msg.key}
                     type="button"
                     onClick={() => {
-                      navigateToRailItem(idx);
+                      navigateToRailItem(idx, 'rail_item_click');
                     }}
                     onMouseEnter={(e) => {
                       setHoveredRailIndex(idx);
@@ -3571,7 +3601,7 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
                 const maxRail = railItemCountRef.current - 1;
                 const resolvedRail = currentRailIndex < 0 ? maxRail : currentRailIndex;
                 if (resolvedRail >= maxRail) return;
-                navigateToRailItem(resolvedRail + 1);
+                navigateToRailItem(resolvedRail + 1, 'rail_next_click');
               }}
               onMouseEnter={() => { setHoveredRailIndex(null); }}
               className={`shrink-0 flex items-center justify-center w-5 h-5 mt-2 -mr-[5px] rounded-full transition-all text-neutral-600 dark:text-neutral-400
