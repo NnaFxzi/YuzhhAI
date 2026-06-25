@@ -227,6 +227,33 @@ export class SubagentTracker {
   }
 
   /**
+   * Child session lifecycle events use the subagent's own sessionKey, not the
+   * parent announce runId. Mark the matching parent run terminal before the
+   * adapter drops the event as an unknown local session.
+   */
+  tryMarkTerminalFromSessionKey(
+    sessionKey: string,
+    status: 'done' | 'error',
+  ): boolean {
+    if (!sessionKey) return false;
+    for (const [toolCallId, childSessionKey] of this.subagentSessionKeys) {
+      if (childSessionKey !== sessionKey) continue;
+      const currentStatus = this.subagentStatus.get(toolCallId);
+      if (currentStatus === 'done' && status === 'error') {
+        return true;
+      }
+      if (currentStatus !== status) {
+        this.subagentStatus.set(toolCallId, status);
+        this.store.updateSubagentRunStatus(toolCallId, status, Date.now());
+        console.log('[SubagentTracker] marked subagent as terminal via session key:', toolCallId, status);
+        this.tryPersistCachedMessages(toolCallId);
+      }
+      return true;
+    }
+    return false;
+  }
+
+  /**
    * Clears all in-memory subagent tracking state and removes persisted messages.
    */
   onSessionDeleted(parentSessionId?: string): void {
