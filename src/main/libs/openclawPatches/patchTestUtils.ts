@@ -63,11 +63,30 @@ export function expectOpenClawSourceContains(checks: Array<{
   }
 }
 
-export function expectBundledOpenClawRuntimeContains(snippets: string[]): void {
-  const runtimePath = path.resolve('vendor', 'openclaw-runtime', 'mac-arm64', 'gateway-bundle.mjs');
-  expect(fs.existsSync(runtimePath)).toBe(true);
+export function findBundledOpenClawRuntimeBundlePath(): string | null {
+  const runtimeDir = path.resolve('vendor', 'openclaw-runtime');
+  if (!fs.existsSync(runtimeDir)) return null;
 
-  const source = fs.readFileSync(runtimePath, 'utf8');
+  const candidates = [
+    path.join(runtimeDir, 'current', 'gateway-bundle.mjs'),
+    ...fs.readdirSync(runtimeDir, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory() || entry.isSymbolicLink())
+      .map((entry) => path.join(runtimeDir, entry.name, 'gateway-bundle.mjs')),
+  ];
+  return candidates.find((candidate, index) => (
+    candidates.indexOf(candidate) === index && fs.existsSync(candidate)
+  )) ?? null;
+}
+
+export function isBundledOpenClawRuntimeAvailable(): boolean {
+  return findBundledOpenClawRuntimeBundlePath() !== null;
+}
+
+export function expectBundledOpenClawRuntimeContains(snippets: string[]): void {
+  const runtimePath = findBundledOpenClawRuntimeBundlePath();
+  expect(runtimePath).toBeTruthy();
+
+  const source = fs.readFileSync(runtimePath!, 'utf8');
   for (const snippet of snippets) {
     expect(source).toContain(snippet);
   }

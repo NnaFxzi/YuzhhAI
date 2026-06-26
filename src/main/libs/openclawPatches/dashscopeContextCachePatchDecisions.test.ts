@@ -4,6 +4,7 @@ import {
   expectBundledOpenClawRuntimeContains,
   expectOpenClawSourceContains,
   expectPatchContains,
+  isBundledOpenClawRuntimeAvailable,
   isOpenClawSourceAvailable,
 } from './patchTestUtils';
 
@@ -74,7 +75,7 @@ describe('OpenAI-compatible explicit context cache OpenClaw patch decisions', ()
     ]);
   });
 
-  test('is applied to the bundled OpenClaw runtime', () => {
+  test.skipIf(!isBundledOpenClawRuntimeAvailable())('is applied to the bundled OpenClaw runtime', () => {
     expectBundledOpenClawRuntimeContains([
       '********************',
       '[ExplicitCachePassThrough]',
