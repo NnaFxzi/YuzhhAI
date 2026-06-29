@@ -33,14 +33,12 @@ import { t } from '../../i18n';
 import { MediaGenerationTool } from '../../mediaGenerationPolicy';
 import type { SubagentMessageStore } from '../../subagentMessageStore';
 import type { SubagentRunStore } from '../../subagentRunStore';
-import { getCommandDangerLevel,isDeleteCommand } from '../commandSafety';
 import { setCoworkProxySessionId } from '../coworkOpenAICompatProxy';
 import { extractOpenClawAssistantStreamParts,extractOpenClawAssistantStreamText } from '../openclawAssistantText';
 import {
   buildManagedSessionKey,
   isManagedSessionKey,
   type OpenClawChannelSessionSync,
-  parseChannelSessionKey,
   parseManagedSessionKey,
 } from '../openclawChannelSessionSync';
 import { OPENCLAW_AGENT_TIMEOUT_SECONDS } from '../openclawConfigSync';
@@ -77,6 +75,7 @@ import {
 } from './coworkContinuityCapsule';
 import { buildCoworkTopKEvidenceBridgeResult } from './coworkTopKEvidence';
 import { buildCoworkWorkspaceRehydrationBridge } from './coworkWorkspaceRehydration';
+import { OpenClawApprovalController } from './openclawApprovalController';
 import { SubagentTracker } from './subagentTracker';
 import type {
   CoworkContextUsage,
@@ -88,7 +87,6 @@ import type {
   CoworkRuntime,
   CoworkRuntimeEvents,
   CoworkStartOptions,
-  PermissionRequest,
   PermissionResult,
 } from './types';
 
@@ -380,24 +378,6 @@ type AgentEventPayload = {
   sessionKey?: string;
   stream?: string;
   data?: unknown;
-};
-
-type ExecApprovalRequestedPayload = {
-  id?: string;
-  request?: {
-    command?: string;
-    cwd?: string | null;
-    host?: string | null;
-    security?: string | null;
-    ask?: string | null;
-    resolvedPath?: string | null;
-    sessionKey?: string | null;
-    agentId?: string | null;
-  };
-};
-
-type ExecApprovalResolvedPayload = {
-  id?: string;
 };
 
 type TextStreamMode = 'unknown' | 'snapshot' | 'delta';
@@ -832,13 +812,6 @@ type BufferedAgentEvent = {
   payload: unknown;
   seq: number | undefined;
   bufferedAt: number;
-};
-
-type PendingApprovalEntry = {
-  requestId: string;
-  sessionId: string;
-  /** When true, use 'allow-always' decision so OpenClaw adds the command to its allowlist. */
-  allowAlways?: boolean;
 };
 
 type ChannelHistorySyncEntry = {
@@ -1834,7 +1807,6 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
    * events cannot re-create a ghost turn or attach to the next user turn.
    */
   private readonly recentlyClosedRunIds = new Map<string, RecentlyClosedRunInfo>();
-  private readonly pendingApprovals = new Map<string, PendingApprovalEntry>();
   private readonly pendingTurns = new Map<string, { resolve: () => void; reject: (error: Error) => void }>();
   private readonly confirmationModeBySession = new Map<string, 'modal' | 'text'>();
   private readonly bridgedSessions = new Set<string>();
@@ -1929,6 +1901,7 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
 
   // ── Subagent tracking (delegated) ───────────────────────────────────────
   private readonly subagentTracker: SubagentTracker;
+  private readonly approvalController: OpenClawApprovalController;
 
   /**
    * Server-side agent timeout in seconds (mirrors agents.defaults.timeoutSeconds in openclaw config).
@@ -2922,6 +2895,19 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
     this.store = store;
     this.engineManager = engineManager;
     this.options = options;
+    this.approvalController = new OpenClawApprovalController({
+      getGatewayClient: () => this.gatewayClient,
+      resolveSessionId: (sessionKey) => this.resolveApprovalSessionId(sessionKey),
+      isSessionInStopCooldown: (sessionId) => this.isSessionInStopCooldown(sessionId),
+      isManualStopSuppressed: (sessionId, sessionKey) => (
+        this.manuallyStoppedSessions.has(sessionId) && isManagedSessionKey(sessionKey)
+      ),
+      sessionExists: (sessionId) => Boolean(this.store.getSession(sessionId)),
+      isSessionActive: (sessionId) => this.isSessionActive(sessionId),
+      continueSession: (sessionId, prompt) => this.continueSession(sessionId, prompt),
+      emitPermissionRequest: (sessionId, request) => this.emit('permissionRequest', sessionId, request),
+      emitError: (sessionId, error) => this.emit('error', sessionId, error),
+    });
     if (subagentRunStore) {
       this.subagentTracker = new SubagentTracker(subagentRunStore, subagentMessageStore ?? null, () => this.gatewayClient);
     } else {
@@ -3472,7 +3458,7 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
     this.stoppedSessions.set(sessionId, Date.now());
 
     this.cleanupSessionTurn(sessionId);
-    this.clearPendingApprovalsBySession(sessionId);
+    this.approvalController.clearBySession(sessionId);
     this.store.updateSession(sessionId, { status: 'idle' });
     this.emitSessionStatus(sessionId, 'idle');
     this.emit('sessionStopped', sessionId);
@@ -3505,54 +3491,7 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
   }
 
   respondToPermission(requestId: string, result: PermissionResult): void {
-    const pending = this.pendingApprovals.get(requestId);
-    if (!pending) {
-      return;
-    }
-
-    const decision = result.behavior !== 'allow' ? 'deny'
-      : pending.allowAlways ? 'allow-always'
-      : 'allow-once';
-    const client = this.gatewayClient;
-    if (!client) {
-      this.pendingApprovals.delete(requestId);
-      return;
-    }
-
-    const sessionId = pending.sessionId;
-    // Only schedule continuation for user-initiated approvals (desktop modal),
-    // not for auto-approved commands (allowAlways).
-    const needsContinuation = !pending.allowAlways;
-
-    void client.request('exec.approval.resolve', {
-      id: requestId,
-      decision,
-    }).then(() => {
-      if (!needsContinuation) return;
-      // Continue the session so the model can see the command result.
-      const prompt = decision !== 'deny'
-        ? t('execApprovalApproved')
-        : t('execApprovalDenied');
-      const tryContinue = (retries: number) => {
-        if (!this.store.getSession(sessionId)) return; // session deleted
-        if (!this.isSessionActive(sessionId)) {
-          void this.continueSession(sessionId, prompt).catch((error) => {
-            console.warn('[OpenClawRuntime] failed to continue session after approval:', error);
-          });
-          return;
-        }
-        // Session still active (user approved before run ended). Retry after delay.
-        if (retries > 0) {
-          setTimeout(() => tryContinue(retries - 1), 1000);
-        }
-      };
-      tryContinue(10);
-    }).catch((error) => {
-      const message = error instanceof Error ? error.message : String(error);
-      this.emit('error', sessionId, `Failed to resolve OpenClaw approval: ${message}`);
-    }).finally(() => {
-      this.pendingApprovals.delete(requestId);
-    });
+    this.approvalController.respondToPermission(requestId, result);
   }
 
   isSessionActive(sessionId: string): boolean {
@@ -5115,12 +5054,22 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
     }
 
     if (event.event === 'exec.approval.requested') {
-      this.handleApprovalRequested(event.payload);
+      this.approvalController.handleExecApprovalRequested(event.payload);
       return;
     }
 
     if (event.event === 'exec.approval.resolved') {
-      this.handleApprovalResolved(event.payload);
+      this.approvalController.handleExecApprovalResolved(event.payload);
+      return;
+    }
+
+    if (event.event === 'plugin.approval.requested') {
+      this.approvalController.handlePluginApprovalRequested(event.payload);
+      return;
+    }
+
+    if (event.event === 'plugin.approval.resolved') {
+      this.approvalController.handlePluginApprovalResolved(event.payload);
     }
 
     if (event.event === 'cron') {
@@ -7608,15 +7557,7 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
     void this.reconcileWithHistory(sessionId, erroredSessionKey);
   }
 
-  private handleApprovalRequested(payload: unknown): void {
-    if (!isRecord(payload)) return;
-    const typedPayload = payload as ExecApprovalRequestedPayload;
-    const requestId = typeof typedPayload.id === 'string' ? typedPayload.id.trim() : '';
-    if (!requestId) return;
-    if (!typedPayload.request || !isRecord(typedPayload.request)) return;
-
-    const request = typedPayload.request;
-    const sessionKey = typeof request.sessionKey === 'string' ? request.sessionKey.trim() : '';
+  private resolveApprovalSessionId(sessionKey: string): string | undefined {
     let sessionId = sessionKey ? this.resolveSessionIdBySessionKey(sessionKey) ?? undefined : undefined;
 
     // Try to resolve channel-originated sessions for approval requests
@@ -7631,72 +7572,7 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
       }
     }
 
-    if (!sessionId) {
-      return;
-    }
-
-    const command = typeof request.command === 'string' ? request.command : '';
-    const isChannelSession = parseChannelSessionKey(sessionKey) !== null;
-
-    // Suppress ALL approvals (including auto-approvals) for sessions that the
-    // user has already stopped.  Without this early return, non-delete commands
-    // would be auto-approved below before the cooldown check, allowing the
-    // gateway-side run to keep executing new tool calls after the user clicked
-    // Stop (e.g. a crawler task continuing to fetch pages).
-    // The Gateway-side run will time out on its own.
-    if (this.isSessionInStopCooldown(sessionId)) {
-      console.log('[OpenClawRuntime] suppressed approval for stopped session, requestId:', requestId, 'sessionId:', sessionId);
-      return;
-    }
-    // Also suppress for desktop sessions that were manually stopped (persists
-    // beyond the 10s cooldown window until the next runTurn or session deletion).
-    if (this.manuallyStoppedSessions.has(sessionId) && isManagedSessionKey(sessionKey)) {
-      console.log('[OpenClawRuntime] suppressed approval for manually stopped desktop session, requestId:', requestId, 'sessionId:', sessionId);
-      return;
-    }
-
-    // Auto-approve: channel sessions always, local sessions for non-delete commands.
-    // Intentionally allows non-delete dangerous commands (git push, kill, chmod) without
-    // prompting — this is a deliberate trade-off to avoid the approval-pending timing
-    // issue on fresh installs.  Only file-deletion commands warrant a blocking modal.
-    // The allow-always decision adds the command to the gateway allowlist so subsequent
-    // calls skip the approval flow entirely.
-    if (isChannelSession || !isDeleteCommand(command)) {
-      this.pendingApprovals.set(requestId, { requestId, sessionId, allowAlways: true });
-      this.respondToPermission(requestId, { behavior: 'allow', updatedInput: {} });
-    }
-
-    this.pendingApprovals.set(requestId, { requestId, sessionId });
-
-    const { level: dangerLevel, reason: dangerReason } = getCommandDangerLevel(command);
-
-    const permissionRequest: PermissionRequest = {
-      requestId,
-      toolName: 'Bash',
-      toolInput: {
-        command,
-        dangerLevel,
-        dangerReason,
-        cwd: request.cwd ?? null,
-        host: request.host ?? null,
-        security: request.security ?? null,
-        ask: request.ask ?? null,
-        resolvedPath: request.resolvedPath ?? null,
-        sessionKey: request.sessionKey ?? null,
-        agentId: request.agentId ?? null,
-      },
-      toolUseId: requestId,
-    };
-
-    this.emit('permissionRequest', sessionId, permissionRequest);
-  }
-
-  private handleApprovalResolved(payload: unknown): void {
-    if (!isRecord(payload)) return;
-    const typedPayload = payload as ExecApprovalResolvedPayload;
-    const requestId = typeof typedPayload.id === 'string' ? typedPayload.id.trim() : '';
-    if (!requestId) return;
-    this.pendingApprovals.delete(requestId);
+    return sessionId;
   }
 
   private resolveSessionIdFromChatPayload(payload: ChatEventPayload): string | null {
@@ -8590,14 +8466,6 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
     });
   }
 
-  private clearPendingApprovalsBySession(sessionId: string): void {
-    for (const [requestId, pending] of this.pendingApprovals.entries()) {
-      if (pending.sessionId === sessionId) {
-        this.pendingApprovals.delete(requestId);
-      }
-    }
-  }
-
   private cleanupSessionTurn(sessionId: string): void {
     const turn = this.activeTurns.get(sessionId);
     if (turn) {
@@ -8753,7 +8621,7 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
     this.cleanupSessionTurn(sessionId);
 
     // Clean up pending approvals, bridged state, confirmation mode
-    this.clearPendingApprovalsBySession(sessionId);
+    this.approvalController.clearBySession(sessionId);
     this.bridgedSessions.delete(sessionId);
     this.continuityFullBridgeCompactedAtBySession.delete(sessionId);
     this.workspaceRehydrationBridgeCompactedAtBySession.delete(sessionId);

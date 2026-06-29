@@ -3044,6 +3044,120 @@ test('retryable closed run reopens on same-run lifecycle start', () => {
   ))).toBe(true);
 });
 
+test('plugin approval request is forwarded as a cowork permission and resolves through plugin approval API', async () => {
+  const { session, store } = createReconcileStore([
+    { id: 'msg-1', type: 'user', content: 'apply the skill proposal', timestamp: 1, metadata: {} },
+  ]);
+  const adapter = new OpenClawRuntimeAdapter(store, {});
+  const sessionKey = `agent:main:lobsterai:${session.id}`;
+  const request = vi.fn().mockResolvedValue({});
+  const permissionListener = vi.fn();
+
+  adapter.gatewayClient = {
+    start: () => {},
+    stop: () => {},
+    request,
+  };
+  adapter.rememberSessionKey(session.id, sessionKey);
+  adapter.on('permissionRequest', permissionListener);
+
+  adapter.handleGatewayEvent({
+    event: 'plugin.approval.requested',
+    seq: 1,
+    payload: {
+      id: 'plugin:approval-1',
+      request: {
+        pluginId: 'skill-workshop',
+        title: 'Apply workspace skill proposal',
+        description: 'Apply a pending workspace skill proposal into live workspace skills.',
+        severity: 'warning',
+        toolName: 'skill_workshop',
+        toolCallId: 'call-skill-workshop',
+        allowedDecisions: ['allow-once', 'deny'],
+        sessionKey,
+        agentId: 'main',
+      },
+    },
+  });
+
+  expect(permissionListener).toHaveBeenCalledWith(session.id, {
+    requestId: 'plugin:approval-1',
+    toolName: 'skill_workshop',
+    toolInput: {
+      approvalKind: 'plugin',
+      title: 'Apply workspace skill proposal',
+      description: 'Apply a pending workspace skill proposal into live workspace skills.',
+      severity: 'warning',
+      pluginId: 'skill-workshop',
+      toolName: 'skill_workshop',
+      toolCallId: 'call-skill-workshop',
+      allowedDecisions: ['allow-once', 'deny'],
+      sessionKey,
+      agentId: 'main',
+    },
+    toolUseId: 'call-skill-workshop',
+  });
+
+  adapter.respondToPermission('plugin:approval-1', {
+    behavior: 'allow',
+    updatedInput: {},
+  });
+  await Promise.resolve();
+  await Promise.resolve();
+
+  expect(request).toHaveBeenCalledWith('plugin.approval.resolve', {
+    id: 'plugin:approval-1',
+    decision: 'allow-once',
+  });
+});
+
+test('plugin approval resolved event clears pending plugin approval', () => {
+  const { session, store } = createReconcileStore([
+    { id: 'msg-1', type: 'user', content: 'apply the skill proposal', timestamp: 1, metadata: {} },
+  ]);
+  const adapter = new OpenClawRuntimeAdapter(store, {});
+  const sessionKey = `agent:main:lobsterai:${session.id}`;
+  const request = vi.fn().mockResolvedValue({});
+
+  adapter.gatewayClient = {
+    start: () => {},
+    stop: () => {},
+    request,
+  };
+
+  adapter.rememberSessionKey(session.id, sessionKey);
+  adapter.handleGatewayEvent({
+    event: 'plugin.approval.requested',
+    seq: 1,
+    payload: {
+      id: 'plugin:approval-2',
+      request: {
+        title: 'Apply workspace skill proposal',
+        description: 'Apply a pending workspace skill proposal into live workspace skills.',
+        toolName: 'skill_workshop',
+        allowedDecisions: ['allow-once', 'deny'],
+        sessionKey,
+      },
+    },
+  });
+
+  adapter.handleGatewayEvent({
+    event: 'plugin.approval.resolved',
+    seq: 2,
+    payload: {
+      id: 'plugin:approval-2',
+      decision: 'deny',
+    },
+  });
+
+  adapter.respondToPermission('plugin:approval-2', {
+    behavior: 'allow',
+    updatedInput: {},
+  });
+
+  expect(request).not.toHaveBeenCalled();
+});
+
 test('chat final completes after the retry grace window', async () => {
   vi.useFakeTimers();
   try {
