@@ -861,9 +861,6 @@ export const LogReporterActionPrefix = {
   - `promptLineCountBucket`：string，用户输入正文行数分桶。当前取值包括 `0`、`1`、`2_5`、`6_20`、`20_plus`。
   - `hasPrompt`：boolean，是否存在文本输入。
   - `inputLanguageType`：string，本地按字符粗略判断的输入语言类型。当前取值包括 `zh`、`en`、`mixed`、`unknown`。
-  - `promptIntentType`：string，本地关键词/正则粗略推断的输入意图类型。当前取值包括 `debug`、`coding`、`presentation`、`website`、`data`、`search`、`image`、`writing`、`analysis`、`other`、`empty`。
-  - `promptIntentSubtype`：string，本地固定规则推断的二级意图类型。当前取值包括 `bug_fix`、`code_review`、`code_generation`、`refactor`、`coding_general`、`slide_deck`、`website_building`、`spreadsheet`、`data_analysis`、`research`、`image_generation`、`image_understanding`、`image_editing`、`image_general`、`translation`、`summary`、`polishing`、`resume`、`meeting_notes`、`email`、`copywriting`、`document_writing`、`business_analysis`、`explanation`、`other`、`empty`。
-  - `promptIntentMatchedKeywords`：string，本地固定意图词表中被命中的关键词列表，以英文逗号连接。该字段只可能来自内置词表，不上传用户输入中的任意原文片段。
   - `inputSource`：string，本次提交的输入来源。当前取值包括 `typed`、`template`、`voice`、`selected_text`、`media_reference`、`history_continue`。
   - `hasQuestionMark`：boolean，输入正文中是否包含中英文问号。
   - `hasCodeFence`：boolean，输入正文中是否包含 Markdown 代码块标记。
@@ -898,7 +895,7 @@ export const LogReporterActionPrefix = {
   - `effectiveCollaborationMode`：string，实际提交给 Cowork 的协作模式。
 - 隐私边界：
   - 不上传 prompt 正文、prompt hash、自动拼接的附件路径、文件名、图片/音频内容、选中文本片段内容或历史消息内容。
-  - `promptIntentType`、`promptIntentSubtype`、`promptIntentMatchedKeywords`、`inputLanguageType` 和 `has*` 字段均在本地用规则计算；`promptIntentMatchedKeywords` 仅上传固定词表命中项，不上传用于判断的原始文本或任意截取片段。
+  - `inputLanguageType` 和 `has*` 字段均在本地用规则计算，仅上传输入形态信息，不上传用于判断的原始文本或任意截取片段。
   - 会上传技能/专家套件/模型 ID 和名称、Agent ID、数量和分桶信息，用于分析用户在不同场景下的能力选择和提交转化。
 
 #### 2.4.35 `lobsterai_prompt_control_action`
@@ -918,7 +915,7 @@ export const LogReporterActionPrefix = {
   - `targetAgentId` / `targetIsMainAgent` / `targetAgentSource` / `targetAgentSkillCount` / `hasAgentModel` / `agentModelId`：切换 Agent 时发送。
   - `attachmentCount` / `imageAttachmentCount` / `fileTypeGroups` / `totalAttachmentSizeBucket` / `selectedFileCount` / `modelSupportsImage` / `hasImageWithoutVision`：附件相关动作发送。
   - `submitMethod` / `accessPrompt`：提交阻断时发送。
-  - `promptLength` / `promptLengthBucket` / `promptLineCountBucket` / `inputLanguageType` / `promptIntentType` / `promptIntentSubtype` / `promptIntentMatchedKeywords` / `hasQuestionMark` / `hasCodeFence` / `hasInlineCode` / `hasUrl` / `hasPathLikeText` / `hasCommandLikeText` / `hasAtMediaMention`：输入开始或提交阻断时发送，用于分析输入漏斗和阻断场景，不上传正文。
+  - `promptLength` / `promptLengthBucket` / `promptLineCountBucket` / `inputLanguageType` / `hasQuestionMark` / `hasCodeFence` / `hasInlineCode` / `hasUrl` / `hasPathLikeText` / `hasCommandLikeText` / `hasAtMediaMention`：输入开始或提交阻断时发送，用于分析输入漏斗和阻断场景，不上传正文。
   - `asrQuotaStatus` / `isAsrSubscribed` / `recordingElapsedSeconds`：语音输入相关动作发送。
 - 隐私边界：
   - 不上传 prompt 正文、prompt hash、文件路径、文件名、文件内容、工作目录真实路径、Agent 名称、Agent system prompt/identity/userInfo、语音识别文本或错误详情。
