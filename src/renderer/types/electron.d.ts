@@ -342,11 +342,29 @@ import type { Platform } from '@shared/platform';
 import type { Agent, PresetAgent } from './agent';
 
 interface CreditItem {
-  type: 'subscription' | 'boost' | 'free';
+  type: 'subscription' | 'boost' | 'free' | 'bonus' | 'invitation';
   label: string;
   labelEn: string;
   creditsRemaining: number;
   expiresAt: string | null;
+}
+
+interface CreditsResetCampaignStatusData {
+  enabled: boolean;
+  active: boolean;
+  registeredEligible: boolean;
+  participated: boolean;
+  participationType: string | null;
+  identity: 'subscription' | 'free';
+  availableResetCount: number;
+  availablePromoSubscriptionCount: number;
+  promoPlanId: number;
+  promoAmount: number;
+  campaignCode: string;
+  startAt: string;
+  endAt: string;
+  registeredBefore: string;
+  reason: string;
 }
 
 interface ProfileSummaryData {
@@ -355,6 +373,9 @@ interface ProfileSummaryData {
   avatarUrl: string | null;
   totalCreditsRemaining: number;
   creditItems: CreditItem[];
+  availableResetCount?: number;
+  availablePromoSubscriptionCount?: number;
+  creditsResetCampaign?: CreditsResetCampaignStatusData;
 }
 
 interface HtmlShareResult {

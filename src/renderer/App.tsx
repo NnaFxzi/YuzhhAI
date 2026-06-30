@@ -267,6 +267,12 @@ const App: React.FC = () => {
     };
   }, []);
 
+  useEffect(() => {
+    if (authUser) {
+      void authService.fetchProfileSummary();
+    }
+  }, [authUser]);
+
   // Listen for Copilot token auto-refresh events from the main process
   useEffect(() => {
     const removeListener = window.electron.githubCopilot.onTokenUpdated(({ token, baseUrl }) => {

@@ -3,10 +3,12 @@ import { useSelector } from 'react-redux';
 
 import inviteCreditsIconUrl from '../assets/icons/invite-credits.svg';
 import logoutIconUrl from '../assets/icons/logout.svg';
+import promoSubscriptionIconUrl from '../assets/icons/promo-subscription.svg';
 import rechargeIconUrl from '../assets/icons/recharge.svg';
 import usageOverviewIconUrl from '../assets/icons/usage-overview.svg';
 import { authService } from '../services/auth';
 import {
+  getPortalCreditsResetActivityUrl,
   getPortalInvitationUrl,
   getPortalProfileUrl,
   getPortalRechargeUrl,
@@ -254,11 +256,36 @@ const UserMenu: React.FC<{ onClose: () => void }> = ({ onClose }) => {
     }
   };
 
+  const handleCreditsResetActivity = async () => {
+    try {
+      await openPortalUrl(getPortalCreditsResetActivityUrl());
+      reportAccountMenuAction('open_credits_reset_campaign', {
+        creditItemCount: creditItems.length,
+        hasCredits,
+        result: 'success',
+      });
+    } catch (error) {
+      reportAccountMenuAction('open_credits_reset_campaign', {
+        creditItemCount: creditItems.length,
+        hasCredits,
+        result: 'failed',
+      });
+      throw error;
+    }
+  };
+
   const phoneSuffix = user?.phone ? user.phone.slice(-4) : '';
 
   const totalCredits = profileSummary?.totalCreditsRemaining ?? 0;
   const creditItems = profileSummary?.creditItems ?? [];
   const hasCredits = creditItems.length > 0;
+  const availableResetCount = profileSummary?.availableResetCount ?? 0;
+  const availablePromoSubscriptionCount = profileSummary?.availablePromoSubscriptionCount ?? 0;
+  const campaignActionLabel = availableResetCount > 0
+    ? i18nService.t('authCreditsResetAction')
+    : availablePromoSubscriptionCount > 0
+      ? i18nService.t('authPromoSubscriptionAction')
+      : null;
 
   return (
     <div className="absolute bottom-full left-[-0.5rem] mb-1 w-[14.5rem] bg-surface rounded-xl shadow-popover border border-border overflow-hidden z-50 popover-enter">
@@ -332,6 +359,13 @@ const UserMenu: React.FC<{ onClose: () => void }> = ({ onClose }) => {
 
       {/* Actions */}
       <div className="py-1">
+        {campaignActionLabel && (
+          <AccountMenuAction
+            icon={<PortalMenuIcon src={promoSubscriptionIconUrl} darkInvert />}
+            label={campaignActionLabel}
+            onClick={handleCreditsResetActivity}
+          />
+        )}
         <AccountMenuAction
           icon={<PortalMenuIcon src={usageOverviewIconUrl} darkInvert />}
           label={i18nService.t('authUsageOverview')}

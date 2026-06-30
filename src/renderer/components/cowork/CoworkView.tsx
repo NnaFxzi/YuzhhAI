@@ -26,6 +26,7 @@ import { clearActiveSkills, setActiveSkillIds } from '../../store/slices/skillSl
 import { CoworkCollaborationMode, type CoworkCollaborationMode as CoworkCollaborationModeType, type CoworkImageAttachment, type CoworkSession, type OpenClawEngineStatus, type SubagentSessionSummary } from '../../types/cowork';
 import type { MediaAttachmentRef } from '../../types/mediaGeneration';
 import { toOpenClawModelRef } from '../../utils/openclawModelRef';
+import CreditsResetCampaignFloat from '../CreditsResetCampaignFloat';
 import ComposeIcon from '../icons/ComposeIcon';
 import SidebarToggleIcon from '../icons/SidebarToggleIcon';
 import { PromptPanel, QuickActionBar } from '../quick-actions';
@@ -829,7 +830,7 @@ const CoworkView: React.FC<CoworkViewProps> = ({ onRequestAppSettings, onShowSki
 
           {/* Quick Actions */}
           <div
-            className="relative z-0 mt-8 w-full max-w-3xl space-y-4 animate-fade-in-up"
+            className="relative z-0 mt-8 flex w-full max-w-3xl flex-col items-center animate-fade-in-up"
             style={{ animationDelay: '260ms', animationFillMode: 'both' }}
           >
             {selectedAction ? (
@@ -840,6 +841,7 @@ const CoworkView: React.FC<CoworkViewProps> = ({ onRequestAppSettings, onShowSki
             ) : (
               <QuickActionBar actions={quickActions} onActionSelect={handleActionSelect} />
             )}
+            <CreditsResetCampaignFloat />
           </div>
         </div>
       </div>
