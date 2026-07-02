@@ -437,6 +437,151 @@ describe('OpenClawConfigSync runtime config output', () => {
     expect(mainEntry.cwd).toBe(path.resolve(mainAgentWorkingDirectory));
   });
 
+  test('writes current provider config and updates managed session store policies', async () => {
+    const { ProviderName } = await import('../../shared/providers');
+    mockRuntimeState.rawApiConfig = {
+      config: {
+        baseURL: 'https://api.moonshot.cn/anthropic',
+        apiKey: 'sk-moonshot',
+        model: 'kimi-k2.5',
+        apiType: 'anthropic',
+      },
+      providerMetadata: {
+        providerName: ProviderName.Moonshot,
+        codingPlanEnabled: false,
+        supportsImage: true,
+        supportsThinking: true,
+        modelName: 'Kimi K2.5',
+      },
+    };
+    mockRuntimeState.enabledProviders = [{
+      providerName: ProviderName.Moonshot,
+      baseURL: 'https://api.moonshot.cn/anthropic',
+      apiKey: 'sk-moonshot',
+      apiType: 'anthropic',
+      codingPlanEnabled: false,
+      models: [{
+        id: 'kimi-k2.5',
+        name: 'Kimi K2.5',
+        supportsImage: true,
+        supportsThinking: true,
+      }],
+    }];
+
+    const sessionsDir = path.join(stateDir, 'agents', 'main', 'sessions');
+    fs.mkdirSync(sessionsDir, { recursive: true });
+    fs.writeFileSync(path.join(sessionsDir, 'sessions.json'), `${JSON.stringify({
+      'agent:main:lobsterai:current-session': {
+        sessionId: 'session-current',
+        modelProvider: 'lobster',
+        model: 'kimi-k2.5',
+        systemPromptReport: {
+          provider: 'lobster',
+          model: 'kimi-k2.5',
+        },
+      },
+      'agent:main:wecom:direct:wangning': {
+        sessionId: 'session-wecom',
+        execSecurity: 'deny',
+        skillsSnapshot: {
+          prompt: '<skill><name>feishu-cron-reminder</name></skill>',
+          resolvedSkills: [{ name: 'feishu-cron-reminder' }],
+        },
+      },
+    }, null, 2)}\n`, 'utf8');
+
+    const sync = await createSync();
+    const result = sync.sync('current-provider-session-store');
+    expect(result.ok).toBe(true);
+
+    const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    expect(config.models.providers.moonshot.baseUrl).toBe('https://api.moonshot.cn/anthropic');
+    expect(config.models.providers.moonshot.api).toBe('anthropic-messages');
+    expect(config.models.providers.moonshot.apiKey).toBe('${LOBSTER_APIKEY_MOONSHOT}');
+    expect(config.agents.defaults.model.primary).toBe('moonshot/kimi-k2.5');
+
+    const sessionStore = JSON.parse(fs.readFileSync(path.join(sessionsDir, 'sessions.json'), 'utf8'));
+    expect(sessionStore['agent:main:lobsterai:current-session']).toMatchObject({
+      modelProvider: 'moonshot',
+      model: 'kimi-k2.5',
+      systemPromptReport: {
+        provider: 'moonshot',
+        model: 'kimi-k2.5',
+      },
+    });
+    expect(sessionStore['agent:main:wecom:direct:wangning'].execSecurity).toBe('full');
+    expect(sessionStore['agent:main:wecom:direct:wangning']).not.toHaveProperty('skillsSnapshot');
+  });
+
+  test('writes Ollama provider config without restoring legacy lobster placeholder provider', async () => {
+    const { ProviderName } = await import('../../shared/providers');
+    mockRuntimeState.rawApiConfig = {
+      config: {
+        baseURL: 'http://localhost:11434/v1',
+        apiKey: '',
+        model: 'llama3',
+        apiType: 'openai',
+      },
+      providerMetadata: {
+        providerName: ProviderName.Ollama,
+        codingPlanEnabled: false,
+        supportsImage: false,
+        modelName: 'llama3',
+      },
+    };
+    mockRuntimeState.enabledProviders = [{
+      providerName: ProviderName.Ollama,
+      baseURL: 'http://localhost:11434/v1',
+      apiKey: '',
+      apiType: 'openai',
+      codingPlanEnabled: false,
+      models: [{ id: 'llama3', name: 'llama3', supportsImage: false }],
+    }];
+
+    const sync = await createSync();
+    const result = sync.sync('ollama-provider');
+    expect(result.ok).toBe(true);
+
+    const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    expect(config.models.providers.ollama).toMatchObject({
+      baseUrl: 'http://localhost:11434/v1',
+      api: 'openai-completions',
+      apiKey: '${LOBSTER_APIKEY_OLLAMA}',
+    });
+    expect(config.models.providers).not.toHaveProperty('lobster');
+    expect(config.agents.defaults.model.primary).toBe('ollama/llama3');
+  });
+
+  test('replaces legacy LobsterAI managed AGENTS section with the current product marker', async () => {
+    const workspaceDir = path.join(stateDir, 'workspace-main');
+    fs.mkdirSync(workspaceDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(workspaceDir, 'AGENTS.md'),
+      [
+        '# User Workspace Notes',
+        '',
+        'Keep this user-authored line.',
+        '',
+        '<!-- LobsterAI managed: do not edit below this line -->',
+        '',
+        'Old managed-only content.',
+        '',
+      ].join('\n'),
+      'utf8',
+    );
+
+    const sync = await createSync();
+    const result = sync.sync('legacy-agents-marker');
+    expect(result.ok).toBe(true);
+
+    const agentsMd = fs.readFileSync(path.join(workspaceDir, 'AGENTS.md'), 'utf8');
+    expect(agentsMd).toContain('# User Workspace Notes');
+    expect(agentsMd).toContain('Keep this user-authored line.');
+    expect(agentsMd).toContain('<!-- 宇智汇和 AI 助手 managed: do not edit below this line -->');
+    expect(agentsMd).not.toContain('<!-- LobsterAI managed: do not edit below this line -->');
+    expect(agentsMd).not.toContain('Old managed-only content.');
+  });
+
   test('merges all server models into existing lobsterai provider and updates image input', async () => {
     mockRuntimeState.proxyPort = 56646;
     mockRuntimeState.serverModels = [
@@ -1852,7 +1997,7 @@ describe('OpenClawConfigSync runtime config output', () => {
 
     const agentsMdPath = path.join(stateDir, 'workspace-main', 'AGENTS.md');
     const agentsMd = fs.readFileSync(agentsMdPath, 'utf8');
-    expect(agentsMd).toContain('LobsterAI does not support sandbox browser execution in this version.');
+    expect(agentsMd).toContain('宇智汇和 AI 助手 does not support sandbox browser execution in this version.');
     expect(agentsMd).toContain('For every `browser` tool call, set `target="host"` explicitly.');
   });
 

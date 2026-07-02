@@ -137,7 +137,7 @@ export const defaultConfig: AppConfig = {
   language: 'zh',
   useSystemProxy: false,
   sqliteAutoBackupEnabled: false,
-  usageAnalyticsEnabled: true,
+  usageAnalyticsEnabled: false,
   notificationSettings: defaultNotificationSettings,
   browserWebAccess: defaultBrowserWebAccessConfig,
   app: {

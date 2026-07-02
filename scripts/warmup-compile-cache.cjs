@@ -59,7 +59,7 @@ try {
 // Find the gateway bundle
 const bundleCandidates = [
   path.join(__dirname, 'gateway-bundle.mjs'),
-  path.join(__dirname, '..', 'resources', 'cfmind', 'gateway-bundle.mjs'),
+  path.join(__dirname, '..', 'resources', 'yuzhh-runtime', 'gateway-bundle.mjs'),
 ];
 
 let bundlePath = null;

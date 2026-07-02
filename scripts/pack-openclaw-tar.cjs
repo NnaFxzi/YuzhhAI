@@ -8,7 +8,7 @@
  * tar archive and extracting it post-install is dramatically faster.
  *
  * Used by electron-builder-hooks beforePack to pack:
- *   - OpenClaw runtime (vendor/openclaw-runtime/current -> cfmind/)
+ *   - OpenClaw runtime (vendor/openclaw-runtime/current -> yuzhh-runtime/)
  *   - SKILLs directory (SKILLs -> SKILLs/)
  *   - Python runtime (resources/python-win -> python-win/)
  *
@@ -219,7 +219,7 @@ function main() {
     if (fs.existsSync(outputTar)) fs.unlinkSync(outputTar);
 
     const sources = [
-      { dir: path.join(projectRoot, 'vendor', 'openclaw-runtime', 'current'), prefix: 'cfmind' },
+      { dir: path.join(projectRoot, 'vendor', 'openclaw-runtime', 'current'), prefix: 'yuzhh-runtime' },
       { dir: path.join(projectRoot, 'SKILLs'), prefix: 'SKILLs' },
       { dir: path.join(projectRoot, 'resources', 'python-win'), prefix: 'python-win' },
     ];
@@ -239,7 +239,7 @@ function main() {
   const sourceDir = process.argv[2]
     || path.join(projectRoot, 'vendor', 'openclaw-runtime', 'current');
   const outputTar = process.argv[3]
-    || path.join(projectRoot, 'vendor', 'openclaw-runtime', 'cfmind.tar');
+    || path.join(projectRoot, 'vendor', 'openclaw-runtime', 'yuzhh-runtime.tar');
 
   if (!fs.existsSync(sourceDir)) {
     console.error(`[pack-openclaw-tar] Source directory not found: ${sourceDir}`);

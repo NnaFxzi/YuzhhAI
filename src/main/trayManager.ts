@@ -1,7 +1,7 @@
 import { app, BrowserWindow, Menu, nativeImage, Tray } from 'electron';
 import path from 'path';
 
-import { APP_NAME } from './appConstants';
+import { APP_DISPLAY_NAME } from './appConstants';
 import { t } from './i18n';
 
 let tray: Tray | null = null;
@@ -181,5 +181,5 @@ function resolveTrayTooltip(): string {
   if (trayReminder.count > 0) {
     return t('trayCompletedTaskTooltip', { count: trayReminder.count });
   }
-  return APP_NAME;
+  return APP_DISPLAY_NAME;
 }

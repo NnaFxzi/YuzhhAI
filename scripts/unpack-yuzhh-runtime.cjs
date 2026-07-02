@@ -4,13 +4,13 @@
  * Windows 安装后资源 tar 解压脚本
  *
  * 由 NSIS installer.nsh 的 customInstall 宏调用。
- * 通过 LobsterAI.exe (ELECTRON_RUN_AS_NODE=1 模式) 执行。
+ * 通过应用主程序 (ELECTRON_RUN_AS_NODE=1 模式) 执行。
  *
- * 用法: LobsterAI.exe <本脚本路径> <tarPath> <destDir>
+ * 用法: <App.exe> <本脚本路径> <tarPath> <destDir>
  *
  * 效果:
  *   输入: $INSTDIR/resources/win-resources.tar
- *   输出: $INSTDIR/resources/cfmind/, SKILLs/, python-win/
+ *   输出: $INSTDIR/resources/yuzhh-runtime/, SKILLs/, python-win/
  *   tar 文件由 NSIS 脚本在解压后删除
  *
  * 依赖: 从 app.asar 内加载 tar npm 包 (Electron 内置 ASAR 透明读取支持)
@@ -21,7 +21,7 @@ const path = require('path');
 
 // Heartbeat: prove the script was actually invoked as Node.js (not Electron GUI)
 try {
-  const heartbeat = `${new Date().toISOString()} [unpack-cfmind] phase=script-started pid=${process.pid} node=${process.version} electron_run_as_node=${process.env.ELECTRON_RUN_AS_NODE || 'NOT_SET'}`;
+  const heartbeat = `${new Date().toISOString()} [unpack-yuzhh-runtime] phase=script-started pid=${process.pid} node=${process.version} electron_run_as_node=${process.env.ELECTRON_RUN_AS_NODE || 'NOT_SET'}`;
   console.log(heartbeat);
   if (process.argv[4]) {
     fs.mkdirSync(path.dirname(process.argv[4]), { recursive: true });
@@ -38,12 +38,12 @@ const destDir = process.argv[3];
 const installLogPath = process.argv[4];
 
 if (!tarPath || !destDir) {
-  console.error('[unpack-cfmind] Usage: LobsterAI.exe unpack-cfmind.cjs <tarPath> <destDir>');
+  console.error('[unpack-yuzhh-runtime] Usage: <App.exe> unpack-yuzhh-runtime.cjs <tarPath> <destDir>');
   process.exit(1);
 }
 
 if (!fs.existsSync(tarPath)) {
-  console.error(`[unpack-cfmind] tar file not found: ${tarPath}`);
+  console.error(`[unpack-yuzhh-runtime] tar file not found: ${tarPath}`);
   process.exit(1);
 }
 
@@ -70,7 +70,7 @@ if (installLogPath) {
     fs.mkdirSync(path.dirname(installLogPath), { recursive: true });
     logFd = fs.openSync(installLogPath, 'a');
   } catch (error) {
-    console.error(`[unpack-cfmind] Failed to open install log: ${stringifyError(error)}`);
+    console.error(`[unpack-yuzhh-runtime] Failed to open install log: ${stringifyError(error)}`);
   }
 }
 
@@ -81,7 +81,7 @@ function logLine(message) {
     try {
       fs.writeSync(logFd, `${line}\n`);
     } catch (error) {
-      console.error(`${formatTimestamp()} [unpack-cfmind] Failed to write install log: ${stringifyError(error)}`);
+      console.error(`${formatTimestamp()} [unpack-yuzhh-runtime] Failed to write install log: ${stringifyError(error)}`);
       logFd = null;
     }
   }
@@ -113,7 +113,7 @@ function loadTarModule() {
   try {
     return require(asarTarPath);
   } catch (e) {
-    logLine(`[unpack-cfmind] phase=load-tar-from-asar-failed error=${stringifyError(e)}`);
+    logLine(`[unpack-yuzhh-runtime] phase=load-tar-from-asar-failed error=${stringifyError(e)}`);
   }
 
   // Strategy 2: Direct require (may be in NODE_PATH)
@@ -123,8 +123,8 @@ function loadTarModule() {
     // Also failed
   }
 
-  logLine('[unpack-cfmind] phase=load-tar-failed');
-  logLine(`[unpack-cfmind] phase=load-tar-tried path=${asarTarPath}`);
+  logLine('[unpack-yuzhh-runtime] phase=load-tar-failed');
+  logLine(`[unpack-yuzhh-runtime] phase=load-tar-tried path=${asarTarPath}`);
   process.exit(1);
 }
 
@@ -133,19 +133,19 @@ function loadTarModule() {
 // ============================================================
 
 process.on('uncaughtException', (err) => {
-  logLine(`[unpack-cfmind] phase=uncaught-exception error=${stringifyError(err)}`);
+  logLine(`[unpack-yuzhh-runtime] phase=uncaught-exception error=${stringifyError(err)}`);
   closeLogFile();
   process.exit(1);
 });
 process.on('unhandledRejection', (reason) => {
-  logLine(`[unpack-cfmind] phase=unhandled-rejection error=${stringifyError(reason)}`);
+  logLine(`[unpack-yuzhh-runtime] phase=unhandled-rejection error=${stringifyError(reason)}`);
   closeLogFile();
   process.exit(1);
 });
 
 try {
-  logLine(`[unpack-cfmind] phase=extract-open tar=${tarPath}`);
-  logLine(`[unpack-cfmind] phase=extract-destination dir=${destDir}`);
+  logLine(`[unpack-yuzhh-runtime] phase=extract-open tar=${tarPath}`);
+  logLine(`[unpack-yuzhh-runtime] phase=extract-destination dir=${destDir}`);
 
   const tar = loadTarModule();
   const t0 = Date.now();
@@ -183,13 +183,13 @@ try {
       if (root !== currentRoot) {
         currentRoot = root;
         nextRootProgressBytes = stats.bytes + (25 * 1024 * 1024);
-        logLine(`[unpack-cfmind] phase=root-start root=${root} entry=${entryPath}`);
+        logLine(`[unpack-yuzhh-runtime] phase=root-start root=${root} entry=${entryPath}`);
       }
 
       if (extractedEntries <= 20 || extractedBytes >= nextGlobalProgressBytes) {
         const elapsedMs = Date.now() - t0;
         logLine(
-          `[unpack-cfmind] phase=extract-progress entries=${extractedEntries} bytes=${extractedBytes} mb=${formatMegabytes(extractedBytes)} elapsed_ms=${elapsedMs} current=${entryPath}`,
+          `[unpack-yuzhh-runtime] phase=extract-progress entries=${extractedEntries} bytes=${extractedBytes} mb=${formatMegabytes(extractedBytes)} elapsed_ms=${elapsedMs} current=${entryPath}`,
         );
         while (extractedBytes >= nextGlobalProgressBytes) {
           nextGlobalProgressBytes += 25 * 1024 * 1024;
@@ -199,7 +199,7 @@ try {
       if (stats.bytes >= nextRootProgressBytes) {
         const elapsedMs = Date.now() - stats.startedAtMs;
         logLine(
-          `[unpack-cfmind] phase=root-progress root=${root} entries=${stats.entries} bytes=${stats.bytes} mb=${formatMegabytes(stats.bytes)} elapsed_ms=${elapsedMs} current=${entryPath}`,
+          `[unpack-yuzhh-runtime] phase=root-progress root=${root} entries=${stats.entries} bytes=${stats.bytes} mb=${formatMegabytes(stats.bytes)} elapsed_ms=${elapsedMs} current=${entryPath}`,
         );
         while (stats.bytes >= nextRootProgressBytes) {
           nextRootProgressBytes += 25 * 1024 * 1024;
@@ -209,31 +209,31 @@ try {
   });
 
   const elapsedMs = Date.now() - t0;
-  logLine(`[unpack-cfmind] phase=extract-complete entries=${extractedEntries} bytes=${extractedBytes} elapsed_ms=${elapsedMs}`);
+  logLine(`[unpack-yuzhh-runtime] phase=extract-complete entries=${extractedEntries} bytes=${extractedBytes} elapsed_ms=${elapsedMs}`);
 
   for (const [root, stats] of rootStats.entries()) {
     const elapsedMs = Date.now() - stats.startedAtMs;
     logLine(
-      `[unpack-cfmind] phase=root-summary root=${root} entries=${stats.entries} bytes=${stats.bytes} mb=${formatMegabytes(stats.bytes)} elapsed_ms=${elapsedMs}`,
+      `[unpack-yuzhh-runtime] phase=root-summary root=${root} entries=${stats.entries} bytes=${stats.bytes} mb=${formatMegabytes(stats.bytes)} elapsed_ms=${elapsedMs}`,
     );
   }
 
   // Verify key directories exist
-  const expectedDirs = ['cfmind', 'SKILLs', 'python-win'];
+  const expectedDirs = ['yuzhh-runtime', 'SKILLs', 'python-win'];
   for (const dir of expectedDirs) {
     const dirPath = path.join(destDir, dir);
     if (fs.existsSync(dirPath)) {
-      logLine(`[unpack-cfmind] phase=verify-ok dir=${dir}`);
+      logLine(`[unpack-yuzhh-runtime] phase=verify-ok dir=${dir}`);
     } else {
-      logLine(`[unpack-cfmind] phase=verify-missing dir=${dir}`);
+      logLine(`[unpack-yuzhh-runtime] phase=verify-missing dir=${dir}`);
     }
   }
 
-  logLine('[unpack-cfmind] phase=extract-ok');
+  logLine('[unpack-yuzhh-runtime] phase=extract-ok');
   closeLogFile();
   process.exit(0);
 } catch (err) {
-  logLine(`[unpack-cfmind] phase=extract-failed error=${stringifyError(err)}`);
+  logLine(`[unpack-yuzhh-runtime] phase=extract-failed error=${stringifyError(err)}`);
   closeLogFile();
   process.exit(1);
 }

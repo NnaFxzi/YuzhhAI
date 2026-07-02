@@ -1,9 +1,9 @@
 {
-  "name": "lobsterai",
+  "name": "yuzhh-ai-assistant",
   "private": true,
   "author": {
-    "name": "LobsterAI",
-    "email": "lobsterai.project@rd.netease.com"
+    "name": "宇智汇和（东莞）科技有限公司",
+    "email": "contact@yuzhh.com"
   },
   "license": "MIT",
   "version": "2026.6.30",
@@ -75,6 +75,7 @@
     "prebuild": "node scripts/generate-keyfrom-build-info.cjs",
     "build": "tsc && vite build",
     "lint": "eslint src/",
+    "check:release-branding": "node scripts/check-release-branding.cjs",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "prepare": "husky",

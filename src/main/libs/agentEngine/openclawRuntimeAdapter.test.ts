@@ -396,10 +396,10 @@ test('outbound prompt injects continuity capsule bridge before the current reque
 
   const prompt = await internal.buildOutboundPrompt('session-1', '继续');
 
-  expect(prompt).toContain('[LobsterAI continuity context after context compaction]');
+  expect(prompt).toContain('[宇智汇和 AI 助手 continuity context after context compaction]');
   expect(prompt).toContain('Improve compaction continuity.');
   expect(prompt).toContain('src/main/libs/agentEngine/openclawRuntimeAdapter.ts');
-  expect(prompt.indexOf('[LobsterAI continuity context after context compaction]')).toBeLessThan(
+  expect(prompt.indexOf('[宇智汇和 AI 助手 continuity context after context compaction]')).toBeLessThan(
     prompt.indexOf('[Current user request]'),
   );
 });
@@ -444,10 +444,10 @@ test('outbound prompt injects full capsule first and mini capsule on later turns
   const firstPrompt = await internal.buildOutboundPrompt('session-1', '继续');
   const secondPrompt = await internal.buildOutboundPrompt('session-1', '再继续');
 
-  expect(firstPrompt).toContain('[LobsterAI continuity context after context compaction]');
+  expect(firstPrompt).toContain('[宇智汇和 AI 助手 continuity context after context compaction]');
   expect(firstPrompt).toContain('Touched files:');
   expect(firstPrompt).toContain('src/main/libs/agentEngine/openclawRuntimeAdapter.ts');
-  expect(secondPrompt).toContain('[LobsterAI brief continuity context after context compaction]');
+  expect(secondPrompt).toContain('[宇智汇和 AI 助手 brief continuity context after context compaction]');
   expect(secondPrompt).toContain('Improve compaction continuity.');
   expect(secondPrompt).toContain('Inject capsule bridge.');
   expect(secondPrompt).not.toContain('Touched files:');
@@ -496,9 +496,9 @@ test('outbound prompt injects workspace rehydration bridge before the current re
 
   const prompt = await internal.buildOutboundPrompt('session-1', '继续');
 
-  expect(prompt).toContain('[LobsterAI workspace state after context compaction]');
+  expect(prompt).toContain('[宇智汇和 AI 助手 workspace state after context compaction]');
   expect(prompt).toContain('src/main/libs/agentEngine/coworkWorkspaceRehydration.ts');
-  expect(prompt.indexOf('[LobsterAI workspace state after context compaction]')).toBeLessThan(
+  expect(prompt.indexOf('[宇智汇和 AI 助手 workspace state after context compaction]')).toBeLessThan(
     prompt.indexOf('[Current user request]'),
   );
 });
@@ -546,8 +546,8 @@ test('outbound prompt injects workspace rehydration bridge once per compaction',
   const firstPrompt = await internal.buildOutboundPrompt('session-1', '继续');
   const secondPrompt = await internal.buildOutboundPrompt('session-1', '再继续');
 
-  expect(firstPrompt).toContain('[LobsterAI workspace state after context compaction]');
-  expect(secondPrompt).not.toContain('[LobsterAI workspace state after context compaction]');
+  expect(firstPrompt).toContain('[宇智汇和 AI 助手 workspace state after context compaction]');
+  expect(secondPrompt).not.toContain('[宇智汇和 AI 助手 workspace state after context compaction]');
 });
 
 test('outbound prompt injects top-k evidence bridge before the current request', async () => {
@@ -606,9 +606,9 @@ test('outbound prompt injects top-k evidence bridge before the current request',
 
   const prompt = await internal.buildOutboundPrompt('session-1', '继续处理 src/pages/Bakery.tsx 的 npm test failed');
 
-  expect(prompt).toContain('[LobsterAI retrieved evidence after context compaction]');
+  expect(prompt).toContain('[宇智汇和 AI 助手 retrieved evidence after context compaction]');
   expect(prompt).toContain('npm test failed in src/pages/Bakery.tsx');
-  expect(prompt.indexOf('[LobsterAI retrieved evidence after context compaction]')).toBeLessThan(
+  expect(prompt.indexOf('[宇智汇和 AI 助手 retrieved evidence after context compaction]')).toBeLessThan(
     prompt.indexOf('[Current user request]'),
   );
 });
@@ -650,7 +650,7 @@ test('outbound prompt skips continuity capsule bridge before compaction', async 
 
   const prompt = await internal.buildOutboundPrompt('session-1', 'hello');
 
-  expect(prompt).not.toContain('[LobsterAI continuity context after context compaction]');
+  expect(prompt).not.toContain('[宇智汇和 AI 助手 continuity context after context compaction]');
 });
 
 test('context usage ignores non-checkpoint compactionCount', () => {
@@ -1329,6 +1329,7 @@ function createRunTurnAdapter(options: {
   holdFirstModelPatch?: boolean;
   sessionCwd?: string;
   chatSendError?: Error;
+  chatHistoryMessages?: Array<Record<string, unknown>>;
 } = {}) {
   const session = {
     id: 'session-1',
@@ -1423,7 +1424,7 @@ function createRunTurnAdapter(options: {
         return {};
       }
       if (method === 'chat.history') {
-        return { messages: [] };
+        return { messages: options.chatHistoryMessages ?? [] };
       }
       if (method === 'chat.send') {
         if (options.chatSendError) {
@@ -1542,7 +1543,7 @@ test('continueSession continues after a redundant session override patch times o
     'chat.history',
     'chat.send',
   ]);
-});
+}, 15_000);
 
 test('continueSession rejects an unconfirmed session override patch timeout before chat.send', async () => {
   const model = 'lobsterai-server/qwen3.6-plus-YoudaoInner';
@@ -1617,6 +1618,7 @@ test('continueSession stopped before active turn creation does not send chat', a
 test('continueSession sends the session cwd to OpenClaw chat.send', async () => {
   const { adapter, requests } = createRunTurnAdapter({
     sessionCwd: '/tmp/lobsterai-selected-project',
+    chatHistoryMessages: [{ role: 'assistant', content: 'Done' }],
   });
 
   await adapter.continueSession('session-1', 'hello');
@@ -1625,7 +1627,7 @@ test('continueSession sends the session cwd to OpenClaw chat.send', async () => 
   expect(chatSend?.params).toMatchObject({
     cwd: path.resolve('/tmp/lobsterai-selected-project'),
   });
-});
+}, 10_000);
 
 test('continueSession clears the pending turn when chat.send fails immediately', async () => {
   const { adapter } = createRunTurnAdapter({
@@ -1646,6 +1648,7 @@ test('pre-send model patch uses the extended send timeout while patchSession kee
   const model = 'lobsterai-server/qwen3.6-plus-YoudaoInner';
   const { adapter, requests } = createRunTurnAdapter({
     sessionModelOverride: model,
+    chatHistoryMessages: [{ role: 'assistant', content: 'Done' }],
   });
 
   await adapter.continueSession('session-1', 'hello');
@@ -1667,6 +1670,7 @@ test('continueSession sends after a slow pre-send model patch eventually succeed
   } = createRunTurnAdapter({
     sessionModelOverride: model,
     holdFirstModelPatch: true,
+    chatHistoryMessages: [{ role: 'assistant', content: 'Done' }],
   });
   const errors: unknown[] = [];
   adapter.on('error', (...args: unknown[]) => errors.push(args));

@@ -10,6 +10,7 @@ const {
   copyDirRecursive,
   copyInstalledPluginToCache,
   findInstalledPluginDir,
+  getOptionalPluginSkipReason,
   isGitSpec,
   isLocalPathSpec,
   parseGitSpec,
@@ -120,6 +121,39 @@ describe('ensure-openclaw-plugins', () => {
       installSpec: '/tmp/local-plugin',
       pinnedDisplaySpec: '/tmp/local-plugin',
     });
+  });
+
+  test('skips optional custom-registry plugins by default for self-owned builds', () => {
+    const plugin = {
+      id: 'moltbot-popo',
+      npm: 'moltbot-popo',
+      version: '2.0.7',
+      registry: 'https://npm.nie.netease.com',
+      optional: true,
+    };
+
+    expect(getOptionalPluginSkipReason(plugin, {})).toBe(
+      'optional plugin uses custom registry https://npm.nie.netease.com',
+    );
+    expect(getOptionalPluginSkipReason(plugin, {
+      OPENCLAW_INSTALL_OPTIONAL_PLUGINS: '1',
+    })).toBeNull();
+  });
+
+  test('keeps required plugins and public optional plugins in the default plugin set', () => {
+    expect(getOptionalPluginSkipReason({
+      id: 'required-custom-registry-plugin',
+      npm: '@example/required',
+      version: '1.0.0',
+      registry: 'https://npm.example.com',
+    }, {})).toBeNull();
+
+    expect(getOptionalPluginSkipReason({
+      id: 'optional-public-plugin',
+      npm: '@example/public',
+      version: '1.0.0',
+      optional: true,
+    }, {})).toBeNull();
   });
 
   test('finds plugins installed in the legacy extensions directory', () => {

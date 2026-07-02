@@ -240,6 +240,19 @@ export function registerKitHandlers(deps: KitHandlerDeps): void {
   // Fetch kit store catalog from overmind
   ipcMain.handle('kits:fetchStore', async () => {
     const url = getKitStoreUrl();
+    if (!url.trim()) {
+      console.log('[KitStore] skipped: cloud kit store is disabled');
+      return {
+        success: true,
+        data: appendBuiltInKitsToStoreResponse(JSON.stringify({
+          data: {
+            value: {
+              kits: [],
+            },
+          },
+        })),
+      };
+    }
     console.log(`[KitStore] fetching from: ${url}`);
     try {
       const https = await import('https');
@@ -302,7 +315,7 @@ export function registerKitHandlers(deps: KitHandlerDeps): void {
       }
 
       // 1. Download zip
-      tempRoot = fs.mkdtempSync(path.join(app.getPath('temp'), 'lobsterai-kit-'));
+      tempRoot = fs.mkdtempSync(path.join(app.getPath('temp'), 'yuzhh-ai-kit-'));
       const buffer = await downloadBuffer(bundleUrl);
       if (isComputerUseKit) {
         if (buffer.length !== ComputerUseKitBundleIntegrity.SizeBytes) {

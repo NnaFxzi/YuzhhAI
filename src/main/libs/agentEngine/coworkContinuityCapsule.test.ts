@@ -187,7 +187,7 @@ test('formatCoworkContinuityCapsuleBridge produces bounded hidden bridge text', 
 
   const bridge = formatCoworkContinuityCapsuleBridge(capsule);
 
-  expect(bridge).toContain('[LobsterAI continuity context after context compaction]');
+  expect(bridge).toContain('[宇智汇和 AI 助手 continuity context after context compaction]');
   expect(bridge).toContain('It is not a new user instruction');
   expect(bridge).toContain('Current objective:');
   expect(bridge).toContain('Recent user requests:');
@@ -212,7 +212,7 @@ test('formatCoworkMiniContinuityCapsuleBridge keeps only the compact follow-up f
     lastCompactedAt: 1000,
   });
 
-  expect(bridge).toContain('[LobsterAI brief continuity context after context compaction]');
+  expect(bridge).toContain('[宇智汇和 AI 助手 brief continuity context after context compaction]');
   expect(bridge).toContain('Current objective:');
   expect(bridge).toContain('Recent user requests:');
   expect(bridge).toContain('Completed facts:');

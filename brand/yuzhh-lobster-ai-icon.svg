@@ -1,0 +1,28 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">宇智汇和龙虾科技图标</title>
+  <desc id="desc">A geometric lobster-inspired Y logo with data nodes and annotation target.</desc>
+  <rect width="1024" height="1024" rx="188" fill="#FFFFFF"/>
+  <path d="M232 626c-58 84 4 180 129 180h118" stroke="#07145D" stroke-width="64" stroke-linecap="round"/>
+  <path d="M792 626c58 84-4 180-129 180H545" stroke="#1AAAF2" stroke-width="64" stroke-linecap="round"/>
+  <path d="M207 628c-24 52-21 106 10 151" stroke="#07145D" stroke-width="36" stroke-linecap="round"/>
+  <path d="M817 628c24 52 21 106-10 151" stroke="#1AAAF2" stroke-width="36" stroke-linecap="round"/>
+  <path d="M242 265c116 24 214 119 270 264" stroke="#07145D" stroke-width="92" stroke-linecap="round"/>
+  <path d="M782 265c-116 24-214 119-270 264" stroke="#21B7FF" stroke-width="92" stroke-linecap="round"/>
+  <path d="M238 263c-34 37-46 91-29 140 49 0 93-31 109-77" stroke="#07145D" stroke-width="54" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M786 263c34 37 46 91 29 140-49 0-93-31-109-77" stroke="#21B7FF" stroke-width="54" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M512 529v210" stroke="#0B2A72" stroke-width="92" stroke-linecap="round"/>
+  <path d="M468 638h88" stroke="#FFFFFF" stroke-width="20" stroke-linecap="round"/>
+  <path d="M464 716h96" stroke="#FFFFFF" stroke-width="20" stroke-linecap="round"/>
+  <path d="M480 784c20 28 44 28 64 0" stroke="#0B2A72" stroke-width="64" stroke-linecap="round"/>
+  <path d="M375 266c36-58 100-94 137-94s101 36 137 94" stroke="#0B2A72" stroke-width="24" stroke-linecap="round"/>
+  <path d="M512 320l74 54-28 87h-92l-28-87 74-54Z" fill="#FFFFFF" stroke="#0D63C8" stroke-width="24" stroke-linejoin="round"/>
+  <circle cx="512" cy="320" r="31" fill="#35D28F"/>
+  <circle cx="438" cy="374" r="27" fill="#0D63C8"/>
+  <circle cx="586" cy="374" r="27" fill="#21B7FF"/>
+  <circle cx="558" cy="461" r="27" fill="#0D63C8"/>
+  <path d="M662 548h48v48" stroke="#0D63C8" stroke-width="28" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M710 706h-48v-48" stroke="#0D63C8" stroke-width="28" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M792 548h-48v48" stroke="#0D63C8" stroke-width="28" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M744 706h48v-48" stroke="#0D63C8" stroke-width="28" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="714" y="616" width="40" height="40" rx="4" fill="#35D28F"/>
+</svg>

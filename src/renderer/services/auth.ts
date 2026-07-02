@@ -60,7 +60,7 @@ export function mapPricingCatalogTextModelsToServerModels(
     const modelName = readString(model.modelName) || modelId;
     const provider = readString(model.providerLabel)
       || readString(model.provider)
-      || 'LobsterAI';
+      || '宇智汇和 AI 助手';
     const contextWindow = readPositiveNumber(model.contextWindow);
     const costMultiplier = readPositiveNumber(model.costMultiplier);
 
@@ -158,6 +158,11 @@ class AuthService {
   private async fetchLoginUrl(): Promise<string> {
     const { getLoginOvermindUrl } = await import('./endpoints');
     const url = getLoginOvermindUrl();
+    if (!url.trim()) {
+      const { getPortalLoginUrl } = await import('./endpoints');
+      console.log('[Auth] cloud login URL endpoint disabled; using local independent account page');
+      return getPortalLoginUrl();
+    }
     try {
       const response = await window.electron.api.fetch({
         url,

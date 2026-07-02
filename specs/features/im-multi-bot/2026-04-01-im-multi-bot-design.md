@@ -506,7 +506,7 @@ if (routingPrefixRe.test(text)) {
 
 ### 10.1 自动化测试
 
-**文件**：`tests/openclawConfigSync.test.mjs`
+**文件**：`src/main/libs/openclawConfigSync.runtime.test.ts`
 
 已更新测试用例以适配多实例接口：
 
@@ -601,7 +601,7 @@ npm test -- openclawConfigSync
 | `src/renderer/store/slices/imSlice.ts` | 多实例 Redux actions | 修改 |
 | `src/renderer/types/im.ts` | 多实例渲染层类型 | 修改 |
 | `src/renderer/types/electron.d.ts` | 多实例 IPC 类型声明 | 修改 |
-| `tests/openclawConfigSync.test.mjs` | 测试适配多实例接口 | 修改 |
+| `src/main/libs/openclawConfigSync.runtime.test.ts` | 测试适配多实例接口 | 修改 |
 | `package.json` | 依赖更新 | 修改 |
 
 ---

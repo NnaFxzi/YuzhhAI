@@ -2,11 +2,17 @@ import { afterEach, expect, test, vi } from 'vitest';
 
 import { configService } from './config';
 import {
+  getFallbackDownloadUrl,
+  getKitStoreUrl,
+  getLoginOvermindUrl,
   getPortalCreditsResetActivityUrl,
   getPortalInvitationUrl,
   getPortalPricingUrl,
   getPortalProfileUrl,
   getPortalRechargeUrl,
+  getSkillStoreUrl,
+  getUpdateCheckUrl,
+  isLegacyCloudEnabled,
   PortalPricingKeyfrom,
 } from './endpoints';
 
@@ -20,28 +26,30 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-test('portal account urls use production base when test mode is disabled', () => {
+test('legacy cloud endpoints are disabled by default', () => {
   mockTestMode(false);
 
-  expect(getPortalProfileUrl()).toBe('https://lobsterai.youdao.com/portal#/profile');
-  expect(getPortalRechargeUrl()).toBe('https://lobsterai.youdao.com/portal#/');
-  expect(getPortalInvitationUrl()).toBe('https://lobsterai.youdao.com/portal#/invitation');
-  expect(getPortalCreditsResetActivityUrl()).toBe('https://lobsterai.youdao.com/portal#/profile?activity=credits_reset');
+  expect(isLegacyCloudEnabled()).toBe(false);
+  expect(getUpdateCheckUrl()).toBe('');
+  expect(getLoginOvermindUrl()).toBe('');
+  expect(getSkillStoreUrl()).toBe('');
+  expect(getKitStoreUrl()).toBe('');
+  expect(getFallbackDownloadUrl()).toBe('https://www.yuzhh.com/download');
 });
 
-test('portal account urls use test base when test mode is enabled', () => {
+test('portal account urls use public Yuzhh pages in local independent mode', () => {
   mockTestMode(true);
 
-  expect(getPortalProfileUrl()).toBe('https://lobsterai.inner.youdao.com/portal#/profile');
-  expect(getPortalRechargeUrl()).toBe('https://lobsterai.inner.youdao.com/portal#/');
-  expect(getPortalInvitationUrl()).toBe('https://lobsterai.inner.youdao.com/portal#/invitation');
-  expect(getPortalCreditsResetActivityUrl()).toBe('https://lobsterai.inner.youdao.com/portal#/profile?activity=credits_reset');
+  expect(getPortalProfileUrl()).toBe('https://www.yuzhh.com/account');
+  expect(getPortalRechargeUrl()).toBe('https://www.yuzhh.com/pricing');
+  expect(getPortalInvitationUrl()).toBe('https://www.yuzhh.com/community');
+  expect(getPortalCreditsResetActivityUrl()).toBe('https://www.yuzhh.com/pricing');
 });
 
 test('portal pricing url can include html share keyfrom', () => {
   mockTestMode(false);
 
   expect(getPortalPricingUrl(PortalPricingKeyfrom.HtmlShare)).toBe(
-    'https://lobsterai.youdao.com/portal#/pricing?keyfrom=html_share',
+    'https://www.yuzhh.com/pricing?keyfrom=html_share',
   );
 });

@@ -71,8 +71,8 @@ export async function downloadUpdate(
   const ext = path.extname(parsedUrl.pathname) || (process.platform === 'darwin' ? '.dmg' : '.exe');
   const updateDir = path.join(app.getPath('userData'), 'updates');
   const ts = Date.now();
-  const downloadPath = path.join(updateDir, `lobsterai-update-${source}-${ts}${ext}.download`);
-  const finalPath = path.join(updateDir, `lobsterai-update-${source}-${ts}${ext}`);
+  const downloadPath = path.join(updateDir, `yuzhh-ai-update-${source}-${ts}${ext}.download`);
+  const finalPath = path.join(updateDir, `yuzhh-ai-update-${source}-${ts}${ext}`);
 
   console.log(`[AppUpdate] Temp path: ${downloadPath}`);
   console.log(`[AppUpdate] Final path: ${finalPath}`);
@@ -369,8 +369,8 @@ async function installWindowsNsis(exePath: string): Promise<void> {
   //
   // Quitting in parallel with the installer starting is safe: once the user
   // confirms the wizard, the NSIS customCheckAppRunning macro stops remaining
-  // LobsterAI processes by image name and polls until they are gone before
-  // replacing files. The installer process itself is named lobsterai-update-*,
+  // app processes by image name and polls until they are gone before
+  // replacing files. The installer process itself is named yuzhh-ai-update-*,
   // so it is not affected by that kill. Until the user confirms, the installer
   // touches nothing, so cancelling the wizard leaves the current install
   // usable (this app instance has quit, but the user can simply relaunch it).

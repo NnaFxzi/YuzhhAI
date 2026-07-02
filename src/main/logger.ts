@@ -3,9 +3,9 @@
  * Intercepts console.* methods and writes to file + console simultaneously.
  *
  * Log file locations:
- *   macOS:   ~/Library/Logs/LobsterAI/main-YYYY-MM-DD.log
- *   Windows: %USERPROFILE%\AppData\Roaming\LobsterAI\logs\main-YYYY-MM-DD.log
- *   Linux:   ~/.config/LobsterAI/logs/main-YYYY-MM-DD.log
+ *   macOS:   ~/Library/Logs/宇智汇和 AI 助手/main-YYYY-MM-DD.log
+ *   Windows: %USERPROFILE%\AppData\Roaming\宇智汇和 AI 助手\logs\main-YYYY-MM-DD.log
+ *   Linux:   ~/.config/宇智汇和 AI 助手/logs/main-YYYY-MM-DD.log
  *
  * Rotation policy:
  *   - Daily log files (one file per calendar day)
@@ -13,9 +13,11 @@
  *   - Files older than 7 days are pruned on startup
  */
 
-import path from 'path';
-import fs from 'fs';
 import log from 'electron-log/main';
+import fs from 'fs';
+import path from 'path';
+
+import { APP_DISPLAY_NAME } from './appConstants';
 
 const LOG_RETENTION_DAYS = 7;
 const LOG_MAX_SIZE = 80 * 1024 * 1024; // 80 MB
@@ -91,7 +93,7 @@ export function initLogger(): void {
 
   // Log startup marker
   log.info('='.repeat(60));
-  log.info(`LobsterAI started (${process.platform} ${process.arch})`);
+  log.info(`${APP_DISPLAY_NAME} started (${process.platform} ${process.arch})`);
   log.info('='.repeat(60));
 }
 

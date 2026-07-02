@@ -15,6 +15,7 @@ import {
   type KitSkillMetadata,
   KitStoreKey,
 } from '../../shared/kit/constants';
+import { APP_DISPLAY_NAME } from '../appConstants';
 import type { SqliteStore } from '../sqliteStore';
 import { ComputerUseRuntime } from './computerUseRuntime';
 
@@ -41,7 +42,7 @@ export function buildComputerUseMarketplaceKit(): Record<string, unknown> {
     name: ComputerUseKitMetadata.Name,
     description: ComputerUseKitMetadata.Description,
     icon: COMPUTER_USE_KIT_ICON_URL,
-    author: 'LobsterAI',
+    author: APP_DISPLAY_NAME,
     version: ComputerUseRuntime.Version,
     tryAsking: [
       {

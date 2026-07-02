@@ -406,20 +406,20 @@ function applyMacIconFix(appPath) {
 }
 
 /**
- * Remove all node_modules/.bin directories from the cfmind tree.
+ * Remove all node_modules/.bin directories from the bundled runtime tree.
  *
  * macOS codesign rejects symlinks inside app bundles (even valid relative ones).
  * .bin/ directories contain only CLI wrapper symlinks that are never used at
  * runtime, so removing them entirely is safe and fixes signing.
  */
-function removeAllBinDirsInCfmind(appOutDir) {
-  const cfmindDir = path.join(appOutDir, 'Contents', 'Resources', 'cfmind');
+function removeAllBinDirsInBundledRuntime(appOutDir) {
+  const bundledRuntimeDir = path.join(appOutDir, 'Contents', 'Resources', 'yuzhh-runtime');
 
-  if (!existsSync(cfmindDir)) {
+  if (!existsSync(bundledRuntimeDir)) {
     return;
   }
 
-  console.log('[electron-builder-hooks] Removing node_modules/.bin directories from cfmind...');
+  console.log('[electron-builder-hooks] Removing node_modules/.bin directories from bundled runtime...');
 
   let removedCount = 0;
   const walk = (dir) => {
@@ -436,9 +436,9 @@ function removeAllBinDirsInCfmind(appOutDir) {
       walk(full);
     }
   };
-  walk(cfmindDir);
+  walk(bundledRuntimeDir);
 
-  console.log(`[electron-builder-hooks] ✓ Removed ${removedCount} .bin director${removedCount === 1 ? 'y' : 'ies'} from cfmind`);
+  console.log(`[electron-builder-hooks] ✓ Removed ${removedCount} .bin director${removedCount === 1 ? 'y' : 'ies'} from bundled runtime`);
 }
 
 /**
@@ -540,7 +540,7 @@ async function beforePack(context) {
       {
         label: 'OpenClaw runtime',
         dir: path.join(__dirname, '..', 'vendor', 'openclaw-runtime', 'current'),
-        prefix: 'cfmind',
+        prefix: 'yuzhh-runtime',
       },
       {
         label: 'SKILLs',
@@ -593,7 +593,7 @@ async function afterPack(context) {
 
     if (existsSync(appPath)) {
       // Remove all .bin directories (symlinks) before signing to prevent codesign failures
-      removeAllBinDirsInCfmind(appPath);
+      removeAllBinDirsInBundledRuntime(appPath);
       applyMacIconFix(appPath);
     } else {
       console.warn(`[electron-builder-hooks] App not found at ${appPath}, skipping icon fix`);

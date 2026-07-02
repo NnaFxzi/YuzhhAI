@@ -1,13 +1,14 @@
+import { isLegacyCloudEnabled, LocalIndependentCloud } from '../../shared/cloudCapabilities/constants';
 import { store } from '../store';
 import { configService } from './config';
 import { getInstallationId } from './installationId';
 
 export const LogReporterEndpoint = {
-  YoudaoAnalyzer: 'https://rlogs.youdao.com/rlog.php',
+  Disabled: LocalIndependentCloud.DisabledAnalyticsEndpoint,
 } as const;
 
 export const LogReporterProduct = {
-  LobsterAI: 'wisdom',
+  YuzhhAiAssistant: 'yuzhh-ai-assistant',
 } as const;
 
 export const LogReporterCategory = {
@@ -15,53 +16,53 @@ export const LogReporterCategory = {
 } as const;
 
 export const LogReporterActionPrefix = {
-  LobsterAI: 'lobsterai_',
+  YuzhhAi: 'yuzhh_ai_',
 } as const;
 
 export const LogReporterAction = {
-  AgentCreateAction: 'lobsterai_agent_create_action',
-  AgentSettingsAction: 'lobsterai_agent_settings_action',
-  AgentEngineMaintenanceAction: 'lobsterai_agent_engine_maintenance_action',
-  AgentEngineSettingChanged: 'lobsterai_agent_engine_setting_changed',
-  AboutAction: 'lobsterai_about_action',
-  AccountMenuAction: 'lobsterai_account_menu_action',
-  AppStarted: 'lobsterai_app_started',
-  AppearanceSettingChanged: 'lobsterai_appearance_setting_changed',
-  ArtifactPreviewAction: 'lobsterai_artifact_preview_action',
-  BrowserSettingChanged: 'lobsterai_browser_setting_changed',
-  CustomModelConnectionTested: 'lobsterai_custom_model_connection_tested',
-  CustomModelSettingsSaved: 'lobsterai_custom_model_settings_saved',
-  ConversationBlockAction: 'lobsterai_conversation_block_action',
-  ConversationMessageAction: 'lobsterai_conversation_message_action',
-  ConversationNavigationAction: 'lobsterai_conversation_navigation_action',
-  DreamingSettingChanged: 'lobsterai_dreaming_setting_changed',
-  EmailSkillConnectionTested: 'lobsterai_email_skill_connection_tested',
-  EmailSkillSettingsSaved: 'lobsterai_email_skill_settings_saved',
-  ExpertKitAction: 'lobsterai_expert_kit_action',
-  ExpertKitSelected: 'lobsterai_expert_kit_selected',
-  GeneralSettingChanged: 'lobsterai_general_setting_changed',
-  ImConnectionTested: 'lobsterai_im_connection_tested',
-  ImGatewayToggled: 'lobsterai_im_gateway_toggled',
-  ImInstanceChanged: 'lobsterai_im_instance_changed',
-  ImSettingsSaved: 'lobsterai_im_settings_saved',
-  MemoryEntryChanged: 'lobsterai_memory_entry_changed',
-  MemorySettingChanged: 'lobsterai_memory_setting_changed',
-  McpEnabled: 'lobsterai_mcp_enabled',
-  McpAction: 'lobsterai_mcp_action',
-  ModelSelected: 'lobsterai_model_selected',
-  PlanModeEnabled: 'lobsterai_plan_mode_enabled',
-  PluginAction: 'lobsterai_plugin_action',
-  PluginSettingsSaved: 'lobsterai_plugin_settings_saved',
-  PromptControlAction: 'lobsterai_prompt_control_action',
-  PromptSubmit: 'lobsterai_prompt_submit',
-  PromptTemplateAction: 'lobsterai_prompt_template_action',
-  ShortcutSettingChanged: 'lobsterai_shortcut_setting_changed',
-  SidebarAction: 'lobsterai_sidebar_action',
-  SkillAction: 'lobsterai_skill_action',
-  SkillEnabled: 'lobsterai_skill_enabled',
-  ScheduledTaskAction: 'lobsterai_scheduled_task_action',
-  TaskSearchAction: 'lobsterai_task_search_action',
-  UsageAnalyticsEnabled: 'lobsterai_usage_analytics_enabled',
+  AgentCreateAction: 'yuzhh_ai_agent_create_action',
+  AgentSettingsAction: 'yuzhh_ai_agent_settings_action',
+  AgentEngineMaintenanceAction: 'yuzhh_ai_agent_engine_maintenance_action',
+  AgentEngineSettingChanged: 'yuzhh_ai_agent_engine_setting_changed',
+  AboutAction: 'yuzhh_ai_about_action',
+  AccountMenuAction: 'yuzhh_ai_account_menu_action',
+  AppStarted: 'yuzhh_ai_app_started',
+  AppearanceSettingChanged: 'yuzhh_ai_appearance_setting_changed',
+  ArtifactPreviewAction: 'yuzhh_ai_artifact_preview_action',
+  BrowserSettingChanged: 'yuzhh_ai_browser_setting_changed',
+  CustomModelConnectionTested: 'yuzhh_ai_custom_model_connection_tested',
+  CustomModelSettingsSaved: 'yuzhh_ai_custom_model_settings_saved',
+  ConversationBlockAction: 'yuzhh_ai_conversation_block_action',
+  ConversationMessageAction: 'yuzhh_ai_conversation_message_action',
+  ConversationNavigationAction: 'yuzhh_ai_conversation_navigation_action',
+  DreamingSettingChanged: 'yuzhh_ai_dreaming_setting_changed',
+  EmailSkillConnectionTested: 'yuzhh_ai_email_skill_connection_tested',
+  EmailSkillSettingsSaved: 'yuzhh_ai_email_skill_settings_saved',
+  ExpertKitAction: 'yuzhh_ai_expert_kit_action',
+  ExpertKitSelected: 'yuzhh_ai_expert_kit_selected',
+  GeneralSettingChanged: 'yuzhh_ai_general_setting_changed',
+  ImConnectionTested: 'yuzhh_ai_im_connection_tested',
+  ImGatewayToggled: 'yuzhh_ai_im_gateway_toggled',
+  ImInstanceChanged: 'yuzhh_ai_im_instance_changed',
+  ImSettingsSaved: 'yuzhh_ai_im_settings_saved',
+  MemoryEntryChanged: 'yuzhh_ai_memory_entry_changed',
+  MemorySettingChanged: 'yuzhh_ai_memory_setting_changed',
+  McpEnabled: 'yuzhh_ai_mcp_enabled',
+  McpAction: 'yuzhh_ai_mcp_action',
+  ModelSelected: 'yuzhh_ai_model_selected',
+  PlanModeEnabled: 'yuzhh_ai_plan_mode_enabled',
+  PluginAction: 'yuzhh_ai_plugin_action',
+  PluginSettingsSaved: 'yuzhh_ai_plugin_settings_saved',
+  PromptControlAction: 'yuzhh_ai_prompt_control_action',
+  PromptSubmit: 'yuzhh_ai_prompt_submit',
+  PromptTemplateAction: 'yuzhh_ai_prompt_template_action',
+  ShortcutSettingChanged: 'yuzhh_ai_shortcut_setting_changed',
+  SidebarAction: 'yuzhh_ai_sidebar_action',
+  SkillAction: 'yuzhh_ai_skill_action',
+  SkillEnabled: 'yuzhh_ai_skill_enabled',
+  ScheduledTaskAction: 'yuzhh_ai_scheduled_task_action',
+  TaskSearchAction: 'yuzhh_ai_task_search_action',
+  UsageAnalyticsEnabled: 'yuzhh_ai_usage_analytics_enabled',
 } as const;
 
 export const LogReporterEntry = {
@@ -70,14 +71,14 @@ export const LogReporterEntry = {
 
 type LogParamValue = string | number | boolean | null | undefined;
 
-export type LogEventAction = `${typeof LogReporterActionPrefix.LobsterAI}${string}`;
+export type LogEventAction = `${typeof LogReporterActionPrefix.YuzhhAi}${string}`;
 
 export type LogEventParams = Record<string, LogParamValue> & {
   action: LogEventAction;
 };
 
 const logCommons = {
-  _npid: LogReporterProduct.LobsterAI,
+  _npid: LogReporterProduct.YuzhhAiAssistant,
   _ncat: LogReporterCategory.Actions,
 } as const;
 
@@ -202,7 +203,7 @@ export const buildLogUrl = (
   params: LogEventParams,
   options: BuildLogUrlOptions = {},
 ): string => {
-  const url = new URL(LogReporterEndpoint.YoudaoAnalyzer);
+  const url = new URL(LogReporterEndpoint.Disabled);
   const config = configService.getConfig();
   const userId = options.userId ?? store.getState().auth.user?.yid ?? '';
   const firstKeyfrom = options.firstKeyfrom ?? cachedKeyfromAttribution?.firstKeyfrom;
@@ -233,6 +234,11 @@ export const buildLogUrl = (
 };
 
 export const reportYdAnalyzer = async (params: LogEventParams): Promise<boolean> => {
+  if (!isLegacyCloudEnabled()) {
+    writeReporterLog('debug', `skipped event ${params.action} because legacy analytics is disabled`);
+    return false;
+  }
+
   if (configService.getConfig().usageAnalyticsEnabled === false) {
     writeReporterLog('debug', `skipped event ${params.action} because usage analytics is disabled`);
     return false;
@@ -243,8 +249,8 @@ export const reportYdAnalyzer = async (params: LogEventParams): Promise<boolean>
     return false;
   }
 
-  if (!params.action.startsWith(LogReporterActionPrefix.LobsterAI)) {
-    writeReporterLog('warn', 'skipped an event without the LobsterAI action prefix');
+  if (!params.action.startsWith(LogReporterActionPrefix.YuzhhAi)) {
+    writeReporterLog('warn', 'skipped an event without the Yuzhh AI action prefix');
     return false;
   }
 

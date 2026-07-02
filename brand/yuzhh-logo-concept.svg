@@ -1,0 +1,24 @@
+<svg width="1280" height="420" viewBox="0 0 1280 420" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">宇智汇和科技 logo concept</title>
+  <desc id="desc">A technology logo combining an abstract Y, orbit, data nodes, and annotation frame.</desc>
+  <rect width="1280" height="420" fill="#FFFFFF"/>
+  <g transform="translate(94 58)">
+    <rect x="24" y="24" width="248" height="248" rx="46" fill="#07145D"/>
+    <path d="M80 84h136c17.7 0 32 14.3 32 32v78" stroke="#21B7FF" stroke-width="17" stroke-linecap="round"/>
+    <path d="M248 204v44h-44" stroke="#35D28F" stroke-width="17" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M96 112l52 52 52-52" stroke="#FFFFFF" stroke-width="28" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M148 164v72" stroke="#FFFFFF" stroke-width="28" stroke-linecap="round"/>
+    <path d="M73.3 194.5c47.2 45 121.9 43.2 166.9-4s43.2-121.9-4-166.9" stroke="#21B7FF" stroke-width="10" stroke-linecap="round" opacity=".8"/>
+    <path d="M220.8 41.6c-46.5-35.8-113.4-30.9-154.3 12" stroke="#35D28F" stroke-width="10" stroke-linecap="round" opacity=".9"/>
+    <circle cx="76" cy="84" r="14" fill="#35D28F"/>
+    <circle cx="221" cy="42" r="12" fill="#21B7FF"/>
+    <circle cx="241" cy="190" r="12" fill="#FFFFFF"/>
+  </g>
+  <g transform="translate(420 104)">
+    <text x="0" y="86" fill="#07145D" font-family="PingFang SC, Microsoft YaHei, Noto Sans CJK SC, Arial, sans-serif" font-size="72" font-weight="800" letter-spacing="2">宇智汇和科技</text>
+    <text x="4" y="148" fill="#1C7ED6" font-family="Inter, Arial, sans-serif" font-size="34" font-weight="700" letter-spacing="4">YUZHI HUIHE TECH</text>
+    <rect x="4" y="184" width="78" height="8" rx="4" fill="#35D28F"/>
+    <rect x="96" y="184" width="318" height="8" rx="4" fill="#21B7FF"/>
+    <text x="4" y="244" fill="#3D4866" font-family="PingFang SC, Microsoft YaHei, Noto Sans CJK SC, Arial, sans-serif" font-size="32" font-weight="500">精准标注，驱动 AI 落地</text>
+  </g>
+</svg>

@@ -478,6 +478,10 @@ export class AppUpdateCoordinator {
     userId?: string | null,
   ): Promise<AppUpdateInfo | null> {
     const baseUrl = manual ? getManualUpdateCheckUrl() : getUpdateCheckUrl();
+    if (!baseUrl.trim()) {
+      console.log('[AppUpdate] skipped update check: cloud update endpoint is disabled');
+      return null;
+    }
     const qs = this.getUpdateQueryString(userId, currentVersion);
     const url = qs ? `${baseUrl}?${qs}` : baseUrl;
     console.log(`[AppUpdate] checking update, currentVersion=${currentVersion}, url=${url}`);
@@ -678,16 +682,16 @@ export class AppUpdateCoordinator {
   }
 
   private isCachedInstallerForSource(filename: string, source: AppUpdateSource | null): boolean {
-    if (!filename.startsWith('lobsterai-update-')) {
+    if (!filename.startsWith('yuzhh-ai-update-')) {
       return false;
     }
     if (source == null) {
       return true;
     }
-    if (filename.startsWith(`lobsterai-update-${source}-`)) {
+    if (filename.startsWith(`yuzhh-ai-update-${source}-`)) {
       return true;
     }
-    return /^lobsterai-update-\d+/.test(filename);
+    return /^yuzhh-ai-update-\d+/.test(filename);
   }
 
   private async pruneCachedInstallerFiles(

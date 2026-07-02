@@ -1,7 +1,8 @@
 import React from 'react';
+
 import { i18nService } from '@/services/i18n';
 
-const PRIVACY_URL = 'https://c.youdao.com/dict/hardware/lobsterai/lobsterai_service.html';
+const PRIVACY_URL = 'https://www.yuzhh.com/legal/ai-assistant-service';
 
 interface PrivacyDialogProps {
   onAccept: () => void;

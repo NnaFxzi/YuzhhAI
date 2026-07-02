@@ -12,8 +12,8 @@ describe('pricing catalog model mapping', () => {
       {
         modelId: 'qwen3.7-plus',
         modelName: 'Qwen3.7-Plus',
-        provider: 'LobsterAI',
-        providerLabel: 'LobsterAI Plan',
+        provider: '宇智汇和 AI 助手',
+        providerLabel: '宇智汇和 AI 助手会员',
         description: 'Strong multimodal model',
         supportsImage: true,
         supportsThinking: true,
@@ -25,7 +25,7 @@ describe('pricing catalog model mapping', () => {
     expect(model).toMatchObject({
       id: 'qwen3.7-plus',
       name: 'Qwen3.7-Plus',
-      provider: 'LobsterAI Plan',
+      provider: '宇智汇和 AI 助手会员',
       providerKey: ProviderName.LobsteraiServer,
       isServerModel: true,
       accessible: false,

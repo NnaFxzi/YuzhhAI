@@ -14,8 +14,10 @@
  *   3. Copies the plugin into vendor/openclaw-runtime/current/extensions/{id}/
  *
  * Environment variables:
- *   OPENCLAW_SKIP_PLUGINS          – Set to "1" to skip this script entirely
- *   OPENCLAW_FORCE_PLUGIN_INSTALL  – Set to "1" to force re-download all plugins
+ *   OPENCLAW_SKIP_PLUGINS              – Set to "1" to skip this script entirely
+ *   OPENCLAW_FORCE_PLUGIN_INSTALL      – Set to "1" to force re-download all plugins
+ *   OPENCLAW_INSTALL_OPTIONAL_PLUGINS  – Set to "1" to include optional private/custom-source plugins
+ *   OPENCLAW_INSTALL_PRIVATE_PLUGINS   – Alias for OPENCLAW_INSTALL_OPTIONAL_PLUGINS
  */
 
 const { spawnSync } = require('child_process');
@@ -321,6 +323,33 @@ function buildGitEnv() {
   };
 }
 
+function isTruthyEnv(value) {
+  return value === '1' || String(value || '').toLowerCase() === 'true';
+}
+
+function getOptionalPluginSkipReason(plugin, env = process.env) {
+  if (!plugin?.optional) {
+    return null;
+  }
+
+  if (
+    isTruthyEnv(env.OPENCLAW_INSTALL_OPTIONAL_PLUGINS) ||
+    isTruthyEnv(env.OPENCLAW_INSTALL_PRIVATE_PLUGINS)
+  ) {
+    return null;
+  }
+
+  if (plugin.private === true) {
+    return 'optional private plugin';
+  }
+
+  if (plugin.registry) {
+    return `optional plugin uses custom registry ${plugin.registry}`;
+  }
+
+  return null;
+}
+
 /**
  * Run the OpenClaw CLI with the given arguments.
  *
@@ -596,6 +625,7 @@ function main() {
   ensureDir(pluginCacheBase);
 
   log(`Processing ${plugins.length} plugin(s)...`);
+  let skippedOptionalCount = 0;
 
   for (const plugin of plugins) {
     const { id, npm: npmSpec, version, optional } = plugin;
@@ -604,6 +634,16 @@ function main() {
     const targetDir = path.join(runtimeExtensionsDir, id);
 
     log(`--- Plugin: ${id} (${npmSpec}@${version}) ---`);
+
+    const optionalSkipReason = getOptionalPluginSkipReason(plugin);
+    if (optionalSkipReason) {
+      skippedOptionalCount += 1;
+      log(
+        `Skipping ${id} — ${optionalSkipReason}. ` +
+        'Set OPENCLAW_INSTALL_OPTIONAL_PLUGINS=1 to include it.'
+      );
+      continue;
+    }
 
     // Check cache
     let needsDownload = true;
@@ -740,7 +780,11 @@ function main() {
     log(`Installed ${id} -> ${path.relative(rootDir, targetDir)}`);
   }
 
-  log(`All ${plugins.length} plugin(s) installed successfully.`);
+  if (skippedOptionalCount > 0) {
+    log(`Plugin processing complete (${skippedOptionalCount} optional plugin(s) skipped).`);
+  } else {
+    log(`All ${plugins.length} plugin(s) installed successfully.`);
+  }
 
   applyOpenClawPluginPatches({ runtimeExtensionsDir, log });
 }
@@ -755,6 +799,7 @@ module.exports = {
   copyDirRecursive,
   copyInstalledPluginToCache,
   findInstalledPluginDir,
+  getOptionalPluginSkipReason,
   gitCloneAndPack,
   isGitSpec,
   isLocalPathSpec,

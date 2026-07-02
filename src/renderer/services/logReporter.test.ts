@@ -42,10 +42,10 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-test('builds a Youdao Analyzer URL with common action parameters', () => {
+test('builds a local analytics URL with common action parameters', () => {
   const result = new URL(buildLogUrl(
     {
-      action: `${LogReporterActionPrefix.LobsterAI}skill_enabled`,
+      action: `${LogReporterActionPrefix.YuzhhAi}skill_enabled`,
       skillId: 'xlsx',
       enabled: true,
     },
@@ -62,8 +62,8 @@ test('builds a Youdao Analyzer URL with common action parameters', () => {
     },
   ));
 
-  expect(result.origin + result.pathname).toBe(LogReporterEndpoint.YoudaoAnalyzer);
-  expect(result.searchParams.get('_npid')).toBe(LogReporterProduct.LobsterAI);
+  expect(result.origin + result.pathname).toBe(LogReporterEndpoint.Disabled);
+  expect(result.searchParams.get('_npid')).toBe(LogReporterProduct.YuzhhAiAssistant);
   expect(result.searchParams.get('_ncat')).toBe(LogReporterCategory.Actions);
   expect(result.searchParams.get('app_version')).toBe('2026.6.18');
   expect(result.searchParams.get('os_platform')).toBe('darwin');
@@ -73,7 +73,7 @@ test('builds a Youdao Analyzer URL with common action parameters', () => {
   expect(result.searchParams.get('firstKeyfrom')).toBe('bilibili');
   expect(result.searchParams.get('latestKeyfrom')).toBe('partner_a');
   expect(result.searchParams.get('is_logged_in')).toBe('true');
-  expect(result.searchParams.get('action')).toBe('lobsterai_skill_enabled');
+  expect(result.searchParams.get('action')).toBe('yuzhh_ai_skill_enabled');
   expect(result.searchParams.get('skillId')).toBe('xlsx');
   expect(result.searchParams.get('enabled')).toBe('true');
   expect(result.searchParams.get('log_Usid')).toBe('test-user');
@@ -83,7 +83,7 @@ test('builds a Youdao Analyzer URL with common action parameters', () => {
 test('does not allow event parameters to override common parameters', () => {
   const result = new URL(buildLogUrl(
     {
-      action: 'lobsterai_app_started',
+      action: 'yuzhh_ai_app_started',
       _npid: 'unexpected-product',
       _ncat: 'unexpected-category',
       app_version: 'unexpected-version',
@@ -110,7 +110,7 @@ test('does not allow event parameters to override common parameters', () => {
     },
   ));
 
-  expect(result.searchParams.get('_npid')).toBe(LogReporterProduct.LobsterAI);
+  expect(result.searchParams.get('_npid')).toBe(LogReporterProduct.YuzhhAiAssistant);
   expect(result.searchParams.get('_ncat')).toBe(LogReporterCategory.Actions);
   expect(result.searchParams.get('app_version')).toBe('trusted-version');
   expect(result.searchParams.get('os_platform')).toBe('trusted-platform');
@@ -127,7 +127,7 @@ test('does not allow event parameters to override common parameters', () => {
 test('uses the logged-in user and omits empty optional parameters', () => {
   const result = new URL(buildLogUrl(
     {
-      action: `${LogReporterActionPrefix.LobsterAI}app_started`,
+      action: `${LogReporterActionPrefix.YuzhhAi}app_started`,
       optionalValue: undefined,
       nullableValue: null,
     },
@@ -150,7 +150,7 @@ test('marks anonymous events when no user is logged in', () => {
   } as ReturnType<typeof configService.getConfig>);
   const result = new URL(buildLogUrl(
     {
-      action: `${LogReporterActionPrefix.LobsterAI}app_started`,
+      action: `${LogReporterActionPrefix.YuzhhAi}app_started`,
     },
     {
       userId: '',
@@ -162,7 +162,7 @@ test('marks anonymous events when no user is logged in', () => {
   expect(result.searchParams.get('is_logged_in')).toBe('false');
 });
 
-test('reports an event through the Electron API bridge', async () => {
+test('does not send analytics in local independent mode', async () => {
   const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200 });
   vi.stubGlobal('window', {
     electron: {
@@ -186,20 +186,9 @@ test('reports an event through the Electron API bridge', async () => {
   await expect(reportYdAnalyzer({
     action: LogReporterAction.PlanModeEnabled,
     entry: LogReporterEntry.PromptToolsMenu,
-  })).resolves.toBe(true);
+  })).resolves.toBe(false);
 
-  expect(fetchMock).toHaveBeenCalledOnce();
-  const request = fetchMock.mock.calls[0][0];
-  const requestUrl = new URL(request.url);
-  expect(request.method).toBe('GET');
-  expect(requestUrl.searchParams.get('action')).toBe('lobsterai_plan_mode_enabled');
-  expect(requestUrl.searchParams.get('entry')).toBe('prompt_tools_menu');
-  expect(requestUrl.searchParams.get('app_version')).toBe('2026.6.18');
-  expect(requestUrl.searchParams.get('os_platform')).toBe('darwin');
-  expect(requestUrl.searchParams.get('os_arch')).toBe('arm64');
-  expect(requestUrl.searchParams.get('uuid')).toBe('installation-uuid');
-  expect(requestUrl.searchParams.get('firstKeyfrom')).toBe('bilibili');
-  expect(requestUrl.searchParams.get('latestKeyfrom')).toBe('partner_a');
+  expect(fetchMock).not.toHaveBeenCalled();
 });
 
 test('returns false when the event request is rejected', async () => {
@@ -254,7 +243,7 @@ test('skips sending when usage analytics is disabled', async () => {
   expect(fetchMock).not.toHaveBeenCalled();
 });
 
-test('rejects an event without the LobsterAI action prefix before sending', async () => {
+test('rejects an event without the Yuzhh AI action prefix before sending', async () => {
   const fetchMock = vi.fn();
   vi.stubGlobal('window', {
     electron: {

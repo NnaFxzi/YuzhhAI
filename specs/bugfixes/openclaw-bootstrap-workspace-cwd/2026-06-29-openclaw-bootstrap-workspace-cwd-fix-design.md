@@ -296,7 +296,7 @@ runtime，而不是回退 LobsterAI 的 workspace 解耦。
 | `src/main/libs/openclawConfigSync.ts` | 保持 workspace/cwd 解耦语义，并补充测试断言 |
 | `src/main/libs/openclawAgentModels.ts` | 保持 `agents.list[].workspace` 与 `agents.list[].cwd` 分别写入 |
 | `src/main/libs/agentEngine/openclawRuntimeAdapter.ts` | 保持 `chat.send.cwd` 作为 per-run task cwd |
-| `tests/openclawConfigSync.test.mjs` 或 `src/main/libs/openclawConfigSync.runtime.test.ts` | 增加配置层回归覆盖 |
+| `src/main/libs/openclawConfigSync.runtime.test.ts` | 增加配置层回归覆盖 |
 | OpenClaw patch 内测试文件 | 增加 workspace/cwd 分离的运行时回归 |
 | OpenClaw `src/agents/workspace.ts` / `src/agents/bootstrap-files.ts` | 作为测试依据，确认 `MEMORY.md` 仍从 `workspaceDir` 加载 |
 | OpenClaw `src/plugin-sdk/memory-host-core.ts` / `packages/memory-host-sdk/src/host/internal.ts` | 作为测试依据，确认 `memory/**/*.md` 仍从 Agent workspace 扫描 |

@@ -11,9 +11,12 @@ vi.mock('electron', () => ({
   },
 }));
 
+import { RuntimeBrand } from '../../shared/branding/constants';
 import {
   buildOpenClawCompileCacheEnv,
   buildOpenClawGatewayExecArgv,
+  getPackagedRuntimeDirCandidates,
+  getRuntimeMissingMessage,
 } from './openclawEngineManager';
 
 describe('buildOpenClawCompileCacheEnv', () => {
@@ -40,5 +43,20 @@ describe('buildOpenClawGatewayExecArgv', () => {
 
   test('respects an existing max old space setting with space syntax', () => {
     expect(buildOpenClawGatewayExecArgv('--max-old-space-size 8192 --trace-warnings')).toEqual([]);
+  });
+});
+
+describe('OpenClaw packaged runtime branding', () => {
+  test('prefers the Yuzhh runtime directory and keeps cfmind only as fallback', () => {
+    expect(getPackagedRuntimeDirCandidates('/Applications/App.app/Contents/Resources')).toEqual([
+      '/Applications/App.app/Contents/Resources/yuzhh-runtime',
+      '/Applications/App.app/Contents/Resources/cfmind',
+    ]);
+  });
+
+  test('uses user-facing Yuzhh runtime text for missing runtime errors', () => {
+    expect(getRuntimeMissingMessage()).toContain(RuntimeBrand.DisplayNameZh);
+    expect(getRuntimeMissingMessage()).not.toContain('cfmind');
+    expect(getRuntimeMissingMessage()).not.toContain('OpenClaw');
   });
 });

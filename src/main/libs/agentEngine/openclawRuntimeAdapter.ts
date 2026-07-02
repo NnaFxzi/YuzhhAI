@@ -29,6 +29,7 @@ import type {
   KitReference,
   ResolvedKitCapabilities,
 } from '../../../shared/kit/constants';
+import { APP_DISPLAY_NAME } from '../../appConstants';
 import type { CoworkExecutionMode, CoworkMessage, CoworkMessageMetadata, CoworkSession, CoworkSessionStatus, CoworkStore } from '../../coworkStore';
 import { t } from '../../i18n';
 import { MediaGenerationTool } from '../../mediaGenerationPolicy';
@@ -1591,7 +1592,7 @@ const buildMediaGenerationTurnInstruction = (selection?: CoworkMediaSelection, h
   if (!selection || selection.mode === 'none') {
     if (hasMediaSkillActive) {
       return [
-        '[LobsterAI media generation tools — NOT AVAILABLE]',
+        `[${APP_DISPLAY_NAME} media generation tools — NOT AVAILABLE]`,
         'The lobsterai_image_generate and lobsterai_video_generate tools are NOT available for this turn.',
         'Do NOT call lobsterai_image_generate or lobsterai_video_generate.',
         'However, a media generation skill (e.g. seedream, seedance) is provided in the system prompt. You may use it to fulfill image or video generation requests.',
@@ -1601,10 +1602,10 @@ const buildMediaGenerationTurnInstruction = (selection?: CoworkMediaSelection, h
   }
 
   const lines = [
-    '[LobsterAI media generation turn instruction]',
-    'The user selected a LobsterAI media generation model for this turn.',
+    `[${APP_DISPLAY_NAME} media generation turn instruction]`,
+    `The user selected a ${APP_DISPLAY_NAME} media generation model for this turn.`,
     'IMPORTANT: Do NOT read or use the "seedance" or "seedream" skills for this request.',
-    'The LobsterAI media generation tools (lobsterai_image_generate / lobsterai_video_generate) replace those skills when a media model is selected.',
+    `The ${APP_DISPLAY_NAME} media generation tools (lobsterai_image_generate / lobsterai_video_generate) replace those skills when a media model is selected.`,
     'Do not run any skill scripts for image or video generation. Use only the lobsterai_* tools specified below.',
   ];
 
@@ -1637,7 +1638,7 @@ const buildMediaGenerationTurnInstruction = (selection?: CoworkMediaSelection, h
   }
 
   if (!selection.imageModelId && !selection.videoModelId && selection.modelId?.trim()) {
-    lines.push(`You MUST use model "${selection.modelId.trim()}" for media generation. Do NOT use a different model unless the user explicitly requests a different LobsterAI media model by name.`);
+    lines.push(`You MUST use model "${selection.modelId.trim()}" for media generation. Do NOT use a different model unless the user explicitly requests a different ${APP_DISPLAY_NAME} media model by name.`);
   }
 
   return lines.join('\n');
@@ -1658,7 +1659,7 @@ const buildMediaReferencePromptSection = (mediaReferences?: CoworkMediaAttachmen
   if (refs.length === 0) return '';
 
   const lines = [
-    '[LobsterAI media reference mapping]',
+    `[${APP_DISPLAY_NAME} media reference mapping]`,
     'The current user request contains explicit @ media tokens. Treat these mappings as authoritative and do not guess which uploaded attachment a token means.',
     'When calling lobsterai_image_generate or lobsterai_video_generate, pass mapped file paths or URLs as tool arguments. Do not pass @ media tokens as image, images, firstFrame, lastFrame, referenceImages, media.url, video, or videos values.',
     'For lobsterai_image_generate, prefer image with the mapped path for one referenced image and images for multiple referenced images.',
@@ -1673,7 +1674,7 @@ const buildMediaReferencePromptSection = (mediaReferences?: CoworkMediaAttachmen
     const locations = [
       ref.localPath ? `localPath "${sanitizeMediaReferenceText(ref.localPath)}"` : '',
       ref.remoteUrl ? `remoteUrl "${sanitizeMediaReferenceText(ref.remoteUrl)}"` : '',
-      !ref.localPath && !ref.remoteUrl && ref.dataUrl ? 'dataUrl fallback available through LobsterAI host' : '',
+      !ref.localPath && !ref.remoteUrl && ref.dataUrl ? `dataUrl fallback available through ${APP_DISPLAY_NAME} host` : '',
     ].filter(Boolean);
     const locationText = locations.length > 0 ? `, ${locations.join(', ')}` : '';
     lines.push(`- ${ref.token}: ${mediaType} attachment #${ref.index}, file "${sanitizeMediaReferenceText(ref.fileName)}", MIME ${sanitizeMediaReferenceText(ref.mimeType)}${locationText}.`);
@@ -1878,7 +1879,7 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
   /**
    * Server-side agent timeout in seconds (mirrors agents.defaults.timeoutSeconds in openclaw config).
    * Used to set a client-side fallback timer that fires slightly after the server timeout,
-   * so LobsterAI can recover even when the gateway fails to deliver the abort event.
+   * so the app can recover even when the gateway fails to deliver the abort event.
    */
   agentTimeoutSeconds = OPENCLAW_AGENT_TIMEOUT_SECONDS;
   private static readonly CLIENT_TIMEOUT_GRACE_MS = 30_000;
@@ -3156,7 +3157,7 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
    * Ensure the gateway WebSocket client is connected.
    * Called when IM channels (e.g. Telegram) are enabled in OpenClaw mode
    * so that channel-originated events can be received without waiting
-   * for a LobsterAI-initiated session.
+   * for an app-initiated session.
    */
   async connectGatewayIfNeeded(): Promise<void> {
     this.gatewayReconnectSuppressed = false;
@@ -4078,9 +4079,9 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
 
   private buildSystemPromptPrefix(systemPrompt: string): string {
     return [
-      '[LobsterAI system instructions]',
+      `[${APP_DISPLAY_NAME} system instructions]`,
       'Apply the instructions below as the highest-priority guidance for this session.',
-      'If earlier LobsterAI system instructions exist, replace them with this version.',
+      `If earlier ${APP_DISPLAY_NAME} system instructions exist, replace them with this version.`,
       systemPrompt,
     ].join('\n');
   }
@@ -4125,7 +4126,7 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
     }
 
     const sections = [
-      '[Context bridge from previous LobsterAI conversation]',
+      `[Context bridge from previous ${APP_DISPLAY_NAME} conversation]`,
       'Use this prior context for continuity. Focus your final answer on the current request.',
     ];
 
@@ -4236,7 +4237,7 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
     const client = new GatewayClient({
       url: connection.url,
       token: connection.token,
-      clientDisplayName: 'LobsterAI',
+      clientDisplayName: '宇智汇和 AI 助手',
       clientVersion: app.getVersion(),
       mode: 'backend',
       caps: [OPENCLAW_GATEWAY_TOOL_EVENTS_CAP],
@@ -8418,7 +8419,7 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
   /**
    * Sync user messages from gateway chat.history that haven't been added to the local store yet.
    * Used for channel-originated sessions (e.g. Telegram) where user messages arrive via the
-   * gateway rather than the LobsterAI UI.
+   * gateway rather than the app UI.
    *
    * Called at the start of a new turn (via prefetchChannelUserMessages) so that user messages
    * appear before the assistant's streaming response. Both chat and agent events are buffered

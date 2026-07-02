@@ -3,6 +3,8 @@ import fs from 'fs';
 import { createRequire } from 'module';
 import path from 'path';
 
+import { RuntimeBrand } from '../../shared/branding/constants';
+
 type OpenClawCatalogModel = {
   id?: unknown;
   maxTokens?: unknown;
@@ -45,7 +47,7 @@ const catalogKey = (providerId: string, modelId: string): string =>
   `${normalizeLookupPart(providerId)}/${normalizeLookupPart(modelId)}`;
 
 // The bundled OpenClaw catalog may be unavailable in CI or in a trimmed
-// runtime, but LobsterAI still needs to write correct limits for known native
+// runtime, but the app still needs to write correct limits for known native
 // Anthropic-format providers. Keep this fallback scoped to official provider
 // IDs so custom providers do not inherit limits by model-name coincidence.
 const BUILT_IN_MODEL_MAX_TOKENS = new Map<string, number>([
@@ -119,7 +121,10 @@ const findExistingPath = (candidates: string[]): string | null => {
 
 const resolveOpenClawRuntimeRoot = (): string | null => {
   const candidates = app.isPackaged
-    ? [path.join(process.resourcesPath, 'cfmind')]
+    ? [
+        path.join(process.resourcesPath, RuntimeBrand.BundleDirName),
+        path.join(process.resourcesPath, RuntimeBrand.LegacyBundleDirName),
+      ]
     : [
         path.join(app.getAppPath(), 'vendor', 'openclaw-runtime', 'current'),
         path.join(process.cwd(), 'vendor', 'openclaw-runtime', 'current'),

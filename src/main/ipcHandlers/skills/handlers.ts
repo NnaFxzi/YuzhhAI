@@ -143,6 +143,21 @@ export function registerSkillHandlers(deps: SkillHandlerDeps): void {
 
   ipcMain.handle('skills:fetchMarketplace', async () => {
     const url = getSkillStoreUrl();
+    if (!url.trim()) {
+      console.log('[SkillMarketplace] skipped: cloud skill marketplace is disabled');
+      return {
+        success: true,
+        data: JSON.stringify({
+          data: {
+            value: {
+              localSkill: [],
+              marketplace: [],
+              marketTags: [],
+            },
+          },
+        }),
+      };
+    }
     console.log(`[SkillMarketplace] fetching from: ${url}`);
     try {
       const https = await import('https');

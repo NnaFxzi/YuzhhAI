@@ -1,7 +1,7 @@
 {
-  "appId": "com.lobsterai.app",
-  "productName": "LobsterAI",
-  "executableName": "LobsterAI",
+  "appId": "com.yuzhh.ai-assistant",
+  "productName": "宇智汇和 AI 助手",
+  "executableName": "宇智汇和 AI 助手",
   "directories": {
     "output": "release"
   },
@@ -61,12 +61,32 @@
     {
       "from": "build/icons/png/512x512.png",
       "to": "app-icon/512x512.png"
+    },
+    {
+      "from": "NOTICE.md",
+      "to": "legal/NOTICE.md"
+    },
+    {
+      "from": "THIRD_PARTY_NOTICES.md",
+      "to": "legal/THIRD_PARTY_NOTICES.md"
+    },
+    {
+      "from": "PRIVACY.md",
+      "to": "legal/PRIVACY.md"
+    },
+    {
+      "from": "TERMS.md",
+      "to": "legal/TERMS.md"
+    },
+    {
+      "from": "SECURITY.md",
+      "to": "legal/SECURITY.md"
     }
   ],
   "protocols": [
     {
-      "name": "LobsterAI",
-      "schemes": ["lobsterai"]
+      "name": "宇智汇和 AI 助手",
+      "schemes": ["yuzhhai"]
     }
   ],
   "mac": {
@@ -81,10 +101,10 @@
     "entitlementsInherit": "build/entitlements.mac.plist",
     "extendInfo": {
       "CFBundleIconName": "icon",
-      "NSMicrophoneUsageDescription": "LobsterAI 需要访问您的麦克风来录制语音输入并进行语音识别。",
-      "NSCalendarsUsageDescription": "LobsterAI 需要访问您的日历来帮助您查看和管理日程安排，例如查找事件、创建会议等。",
-      "NSRemindersUsageDescription": "LobsterAI 需要访问您的提醒事项来帮助您管理待办事项。",
-      "NSAppleEventsUsageDescription": "LobsterAI 需要使用 Apple Events 来控制 Calendar 应用执行自动化操作。"
+      "NSMicrophoneUsageDescription": "宇智汇和 AI 助手需要访问您的麦克风来录制语音输入并进行语音识别。",
+      "NSCalendarsUsageDescription": "宇智汇和 AI 助手需要访问您的日历来帮助您查看和管理日程安排，例如查找事件、创建会议等。",
+      "NSRemindersUsageDescription": "宇智汇和 AI 助手需要访问您的提醒事项来帮助您管理待办事项。",
+      "NSAppleEventsUsageDescription": "宇智汇和 AI 助手需要使用 Apple Events 来控制 Calendar 应用执行自动化操作。"
     },
     "extraResources": [
       {
@@ -122,7 +142,7 @@
       },
       {
         "from": "vendor/openclaw-runtime/current",
-        "to": "cfmind",
+        "to": "yuzhh-runtime",
         "filter": [
           "**/*",
           "!**/*.map",
@@ -167,8 +187,8 @@
         "to": "win-resources.tar"
       },
       {
-        "from": "scripts/unpack-cfmind.cjs",
-        "to": "unpack-cfmind.cjs"
+        "from": "scripts/unpack-yuzhh-runtime.cjs",
+        "to": "unpack-yuzhh-runtime.cjs"
       }
     ]
   },
@@ -215,7 +235,7 @@
       },
       {
         "from": "vendor/openclaw-runtime/current",
-        "to": "cfmind",
+        "to": "yuzhh-runtime",
         "filter": [
           "**/*",
           "!**/*.map",
@@ -244,7 +264,7 @@
       }
     ],
     "desktop": {
-      "Name": "LobsterAI",
+      "Name": "宇智汇和 AI 助手",
       "Comment": "AI-assisted coding and productivity tool",
       "Terminal": "false"
     }

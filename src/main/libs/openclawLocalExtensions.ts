@@ -2,6 +2,8 @@ import { app } from 'electron';
 import fs from 'fs';
 import path from 'path';
 
+import { RuntimeBrand } from '../../shared/branding/constants';
+
 const LOCAL_EXTENSIONS_DIR = 'openclaw-extensions';
 const THIRD_PARTY_EXTENSIONS_DIR = 'third-party-extensions';
 
@@ -81,7 +83,10 @@ const findLocalExtensionsSourceDir = (): string | null => {
 
 export const findBundledExtensionsDir = (): string | null => {
   const candidates = app.isPackaged
-    ? [path.join(process.resourcesPath, 'cfmind', THIRD_PARTY_EXTENSIONS_DIR)]
+    ? [
+        path.join(process.resourcesPath, RuntimeBrand.BundleDirName, THIRD_PARTY_EXTENSIONS_DIR),
+        path.join(process.resourcesPath, RuntimeBrand.LegacyBundleDirName, THIRD_PARTY_EXTENSIONS_DIR),
+      ]
     : [
         path.join(app.getAppPath(), 'vendor', 'openclaw-runtime', 'current', THIRD_PARTY_EXTENSIONS_DIR),
         path.join(process.cwd(), 'vendor', 'openclaw-runtime', 'current', THIRD_PARTY_EXTENSIONS_DIR),
@@ -219,7 +224,7 @@ export const findThirdPartyExtensionsDir = (): string | null => {
  * gateway's bundled-channel metadata loader.  Two locations are cleaned:
  *
  * 1. `dist/extensions/{id}` — legacy overlay installs placed plugins here.
- * 2. `extensions/{id}` — prior versions of LobsterAI installed plugins here.
+ * 2. `extensions/{id}` - prior versions of the app installed plugins here.
  *    Because gateway-bundle.mjs runs from the package root (not dist/),
  *    `RUNNING_FROM_BUILT_ARTIFACT` is false and `resolveBundledPluginScanDir`
  *    falls back to `extensions/`.  Third-party plugins there fail the

@@ -10,6 +10,7 @@
 import fs from 'fs';
 import path from 'path';
 
+import { APP_DISPLAY_NAME } from '../appConstants';
 import type { SqliteStore } from '../sqliteStore';
 import {
   getMainAgentWorkspacePath,
@@ -19,7 +20,10 @@ import {
 const TAG = '[OpenClaw Migration]';
 const MIGRATION_KEY = 'migration.mainAgentWorkspace.v3.completed';
 
-const AGENTS_MARKER = '<!-- LobsterAI managed: do not edit below this line -->';
+const AGENTS_MARKER = `<!-- ${APP_DISPLAY_NAME} managed: do not edit below this line -->`;
+const LEGACY_AGENTS_MARKERS = [
+  '<!-- LobsterAI managed: do not edit below this line -->',
+];
 const BOOTSTRAP_FILES = ['IDENTITY.md', 'USER.md', 'SOUL.md', 'TOOLS.md', 'BOOTSTRAP.md'];
 
 type CopyResult = {
@@ -139,7 +143,10 @@ function mergeDirIfNeeded(src: string, dest: string): CopyResult {
 }
 
 function extractAgentsUserContent(content: string): string {
-  const markerIndex = content.indexOf(AGENTS_MARKER);
+  const markerIndex = [AGENTS_MARKER, ...LEGACY_AGENTS_MARKERS]
+    .map(marker => content.indexOf(marker))
+    .filter(index => index >= 0)
+    .sort((a, b) => a - b)[0] ?? -1;
   const userContent = markerIndex >= 0 ? content.slice(0, markerIndex) : content;
   return userContent.trim();
 }

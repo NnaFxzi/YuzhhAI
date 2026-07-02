@@ -45,6 +45,7 @@ import {
   normalizeBrowserWebAccessConfig,
 } from '../shared/browserWebAccess/constants';
 import { ClipboardIpc } from '../shared/clipboard/constants';
+import { LocalIndependentCloud } from '../shared/cloudCapabilities/constants';
 import {
   COWORK_MESSAGE_PAGE_SIZE,
   COWORK_SESSION_PAGE_SIZE,
@@ -99,7 +100,7 @@ import { OpenClawProviderId, ProviderName } from '../shared/providers';
 import type { ShellOpenFailureReason as ShellOpenFailureReasonType } from '../shared/shell/constants';
 import { ShellOpenFailureReason } from '../shared/shell/constants';
 import { AgentManager } from './agentManager';
-import { APP_NAME, APP_USER_MODEL_ID, DB_FILENAME } from './appConstants';
+import { APP_DISPLAY_NAME, APP_ID, APP_NAME, APP_PROTOCOL, APP_USER_MODEL_ID, DB_FILENAME } from './appConstants';
 import { createLocalFileProtocolResponse } from './artifactLocalFileProtocol';
 import { authQuotaGateStateFromQuota, AuthSubscriptionStatus, createDefaultAuthQuotaGateState, normalizeAuthQuota } from './authQuota';
 import { type AutoLaunchStatus, getAutoLaunchStatus, isAutoLaunched, setAutoLaunchEnabled } from './autoLaunchManager';
@@ -335,8 +336,8 @@ const gwDiagTs = (): string => {
 };
 
 // Configure the app identity before any OS-level surfaces are created.
-app.name = APP_NAME;
-app.setName(APP_NAME);
+app.name = APP_DISPLAY_NAME;
+app.setName(APP_DISPLAY_NAME);
 if (process.platform === 'win32') {
   app.setAppUserModelId(APP_USER_MODEL_ID);
 }
@@ -902,7 +903,7 @@ const resolveInlineAttachmentDir = (cwd?: string): string => {
       return path.join(resolved, '.cowork-temp', 'attachments', 'manual');
     }
   }
-  return path.join(app.getPath('temp'), 'lobsterai', 'attachments');
+  return path.join(app.getPath('temp'), APP_ID, 'attachments');
 };
 
 const ensurePngFileName = (value: string): string => {
@@ -919,7 +920,7 @@ const buildLogExportFileName = (): string => {
   const now = new Date();
   const datePart = `${now.getFullYear()}${padTwoDigits(now.getMonth() + 1)}${padTwoDigits(now.getDate())}`;
   const timePart = `${padTwoDigits(now.getHours())}${padTwoDigits(now.getMinutes())}${padTwoDigits(now.getSeconds())}`;
-  return `lobsterai-logs-${datePart}-${timePart}.zip`;
+  return `yuzhh-ai-logs-${datePart}-${timePart}.zip`;
 };
 
 const OPENCLAW_DAILY_LOG_RETENTION_DAYS = 7;
@@ -3130,11 +3131,11 @@ if (!gotTheLock) {
   if (!app.isPackaged) {
     // In dev mode, setAsDefaultProtocolClient needs the electron exe path
     // and the app entry point as extra args so the OS can relaunch correctly
-    app.setAsDefaultProtocolClient('lobsterai', process.execPath, [
+    app.setAsDefaultProtocolClient(APP_PROTOCOL, process.execPath, [
       path.resolve(process.argv[1]),
     ]);
   } else {
-    app.setAsDefaultProtocolClient('lobsterai');
+    app.setAsDefaultProtocolClient(APP_PROTOCOL);
   }
 
   const authCallbackRouter = new AuthCallbackRouter({
@@ -3148,7 +3149,7 @@ if (!gotTheLock) {
   });
 
   /**
-   * Parse a lobsterai:// deep link and send (or buffer) the auth code.
+   * Parse an app deep link and send (or buffer) the auth code.
    */
   const handleDeepLink = (url: string) => {
     authCallbackRouter.handleDeepLink(url);
@@ -3204,7 +3205,7 @@ if (!gotTheLock) {
     }
 
     // Check for deep link in command line args (Windows/Linux)
-    const deepLink = commandLine.find(arg => arg.startsWith('lobsterai://'));
+    const deepLink = commandLine.find(arg => arg.startsWith(`${APP_PROTOCOL}://`));
     if (deepLink) {
       handleDeepLink(deepLink);
     }
@@ -3338,7 +3339,7 @@ if (!gotTheLock) {
             ? [
                 {
                   archiveName: 'install-timing.log',
-                  filePath: path.join(app.getPath('appData'), 'LobsterAI', 'install-timing.log'),
+                  filePath: path.join(app.getPath('appData'), APP_NAME, 'install-timing.log'),
                 },
               ]
             : []),
@@ -3577,6 +3578,7 @@ if (!gotTheLock) {
         const tokens = getAuthTokens();
         if (!tokens?.refreshToken) return null;
         const serverBaseUrl = getServerApiBaseUrl();
+        if (!serverBaseUrl.trim()) return null;
         const refreshUrl = `${serverBaseUrl}/api/auth/refresh`;
         console.log(`[Auth] requesting token refresh (reason: ${reason}) at ${refreshUrl}`);
         const resp = await net.fetch(refreshUrl, {
@@ -3613,6 +3615,7 @@ if (!gotTheLock) {
   const fetchWithAuth = async (url: string, options?: RequestInit): Promise<Response> => {
     const tokens = getAuthTokens();
     if (!tokens) throw new Error('No auth tokens');
+    if (!isCloudServerEnabled()) throw new Error(LocalIndependentCloud.DisabledMessage);
 
     const doFetch = (accessToken: string) =>
       net.fetch(url, {
@@ -3649,6 +3652,17 @@ if (!gotTheLock) {
     const { tool, args } = request;
     const action = (args.action as string) || 'generate';
     const serverBaseUrl = getServerApiBaseUrl();
+    if (!serverBaseUrl.trim()) {
+      return {
+        content: [{ type: 'text', text: LocalIndependentCloud.DisabledMessage }],
+        isError: true,
+        details: {
+          cloudDisabled: true,
+          action,
+          tool,
+        },
+      };
+    }
     const sessionId = extractSessionIdFromKey(request.context.sessionKey);
     const selection = normalizeMediaSelectionState(sessionId ? mediaSelectionBySession.get(sessionId) : undefined);
     const prompt = typeof args.prompt === 'string' ? args.prompt : '';
@@ -4245,6 +4259,11 @@ if (!gotTheLock) {
     }
 
     const serverBaseUrl = getServerApiBaseUrl();
+    if (!serverBaseUrl.trim()) {
+      pendingMediaTasks.clear();
+      stopMediaPollTimer();
+      return;
+    }
     const now = Date.now();
     const tasksToRemove: string[] = [];
 
@@ -4562,6 +4581,12 @@ if (!gotTheLock) {
     return quota;
   };
 
+  const isCloudServerEnabled = (): boolean => getServerApiBaseUrl().trim().length > 0;
+  const cloudDisabledResponse = (error = LocalIndependentCloud.DisabledMessage) => ({
+    success: false,
+    error,
+  });
+
   ipcMain.handle('auth:login', async (_event, { loginUrl }: { loginUrl?: string } = {}) => {
     const baseUrl = loginUrl || `${getServerApiBaseUrl()}/login`;
     const fallbackUrl = appendLoginParams(baseUrl, { source: 'electron' });
@@ -4606,6 +4631,7 @@ if (!gotTheLock) {
   ipcMain.handle('auth:exchange', async (_event, { code }: { code: string }) => {
     try {
       const serverBaseUrl = getServerApiBaseUrl();
+      if (!serverBaseUrl.trim()) return cloudDisabledResponse();
       const exchangeUrl = `${serverBaseUrl}/api/auth/exchange`;
       console.log(`[Auth] requesting auth exchange at ${exchangeUrl}`);
       const resp = await net.fetch(exchangeUrl, {
@@ -4650,6 +4676,7 @@ if (!gotTheLock) {
       const tokens = getAuthTokens();
       if (!tokens) return { success: false };
       const serverBaseUrl = getServerApiBaseUrl();
+      if (!serverBaseUrl.trim()) return { success: false };
       // Fetch user profile
       const profileResp = await fetchWithAuth(`${serverBaseUrl}/api/user/profile`);
       if (!profileResp.ok) return { success: false };
@@ -4685,6 +4712,7 @@ if (!gotTheLock) {
       const tokens = getAuthTokens();
       if (!tokens) return { success: false };
       const serverBaseUrl = getServerApiBaseUrl();
+      if (!serverBaseUrl.trim()) return { success: false };
       const resp = await fetchWithAuth(`${serverBaseUrl}/api/user/quota`);
       if (!resp.ok) return { success: false };
       const body = (await resp.json()) as { code: number; data: Record<string, unknown> };
@@ -4703,6 +4731,7 @@ if (!gotTheLock) {
       const tokens = getAuthTokens();
       if (!tokens) return { success: false };
       const serverBaseUrl = getServerApiBaseUrl();
+      if (!serverBaseUrl.trim()) return { success: false };
       const profileSummaryUrl = appendKeyfromQuery(`${serverBaseUrl}/api/user/profile-summary`);
       console.log(`[Auth] requesting profile summary at ${profileSummaryUrl}`);
       const resp = await fetchWithAuth(profileSummaryUrl);
@@ -4720,6 +4749,13 @@ if (!gotTheLock) {
       const tokens = getAuthTokens();
       if (tokens) {
         const serverBaseUrl = getServerApiBaseUrl();
+        if (!serverBaseUrl.trim()) {
+          clearAuthTokens();
+          clearAuthUser();
+          clearServerModelMetadata();
+          resetAuthQuotaGateState();
+          return { success: true };
+        }
         const logoutUrl = `${serverBaseUrl}/api/auth/logout`;
         console.log(`[Auth] requesting logout at ${logoutUrl}`);
         await net
@@ -4788,6 +4824,9 @@ if (!gotTheLock) {
   ipcMain.handle(AuthIpcChannel.GetPricingCatalog, async () => {
     try {
       const serverBaseUrl = getServerApiBaseUrl();
+      if (!serverBaseUrl.trim()) {
+        return { success: true, textModels: [] };
+      }
       const url = `${serverBaseUrl}/api/models/pricing-catalog`;
       console.log(`[Auth:getPricingCatalog] requesting public pricing catalog at ${url}`);
       const resp = await net.fetch(url, {
@@ -4834,6 +4873,9 @@ if (!gotTheLock) {
         return { success: false };
       }
       const serverBaseUrl = getServerApiBaseUrl();
+      if (!serverBaseUrl.trim()) {
+        return { success: true, models: [] };
+      }
       const url = appendKeyfromQuery(`${serverBaseUrl}/api/models/available`);
       console.log(`[Auth:getModels] requesting available models at ${url}`);
       const resp = await fetchWithAuth(url);
@@ -4889,6 +4931,7 @@ if (!gotTheLock) {
   ipcMain.handle(HtmlShareIpc.CreateFromHtmlFile, async (_event, input: unknown) => {
     let archivePath: string | undefined;
     try {
+      if (!isCloudServerEnabled()) return cloudDisabledResponse();
       const options = sanitizeCreateFromHtmlFileInput(input);
       console.debug(
         `[HtmlShare] received HTML file share request for session ${options.sessionId} and artifact ${options.artifactId}`,
@@ -4946,6 +4989,7 @@ if (!gotTheLock) {
 
   ipcMain.handle(HtmlShareIpc.GetByHtmlFile, async (_event, input: unknown) => {
     try {
+      if (!isCloudServerEnabled()) return cloudDisabledResponse();
       const options = sanitizeGetByHtmlFileInput(input);
       const clientSourceKey = buildHtmlShareClientSourceKey(options.filePath);
       return await getHtmlShareBySource(
@@ -4967,6 +5011,7 @@ if (!gotTheLock) {
   ipcMain.handle(HtmlShareIpc.UpdateFromHtmlFile, async (_event, input: unknown) => {
     let archivePath: string | undefined;
     try {
+      if (!isCloudServerEnabled()) return cloudDisabledResponse();
       const options = sanitizeUpdateFromHtmlFileInput(input);
       const clientSourceKey = buildHtmlShareClientSourceKey(options.filePath);
       const packaged = await packageHtmlFile(options.filePath);
@@ -5014,6 +5059,7 @@ if (!gotTheLock) {
   ipcMain.handle(HtmlShareIpc.CreateFromArtifactFile, async (_event, input: unknown) => {
     let archivePath: string | undefined;
     try {
+      if (!isCloudServerEnabled()) return cloudDisabledResponse();
       const options = sanitizeCreateFromArtifactFileInput(input);
       console.debug(
         `[HtmlShare] received ${options.sourceType} share request for session ${options.sessionId} and artifact ${options.artifactId}`,
@@ -5071,6 +5117,7 @@ if (!gotTheLock) {
 
   ipcMain.handle(HtmlShareIpc.GetByArtifactFile, async (_event, input: unknown) => {
     try {
+      if (!isCloudServerEnabled()) return cloudDisabledResponse();
       const options = sanitizeGetByArtifactFileInput(input);
       const clientSourceKey = buildArtifactShareClientSourceKey(options);
       return await getHtmlShareBySource(
@@ -5092,6 +5139,7 @@ if (!gotTheLock) {
   ipcMain.handle(HtmlShareIpc.UpdateFromArtifactFile, async (_event, input: unknown) => {
     let archivePath: string | undefined;
     try {
+      if (!isCloudServerEnabled()) return cloudDisabledResponse();
       const options = sanitizeUpdateFromArtifactFileInput(input);
       const clientSourceKey = buildArtifactShareClientSourceKey(options);
       const packaged = await packageArtifactFile({
@@ -5144,6 +5192,7 @@ if (!gotTheLock) {
 
   ipcMain.handle(HtmlShareIpc.UpdateStatus, async (_event, input: unknown) => {
     try {
+      if (!isCloudServerEnabled()) return cloudDisabledResponse();
       const options = sanitizeUpdateHtmlShareStatusInput(input);
       return await updateHtmlShareStatus(
         getServerApiBaseUrl(),
@@ -5163,6 +5212,7 @@ if (!gotTheLock) {
 
   ipcMain.handle(HtmlShareIpc.UpdateAccessMode, async (_event, input: unknown) => {
     try {
+      if (!isCloudServerEnabled()) return cloudDisabledResponse();
       const options = sanitizeUpdateHtmlShareAccessModeInput(input);
       return await updateHtmlShareAccessMode(
         getServerApiBaseUrl(),
@@ -5182,6 +5232,7 @@ if (!gotTheLock) {
 
   ipcMain.handle(HtmlShareIpc.Get, async (_event, shareId: unknown) => {
     try {
+      if (!isCloudServerEnabled()) return cloudDisabledResponse();
       const id = sanitizeHtmlShareString(shareId, 'shareId', 64);
       const resp = await fetchWithAuth(
         `${getServerApiBaseUrl()}/api/html-shares/${encodeURIComponent(id)}`,
@@ -5205,6 +5256,7 @@ if (!gotTheLock) {
 
   ipcMain.handle(HtmlShareIpc.Disable, async (_event, shareId: unknown) => {
     try {
+      if (!isCloudServerEnabled()) return cloudDisabledResponse();
       const id = sanitizeHtmlShareString(shareId, 'shareId', 64);
       return await updateHtmlShareStatus(
         getServerApiBaseUrl(),
@@ -5224,6 +5276,9 @@ if (!gotTheLock) {
   // Media generation IPC handlers
   ipcMain.handle('media:getModels', async (_event, type: 'image' | 'video') => {
     try {
+      if (!isCloudServerEnabled()) {
+        return { success: true, models: [] };
+      }
       const tokens = getAuthTokens();
       if (!tokens) {
         console.warn('[Media:getModels] No auth tokens, skipping');
@@ -5253,6 +5308,7 @@ if (!gotTheLock) {
 
   ipcMain.handle('media:getTaskStatus', async (_event, taskId: number, type: 'image' | 'video') => {
     try {
+      if (!isCloudServerEnabled()) return cloudDisabledResponse();
       const tokens = getAuthTokens();
       if (!tokens) return { success: false, error: 'Not logged in' };
       const serverBaseUrl = getServerApiBaseUrl();
@@ -5440,7 +5496,7 @@ if (!gotTheLock) {
       console.error('[DataMigration] backup failed:', error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Failed to back up LobsterAI data',
+        error: error instanceof Error ? error.message : 'Failed to back up 宇智汇和 AI 助手 data',
       };
     }
   });
@@ -5499,11 +5555,11 @@ if (!gotTheLock) {
         success,
         scheduledRestart: rendererReleased,
         rollbackPath: restoreResult?.rollbackPath,
-        error: success ? undefined : restoreResult?.error || 'Failed to import LobsterAI data backup',
+        error: success ? undefined : restoreResult?.error || 'Failed to import 宇智汇和 AI 助手 data backup',
       };
     } catch (error) {
       isCleanupInProgress = false;
-      const message = error instanceof Error ? error.message : 'Failed to import LobsterAI data backup';
+      const message = error instanceof Error ? error.message : 'Failed to import 宇智汇和 AI 助手 data backup';
       console.error('[DataMigration] restore scheduling failed:', error);
       if (rendererReleased) {
         dialog.showErrorBox(t('dataMigrationRestoreDialogTitle'), message);
@@ -6733,6 +6789,7 @@ if (!gotTheLock) {
 
   ipcMain.handle('cowork:media:cancel', async (_event, taskId: string) => {
     try {
+      if (!isCloudServerEnabled()) return { success: false, message: LocalIndependentCloud.DisabledMessage };
       const serverBaseUrl = getServerApiBaseUrl();
       const resp = await fetchWithAuth(`${serverBaseUrl}/api/media/videos/tasks/${taskId}/cancel`, { method: 'POST' });
       const body = await resp.json() as { code: number; message?: string };
@@ -8777,7 +8834,7 @@ if (!gotTheLock) {
         const { execFile } = await import('child_process');
         const { promisify } = await import('util');
         const execFileAsync = promisify(execFile);
-        const tmpDir = path.join(app.getPath('temp'), 'lobsterai-thumbnails');
+        const tmpDir = path.join(app.getPath('temp'), 'yuzhh-ai-thumbnails');
         await fs.promises.mkdir(tmpDir, { recursive: true });
         const baseName = path.basename(resolvedPath);
         const outputFile = path.join(tmpDir, `${baseName}.png`);
@@ -8895,7 +8952,7 @@ if (!gotTheLock) {
 
   ipcMain.handle('shell:openHtmlInBrowser', async (_event, htmlContent: string) => {
     try {
-      const tmpDir = path.join(os.tmpdir(), 'lobsterai-preview');
+      const tmpDir = path.join(os.tmpdir(), 'yuzhh-ai-preview');
       fs.mkdirSync(tmpDir, { recursive: true });
       const tmpFile = path.join(tmpDir, `preview-${Date.now()}.html`);
       fs.writeFileSync(tmpFile, htmlContent, 'utf-8');
@@ -9448,7 +9505,7 @@ if (!gotTheLock) {
 
     mainWindow = new BrowserWindow({
       ...initialWindowBounds,
-      title: APP_NAME,
+      title: APP_DISPLAY_NAME,
       icon: getAppIconPath(),
       ...(isMac
         ? {
@@ -9999,7 +10056,7 @@ if (!gotTheLock) {
     // We don't trigger permission dialogs at startup to avoid annoying users
 
     // Ensure default working directory exists
-    const defaultProjectDir = path.join(os.homedir(), 'lobsterai', 'project');
+    const defaultProjectDir = path.join(os.homedir(), APP_ID, 'project');
     if (!fs.existsSync(defaultProjectDir)) {
       fs.mkdirSync(defaultProjectDir, { recursive: true });
       console.log('Created default project directory:', defaultProjectDir);
@@ -10091,6 +10148,7 @@ if (!gotTheLock) {
       const tokens = getAuthTokens();
       if (!tokens?.refreshToken) return null;
       const serverBaseUrl = getServerApiBaseUrl();
+      if (!serverBaseUrl.trim()) return null;
       try {
         const refreshUrl = `${serverBaseUrl}/api/auth/refresh`;
         console.log(`[Auth] requesting proxy token refresh at ${refreshUrl}`);
@@ -10259,7 +10317,7 @@ if (!gotTheLock) {
 
     // ── Pre-warm quota & model caches so provider resolution and config sync
     // see real server data instead of empty defaults ──
-    if (getAuthTokens()) {
+    if (getAuthTokens() && isCloudServerEnabled()) {
       profiler.mark('startupCacheWarmup');
       const warmupResult = await runStartupCacheWarmup({
         serverBaseUrl: getServerApiBaseUrl(),
@@ -10426,7 +10484,7 @@ if (!gotTheLock) {
 
     // Windows/Linux cold start: parse deep link from process.argv.
     // The router buffers it because the renderer is not ready yet after createWindow().
-    const coldStartDeepLink = process.argv.find(arg => arg.startsWith('lobsterai://'));
+    const coldStartDeepLink = process.argv.find(arg => arg.startsWith(`${APP_PROTOCOL}://`));
     if (coldStartDeepLink) {
       handleDeepLink(coldStartDeepLink);
     }

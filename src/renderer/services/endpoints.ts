@@ -3,46 +3,34 @@
  * 后续新增的业务接口也应在此文件中配置。
  */
 
+import {
+  isLegacyCloudEnabled,
+  LocalIndependentCloud,
+} from '../../shared/cloudCapabilities/constants';
 import { configService } from './config';
 
 export const isTestModeEnabled = () => {
   return configService.getConfig().app?.testMode === true;
 };
 
+export { isLegacyCloudEnabled };
+
 // 自动更新
-export const getUpdateCheckUrl = () => isTestModeEnabled()
-  ? 'https://api-overmind.youdao.com/openapi/get/luna/hardware/lobsterai/test/update'
-  : 'https://api-overmind.youdao.com/openapi/get/luna/hardware/lobsterai/prod/update';
+export const getUpdateCheckUrl = () => LocalIndependentCloud.DisabledEndpoint;
 
 // 手动检查更新
-export const getManualUpdateCheckUrl = () => isTestModeEnabled()
-  ? 'https://api-overmind.youdao.com/openapi/get/luna/hardware/lobsterai/test/update-manual'
-  : 'https://api-overmind.youdao.com/openapi/get/luna/hardware/lobsterai/prod/update-manual';
+export const getManualUpdateCheckUrl = () => LocalIndependentCloud.DisabledEndpoint;
 
-export const getFallbackDownloadUrl = () => isTestModeEnabled()
-  ? 'https://lobsterai.inner.youdao.com/#/download-list'
-  : 'https://lobsterai.youdao.com/#/download-list';
+export const getFallbackDownloadUrl = () => LocalIndependentCloud.DownloadUrl;
 
 // Skill 商店
-export const getSkillStoreUrl = () => isTestModeEnabled()
-  ? 'https://api-overmind.youdao.com/openapi/get/luna/hardware/lobsterai/test/skill-store'
-  : 'https://api-overmind.youdao.com/openapi/get/luna/hardware/lobsterai/prod/skill-store';
+export const getSkillStoreUrl = () => LocalIndependentCloud.DisabledEndpoint;
 
 // Kit 商店
-export const getKitStoreUrl = () => isTestModeEnabled()
-  ? 'https://api-overmind.youdao.com/openapi/get/luna/hardware/lobsterai/test/kit-store'
-  : 'https://api-overmind.youdao.com/openapi/get/luna/hardware/lobsterai/prod/kit-store';
+export const getKitStoreUrl = () => LocalIndependentCloud.DisabledEndpoint;
 
 // 登录地址
-export const getLoginOvermindUrl = () => isTestModeEnabled()
-  ? 'https://api-overmind.youdao.com/openapi/get/luna/hardware/lobsterai/test/login-url'
-  : 'https://api-overmind.youdao.com/openapi/get/luna/hardware/lobsterai/prod/login-url';
-
-// Portal 页面
-const PORTAL_BASE_TEST = 'https://lobsterai.inner.youdao.com/portal#';
-const PORTAL_BASE_PROD = 'https://lobsterai.youdao.com/portal#';
-
-const getPortalBase = () => isTestModeEnabled() ? PORTAL_BASE_TEST : PORTAL_BASE_PROD;
+export const getLoginOvermindUrl = () => LocalIndependentCloud.DisabledEndpoint;
 
 export const PortalPricingKeyfrom = {
   HtmlShare: 'html_share',
@@ -51,11 +39,14 @@ export const PortalPricingKeyfrom = {
 export type PortalPricingKeyfrom =
   (typeof PortalPricingKeyfrom)[keyof typeof PortalPricingKeyfrom];
 
-export const getPortalLoginUrl = () => `${getPortalBase()}/login`;
+const appendKeyfrom = (url: string, keyfrom?: string): string =>
+  keyfrom ? `${url}?keyfrom=${encodeURIComponent(keyfrom)}` : url;
+
+export const getPortalLoginUrl = () => LocalIndependentCloud.AccountUrl;
 export const getPortalPricingUrl = (keyfrom?: PortalPricingKeyfrom) => (
-  `${getPortalBase()}/pricing${keyfrom ? `?keyfrom=${encodeURIComponent(keyfrom)}` : ''}`
+  appendKeyfrom(LocalIndependentCloud.PricingUrl, keyfrom)
 );
-export const getPortalProfileUrl = () => `${getPortalBase()}/profile`;
-export const getPortalRechargeUrl = () => `${getPortalBase()}/`;
-export const getPortalInvitationUrl = () => `${getPortalBase()}/invitation`;
-export const getPortalCreditsResetActivityUrl = () => `${getPortalBase()}/profile?activity=credits_reset`;
+export const getPortalProfileUrl = () => LocalIndependentCloud.AccountUrl;
+export const getPortalRechargeUrl = () => LocalIndependentCloud.PricingUrl;
+export const getPortalInvitationUrl = () => LocalIndependentCloud.CommunityUrl;
+export const getPortalCreditsResetActivityUrl = () => LocalIndependentCloud.PricingUrl;

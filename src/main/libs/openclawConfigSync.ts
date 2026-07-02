@@ -5,6 +5,7 @@ import path from 'path';
 
 import { buildScheduledTaskEnginePrompt } from '../../scheduledTask/enginePrompt';
 import { AgentId, DefaultAgentProfile } from '../../shared/agent';
+import { RuntimeBrand } from '../../shared/branding/constants';
 import {
   BrowserNetworkMode,
   BrowserRuntimeProfile,
@@ -20,6 +21,7 @@ import {
   ProviderName,
   ProviderRegistry,
 } from '../../shared/providers';
+import { APP_DISPLAY_NAME } from '../appConstants';
 import type { Agent, CoworkConfig, CoworkExecutionMode } from '../coworkStore';
 import type { DiscordInstanceConfig, IMSettings, TelegramInstanceConfig } from '../im/types';
 import type { DingTalkInstanceConfig, EmailMultiInstanceConfig, FeishuInstanceConfig, NeteaseBeeChanConfig, NimInstanceConfig, PopoInstanceConfig, QQInstanceConfig, WecomInstanceConfig, WeixinOpenClawConfig } from '../im/types';
@@ -254,10 +256,10 @@ const MANAGED_SKILL_ENTRY_OVERRIDES: Record<string, { enabled: boolean }> = {
   'feishu-cron-reminder': {
     enabled: false,
   },
-  // LobsterAI configures MCP servers via openclaw.json mcp.servers field.
+  // The app configures MCP servers via openclaw.json mcp.servers field.
   // The bundled mcporter skill tries to discover MCP servers via its own CLI,
   // finds none, and produces confusing "no MCP servers" output. Disable it so
-  // users are routed through LobsterAI's MCP layer instead.
+  // users are routed through the app's MCP layer instead.
   'mcporter': {
     enabled: false,
   },
@@ -286,10 +288,10 @@ const MANAGED_WEB_SEARCH_POLICY_PROMPT = [
   '- Do not use `web_fetch` to fetch Google/Bing search result pages as a search substitute; use `browser` or an available search skill instead.',
   '- If you need search discovery, dynamic pages, or interactive browsing, use the built-in `browser` tool.',
   '- For login-required, JavaScript-heavy, or anti-automation pages, use `browser` instead of `web_fetch`.',
-  '- Only use the LobsterAI `web-search` skill when local command execution is available. Native channel sessions may deny `exec`, so prefer `browser` or `web_fetch` there.',
+  `- Only use the ${APP_DISPLAY_NAME} \`web-search\` skill when local command execution is available. Native channel sessions may deny \`exec\`, so prefer \`browser\` or \`web_fetch\` there.`,
   '- Exception: the `imap-smtp-email` skill must always use `exec` to run its scripts, even in native channel sessions. Do not skip it because of exec restrictions.',
   '',
-  'Do not claim you searched the web unless you actually used `browser`, `web_fetch`, or the LobsterAI `web-search` skill.',
+  `Do not claim you searched the web unless you actually used \`browser\`, \`web_fetch\`, or the ${APP_DISPLAY_NAME} \`web-search\` skill.`,
 ].join('\n');
 
 const BUNDLED_BROWSER_PLUGIN_ID = 'browser';
@@ -297,9 +299,9 @@ const BUNDLED_BROWSER_PLUGIN_ID = 'browser';
 const MANAGED_BROWSER_POLICY_PROMPT = [
   '## Browser Policy',
   '',
-  'LobsterAI does not support sandbox browser execution in this version.',
+  `${APP_DISPLAY_NAME} does not support sandbox browser execution in this version.`,
   '- For every `browser` tool call, set `target="host"` explicitly.',
-  '- Do not use `target="sandbox"` or `target="node"` unless a future LobsterAI version explicitly enables it.',
+  `- Do not use \`target="sandbox"\` or \`target="node"\` unless a future ${APP_DISPLAY_NAME} version explicitly enables it.`,
   '- If a browser call fails because the sandbox browser is unavailable, retry the same action with `target="host"`.',
 ].join('\n');
 
@@ -330,9 +332,9 @@ const MANAGED_EXEC_SAFETY_PROMPT = [
  * embedding in AGENTS.md so the model knows where to create new skills.
  *
  * Example outputs:
- *   macOS:   ~/Library/Application Support/LobsterAI/SKILLs
- *   Windows: ~/AppData/Roaming/LobsterAI/SKILLs
- *   Linux:   ~/.config/LobsterAI/SKILLs
+ *   macOS:   ~/Library/Application Support/宇智汇和 AI 助手/SKILLs
+ *   Windows: ~/AppData/Roaming/宇智汇和 AI 助手/SKILLs
+ *   Linux:   ~/.config/宇智汇和 AI 助手/SKILLs
  */
 const resolveSkillCreationPath = (): string => {
   const skillsDir = path.join(app.getPath('userData'), 'SKILLs');
@@ -347,7 +349,7 @@ const resolveSkillCreationPath = (): string => {
 const buildManagedSkillCreationPrompt = (skillsDirPath: string): string => [
   '## Skill Creation',
   '',
-  'When the user asks you to create a new skill, you MUST place it under the LobsterAI skills directory:',
+  `When the user asks you to create a new skill, you MUST place it under the ${APP_DISPLAY_NAME} skills directory:`,
   '',
   `  ${skillsDirPath}/<skill-name>/SKILL.md`,
   '',
@@ -432,7 +434,10 @@ const stripTemplateFrontMatter = (content: string): string => {
 const resolveBundledOpenClawAgentsTemplatePaths = (): string[] => {
   const runtimeRoots =
     app.isPackaged === true
-      ? [path.join(process.resourcesPath, 'cfmind')]
+      ? [
+          path.join(process.resourcesPath, RuntimeBrand.BundleDirName),
+          path.join(process.resourcesPath, RuntimeBrand.LegacyBundleDirName),
+        ]
       : [
           path.join(app.getAppPath(), 'vendor', 'openclaw-runtime', 'current'),
           path.join(process.cwd(), 'vendor', 'openclaw-runtime', 'current'),
@@ -1393,7 +1398,7 @@ export class OpenClawConfigSync {
    * read against a "last known good" fingerprint.  One of the checks is
    * `hasConfigMeta` — if the previous good config had `meta` but the current
    * one doesn't, an anomaly is logged and the file content is persisted as a
-   * `.clobbered.<timestamp>` snapshot.  Because LobsterAI writes openclaw.json
+   * `.clobbered.<timestamp>` snapshot. Because the app writes openclaw.json
    * directly (bypassing OpenClaw's own `writeConfigFile` which calls
    * `stampConfigVersion`), we need to stamp `meta` ourselves.
    */
@@ -1914,7 +1919,7 @@ loopDetection: MANAGED_TOOL_LOOP_DETECTION,
               ...(p.config && Object.keys(p.config).length > 0 ? { config: p.config } : {}),
             }]),
           ),
-          // Disable acpx (ACP agent runtime) — LobsterAI does not use ACP and
+          // Disable acpx (ACP agent runtime) - the app does not use ACP and
           // the embedded probe adds ~11s to gateway startup while it waits for
           // a process that always fails.  See openclaw/openclaw#62588.
           'acpx': { enabled: false },
@@ -2201,7 +2206,7 @@ loopDetection: MANAGED_TOOL_LOOP_DETECTION,
         clientSecret: `\${${secretEnvVar}}`,
         // v3.5.x schema: dmPolicy/groupPolicy/allowFrom are valid; sessionTimeout/
         // separateSessionByConversation/groupSessionScope/sharedMemoryAcrossConversations/
-        // gatewayBaseUrl were LobsterAI-specific and are not in the plugin schema.
+        // gatewayBaseUrl were app-specific and are not in the plugin schema.
         dmPolicy: inst.dmPolicy || 'open',
         allowFrom: (() => {
           const ids = inst.allowFrom?.length ? [...inst.allowFrom] : [];
@@ -2763,7 +2768,7 @@ loopDetection: MANAGED_TOOL_LOOP_DETECTION,
   }
 
   /**
-   * Ensures exec-approvals.json under the LobsterAI-managed openclaw home has
+   * Ensures exec-approvals.json under the app-managed openclaw home has
    * security=full + ask=off so the gateway never triggers approval-pending
    * for any command. The path must match the OPENCLAW_HOME env var passed to
    * the gateway process so both sides read/write the same file.
@@ -2965,13 +2970,13 @@ loopDetection: MANAGED_TOOL_LOOP_DETECTION,
   }
 
   /**
-   * Resolve the LobsterAI SKILLs installation directory for OpenClaw's
+   * Resolve the app SKILLs installation directory for OpenClaw's
    * `skills.load.extraDirs` configuration.
    *
    * Cross-platform paths (via Electron app.getPath('userData')):
-   *   macOS:   ~/Library/Application Support/LobsterAI/SKILLs
-   *   Windows: %APPDATA%/LobsterAI/SKILLs
-   *   Linux:   ~/.config/LobsterAI/SKILLs
+   *   macOS:   ~/Library/Application Support/宇智汇和 AI 助手/SKILLs
+   *   Windows: %APPDATA%/宇智汇和 AI 助手/SKILLs
+   *   Linux:   ~/.config/宇智汇和 AI 助手/SKILLs
    */
   private resolveSkillsExtraDirs(): string[] {
     const userDataSkillsDir = path.join(app.getPath('userData'), 'SKILLs');
@@ -2994,8 +2999,8 @@ loopDetection: MANAGED_TOOL_LOOP_DETECTION,
   }
 
   /**
-   * Build per-skill `enabled` overrides from the LobsterAI SkillManager state,
-   * so that skills disabled in the LobsterAI UI are also hidden from OpenClaw.
+   * Build per-skill `enabled` overrides from the app SkillManager state,
+   * so that skills disabled in the app UI are also hidden from OpenClaw.
    */
   private buildSkillEntries(): Record<string, { enabled: boolean }> {
     const skills = this.getSkillsList?.() ?? [];
@@ -3010,10 +3015,13 @@ loopDetection: MANAGED_TOOL_LOOP_DETECTION,
    * Sync AGENTS.md to the OpenClaw workspace directory.
    * Embeds the skills routing prompt and system prompt so that OpenClaw's
    * native channel connectors (DingTalk, Feishu, etc.) can discover and
-   * invoke LobsterAI skills.
+   * invoke app skills.
    */
   private syncAgentsMd(workspaceDir: string, coworkConfig: CoworkConfig): string | undefined {
-    const MARKER = '<!-- LobsterAI managed: do not edit below this line -->';
+    const MARKER = `<!-- ${APP_DISPLAY_NAME} managed: do not edit below this line -->`;
+    const LEGACY_MARKERS = [
+      '<!-- LobsterAI managed: do not edit below this line -->',
+    ];
 
     try {
       ensureDir(workspaceDir);
@@ -3052,8 +3060,11 @@ loopDetection: MANAGED_TOOL_LOOP_DETECTION,
         // File doesn't exist yet.
       }
 
-      // Extract user content (everything before the marker)
-      const markerIdx = existingContent.indexOf(MARKER);
+      // Extract user content (everything before the current or legacy managed marker).
+      const markerIdx = [MARKER, ...LEGACY_MARKERS]
+        .map(marker => existingContent.indexOf(marker))
+        .filter(index => index >= 0)
+        .sort((a, b) => a - b)[0] ?? -1;
       const userContent =
         markerIdx >= 0 ? existingContent.slice(0, markerIdx).trimEnd() : existingContent.trimEnd();
       const preservedUserContent = userContent || readBundledOpenClawAgentsTemplate();

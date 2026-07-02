@@ -7,6 +7,7 @@ import net from 'net';
 import os from 'os';
 import path from 'path';
 
+import { RuntimeBrand } from '../../shared/branding/constants';
 import type { OpenClawEnginePhase } from '../../shared/openclawEngine/constants';
 import { ensureElectronNodeShim, getElectronNodeRuntimePath, getSkillsRoot } from './coworkUtil';
 import {
@@ -168,10 +169,22 @@ export function buildOpenClawGatewayExecArgv(existingNodeOptions: string | undef
 export function buildOpenClawCompileCacheEnv(compileCacheDir: string): NodeJS.ProcessEnv {
   return {
     NODE_COMPILE_CACHE: compileCacheDir,
-    // The cache is already configured by LobsterAI. Prevent the packaged
+    // The cache is already configured by the app. Prevent the packaged
     // launcher from respawning through Electron Helper as if it were Node.
     OPENCLAW_PACKAGED_COMPILE_CACHE_RESPAWNED: '1',
   };
+}
+
+export function getPackagedRuntimeDirCandidates(resourcesPath: string): string[] {
+  return [
+    path.join(resourcesPath, RuntimeBrand.BundleDirName),
+    path.join(resourcesPath, RuntimeBrand.LegacyBundleDirName),
+  ];
+}
+
+export function getRuntimeMissingMessage(expectedPathHint?: string): string {
+  const suffix = expectedPathHint ? ` Expected: ${expectedPathHint}` : '';
+  return `未检测到内置${RuntimeBrand.DisplayNameZh}，请先完成运行时构建或重新安装应用。${suffix}`;
 }
 
 export class OpenClawEngineManager extends EventEmitter {
@@ -225,7 +238,7 @@ export class OpenClawEngineManager extends EventEmitter {
       : {
           phase: 'not_installed',
           version: null,
-          message: `Bundled OpenClaw runtime is missing. Expected: ${runtime.expectedPathHint}`,
+          message: getRuntimeMissingMessage(runtime.expectedPathHint),
           canRetry: true,
         };
   }
@@ -354,7 +367,7 @@ export class OpenClawEngineManager extends EventEmitter {
       this.setStatus({
         phase: 'not_installed',
         version: null,
-        message: `Bundled OpenClaw runtime is missing. Expected: ${runtime.expectedPathHint}`,
+        message: getRuntimeMissingMessage(runtime.expectedPathHint),
         canRetry: true,
       });
       return this.getStatus();
@@ -452,7 +465,7 @@ export class OpenClawEngineManager extends EventEmitter {
       this.setStatus({
         phase: 'not_installed',
         version: null,
-        message: `Bundled OpenClaw runtime is missing. Expected: ${runtime.expectedPathHint}`,
+        message: getRuntimeMissingMessage(runtime.expectedPathHint),
         canRetry: true,
       });
       return this.getStatus();
@@ -514,7 +527,7 @@ export class OpenClawEngineManager extends EventEmitter {
       // bundled-channel-entry contract.  Third-party plugins (in extensions/)
       // are discovered separately via plugins.load.paths in openclaw.json.
       OPENCLAW_BUNDLED_PLUGINS_DIR: path.join(runtime.root, 'dist', 'extensions'),
-      // Disable Bonjour/mDNS LAN discovery advertising.  LobsterAI is a
+      // Disable Bonjour/mDNS LAN discovery advertising. The app is a
       // desktop app with a loopback-only gateway — LAN service broadcast is
       // unnecessary and its watchdog can flood stderr with re-advertise
       // warnings on Windows.  See openclaw/openclaw#33609, #63153.
@@ -550,7 +563,7 @@ export class OpenClawEngineManager extends EventEmitter {
     }
 
     // Prepend bundled/user Python runtime paths so gateway exec commands
-    // find the LobsterAI-managed Python instead of the Windows Store stub.
+    // find the app-managed Python instead of the Windows Store stub.
     appendPythonRuntimeToEnv(env as Record<string, string | undefined>);
 
     // Inject node/npm/npx shims so gateway exec commands can use them.
@@ -680,7 +693,7 @@ export class OpenClawEngineManager extends EventEmitter {
       version: runtime.version,
       message: runtime.root
         ? 'OpenClaw runtime is ready. Gateway is stopped.'
-        : `Bundled OpenClaw runtime is missing. Expected: ${runtime.expectedPathHint}`,
+        : getRuntimeMissingMessage(runtime.expectedPathHint),
       canRetry: !runtime.root,
     });
   }
@@ -718,7 +731,7 @@ export class OpenClawEngineManager extends EventEmitter {
 
   private resolveRuntimeMetadata(): RuntimeMetadata {
     const candidateRoots = app.isPackaged
-      ? [path.join(process.resourcesPath, 'cfmind')]
+      ? getPackagedRuntimeDirCandidates(process.resourcesPath)
       : [
           path.join(app.getAppPath(), 'vendor', 'openclaw-runtime', 'current'),
           path.join(process.cwd(), 'vendor', 'openclaw-runtime', 'current'),
@@ -732,7 +745,7 @@ export class OpenClawEngineManager extends EventEmitter {
       try { return fs.realpathSync(found); } catch { return found; }
     })();
     const expectedPathHint = app.isPackaged
-      ? path.join(process.resourcesPath, 'cfmind')
+      ? path.join(process.resourcesPath, RuntimeBrand.BundleDirName)
       : path.join(app.getAppPath(), 'vendor', 'openclaw-runtime', 'current');
 
     if (!runtimeRoot) {
@@ -858,7 +871,7 @@ export class OpenClawEngineManager extends EventEmitter {
       }
       if (result.protectedExisting.length > 0) {
         console.warn(
-          `[OpenClaw] Skipped ${result.protectedExisting.length} worker shim(s) because existing files are not LobsterAI shims.`,
+          `[OpenClaw] Skipped ${result.protectedExisting.length} worker shim(s) because existing files are not app-managed shims.`,
         );
       }
     } catch (error) {

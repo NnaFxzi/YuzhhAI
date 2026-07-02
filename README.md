@@ -1,49 +1,40 @@
-# LobsterAI — All-Scenario Office Assistant Agent
+# 宇智汇和 AI 助手 — All-Scenario Office Assistant Agent
 
 <p align="center">
-  <img src="public/logo.png" alt="LobsterAI" width="120">
+  <img src="public/logo.png" alt="宇智汇和 AI 助手" width="120">
 </p>
 
 <p align="center">
-  <strong>A 24/7 all-scenario office assistant Agent that gets real work done — built by NetEase Youdao</strong>
+  <strong>A 24/7 all-scenario office assistant Agent that gets real work done — built by 宇智汇和（东莞）科技有限公司</strong>
 </p>
 
 <p align="center">
-  <em>The first open-source, desktop-grade Agent from a major Chinese tech company — publicly praised by OpenClaw's founder.</em>
+  <em>A desktop-grade Agent for local productivity, task automation, and cross-platform IM workflows.</em>
 </p>
 
 <p align="center">
-  <a href="https://github.com/netease-youdao/LobsterAI/stargazers"><img src="https://img.shields.io/github/stars/netease-youdao/LobsterAI?style=for-the-badge&logo=github&color=FFD43B" alt="GitHub stars"></a>
-  <a href="https://github.com/netease-youdao/LobsterAI/releases"><img src="https://img.shields.io/github/v/release/netease-youdao/LobsterAI?style=for-the-badge&color=brightgreen" alt="Latest release"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge" alt="MIT License"></a>
-  <br>
   <img src="https://img.shields.io/badge/Platform-macOS%20%7C%20Windows-brightgreen?style=for-the-badge" alt="Platform">
   <img src="https://img.shields.io/badge/Electron-40-47848F?style=for-the-badge&logo=electron&logoColor=white" alt="Electron">
   <img src="https://img.shields.io/badge/React-18-61DAFB?style=for-the-badge&logo=react&logoColor=black" alt="React">
 </p>
 
 <p align="center">
-  <a href="https://github.com/netease-youdao/LobsterAI/releases"><strong>⬇️ Download</strong></a>
-  &nbsp;·&nbsp;
-  <a href="#community"><strong>💬 Community</strong></a>
-  &nbsp;·&nbsp;
-  <a href="https://www.star-history.com/#netease-youdao/LobsterAI&type=date"><strong>⭐ Star History</strong></a>
-  &nbsp;·&nbsp;
   English · <a href="README_zh.md">中文</a>
 </p>
 
 ---
 
-**LobsterAI** is an all-scenario office assistant Agent built by [NetEase Youdao](https://www.youdao.com/) — the first open-source, desktop-grade Agent from a major Chinese tech company. It works around the clock to get real work done: data analysis, slide decks, video generation, document writing, web research, email, scheduled jobs, and more.
+**宇智汇和 AI 助手** is an all-scenario office assistant Agent built by 宇智汇和（东莞）科技有限公司. It works around the clock to get real work done: data analysis, slide decks, video generation, document writing, web research, email, scheduled jobs, and more.
 
-Unlike chat-only assistants, LobsterAI is **desktop-grade**. Through its **Cowork mode** it connects to your files, terminal, browser, and local projects — executing tools and running commands directly in your real working environment, with every sensitive action gated behind your approval. Spin up purpose-built Agents (stock research, content writing, lesson planning…), extend it with Expert Kits, Skills, and MCP servers, and reach it from your phone via WeChat, WeCom, DingTalk, Feishu, QQ, Telegram, Discord, and more — command your computer to work anytime, anywhere.
+Unlike chat-only assistants, 宇智汇和 AI 助手 is **desktop-grade**. Through its **Cowork mode** it connects to your files, terminal, browser, and local projects — executing tools and running commands directly in your real working environment, with every sensitive action gated behind your approval. Spin up purpose-built Agents (stock research, content writing, lesson planning…), extend it with Expert Kits, Skills, and MCP servers, and reach it from your phone via WeChat, WeCom, DingTalk, Feishu, QQ, Telegram, Discord, and more — command your computer to work anytime, anywhere.
 
-## Why LobsterAI
+## Why 宇智汇和 AI 助手
 
 - **🔓 Open source, secure & trustworthy** — 100% open-source code with transparent capabilities; permissions, data, and execution flows are all auditable
 - **🖥️ Desktop-grade Agent** — Connects to your files, terminal, browser, and local projects, working directly inside your real environment instead of a sandboxed chat box
 - **🧩 OpenClaw ecosystem** — Built on the open-source OpenClaw Agent framework, with continuous access to new Skills, tools, MCP servers, and models
-- **📱 Command your computer from your phone** — Drive LobsterAI 24/7 through WeChat, WeCom, DingTalk, Feishu, QQ, Telegram, Discord, and more
+- **📱 Command your computer from your phone** — Drive 宇智汇和 AI 助手 24/7 through WeChat, WeCom, DingTalk, Feishu, QQ, Telegram, Discord, and more
 - **🔒 Local data, controlled actions** — Sessions, configuration, and memory stay on your device; every tool call is gated and logged
 
 ## Capabilities
@@ -86,8 +77,8 @@ Unlike chat-only assistants, LobsterAI is **desktop-grade**. Through its **Cowor
 ### 1. Clone & install
 
 ```bash
-git clone https://github.com/netease-youdao/LobsterAI.git
-cd LobsterAI
+git clone <your-repository-url>
+cd your-app
 npm install
 ```
 
@@ -110,7 +101,7 @@ npm run electron:dev
 ```
 
 The Vite dev server runs at `http://localhost:5175`. By default the app connects to
-LobsterAI's **production** services, so no extra setup is needed to sign in and use it.
+the configured production services. Login, model, and plan features depend on the current backend configuration.
 
 #### OpenClaw build options
 
@@ -178,7 +169,7 @@ KEYFROM=xxx npm run dist:mac:arm64
 npx cross-env KEYFROM=xxx npm run dist:win
 ```
 
-Desktop packaging (macOS / Windows / Linux) bundles a prebuilt OpenClaw runtime under `Resources/cfmind`.
+Desktop packaging (macOS / Windows / Linux) bundles a prebuilt runtime under `Resources/yuzhh-runtime`.
 The pinned OpenClaw version (`package.json` → `openclaw.version`) is automatically fetched and built during packaging — no manual setup needed.
 The build is cached: if the runtime for the pinned version already exists locally, the build step is skipped automatically.
 
@@ -202,7 +193,7 @@ OPENCLAW_SRC=/path/to/openclaw npm run dist:win
 ```
 
 Windows builds bundle a portable Python runtime under `resources/python-win` (included as installer resource `python-win`), so end users do not need to install Python manually.
-The bundled runtime is interpreter-focused and does not preinstall LobsterAI skill Python packages; those can be installed at runtime on demand.
+The bundled runtime is interpreter-focused and does not preinstall 宇智汇和 AI 助手 skill Python packages; those can be installed at runtime on demand.
 By default, packaging downloads the official Python embeddable runtime from python.org if no prebuilt archive is provided.
 For offline/non-network builds, provide a prebuilt runtime archive explicitly.
 
@@ -215,7 +206,7 @@ Offline/runtime source options for packaging:
 
 ## Architecture
 
-LobsterAI uses Electron's strict process isolation. All cross-process communication goes through IPC.
+宇智汇和 AI 助手 uses Electron's strict process isolation. All cross-process communication goes through IPC.
 
 ### Process Model
 
@@ -288,7 +279,7 @@ SKILLs/                              # Skill definitions
 
 ## Cowork System
 
-Cowork is the core feature of LobsterAI — an AI working session system powered by OpenClaw as the primary agent engine. Designed for productivity scenarios, it can autonomously complete complex tasks like data analysis, document generation, and information retrieval.
+Cowork is the core feature of 宇智汇和 AI 助手 — an AI working session system powered by OpenClaw as the primary agent engine. Designed for productivity scenarios, it can autonomously complete complex tasks like data analysis, document generation, and information retrieval.
 
 <details>
 <summary>Execution modes, stream events & permission control</summary>
@@ -318,7 +309,7 @@ All tool invocations involving file system access, terminal commands, or network
 
 ## Skills System
 
-LobsterAI ships with a rich set of built-in skills covering productivity, creative, investment research, and automation scenarios, configured via `SKILLs/skills.config.json`. Below are some typical examples:
+宇智汇和 AI 助手 ships with a rich set of built-in skills covering productivity, creative, investment research, and automation scenarios, configured via `SKILLs/skills.config.json`. Below are some typical examples:
 
 <details>
 <summary>View the full skill list</summary>
@@ -360,7 +351,7 @@ Custom skills can be created via `skill-creator` and hot-loaded at runtime.
 
 ## Scheduled Tasks
 
-LobsterAI supports scheduled tasks that let the Agent automatically execute recurring work on a set schedule.
+宇智汇和 AI 助手 supports scheduled tasks that let the Agent automatically execute recurring work on a set schedule.
 
 ### How to Create
 
@@ -381,7 +372,7 @@ Scheduled tasks are powered by Cron expressions, supporting minute, hourly, dail
 
 ## IM Integration — Mobile Remote Control
 
-LobsterAI can bridge the Agent to multiple IM platforms. Send a message from your phone via IM to remotely trigger the desktop Agent — command your personal assistant anytime, anywhere.
+宇智汇和 AI 助手 can bridge the Agent to multiple IM platforms. Send a message from your phone via IM to remotely trigger the desktop Agent — command your personal assistant anytime, anywhere.
 
 | Platform | Protocol | Description |
 |----------|----------|-------------|
@@ -400,7 +391,7 @@ Configure the corresponding platform Token/Secret in the Settings panel to enabl
 
 ## Persistent Memory
 
-LobsterAI's memory system is built on OpenClaw and persists information as files in the working directory, so the Agent remembers your preferences and context across sessions.
+宇智汇和 AI 助手's memory system is built on OpenClaw and persists information as files in the working directory, so the Agent remembers your preferences and context across sessions.
 
 ### Memory File Structure
 
@@ -425,7 +416,7 @@ Memory writes go through file tools — there is no background extraction or inf
 
 ## Data Storage
 
-All data is stored in a local SQLite database (`lobsterai.sqlite` in the user data directory).
+All data is stored in a local SQLite database (`yuzhh-ai-assistant.sqlite` in the user data directory).
 
 <details>
 <summary>Database tables</summary>
@@ -448,7 +439,7 @@ All data is stored in a local SQLite database (`lobsterai.sqlite` in the user da
 
 ## Security Model
 
-LobsterAI enforces security at multiple layers:
+宇智汇和 AI 助手 enforces security at multiple layers:
 
 - **Process Isolation** — Context isolation enabled, node integration disabled
 - **Permission Gating** — Tool invocations require explicit user approval
@@ -498,7 +489,7 @@ Currently English and Chinese are supported. Switch languages in the Settings pa
 <details>
 <summary>Version pinning, how it works, updating & env vars</summary>
 
-LobsterAI pins its OpenClaw dependency to a specific release version, declared in `package.json`:
+宇智汇和 AI 助手 pins its OpenClaw dependency to a specific release version, declared in `package.json`:
 
 ```json
 {
@@ -605,10 +596,6 @@ Please include in your PR description: a summary of changes, linked issue (if an
 [MIT License](LICENSE)
 
 
-## Star History
-
-[![Star History Chart](https://api.star-history.com/svg?repos=netease-youdao/LobsterAI&type=date&legend=top-left)](https://www.star-history.com/#netease-youdao/LobsterAI&type=date&legend=top-left)
-
 ---
 
-Built and maintained by [NetEase Youdao](https://www.youdao.com/).
+Built and maintained by 宇智汇和（东莞）科技有限公司.
