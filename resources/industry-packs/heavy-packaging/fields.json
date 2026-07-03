@@ -1,0 +1,53 @@
+{
+  "groups": [
+    {
+      "id": "factory",
+      "title": "工厂资料",
+      "fields": [
+        { "id": "factoryName", "label": "工厂名称", "kind": "text", "required": true },
+        { "id": "location", "label": "所在地区", "kind": "text", "required": true },
+        { "id": "serviceRegion", "label": "服务区域", "kind": "text", "helpText": "例如：珠三角、长三角、华东整车配送" },
+        { "id": "contactMethod", "label": "联系方式", "kind": "text" },
+        { "id": "factoryAdvantages", "label": "工厂优势", "kind": "textarea", "helpText": "设备、产能、打样、驻厂设计、物流响应等" }
+      ]
+    },
+    {
+      "id": "capability",
+      "title": "产品与能力",
+      "fields": [
+        {
+          "id": "productTypes",
+          "label": "主营产品",
+          "kind": "multiselect",
+          "required": true,
+          "options": [
+            { "value": "heavy_corrugated_carton", "label": "重型瓦楞纸箱" },
+            { "value": "honeycomb_carton", "label": "蜂窝纸箱" },
+            { "value": "paper_edge_protector", "label": "纸护角" },
+            { "value": "paper_pallet", "label": "纸托盘" },
+            { "value": "wooden_box_replacement", "label": "替代木箱包装" }
+          ]
+        },
+        { "id": "loadRange", "label": "承重范围", "kind": "text", "helpText": "例如：单箱 50-300kg，托盘动载 800kg" },
+        { "id": "customSize", "label": "可定制尺寸", "kind": "text" },
+        { "id": "reinforcementOptions", "label": "加固方式", "kind": "textarea" },
+        { "id": "sampleLeadTime", "label": "打样周期", "kind": "text" },
+        { "id": "batchLeadTime", "label": "批量交期", "kind": "text" },
+        { "id": "moq", "label": "起订量", "kind": "text" }
+      ]
+    },
+    {
+      "id": "case",
+      "title": "案例资料",
+      "fields": [
+        { "id": "customerIndustry", "label": "客户行业", "kind": "text" },
+        { "id": "customerProduct", "label": "客户产品", "kind": "text" },
+        { "id": "productWeight", "label": "单件重量", "kind": "text" },
+        { "id": "transportMethod", "label": "运输方式", "kind": "text" },
+        { "id": "originalProblem", "label": "原包装痛点", "kind": "textarea" },
+        { "id": "solution", "label": "包装方案", "kind": "textarea" },
+        { "id": "result", "label": "改善结果", "kind": "textarea", "helpText": "破损率、装柜率、包装成本、仓储空间等变化" }
+      ]
+    }
+  ]
+}

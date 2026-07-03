@@ -1,0 +1,16 @@
+{
+  "type": "object",
+  "required": ["channel", "theme", "title", "body", "keywords", "cta"],
+  "properties": {
+    "channel": { "type": "string", "description": "渠道 ID" },
+    "theme": { "type": "string", "description": "主题 ID" },
+    "title": { "type": "string", "description": "渠道内容标题" },
+    "body": { "type": "string", "description": "可直接发布或编辑的正文" },
+    "keywords": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "自然使用的重型包装关键词"
+    },
+    "cta": { "type": "string", "description": "询价或转介绍引导" }
+  }
+}

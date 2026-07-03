@@ -1,0 +1,13 @@
+{
+  "id": "heavy-packaging",
+  "name": "重型包装获客内容包",
+  "version": "1.0.0",
+  "category": "manufacturing-marketing",
+  "description": "用于重型纸箱、蜂窝纸箱、纸托盘、纸护角等工业包装企业的国内推广内容生成。",
+  "locale": "zh-CN",
+  "entryTasks": ["generate_content_package", "generate_case_content", "generate_content_calendar"],
+  "supportedChannels": ["wechat_moments", "wechat_group", "1688", "baidu_seo", "short_video", "referral"],
+  "supportedThemes": ["replace_wooden_box", "anti_damage", "cost_reduction", "custom_packaging", "bulk_supply", "case_story"],
+  "supportedTones": ["boss", "professional_sales", "technical_solution", "short_direct"],
+  "defaultOutputSchemas": ["content-package", "content-calendar", "channel-asset"]
+}

@@ -1,0 +1,20 @@
+[
+  {
+    "id": "generate_content_package",
+    "name": "生成多渠道内容包",
+    "description": "按渠道生成朋友圈、微信群、1688、百度 SEO、短视频和转介绍文案。",
+    "outputSchema": "content-package"
+  },
+  {
+    "id": "generate_case_content",
+    "name": "生成客户案例内容",
+    "description": "把产品重量、运输方式、原包装痛点和新方案整理成案例型获客素材。",
+    "outputSchema": "content-package"
+  },
+  {
+    "id": "generate_content_calendar",
+    "name": "生成内容日历",
+    "description": "按天规划重型包装工厂的主题、渠道、标题、CTA 和素材提示。",
+    "outputSchema": "content-calendar"
+  }
+]

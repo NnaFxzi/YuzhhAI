@@ -1,0 +1,21 @@
+{
+  "type": "object",
+  "required": ["days"],
+  "properties": {
+    "days": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["dateOffset", "channel", "theme", "title", "brief", "cta"],
+        "properties": {
+          "dateOffset": { "type": "number", "description": "从今天开始的第几天，0 表示今天" },
+          "channel": { "type": "string" },
+          "theme": { "type": "string" },
+          "title": { "type": "string" },
+          "brief": { "type": "string", "description": "当天内容要点" },
+          "cta": { "type": "string" }
+        }
+      }
+    }
+  }
+}
