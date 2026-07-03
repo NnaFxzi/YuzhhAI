@@ -5,10 +5,11 @@ import { useDispatch, useSelector } from 'react-redux';
 import { RootState } from '../../store';
 import { selectPrompt } from '../../store/slices/quickActionSlice';
 import type { LocalizedPrompt, LocalizedQuickAction } from '../../types/quickAction';
+import { getWorkflowOutputLabel } from '../workbench/workbenchDisplay';
 
 interface PromptPanelProps {
   action: LocalizedQuickAction;
-  onPromptSelect: (prompt: string, promptId: string) => void;
+  onPromptSelect: (prompt: LocalizedPrompt) => void;
 }
 
 const PromptPanel: React.FC<PromptPanelProps> = ({ action, onPromptSelect }) => {
@@ -19,7 +20,7 @@ const PromptPanel: React.FC<PromptPanelProps> = ({ action, onPromptSelect }) => 
 
   const handlePromptClick = (prompt: LocalizedPrompt) => {
     dispatch(selectPrompt(prompt.id));
-    onPromptSelect(prompt.prompt, prompt.id);
+    onPromptSelect(prompt);
   };
 
   if (!action.prompts || action.prompts.length === 0) {
@@ -76,6 +77,23 @@ const PromptPanel: React.FC<PromptPanelProps> = ({ action, onPromptSelect }) => 
               {prompt.description && (
                 <p className="text-xs text-secondary line-clamp-2">
                   {prompt.description}
+                </p>
+              )}
+              {prompt.workflow?.outputTypes && prompt.workflow.outputTypes.length > 0 && (
+                <div className="mt-1 flex flex-wrap gap-1">
+                  {prompt.workflow.outputTypes.map((outputType) => (
+                    <span
+                      key={outputType}
+                      className="rounded-[4px] bg-primary-muted px-1.5 py-0.5 text-[11px] font-medium text-primary"
+                    >
+                      {getWorkflowOutputLabel(outputType)}
+                    </span>
+                  ))}
+                </div>
+              )}
+              {prompt.workflow?.requiredInputs?.[0] && (
+                <p className="mt-1 text-[11px] leading-4 text-secondary">
+                  {prompt.workflow.requiredInputs[0]}
                 </p>
               )}
             </button>

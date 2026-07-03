@@ -8,10 +8,12 @@ import {
 import type { AgentSidebarAgentSummary } from './types';
 import {
   collapseAgentSidebarTaskList,
+  filterUserAgentSidebarAgents,
   removeAgentSidebarAgentTaskPreviews,
   removeAgentSidebarTaskPreviews,
   sortAgentSidebarAgents,
   sortAgentSidebarTasks,
+  sortRecentConversationSessions,
 } from './useAgentSidebarState';
 
 const makeSession = (
@@ -88,6 +90,39 @@ test('sortAgentSidebarAgents keeps pinned agents in first-pinned-first order', (
     'second-pinned',
     'regular',
     'another-regular',
+  ]);
+});
+
+test('filterUserAgentSidebarAgents excludes the default main agent from My Agents', () => {
+  const filtered = filterUserAgentSidebarAgents([
+    makeAgent('main', true, 1),
+    makeAgent('writer'),
+    makeAgent('researcher'),
+  ]);
+
+  expect(filtered.map((agent) => agent.id)).toEqual(['writer', 'researcher']);
+});
+
+test('sortRecentConversationSessions ignores pins and keeps conversations ordered by global activity', () => {
+  const sorted = sortRecentConversationSessions([
+    {
+      ...makeSession('older-pinned-agent-task', 100, 200, CoworkSessionStatusValue.Completed, true, 1),
+      agentId: 'writer',
+    },
+    {
+      ...makeSession('newest-main-conversation', 200, 500),
+      agentId: 'main',
+    },
+    {
+      ...makeSession('middle-agent-task', 300, 400),
+      agentId: 'researcher',
+    },
+  ]);
+
+  expect(sorted.map((session) => `${session.id}:${session.agentId}`)).toEqual([
+    'newest-main-conversation:main',
+    'middle-agent-task:researcher',
+    'older-pinned-agent-task:writer',
   ]);
 });
 

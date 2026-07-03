@@ -96,6 +96,7 @@ import {
   resolveMediaMentionTrigger,
 } from './mediaMentionUtils';
 import MediaModelPicker from './MediaModelPicker';
+import { resolvePromptAgentSelectorState } from './promptAgentOptions';
 import {
   getAttachmentAnalyticsParams,
   getKitAnalyticsParams,
@@ -111,6 +112,7 @@ import { buildSelectedKitContextPrompt } from './selectedKitContextPrompt';
 import { buildSelectedSkillRoutingPrompt } from './selectedSkillRoutingPrompt';
 import SelectedTextSnippetBadge from './SelectedTextSnippetBadge';
 import { buildPlanModeSystemPrompt } from './skillSystemPrompt';
+import { resolveCoworkSubmitAccessPrompt } from './submitAccess';
 import { usePersistAgentModelSelection } from './usePersistAgentModelSelection';
 import { useCoworkVoiceInput } from './voiceInput/useCoworkVoiceInput';
 import VoiceInputButton from './voiceInput/VoiceInputButton';
@@ -548,23 +550,12 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
   const modelSupportsImage = !!effectiveSelectedModel?.supportsImage;
 
   const resolveSubmitModelAccessPrompt = useCallback((): ModelAccessPromptKind | null => {
-    const hasAccessibleUserModel = availableModels.some(
-      model => !model.isServerModel && model.accessible !== false
-    );
-    if (!isLoggedIn && !hasAccessibleUserModel) {
-      return ModelAccessPromptKind.Login;
-    }
-    if (
-      effectiveSelectedModel?.providerKey === ProviderName.LobsteraiServer
-      && effectiveSelectedModel.accessible === false
-    ) {
-      return isLoggedIn ? ModelAccessPromptKind.Subscribe : ModelAccessPromptKind.Login;
-    }
-    return null;
+    return resolveCoworkSubmitAccessPrompt({
+      isLoggedIn,
+      effectiveSelectedModel,
+    });
   }, [
-    availableModels,
-    effectiveSelectedModel?.accessible,
-    effectiveSelectedModel?.providerKey,
+    effectiveSelectedModel,
     isLoggedIn,
   ]);
 
@@ -1951,17 +1942,14 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
   );
   const sendButtonTitle = `${i18nService.t('sendMessage')} (${getSendShortcutLabel(currentSendShortcut)})`;
   const stopButtonLabel = i18nService.t('stop');
-  const currentAgentForDisplay: AgentSelectorOption = currentAgent ?? {
-    id: currentAgentId,
-    name: currentAgentId,
-    icon: '',
-    enabled: true,
-  };
-  const enabledAgentOptions = agents.filter((agent) => agent.enabled || agent.id === currentAgentId);
-  const agentOptions = enabledAgentOptions.some((agent) => agent.id === currentAgentForDisplay.id)
-    ? enabledAgentOptions
-    : [currentAgentForDisplay, ...enabledAgentOptions];
-  const currentAgentName = getAgentDisplayName(currentAgentForDisplay);
+  const {
+    agentOptions,
+    currentAgentForDisplay,
+    shouldShowAgentSelector,
+  } = resolvePromptAgentSelectorState({ agents, currentAgentId });
+  const currentAgentName = currentAgentForDisplay
+    ? getAgentDisplayName(currentAgentForDisplay)
+    : i18nService.t('coworkSelectAgent');
   const homeContextAgentName = truncateDisplayText(currentAgentName, ContextLabelMaxLength.Agent);
   const readOnlyContextAgentId = contextAgentId?.trim() || currentAgentId;
   const readOnlyContextAgent = agents.find((agent) => agent.id === readOnlyContextAgentId);
@@ -2557,51 +2545,55 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
                     )}
                   </div>
                 )}
-                <div className="relative min-w-0 shrink">
-                  <button
-                    ref={agentButtonRef}
-                    type="button"
-                    onClick={() => {
-                      reportPromptControl(showAgentMenu ? 'agent_selector_close' : 'agent_selector_open', {
-                        agentCount: agentOptions.length,
-                      });
-                      setShowAgentMenu(!showAgentMenu);
-                    }}
-                    className={`flex h-7 max-w-[220px] items-center gap-1.5 rounded-lg px-2 text-[13px] text-secondary transition-colors hover:bg-background/80 hover:text-foreground ${
-                      showAgentMenu ? 'bg-background/80 text-foreground' : ''
-                    }`}
-                    aria-label={i18nService.t('coworkSelectAgent')}
-                    title={`${i18nService.t('coworkCurrentAgent')}: ${currentAgentName}`}
-                  >
-                    <AgentContextAvatar agent={currentAgentForDisplay} />
-                    <span className="min-w-0 truncate">{homeContextAgentName}</span>
-                    <ChevronDownIcon className="h-3.5 w-3.5 shrink-0" />
-                  </button>
-                  {showAgentMenu && (
-                    <div
-                      ref={agentMenuRef}
-                      className="absolute bottom-full left-0 z-50 mb-1 max-h-64 w-64 overflow-y-auto rounded-xl border border-border bg-surface py-1 shadow-popover"
+                {shouldShowAgentSelector && (
+                  <div className="relative min-w-0 shrink">
+                    <button
+                      ref={agentButtonRef}
+                      type="button"
+                      onClick={() => {
+                        reportPromptControl(showAgentMenu ? 'agent_selector_close' : 'agent_selector_open', {
+                          agentCount: agentOptions.length,
+                        });
+                        setShowAgentMenu(!showAgentMenu);
+                      }}
+                      className={`flex h-7 max-w-[220px] items-center gap-1.5 rounded-lg px-2 text-[13px] text-secondary transition-colors hover:bg-background/80 hover:text-foreground ${
+                        showAgentMenu ? 'bg-background/80 text-foreground' : ''
+                      }`}
+                      aria-label={i18nService.t('coworkSelectAgent')}
+                      title={currentAgentForDisplay
+                        ? `${i18nService.t('coworkCurrentAgent')}: ${currentAgentName}`
+                        : i18nService.t('coworkSelectAgent')}
                     >
-                      {agentOptions.map((agent) => {
-                        const isSelectedAgent = agent.id === currentAgentId;
-                        return (
-                          <button
-                            key={agent.id}
-                            type="button"
-                            onClick={() => handleSelectAgent(agent.id)}
-                            className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-surface-raised ${
-                              isSelectedAgent ? 'bg-surface-raised/70 text-foreground' : 'text-foreground'
-                            }`}
-                          >
-                            <AgentContextAvatar agent={agent} />
-                            <span className="min-w-0 flex-1 truncate">{getAgentDisplayName(agent)}</span>
-                            {isSelectedAgent && <CheckIcon className="h-4 w-4 shrink-0 text-primary" />}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
+                      {currentAgentForDisplay && <AgentContextAvatar agent={currentAgentForDisplay} />}
+                      <span className="min-w-0 truncate">{homeContextAgentName}</span>
+                      <ChevronDownIcon className="h-3.5 w-3.5 shrink-0" />
+                    </button>
+                    {showAgentMenu && (
+                      <div
+                        ref={agentMenuRef}
+                        className="absolute bottom-full left-0 z-50 mb-1 max-h-64 w-64 overflow-y-auto rounded-xl border border-border bg-surface py-1 shadow-popover"
+                      >
+                        {agentOptions.map((agent) => {
+                          const isSelectedAgent = agent.id === currentAgentId;
+                          return (
+                            <button
+                              key={agent.id}
+                              type="button"
+                              onClick={() => handleSelectAgent(agent.id)}
+                              className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-surface-raised ${
+                                isSelectedAgent ? 'bg-surface-raised/70 text-foreground' : 'text-foreground'
+                              }`}
+                            >
+                              <AgentContextAvatar agent={agent} />
+                              <span className="min-w-0 flex-1 truncate">{getAgentDisplayName(agent)}</span>
+                              {isSelectedAgent && <CheckIcon className="h-4 w-4 shrink-0 text-primary" />}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </>
           ) : (

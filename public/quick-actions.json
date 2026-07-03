@@ -1,83 +1,90 @@
 {
-  "version": 1,
+  "version": 2,
   "actions": [
     {
-      "id": "pptx",
+      "id": "office",
       "icon": "PresentationChartBarIcon",
-      "color": "#F59E0B",
-      "skillMapping": "pptx",
+      "color": "#2563EB",
+      "skillMapping": "docx",
+      "category": "office",
       "prompts": [
         {
-          "id": "pptx-work-report"
+          "id": "office.daily-report",
+          "workflow": {
+            "category": "office",
+            "requiredInputs": ["工作记录、聊天记录、文件或截图"],
+            "outputTypes": ["markdown", "document"],
+            "followUps": [
+              {
+                "id": "repeat-weekday",
+                "label": "设为工作日自动生成",
+                "prompt": "每个工作日根据同样来源生成日报。"
+              }
+            ]
+          }
         },
         {
-          "id": "pptx-content-research"
+          "id": "office.files-to-ppt",
+          "workflow": {
+            "category": "office",
+            "requiredInputs": ["资料文件、文件夹或网页链接"],
+            "outputTypes": ["presentation"],
+            "followUps": [
+              {
+                "id": "repeat-weekly",
+                "label": "每周更新这份 PPT",
+                "prompt": "每周根据新增资料更新这份 PPT。"
+              }
+            ]
+          }
         },
         {
-          "id": "pptx-education"
-        },
-        {
-          "id": "pptx-ai-intro"
+          "id": "office.excel-summary",
+          "workflow": {
+            "category": "office",
+            "requiredInputs": ["Excel、CSV 或截图表格"],
+            "outputTypes": ["spreadsheet", "document"]
+          }
         }
       ]
     },
     {
-      "id": "data-analysis",
-      "icon": "ChartBarIcon",
-      "color": "#8B5CF6",
-      "skillMapping": "xlsx",
-      "prompts": [
-        {
-          "id": "excel-summary"
-        },
-        {
-          "id": "image-to-excel"
-        },
-        {
-          "id": "word-report"
-        },
-        {
-          "id": "multi-excel-merge"
-        }
-      ]
-    },
-    {
-      "id": "education",
-      "icon": "AcademicCapIcon",
-      "color": "#10B981",
-      "skillMapping": "frontend-design",
-      "prompts": [
-        {
-          "id": "edu-english-words"
-        },
-        {
-          "id": "edu-math-explain"
-        },
-        {
-          "id": "edu-essay-writing"
-        },
-        {
-          "id": "edu-knowledge-explain"
-        }
-      ]
-    },
-    {
-      "id": "website",
+      "id": "content",
       "icon": "GlobeAltIcon",
-      "color": "#3B82F6",
-      "skillMapping": "frontend-design",
+      "color": "#10B981",
+      "skillMapping": "web-search",
+      "category": "content",
       "prompts": [
         {
-          "id": "web-resume"
+          "id": "content.topic-calendar",
+          "workflow": {
+            "category": "content",
+            "requiredInputs": ["账号定位、目标受众、参考链接或历史内容"],
+            "outputTypes": ["spreadsheet", "markdown"],
+            "followUps": [
+              {
+                "id": "repeat-weekly",
+                "label": "每周生成选题表",
+                "prompt": "每周根据近期热点和账号定位生成下周选题表。"
+              }
+            ]
+          }
         },
         {
-          "id": "web-store"
+          "id": "content.competitor-research",
+          "workflow": {
+            "category": "content",
+            "requiredInputs": ["竞品名称、账号链接或行业关键词"],
+            "outputTypes": ["markdown", "document"]
+          }
         },
         {
-          "id": "web-event"
-        },
-        {
-          "id": "web-survey"
+          "id": "content.short-video-script",
+          "workflow": {
+            "category": "content",
+            "requiredInputs": ["主题、目标平台、时长和口播风格"],
+            "outputTypes": ["markdown", "video"]
+          }
         }
       ]
     }

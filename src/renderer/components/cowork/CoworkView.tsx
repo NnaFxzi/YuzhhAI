@@ -1,4 +1,4 @@
-import { ShieldCheckIcon } from '@heroicons/react/24/outline';
+import { InboxStackIcon, ShieldCheckIcon } from '@heroicons/react/24/outline';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 
@@ -13,25 +13,30 @@ import {
   resolveSelectedKitCapabilities,
 } from '../../services/kitCapability';
 import { quickActionService } from '../../services/quickAction';
+import { buildWorkflowPrompt } from '../../services/workflowPrompt';
 import { RootState } from '../../store';
 import {
   selectCoworkConfig,
   selectCurrentSession,
   selectIsStreaming,
 } from '../../store/selectors/coworkSelectors';
+import { selectSessionArtifacts } from '../../store/slices/artifactSlice';
 import { addMessage, setCurrentSession, setDraftCollaborationMode, setDraftKitIds, setDraftSkillIds, setStreaming, updateSessionStatus } from '../../store/slices/coworkSlice';
 import { clearActiveKits } from '../../store/slices/kitSlice';
-import { clearSelection,selectAction, setActions } from '../../store/slices/quickActionSlice';
+import { clearSelection, selectAction, selectPrompt, setActions } from '../../store/slices/quickActionSlice';
 import { clearActiveSkills, setActiveSkillIds } from '../../store/slices/skillSlice';
 import { CoworkCollaborationMode, type CoworkCollaborationMode as CoworkCollaborationModeType, type CoworkImageAttachment, type CoworkSession, type OpenClawEngineStatus, type SubagentSessionSummary } from '../../types/cowork';
 import type { MediaAttachmentRef } from '../../types/mediaGeneration';
+import type { LocalizedPrompt } from '../../types/quickAction';
 import { toOpenClawModelRef } from '../../utils/openclawModelRef';
 import CreditsResetCampaignFloat from '../CreditsResetCampaignFloat';
 import ComposeIcon from '../icons/ComposeIcon';
 import SidebarToggleIcon from '../icons/SidebarToggleIcon';
-import { PromptPanel, QuickActionBar } from '../quick-actions';
+import { PromptPanel } from '../quick-actions';
 import type { SettingsOpenOptions } from '../Settings';
 import WindowTitleBar from '../window/WindowTitleBar';
+import { WorkbenchDrawer, WorkbenchWorkflowGrid } from '../workbench';
+import { getWorkbenchBadgeCount } from '../workbench/workbenchDisplay';
 import { useAgentSelectedModel } from './agentModelSelection';
 import { CoworkUiEvent } from './constants';
 import CoworkPromptInput, { type CoworkPromptInputRef } from './CoworkPromptInput';
@@ -61,6 +66,7 @@ const CoworkView: React.FC<CoworkViewProps> = ({ onRequestAppSettings, onShowSki
   const [isInitialized, setIsInitialized] = useState(false);
   const [openClawStatus, setOpenClawStatus] = useState<OpenClawEngineStatus | null>(null);
   const [isRestartingGateway, setIsRestartingGateway] = useState(false);
+  const [isWorkbenchDrawerOpen, setIsWorkbenchDrawerOpen] = useState(false);
   // Track if we're starting/continuing a session to prevent duplicate submissions
   const isStartingRef = useRef(false);
   const isContinuingRef = useRef(false);
@@ -94,6 +100,7 @@ const CoworkView: React.FC<CoworkViewProps> = ({ onRequestAppSettings, onShowSki
   // Clear subagent view when session changes
   useEffect(() => {
     setViewingSubagent(null);
+    setIsWorkbenchDrawerOpen(false);
   }, [currentSession?.id]);
 
   const activeSkillIds = useSelector((state: RootState) => state.skill.activeSkillIds);
@@ -108,6 +115,19 @@ const CoworkView: React.FC<CoworkViewProps> = ({ onRequestAppSettings, onShowSki
   const currentAgent = agents.find((agent) => agent.id === currentAgentId);
   const currentAgentWorkingDirectory = currentAgent?.workingDirectory?.trim() || config.workingDirectory || '';
   const currentAgentSelectedModel = useAgentSelectedModel(currentAgentId, currentAgent?.model ?? '');
+  const workbenchDraftKey = currentSession?.id || '__home__';
+  const workbenchArtifacts = useSelector((state: RootState) => (
+    currentSession ? selectSessionArtifacts(state, currentSession.id) : []
+  ));
+  const workbenchDraftAttachments = useSelector((state: RootState) => (
+    state.cowork.draftAttachments[workbenchDraftKey] ?? []
+  ));
+  const workbenchTasks = useSelector((state: RootState) => state.scheduledTask.tasks);
+  const workbenchBadgeCount = getWorkbenchBadgeCount({
+    materialCount: workbenchDraftAttachments.length,
+    artifactCount: workbenchArtifacts.length,
+    taskCount: workbenchTasks.length,
+  });
   const homeDraftCollaborationMode = useSelector((state: RootState) => (
     state.cowork.draftCollaborationModes.__home__ || CoworkCollaborationMode.Default
   ));
@@ -579,23 +599,23 @@ const CoworkView: React.FC<CoworkViewProps> = ({ onRequestAppSettings, onShowSki
   }, [activeSkillIds, dispatch, quickActions, selectedActionId]);
 
   // Handle prompt selection from QuickAction
-  const handleQuickActionPromptSelect = (prompt: string, promptId?: string) => {
-    if (selectedAction) {
-      const selectedPrompt = selectedAction.prompts.find(item => item.id === promptId);
-      const targetSkill = skills.find(skill => skill.id === selectedAction.skillMapping);
-      console.debug(`[CoworkView] reporting prompt template analytics: template_prompt_click ${selectedAction.id}/${promptId ?? 'unknown'}`);
+  const handleQuickActionPromptSelect = (prompt: LocalizedPrompt, actionOverride = selectedAction) => {
+    const nextPrompt = buildWorkflowPrompt(prompt);
+    if (actionOverride) {
+      const targetSkill = skills.find(skill => skill.id === actionOverride.skillMapping);
+      console.debug(`[CoworkView] reporting prompt template analytics: template_prompt_click ${actionOverride.id}/${prompt.id}`);
       reportPromptTemplateAction({
         templateActionType: 'template_prompt_click',
-        templateId: selectedAction.id,
-        templateName: selectedAction.label,
-        templateIndex: quickActions.findIndex(item => item.id === selectedAction.id),
-        mappedSkillId: selectedAction.skillMapping,
+        templateId: actionOverride.id,
+        templateName: actionOverride.label,
+        templateIndex: quickActions.findIndex(item => item.id === actionOverride.id),
+        mappedSkillId: actionOverride.skillMapping,
         mappedSkillName: targetSkill?.name,
-        promptId,
-        promptName: selectedPrompt?.label,
-        promptIndex: selectedAction.prompts.findIndex(item => item.id === promptId),
-        promptLength: prompt.length,
-        hasAutoEnabledSkill: activeSkillIds.includes(selectedAction.skillMapping),
+        promptId: prompt.id,
+        promptName: prompt.label,
+        promptIndex: actionOverride.prompts.findIndex(item => item.id === prompt.id),
+        promptLength: nextPrompt.length,
+        hasAutoEnabledSkill: activeSkillIds.includes(actionOverride.skillMapping),
         params: {
           modelId: currentAgentSelectedModel?.id,
           modelName: currentAgentSelectedModel?.name,
@@ -606,8 +626,15 @@ const CoworkView: React.FC<CoworkViewProps> = ({ onRequestAppSettings, onShowSki
       });
     }
     // Fill the prompt into input
-    promptInputRef.current?.setValue(prompt, 'template');
+    dispatch(selectPrompt(prompt.id));
+    promptInputRef.current?.setValue(nextPrompt, 'template');
     promptInputRef.current?.focus();
+  };
+
+  const handleFeaturedWorkflowPromptSelect = (actionId: string, prompt: LocalizedPrompt) => {
+    const action = quickActions.find(item => item.id === actionId);
+    handleActionSelect(actionId);
+    handleQuickActionPromptSelect(prompt, action);
   };
 
   useEffect(() => {
@@ -731,6 +758,33 @@ const CoworkView: React.FC<CoworkViewProps> = ({ onRequestAppSettings, onShowSki
     </div>
   ) : null;
 
+  const workbenchLauncherButton = (
+    <button
+      type="button"
+      className="non-draggable inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-subtle bg-surface/80 px-2.5 text-xs font-medium text-foreground shadow-sm transition-colors hover:border-primary/30 hover:bg-surface-raised"
+      onClick={() => setIsWorkbenchDrawerOpen(true)}
+    >
+      <InboxStackIcon className="h-4 w-4 text-primary" />
+      <span>{i18nService.t('workbenchBasket')}</span>
+      {workbenchBadgeCount > 0 && (
+        <span className="ml-0.5 rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white">
+          {workbenchBadgeCount}
+        </span>
+      )}
+    </button>
+  );
+
+  const workbenchDrawer = (
+    <WorkbenchDrawer
+      isOpen={isWorkbenchDrawerOpen}
+      onClose={() => setIsWorkbenchDrawerOpen(false)}
+      sessionId={currentSession?.id ?? null}
+      draftKey={workbenchDraftKey}
+      workflows={quickActions}
+      onWorkflowSelect={handleActionSelect}
+    />
+  );
+
   // When viewing a subagent, show the subagent detail view
   if (viewingSubagent) {
     return (
@@ -754,18 +808,24 @@ const CoworkView: React.FC<CoworkViewProps> = ({ onRequestAppSettings, onShowSki
   // When there's a current session, show the session detail view
   if (currentSession) {
     return (
-      <div className="flex-1 flex flex-col h-full">
+      <div className="relative flex-1 flex flex-col h-full">
         {engineStatusBanner}
-        <CoworkSessionDetail
-          onManageSkills={() => onShowSkills?.()}
-          onManageKits={() => onShowKits?.()}
-          onContinue={handleContinueSession}
-          onStop={handleStopSession}
-          isSidebarCollapsed={isSidebarCollapsed}
-          onToggleSidebar={onToggleSidebar}
-          onNewChat={onNewChat}
-          updateBadge={updateBadge}
-        />
+        <div className="absolute right-24 top-2 z-40 hidden lg:block">
+          {workbenchLauncherButton}
+        </div>
+        <div className="min-h-0 flex-1">
+          <CoworkSessionDetail
+            onManageSkills={() => onShowSkills?.()}
+            onManageKits={() => onShowKits?.()}
+            onContinue={handleContinueSession}
+            onStop={handleStopSession}
+            isSidebarCollapsed={isSidebarCollapsed}
+            onToggleSidebar={onToggleSidebar}
+            onNewChat={onNewChat}
+            updateBadge={updateBadge}
+          />
+        </div>
+        {workbenchDrawer}
       </div>
     );
   }
@@ -780,71 +840,86 @@ const CoworkView: React.FC<CoworkViewProps> = ({ onRequestAppSettings, onShowSki
       {homeHeader}
 
       {/* Main Content */}
-      <div className="flex-1 overflow-y-auto min-h-0 relative">
-        <div className="relative flex min-h-full w-full min-w-[320px] flex-col items-center px-4 pt-[clamp(88px,19vh,140px)] pb-8">
-          {/* Welcome Section - staggered entrance animation */}
-          <div className="w-full max-w-3xl text-center">
-            <img
-              src="logo.png"
-              alt={i18nService.t('cowork')}
-              className="mx-auto h-12 w-12 animate-fade-in-up"
-            />
-            <h2
-              className="mt-4 text-[24px] font-semibold leading-8 tracking-normal text-foreground animate-fade-in-up"
-              style={{ animationDelay: '70ms', animationFillMode: 'both' }}
-            >
-              {i18nService.t('coworkWelcome')}
-            </h2>
-            <p
-              className="mt-2 text-[15px] font-normal leading-6 text-secondary animate-fade-in-up"
-              style={{ animationDelay: '120ms', animationFillMode: 'both' }}
-            >
-              {i18nService.t('coworkDescription')}
-            </p>
-          </div>
+      <div className="relative flex min-h-0 flex-1">
+        <div className="absolute right-5 top-3 z-40 hidden lg:block">
+          {workbenchLauncherButton}
+        </div>
+        <div className="flex-1 overflow-y-auto min-h-0 relative">
+          <div className="relative flex min-h-full w-full min-w-[320px] flex-col items-center px-6 pt-[clamp(48px,8vh,72px)] pb-10">
+            <div className="w-full max-w-[920px]">
+              {/* Welcome Section - staggered entrance animation */}
+              <div className="max-w-3xl">
+                <div className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary-muted px-3 py-1 text-xs font-medium text-primary animate-fade-in-up">
+                  <ShieldCheckIcon className="h-3.5 w-3.5" />
+                  {i18nService.t('workbench')}
+                </div>
+                <h2
+                  className="mt-4 text-[28px] font-semibold leading-9 tracking-normal text-foreground animate-fade-in-up"
+                  style={{ animationDelay: '70ms', animationFillMode: 'both' }}
+                >
+                  {i18nService.t('workbenchHomeTitle')}
+                </h2>
+                <p
+                  className="mt-2 max-w-2xl text-sm font-normal leading-6 text-secondary animate-fade-in-up"
+                  style={{ animationDelay: '120ms', animationFillMode: 'both' }}
+                >
+                  {i18nService.t('workbenchHomeSubtitle')}
+                </p>
+              </div>
 
-          {/* Prompt Input Area - Large version with folder selector */}
-          <div
-            className="relative z-30 mt-9 w-full max-w-3xl animate-fade-in-up"
-            style={{ animationDelay: '180ms', animationFillMode: 'both' }}
-          >
-            <CoworkPromptInput
-              ref={promptInputRef}
-              onSubmit={handleStartSession}
-              onStop={handleStopSession}
-              isStreaming={isStreaming}
-              disabled={!isEngineReady}
-              placeholder={i18nService.t('coworkPlaceholder')}
-              size="large"
-              workingDirectory={currentAgentWorkingDirectory}
-              onWorkingDirectoryChange={async (dir: string) => {
-                await agentService.updateAgent(currentAgentId, { workingDirectory: dir });
-              }}
-              showFolderSelector={true}
-              showModelSelector={true}
-              showAgentSelector={true}
-              onManageSkills={() => onShowSkills?.()}
-              onManageKits={() => onShowKits?.()}
-            />
-          </div>
+              {/* Prompt Input Area - Large version with folder selector */}
+              <div
+                className="relative z-30 mt-7 w-full animate-fade-in-up"
+                style={{ animationDelay: '160ms', animationFillMode: 'both' }}
+              >
+                <CoworkPromptInput
+                  ref={promptInputRef}
+                  onSubmit={handleStartSession}
+                  onStop={handleStopSession}
+                  isStreaming={isStreaming}
+                  disabled={!isEngineReady}
+                  placeholder={i18nService.t('workbenchPromptPlaceholder')}
+                  size="large"
+                  workingDirectory={currentAgentWorkingDirectory}
+                  onWorkingDirectoryChange={async (dir: string) => {
+                    await agentService.updateAgent(currentAgentId, { workingDirectory: dir });
+                  }}
+                  showFolderSelector={true}
+                  showModelSelector={true}
+                  showAgentSelector={true}
+                  onManageSkills={() => onShowSkills?.()}
+                  onManageKits={() => onShowKits?.()}
+                />
+              </div>
 
-          {/* Quick Actions */}
-          <div
-            className="relative z-0 mt-8 flex w-full max-w-3xl flex-col items-center animate-fade-in-up"
-            style={{ animationDelay: '260ms', animationFillMode: 'both' }}
-          >
-            {selectedAction ? (
-              <PromptPanel
-                action={selectedAction}
-                onPromptSelect={handleQuickActionPromptSelect}
-              />
-            ) : (
-              <QuickActionBar actions={quickActions} onActionSelect={handleActionSelect} />
-            )}
-            <CreditsResetCampaignFloat />
+              <div
+                className="relative z-0 mt-5 animate-fade-in-up"
+                style={{ animationDelay: '220ms', animationFillMode: 'both' }}
+              >
+                {selectedAction ? (
+                  <PromptPanel
+                    action={selectedAction}
+                    onPromptSelect={handleQuickActionPromptSelect}
+                  />
+                ) : (
+                  <WorkbenchWorkflowGrid
+                    actions={quickActions}
+                    onPromptSelect={handleFeaturedWorkflowPromptSelect}
+                  />
+                )}
+              </div>
+
+              <div
+                className="relative z-0 mt-5 animate-fade-in-up"
+                style={{ animationDelay: '280ms', animationFillMode: 'both' }}
+              >
+                <CreditsResetCampaignFloat />
+              </div>
+            </div>
           </div>
         </div>
       </div>
+      {workbenchDrawer}
     </div>
   );
 };

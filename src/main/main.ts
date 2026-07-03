@@ -106,6 +106,7 @@ import { authQuotaGateStateFromQuota, AuthSubscriptionStatus, createDefaultAuthQ
 import { type AutoLaunchStatus, getAutoLaunchStatus, isAutoLaunched, setAutoLaunchEnabled } from './autoLaunchManager';
 import { getRecentComputerUseLogEntries } from './computerUse/computerUseLogs';
 import { type CoworkForkContextMessage, type CoworkMessage, CoworkStore } from './coworkStore';
+import { buildDevServerUnavailableDataUrl } from './devServerErrorPage';
 import { setLanguage, t } from './i18n';
 import { IMGatewayConfig, IMGatewayManager } from './im';
 import {
@@ -159,6 +160,7 @@ import {
   getCurrentApiConfig,
   resolveAllEnabledProviderConfigs,
   resolveCurrentApiConfig,
+  resolveModelConfigReadiness,
   resolveRawApiConfig,
   setAuthTokensGetter,
   setServerBaseUrlGetter,
@@ -8542,14 +8544,14 @@ if (!gotTheLock) {
   });
 
   ipcMain.handle('check-api-config', async (_event, options?: { probeModel?: boolean }) => {
-    const { config, error } = resolveCurrentApiConfig();
+    const { config, error, hasConfig } = resolveModelConfigReadiness();
     if (config && options?.probeModel) {
       const probe = await probeCoworkModelReadiness();
       if (probe.ok === false) {
         return { hasConfig: false, config: null, error: probe.error };
       }
     }
-    return { hasConfig: config !== null, config, error };
+    return { hasConfig, config, error };
   });
 
   ipcMain.handle(
@@ -9657,11 +9659,23 @@ if (!gotTheLock) {
       scheduleReload('webContents-crashed');
     });
 
+    const isDevServerUrl = (url: string) => (
+      url === DEV_SERVER_URL || url.startsWith(`${DEV_SERVER_URL}/`)
+    );
+
     if (isDev) {
       // 开发环境
       const maxRetries = 3;
       let retryCount = 0;
+      let hasShownDevServerErrorPage = false;
 
+      const showDevServerErrorPage = () => {
+        if (!mainWindow || mainWindow.isDestroyed() || hasShownDevServerErrorPage) return;
+        hasShownDevServerErrorPage = true;
+        mainWindow.loadURL(buildDevServerUnavailableDataUrl(DEV_SERVER_URL)).catch(err => {
+          console.error('Failed to load dev server error page:', err);
+        });
+      };
       const tryLoadURL = () => {
         mainWindow?.loadURL(DEV_SERVER_URL).catch(err => {
           console.error('Failed to load URL:', err);
@@ -9672,9 +9686,7 @@ if (!gotTheLock) {
             setTimeout(tryLoadURL, 3000);
           } else {
             console.error('Failed to load URL after maximum retries');
-            if (mainWindow && !mainWindow.isDestroyed()) {
-              mainWindow.loadFile(path.join(__dirname, '../resources/error.html'));
-            }
+            showDevServerErrorPage();
           }
         });
       };
@@ -9695,6 +9707,12 @@ if (!gotTheLock) {
         if (!isMainFrame) return;
         console.error('Page failed to load:', errorCode, errorDescription);
         // 如果加载失败，尝试重新加载
+        if (isDev && isDevServerUrl(validatedURL)) {
+          mainWindow?.loadURL(buildDevServerUnavailableDataUrl(DEV_SERVER_URL)).catch(err => {
+            console.error('Failed to load dev server error page after did-fail-load:', err);
+          });
+          return;
+        }
         if (isDev) {
           setTimeout(() => {
             scheduleReload('did-fail-load');

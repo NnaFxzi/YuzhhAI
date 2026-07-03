@@ -95,6 +95,23 @@ export const sortAgentSidebarAgents = (
   });
 };
 
+export const filterUserAgentSidebarAgents = (
+  agents: AgentSidebarAgentSummary[],
+): AgentSidebarAgentSummary[] => {
+  return agents.filter((agent) => normalizeAgentId(agent.id) !== 'main');
+};
+
+export const sortRecentConversationSessions = (
+  sessions: CoworkSessionSummary[],
+): CoworkSessionSummary[] => {
+  return [...sessions].sort((a, b) => {
+    const aUpdatedAt = a.updatedAt || a.createdAt;
+    const bUpdatedAt = b.updatedAt || b.createdAt;
+    if (bUpdatedAt !== aUpdatedAt) return bUpdatedAt - aUpdatedAt;
+    return b.createdAt - a.createdAt;
+  });
+};
+
 export const toAgentSidebarTaskNode = (
   session: CoworkSessionSummary,
   currentSessionId: string | null,
@@ -175,7 +192,7 @@ export const useAgentSidebarState = () => {
   const initializedDefaultExpansionRef = useRef(false);
 
   const enabledAgents = useMemo(() => {
-    return agents
+    return filterUserAgentSidebarAgents(agents
       .filter((agent) => agent.enabled)
       .map((agent) => ({
         id: agent.id,
@@ -184,7 +201,7 @@ export const useAgentSidebarState = () => {
         enabled: agent.enabled,
         pinned: agent.pinned ?? false,
         pinOrder: agent.pinOrder ?? null,
-      }));
+      })));
   }, [agents]);
 
   const sortedEnabledAgents = useMemo(() => {

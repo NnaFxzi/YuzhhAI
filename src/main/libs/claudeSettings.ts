@@ -518,6 +518,14 @@ export function getCurrentApiConfig(target: OpenAICompatProxyTarget = 'local'): 
   return resolveCurrentApiConfig(target).config;
 }
 
+export function resolveModelConfigReadiness(): ApiConfigResolution & { hasConfig: boolean } {
+  const resolution = resolveRawApiConfig();
+  return {
+    ...resolution,
+    hasConfig: resolution.config !== null,
+  };
+}
+
 /**
  * Resolve the raw API config directly from the app config,
  * without requiring the OpenAI compatibility proxy.

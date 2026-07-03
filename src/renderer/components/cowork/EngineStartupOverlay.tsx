@@ -1,21 +1,11 @@
-import { LightBulbIcon } from '@heroicons/react/24/outline';
 import React, { useEffect, useState } from 'react';
 
 import { coworkService } from '../../services/cowork';
 import { i18nService } from '../../services/i18n';
 import type { OpenClawEngineStatus } from '../../types/cowork';
 
-const TIP_KEYS = [
-  'engineStartingTip1',
-  'engineStartingTip2',
-  'engineStartingTip3',
-  'engineStartingTip4',
-  'engineStartingTip5',
-  'engineStartingTip6',
-] as const;
-
-const TIP_ROTATE_MS = 5000;
 const SLOW_HINT_AFTER_MS = 15000;
+export const STARTUP_COMPLETION_HOLD_MS = 1000;
 
 const resolveEngineStatusText = (status: OpenClawEngineStatus): string => {
   switch (status.phase) {
@@ -35,15 +25,146 @@ const resolveEngineStatusText = (status: OpenClawEngineStatus): string => {
   }
 };
 
+const resolveEngineStatusLabel = (status: OpenClawEngineStatus): string => {
+  if (status.phase === 'starting' && status.progressPercent === 100) {
+    return i18nService.t('engineStartingStatusReady');
+  }
+
+  if (status.phase === 'starting') {
+    return i18nService.t('engineStartingStatusConnecting');
+  }
+
+  return resolveEngineStatusText(status);
+};
+
+export function shouldHoldStartupOverlayForCompletion(
+  previousStatus: OpenClawEngineStatus | null,
+  nextStatus: OpenClawEngineStatus,
+): boolean {
+  return previousStatus?.phase === 'starting' && nextStatus.phase === 'running';
+}
+
+export function createCompletionStatus(status: OpenClawEngineStatus): OpenClawEngineStatus {
+  return {
+    ...status,
+    phase: 'starting',
+    progressPercent: 100,
+  };
+}
+
+interface EngineStartupOverlayViewProps {
+  status: OpenClawEngineStatus;
+  showSlowHint: boolean;
+}
+
+export const EngineStartupOverlayView: React.FC<EngineStartupOverlayViewProps> = ({
+  status,
+  showSlowHint,
+}) => {
+  const progressPercent = typeof status.progressPercent === 'number'
+    ? Math.max(0, Math.min(100, Math.round(status.progressPercent)))
+    : null;
+  const hasProgressPercent = progressPercent !== null;
+  const isComplete = progressPercent === 100;
+  const progressWidth = hasProgressPercent ? `${Math.max(progressPercent, 4)}%` : undefined;
+
+  return (
+    <div className="engine-startup-overlay fixed inset-0 z-[100] flex items-center justify-center overflow-hidden animate-fade-in">
+      <div
+        className="engine-startup-backdrop absolute inset-0"
+        aria-hidden="true"
+      />
+      <div
+        className="engine-startup-frame absolute inset-5 rounded-2xl sm:inset-8 sm:rounded-[24px]"
+        aria-hidden="true"
+      />
+
+      <div className="relative z-10 flex w-full max-w-[430px] flex-col items-center px-6 text-center" role="status" aria-live="polite">
+        <div className="relative">
+          <div className="engine-startup-logo-glow absolute -inset-5 rounded-[30px] blur-2xl" aria-hidden="true" />
+          <div className="engine-startup-logo-panel relative flex h-[78px] w-[78px] items-center justify-center rounded-[22px]">
+            <img
+              src="logo.png"
+              alt={i18nService.t('appName')}
+              width={44}
+              height={44}
+              className="select-none rounded-xl"
+              draggable={false}
+            />
+          </div>
+        </div>
+
+        <h1 className="engine-startup-title mt-7 text-[26px] font-semibold leading-8 tracking-normal">
+          {i18nService.t('engineStartingTitle')}
+        </h1>
+        <p className="engine-startup-subtitle mt-2 text-sm leading-6">
+          {i18nService.t('engineStartingSubtitle')}
+        </p>
+
+        <div className="mt-9 w-full max-w-[300px]">
+          <div className="mb-2 flex min-h-[18px] items-center justify-between gap-4 text-xs">
+            <span className="engine-startup-status-label truncate">{resolveEngineStatusLabel(status)}</span>
+            {progressPercent !== null && (
+              <span className="engine-startup-progress-percent shrink-0 tabular-nums">{progressPercent}%</span>
+            )}
+          </div>
+          <div
+            className={`engine-startup-progress-track h-2 ${
+              isComplete
+                ? 'engine-startup-progress-track--complete'
+                : 'engine-startup-progress-track--active'
+            }`}
+          >
+            <div className="relative h-full overflow-hidden">
+              <span className="engine-startup-progress-activity" aria-hidden="true" />
+              {hasProgressPercent ? (
+                <div
+                  className="engine-startup-progress-fill"
+                  style={{ width: progressWidth }}
+                >
+                  <span className="engine-startup-progress-flow" aria-hidden="true" />
+                </div>
+              ) : (
+                <div
+                  className="engine-startup-progress-runner engine-startup-progress-runner--indeterminate"
+                  aria-hidden="true"
+                />
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-7 min-h-[58px] w-full max-w-[330px]">
+          <div
+            className={`engine-startup-slow-hint rounded-xl px-4 py-3 text-left transition-opacity duration-500 ${
+              showSlowHint ? 'opacity-100' : 'opacity-0'
+            }`}
+          >
+            <p className="engine-startup-slow-hint-title text-xs font-medium leading-5">
+              {i18nService.t('engineStartingSlowHintTitle')}
+            </p>
+            <p className="engine-startup-slow-hint-body mt-0.5 text-xs leading-5">
+              {i18nService.t('engineStartingSlowHint')}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div className="engine-startup-footer absolute bottom-6 left-0 right-0 text-center text-xs">
+        {i18nService.t('appName')}
+      </div>
+    </div>
+  );
+};
+
 /**
  * Global overlay shown when the OpenClaw gateway is starting up.
  * Renders on top of all views (cowork, skills, scheduled tasks, mcp).
- * Styled after WelcomeDialog so first-run flows feel continuous, with
- * rotating feature tips to keep the (10s-2min) wait from feeling idle.
+ * Presents a restrained brand startup screen while the local work engine connects.
  */
 const EngineStartupOverlay: React.FC = () => {
   const [status, setStatus] = useState<OpenClawEngineStatus | null>(null);
-  const [tipIndex, setTipIndex] = useState(() => Math.floor(Math.random() * TIP_KEYS.length));
+  const [displayStatus, setDisplayStatus] = useState<OpenClawEngineStatus | null>(null);
   const [showSlowHint, setShowSlowHint] = useState(false);
 
   useEffect(() => {
@@ -58,7 +179,36 @@ const EngineStartupOverlay: React.FC = () => {
     return unsubscribe;
   }, []);
 
-  const isStarting = status?.phase === 'starting';
+  useEffect(() => {
+    if (!status) {
+      setDisplayStatus(null);
+      return;
+    }
+
+    if (status.phase === 'starting') {
+      setDisplayStatus(status);
+      return;
+    }
+
+    let completionTimer: ReturnType<typeof setTimeout> | null = null;
+    setDisplayStatus((current) => {
+      if (shouldHoldStartupOverlayForCompletion(current, status)) {
+        completionTimer = setTimeout(() => {
+          setDisplayStatus(null);
+        }, STARTUP_COMPLETION_HOLD_MS);
+        return createCompletionStatus(status);
+      }
+      return null;
+    });
+
+    return () => {
+      if (completionTimer) {
+        clearTimeout(completionTimer);
+      }
+    };
+  }, [status]);
+
+  const isStarting = displayStatus?.phase === 'starting';
 
   useEffect(() => {
     if (!isStarting) {
@@ -66,112 +216,20 @@ const EngineStartupOverlay: React.FC = () => {
       return;
     }
 
-    const tipTimer = setInterval(() => {
-      setTipIndex((prev) => (prev + 1) % TIP_KEYS.length);
-    }, TIP_ROTATE_MS);
     const slowHintTimer = setTimeout(() => {
       setShowSlowHint(true);
     }, SLOW_HINT_AFTER_MS);
 
     return () => {
-      clearInterval(tipTimer);
       clearTimeout(slowHintTimer);
     };
   }, [isStarting]);
 
-  if (!status || !isStarting) {
+  if (!displayStatus || !isStarting) {
     return null;
   }
 
-  const progressPercent = typeof status.progressPercent === 'number'
-    ? Math.max(0, Math.min(100, Math.round(status.progressPercent)))
-    : null;
-
-  return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-surface animate-fade-in">
-      {/* brand gradient, same as WelcomeDialog */}
-      <div
-        className="absolute inset-0"
-        style={{ background: 'linear-gradient(360deg, rgba(255, 0, 77, 0) 5.5%, rgba(255, 0, 77, 0.05) 100%)' }}
-        aria-hidden="true"
-      />
-
-      <div className="relative z-10 flex w-[420px] flex-col items-center px-6" role="status">
-        {/* logo with breathing glow */}
-        <div className="relative mb-5">
-          <div className="absolute -inset-2 rounded-3xl bg-primary/20 blur-xl animate-pulse" aria-hidden="true" />
-          <img
-            src="logo.png"
-            alt={i18nService.t('cowork')}
-            width={72}
-            height={72}
-            className="relative rounded-2xl select-none"
-            draggable={false}
-          />
-        </div>
-
-        <h1 className="text-2xl font-bold text-foreground mb-2 text-center">
-          {i18nService.t('engineStartingTitle')}
-        </h1>
-        <p className="text-sm text-secondary mb-8 text-center">
-          {resolveEngineStatusText(status)}
-        </p>
-
-        {/* progress bar with shimmer */}
-        <div className="w-full h-1.5 rounded-full bg-primary/15 overflow-hidden">
-          {progressPercent !== null ? (
-            <div
-              className="relative h-full rounded-full bg-primary overflow-hidden transition-all duration-500 ease-smooth"
-              style={{ width: `${Math.max(progressPercent, 4)}%` }}
-            >
-              <div
-                className="absolute inset-0 animate-shimmer bg-gradient-to-r from-transparent via-white/40 to-transparent"
-                aria-hidden="true"
-              />
-            </div>
-          ) : (
-            <div className="relative h-full overflow-hidden">
-              <div
-                className="absolute inset-0 animate-shimmer bg-gradient-to-r from-transparent via-primary to-transparent"
-                aria-hidden="true"
-              />
-            </div>
-          )}
-        </div>
-        <div className="mt-1.5 flex w-full items-center justify-between gap-3 min-h-[1rem]">
-          <span className={`text-xs text-muted transition-opacity duration-500 ${showSlowHint ? 'opacity-100' : 'opacity-0'}`}>
-            {i18nService.t('engineStartingSlowHint')}
-          </span>
-          {progressPercent !== null && (
-            <span className="text-xs tabular-nums text-secondary shrink-0">{progressPercent}%</span>
-          )}
-        </div>
-
-        {/* rotating feature tips */}
-        <div className="mt-10 w-full rounded-xl border border-border-subtle bg-surface-raised/60 px-4 py-3">
-          <div key={tipIndex} className="animate-fade-in-up">
-            <div className="flex items-center gap-1.5 text-xs font-medium text-primary mb-1">
-              <LightBulbIcon className="h-3.5 w-3.5" />
-              {i18nService.t('engineStartingTipLabel')}
-            </div>
-            <p className="text-sm text-secondary leading-relaxed min-h-[2.5rem]">
-              {i18nService.t(TIP_KEYS[tipIndex])}
-            </p>
-          </div>
-          <div className="mt-2 flex justify-center gap-1.5" aria-hidden="true">
-            {TIP_KEYS.map((key, idx) => (
-              <span
-                key={key}
-                className={`h-1 rounded-full transition-all duration-300 ${
-                  idx === tipIndex ? 'w-3 bg-primary' : 'w-1 bg-primary/25'
-                }`}
-              />
-            ))}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
+  return <EngineStartupOverlayView status={displayStatus} showSlowHint={showSlowHint} />;
 };
 
 export default EngineStartupOverlay;

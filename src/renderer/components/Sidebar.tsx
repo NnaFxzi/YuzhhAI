@@ -27,11 +27,8 @@ import CoworkSearchModal from './cowork/CoworkSearchModal';
 import Cog6ToothIcon from './icons/Cog6ToothIcon';
 import ComposeIcon from './icons/ComposeIcon';
 import SidebarAutomationIcon from './icons/SidebarAutomationIcon';
-import SidebarKitsIcon from './icons/SidebarKitsIcon';
-import SidebarMcpIcon from './icons/SidebarMcpIcon';
 import SidebarSearchIcon from './icons/SidebarSearchIcon';
 import SidebarToggleIcon from './icons/SidebarToggleIcon';
-import SkillIcon from './icons/SkillIcon';
 import TrashIcon from './icons/TrashIcon';
 import LoginButton from './LoginButton';
 
@@ -51,16 +48,11 @@ interface SidebarProps {
   hideLogin?: boolean;
 }
 
-const DEFAULT_SIDEBAR_WIDTH = 244;
-const MIN_SIDEBAR_WIDTH = 220;
+const DEFAULT_SIDEBAR_WIDTH = 228;
+const MIN_SIDEBAR_WIDTH = 204;
 const MAX_SIDEBAR_WIDTH = 420;
 const SIDEBAR_COLLAPSE_TRANSITION_MS = 200;
 const normalizeAgentId = (agentId?: string | null) => agentId?.trim() || AgentId.Main;
-const SidebarNewFeatureBadge = {
-  KitsDismissedVersionKey: 'sidebar.kitsNewFeatureBadge.dismissedVersion',
-  // Bump this value in a release when the kits entry should show the badge again.
-  KitsVersion: '2026-06-05',
-} as const;
 const sidebarNavItemClassName =
   'w-full inline-flex h-7 items-center gap-2 rounded-md px-1.5 text-left text-[14px] font-normal text-foreground/80 transition-colors hover:bg-black/[0.03] dark:hover:bg-white/[0.04]';
 const activeSidebarNavItemClassName =
@@ -126,11 +118,8 @@ const reportSidebarAction = (
 const Sidebar: React.FC<SidebarProps> = ({
   onShowSettings,
   activeView,
-  onShowSkills,
   onShowCowork,
   onShowScheduledTasks,
-  onShowKits,
-  onShowMcp,
   onNewChat,
   isCollapsed,
   onToggleCollapse,
@@ -152,7 +141,6 @@ const Sidebar: React.FC<SidebarProps> = ({
   const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH);
   const [isResizing, setIsResizing] = useState(false);
   const [agentScrollEdges, setAgentScrollEdges] = useState({ top: false, bottom: false });
-  const [showKitsNewBadge, setShowKitsNewBadge] = useState(false);
   const isResizingRef = useRef(false);
   const resizeStartXRef = useRef(0);
   const resizeStartWidthRef = useRef(DEFAULT_SIDEBAR_WIDTH);
@@ -191,41 +179,6 @@ const Sidebar: React.FC<SidebarProps> = ({
       selectableCount: batchSelectableItems.length,
     };
   }, [batchSelectableItemByKey, batchSelectableItems.length, batchSelectableKeySet, selectedKeys]);
-
-  useEffect(() => {
-    let isCurrent = true;
-
-    const loadKitsNewBadgeState = async () => {
-      try {
-        const dismissedVersion = await window.electron.store.get(
-          SidebarNewFeatureBadge.KitsDismissedVersionKey,
-        );
-        if (!isCurrent) return;
-        setShowKitsNewBadge(dismissedVersion !== SidebarNewFeatureBadge.KitsVersion);
-      } catch (error) {
-        console.warn('[Sidebar] failed to load kits new feature badge state:', error);
-      }
-    };
-
-    void loadKitsNewBadgeState();
-
-    return () => {
-      isCurrent = false;
-    };
-  }, []);
-
-  const dismissKitsNewBadge = useCallback(() => {
-    if (!showKitsNewBadge) return;
-    setShowKitsNewBadge(false);
-    void window.electron.store
-      .set(
-        SidebarNewFeatureBadge.KitsDismissedVersionKey,
-        SidebarNewFeatureBadge.KitsVersion,
-      )
-      .catch((error) => {
-        console.warn('[Sidebar] failed to save kits new feature badge state:', error);
-      });
-  }, [showKitsNewBadge]);
 
   useEffect(() => {
     const handleSearch = () => {
@@ -571,6 +524,19 @@ const Sidebar: React.FC<SidebarProps> = ({
           <button
             type="button"
             onClick={() => {
+              reportSidebarAction('open_workbench', { activeView, isCollapsed });
+              setIsSearchOpen(false);
+              onShowCowork();
+            }}
+            className={activeView === 'cowork' ? activeSidebarNavItemClassName : sidebarNavItemClassName}
+            aria-current={activeView === 'cowork' ? 'page' : undefined}
+          >
+            <ComposeIcon className="h-4 w-4 shrink-0" />
+            {i18nService.t('workbench')}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
               reportSidebarAction('open_scheduled_tasks', { activeView, isCollapsed });
               setIsSearchOpen(false);
               onShowScheduledTasks();
@@ -579,52 +545,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             aria-current={activeView === 'scheduledTasks' ? 'page' : undefined}
           >
             <SidebarAutomationIcon className="h-4 w-4 shrink-0" />
-            {i18nService.t('scheduledTasks')}
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              reportSidebarAction('open_kits', { activeView, isCollapsed });
-              setIsSearchOpen(false);
-              dismissKitsNewBadge();
-              onShowKits();
-            }}
-            className={activeView === 'kits' ? activeSidebarNavItemClassName : sidebarNavItemClassName}
-            aria-current={activeView === 'kits' ? 'page' : undefined}
-          >
-            <SidebarKitsIcon className="h-4 w-4 shrink-0" />
-            <span className="min-w-0 truncate">{i18nService.t('kits')}</span>
-            {showKitsNewBadge && (
-              <span className="inline-flex h-4 shrink-0 items-center rounded-[4px] bg-[#ff4f6d] px-1.5 text-[10px] font-semibold leading-none text-white">
-                {i18nService.t('newFeatureBadge')}
-              </span>
-            )}
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              reportSidebarAction('open_skills', { activeView, isCollapsed });
-              setIsSearchOpen(false);
-              onShowSkills();
-            }}
-            className={activeView === 'skills' ? activeSidebarNavItemClassName : sidebarNavItemClassName}
-            aria-current={activeView === 'skills' ? 'page' : undefined}
-          >
-            <SkillIcon className="h-4 w-4 shrink-0" />
-            {i18nService.t('skills')}
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              reportSidebarAction('open_mcp', { activeView, isCollapsed });
-              setIsSearchOpen(false);
-              onShowMcp();
-            }}
-            className={activeView === 'mcp' ? activeSidebarNavItemClassName : sidebarNavItemClassName}
-            aria-current={activeView === 'mcp' ? 'page' : undefined}
-          >
-            <SidebarMcpIcon className="h-4 w-4 shrink-0" />
-            {i18nService.t('mcpServers')}
+            {i18nService.t('workbenchTasks')}
           </button>
         </div>
       </div>

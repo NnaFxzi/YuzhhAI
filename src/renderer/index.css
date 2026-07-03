@@ -540,6 +540,297 @@ select::-ms-expand {
   animation: scale-in 0.2s ease-out;
 }
 
+/* Workbench startup overlay */
+.engine-startup-overlay {
+  --engine-startup-accent: var(--lobster-primary);
+  --engine-startup-accent-hover: var(--lobster-primary-hover);
+  --engine-startup-accent-alt: var(--lobster-accent);
+  --engine-startup-accent-soft: color-mix(in srgb, var(--engine-startup-accent) 24%, transparent);
+  --engine-startup-accent-faint: color-mix(in srgb, var(--engine-startup-accent) 12%, transparent);
+  --engine-startup-light-bg: color-mix(in srgb, var(--lobster-background) 88%, var(--lobster-surface) 12%);
+  --engine-startup-light-bg-deep: color-mix(in srgb, var(--lobster-surface) 68%, var(--lobster-background) 32%);
+  --engine-startup-dark-bg: color-mix(in srgb, var(--lobster-background) 52%, #020617);
+  --engine-startup-dark-bg-deep: color-mix(in srgb, var(--lobster-background) 28%, #050816);
+  --engine-startup-page-bg: var(--engine-startup-light-bg);
+  --engine-startup-page-bg-deep: var(--engine-startup-light-bg-deep);
+  --engine-startup-text: var(--lobster-text-primary);
+  --engine-startup-text-secondary: var(--lobster-text-secondary);
+  --engine-startup-text-muted: var(--lobster-text-muted);
+  --engine-startup-frame-border: color-mix(in srgb, var(--engine-startup-accent) 14%, var(--lobster-border));
+  --engine-startup-panel-shadow: 0 22px 58px rgba(15, 23, 42, 0.1);
+  --engine-startup-track-bg: color-mix(in srgb, var(--lobster-surface-raised) 72%, var(--lobster-background) 28%);
+  background:
+    radial-gradient(circle at 50% 24%, color-mix(in srgb, var(--engine-startup-accent) 16%, transparent), transparent 30%),
+    radial-gradient(circle at 50% 38%, color-mix(in srgb, var(--engine-startup-accent-alt) 10%, transparent), transparent 40%),
+    linear-gradient(
+      180deg,
+      var(--engine-startup-page-bg) 0%,
+      var(--engine-startup-page-bg-deep) 100%
+    );
+  color: var(--engine-startup-text);
+}
+
+.dark .engine-startup-overlay {
+  --engine-startup-page-bg: var(--engine-startup-dark-bg);
+  --engine-startup-page-bg-deep: var(--engine-startup-dark-bg-deep);
+  --engine-startup-text: #f8fafc;
+  --engine-startup-text-secondary: rgba(203, 213, 225, 0.9);
+  --engine-startup-text-muted: rgba(148, 163, 184, 0.72);
+  --engine-startup-frame-border: color-mix(in srgb, var(--engine-startup-accent) 16%, rgba(255, 255, 255, 0.08));
+  --engine-startup-panel-shadow: 0 24px 70px rgba(0, 0, 0, 0.4);
+  --engine-startup-track-bg: rgba(148, 163, 184, 0.16);
+}
+
+.engine-startup-backdrop {
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--lobster-surface) 42%, transparent),
+      color-mix(in srgb, var(--lobster-background) 48%, transparent)
+    ),
+    radial-gradient(circle at 50% 24%, color-mix(in srgb, var(--engine-startup-accent) 14%, transparent), transparent 34%);
+}
+
+.dark .engine-startup-backdrop {
+  background:
+    linear-gradient(180deg, rgba(15, 23, 42, 0.32), rgba(2, 6, 23, 0.86)),
+    radial-gradient(circle at 50% 24%, var(--engine-startup-accent-soft), transparent 32%);
+}
+
+.engine-startup-frame {
+  border: 1px solid var(--engine-startup-frame-border);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--lobster-surface) 44%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--lobster-background) 26%, transparent);
+}
+
+.engine-startup-logo-glow {
+  background: var(--engine-startup-accent-soft);
+  animation: engine-startup-glow 2.4s ease-in-out infinite;
+}
+
+.engine-startup-logo-panel {
+  border: 1px solid color-mix(in srgb, var(--engine-startup-accent) 28%, var(--lobster-border));
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.95), rgba(241, 245, 249, 0.9)),
+    color-mix(in srgb, var(--engine-startup-accent) 8%, white);
+  box-shadow:
+    var(--engine-startup-panel-shadow),
+    0 0 32px var(--engine-startup-accent-faint);
+}
+
+.engine-startup-title {
+  color: var(--engine-startup-text);
+}
+
+.engine-startup-subtitle,
+.engine-startup-status-label {
+  color: var(--engine-startup-text-secondary);
+}
+
+.engine-startup-progress-percent {
+  color: color-mix(in srgb, var(--engine-startup-accent) 72%, var(--engine-startup-text));
+}
+
+.engine-startup-slow-hint {
+  border: 1px solid color-mix(in srgb, var(--engine-startup-accent) 12%, var(--lobster-border));
+  background: color-mix(in srgb, var(--lobster-surface-raised) 48%, transparent);
+}
+
+.engine-startup-slow-hint-title {
+  color: var(--engine-startup-text);
+}
+
+.engine-startup-slow-hint-body {
+  color: var(--engine-startup-text-muted);
+}
+
+.engine-startup-footer {
+  color: var(--engine-startup-text-muted);
+}
+
+.engine-startup-progress-track {
+  position: relative;
+  overflow: hidden;
+  border-radius: 9999px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--lobster-surface) 36%, transparent), transparent),
+    var(--engine-startup-track-bg);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--lobster-border) 70%, transparent),
+    0 12px 32px color-mix(in srgb, var(--lobster-gray-11) 12%, transparent);
+}
+
+.engine-startup-progress-track--active {
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--engine-startup-accent) 16%, transparent),
+    0 12px 32px color-mix(in srgb, var(--lobster-gray-11) 12%, transparent),
+    0 0 18px var(--engine-startup-accent-faint);
+}
+
+.engine-startup-progress-track--complete {
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--engine-startup-accent) 18%, rgba(255, 255, 255, 0.12)),
+      color-mix(in srgb, var(--engine-startup-accent) 14%, transparent)
+    ),
+    var(--engine-startup-accent-faint);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--engine-startup-accent) 24%, transparent),
+    0 12px 32px color-mix(in srgb, var(--lobster-gray-11) 12%, transparent),
+    0 0 24px var(--engine-startup-accent-soft);
+}
+
+.engine-startup-progress-activity {
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  width: 48%;
+  border-radius: inherit;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(226, 232, 240, 0.18) 42%,
+    color-mix(in srgb, var(--engine-startup-accent) 34%, transparent) 58%,
+    transparent 100%
+  );
+  opacity: 0.8;
+  animation: engine-startup-track-sweep 0.9s linear infinite;
+  will-change: transform;
+}
+
+.engine-startup-progress-fill {
+  position: relative;
+  height: 100%;
+  overflow: hidden;
+  border-radius: inherit;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--engine-startup-accent) 52%, #ffffff) 0%,
+    var(--engine-startup-accent) 54%,
+    color-mix(in srgb, var(--engine-startup-accent-alt) 62%, #ffffff) 100%
+  );
+  box-shadow:
+    0 0 16px color-mix(in srgb, var(--engine-startup-accent) 42%, transparent),
+    0 0 3px rgba(255, 255, 255, 0.9);
+  transition: width 500ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.engine-startup-progress-track--complete .engine-startup-progress-fill {
+  animation: engine-startup-complete-pulse 0.82s ease-out both;
+}
+
+.engine-startup-progress-fill::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.55), transparent);
+  animation: engine-startup-shine 1.35s ease-in-out infinite;
+}
+
+.engine-startup-progress-flow {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background-image: repeating-linear-gradient(
+    115deg,
+    rgba(255, 255, 255, 0) 0,
+    rgba(255, 255, 255, 0) 8px,
+    color-mix(in srgb, var(--engine-startup-accent-alt) 30%, rgba(255, 255, 255, 0.36)) 9px,
+    color-mix(in srgb, var(--engine-startup-accent-alt) 30%, rgba(255, 255, 255, 0.36)) 13px,
+    rgba(255, 255, 255, 0) 14px,
+    rgba(255, 255, 255, 0) 22px
+  );
+  background-size: 36px 36px;
+  mix-blend-mode: screen;
+  opacity: 0.75;
+  animation: engine-startup-flow 0.8s linear infinite;
+}
+
+.engine-startup-progress-runner {
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  border-radius: inherit;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in srgb, var(--engine-startup-accent) 88%, #ffffff) 44%,
+    color-mix(in srgb, var(--engine-startup-accent-alt) 78%, #ffffff) 62%,
+    transparent 100%
+  );
+  filter: drop-shadow(0 0 10px color-mix(in srgb, var(--engine-startup-accent) 48%, transparent));
+  will-change: transform;
+}
+
+.engine-startup-progress-runner--indeterminate {
+  width: 42%;
+  animation: engine-startup-runner 1.05s linear infinite;
+}
+
+@keyframes engine-startup-track-sweep {
+  from { transform: translateX(-120%); }
+  to { transform: translateX(260%); }
+}
+
+@keyframes engine-startup-runner {
+  from { transform: translateX(-150%); }
+  to { transform: translateX(300%); }
+}
+
+@keyframes engine-startup-complete-pulse {
+  0% {
+    filter: brightness(1);
+    box-shadow:
+      0 0 16px color-mix(in srgb, var(--engine-startup-accent) 42%, transparent),
+      0 0 3px rgba(255, 255, 255, 0.9);
+  }
+  45% {
+    filter: brightness(1.16);
+    box-shadow:
+      0 0 26px color-mix(in srgb, var(--engine-startup-accent) 48%, transparent),
+      0 0 8px rgba(236, 253, 245, 0.75);
+  }
+  100% {
+    filter: brightness(1);
+    box-shadow:
+      0 0 16px color-mix(in srgb, var(--engine-startup-accent) 42%, transparent),
+      0 0 3px rgba(255, 255, 255, 0.9);
+  }
+}
+
+@keyframes engine-startup-flow {
+  from { background-position: 0 0; }
+  to { background-position: 36px 0; }
+}
+
+@keyframes engine-startup-shine {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(100%); }
+}
+
+@keyframes engine-startup-glow {
+  0%, 100% {
+    opacity: 0.48;
+    transform: scale(0.96);
+  }
+  50% {
+    opacity: 0.95;
+    transform: scale(1.08);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .engine-startup-logo-glow,
+  .engine-startup-progress-fill::after,
+  .engine-startup-progress-activity,
+  .engine-startup-progress-flow,
+  .engine-startup-progress-runner {
+    animation: none;
+  }
+}
+
 /* Popover entrance */
 .popover-enter {
   animation: fade-in-down 0.2s ease-out;

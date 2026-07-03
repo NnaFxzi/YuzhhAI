@@ -27,6 +27,7 @@ import {
   createSubagentBatchItem,
 } from './batchSelection';
 import MyAgentSidebarHeader from './MyAgentSidebarHeader';
+import RecentConversationsSection from './RecentConversationsSection';
 import type { AgentSidebarAgentNode, AgentSidebarTaskNode } from './types';
 import { useAgentSidebarState } from './useAgentSidebarState';
 import { useSubagentSessions } from './useSubagentSessions';
@@ -151,6 +152,26 @@ const MyAgentSidebarTree: React.FC<MyAgentSidebarTreeProps> = ({
     window.dispatchEvent(new CustomEvent(CoworkUiEvent.SelectSubagent, { detail: null }));
     return coworkService.loadSession(task.id);
   }, [currentAgentId, currentSessionId, onShowCowork, onTaskSelected]);
+
+  const handleSelectRecentConversation = useCallback(async (session: {
+    id: string;
+    agentId?: string | null;
+    status: string;
+  }) => {
+    const agentId = session.agentId?.trim() || AgentId.Main;
+    onSidebarAction?.('select_recent_conversation', {
+      agentType: getAgentType(agentId),
+      isCurrentSession: session.id === currentSessionId,
+      taskStatus: session.status,
+    });
+    if (agentId !== currentAgentId) {
+      agentService.switchAgent(agentId);
+      await coworkService.loadSessions(agentId);
+    }
+    onShowCowork();
+    window.dispatchEvent(new CustomEvent(CoworkUiEvent.SelectSubagent, { detail: null }));
+    return coworkService.loadSession(session.id);
+  }, [currentAgentId, currentSessionId, getAgentType, onShowCowork, onSidebarAction]);
 
   useEffect(() => {
     const handleSwitchAgent = (event: Event) => {
@@ -460,6 +481,10 @@ const MyAgentSidebarTree: React.FC<MyAgentSidebarTreeProps> = ({
 
   return (
     <div className="pb-3" role="tree" aria-label={i18nService.t('myAgents')}>
+      <RecentConversationsSection
+        onSelectConversation={(session) => void handleSelectRecentConversation(session)}
+      />
+
       {hasPinnedAgents && (
         <div className="space-y-0.5">
           <div className="sticky top-0 z-30 flex h-10 items-center bg-surface-raised px-1.5">

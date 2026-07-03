@@ -1,4 +1,4 @@
-import type { QuickActionsConfig, QuickAction, Prompt, LocalizedQuickAction, QuickActionsI18n } from '../types/quickAction';
+import type { LocalizedQuickAction, Prompt, QuickAction, QuickActionsConfig, QuickActionsI18n } from '../types/quickAction';
 import { i18nService } from './i18n';
 
 const CONFIG_PATH = './quick-actions.json';
@@ -68,6 +68,7 @@ class QuickActionService {
 
       return {
         ...action,
+        category: action.category,
         label: actionI18n?.label || action.id,
         prompts: action.prompts.map(prompt => {
           const promptI18n = actionI18n?.prompts?.[prompt.id];
@@ -76,7 +77,8 @@ class QuickActionService {
             id: prompt.id,
             label: promptI18n?.label || prompt.id,
             description: promptI18n?.description,
-            prompt: promptI18n?.prompt || ''
+            prompt: promptI18n?.prompt || '',
+            workflow: prompt.workflow,
           };
         })
       };
