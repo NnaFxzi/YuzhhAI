@@ -127,6 +127,11 @@ import type {
   TelegramInstanceConfig,
   WecomInstanceConfig,
 } from './im/types';
+import { ContentGenerationService } from './industryPack/contentGenerationService';
+import { IndustryPackLoader } from './industryPack/industryPackLoader';
+import { IndustryPackStore } from './industryPack/industryPackStore';
+import { registerIndustryPackHandlers } from './industryPack/ipcHandlers';
+import { createConfiguredIndustryModelClient } from './industryPack/modelClientAdapter';
 import { registerAsrIpcHandlers } from './ipcHandlers/asr';
 import { registerCoworkSubagentHandlers } from './ipcHandlers/coworkSubagent';
 import { registerKitHandlers } from './ipcHandlers/kits';
@@ -1285,6 +1290,9 @@ let coworkRuntimeForwarderBound = false;
 let memoryMigrationDone = false;
 let preventSleepBlockerId: number | null = null;
 let appUpdateCoordinator: AppUpdateCoordinator | null = null;
+let industryPackLoader: IndustryPackLoader | null = null;
+let industryPackStore: IndustryPackStore | null = null;
+let contentGenerationService: ContentGenerationService | null = null;
 
 const AUTH_USER_STORE_KEY = 'auth_user';
 
@@ -1527,6 +1535,38 @@ const getAgentManager = () => {
     agentManager = new AgentManager(getCoworkStore());
   }
   return agentManager;
+};
+
+const getIndustryPacksRoot = (): string =>
+  app.isPackaged
+    ? path.join(process.resourcesPath, 'resources', 'industry-packs')
+    : path.join(__dirname, '..', 'resources', 'industry-packs');
+
+const getIndustryPackLoader = (): IndustryPackLoader => {
+  if (!industryPackLoader) {
+    industryPackLoader = new IndustryPackLoader({
+      packsRoot: getIndustryPacksRoot(),
+    });
+  }
+  return industryPackLoader;
+};
+
+const getIndustryPackStore = (): IndustryPackStore => {
+  if (!industryPackStore) {
+    industryPackStore = new IndustryPackStore(getStore().getDatabase());
+  }
+  return industryPackStore;
+};
+
+const getContentGenerationService = (): ContentGenerationService => {
+  if (!contentGenerationService) {
+    contentGenerationService = new ContentGenerationService({
+      loader: getIndustryPackLoader(),
+      store: getIndustryPackStore(),
+      modelClient: createConfiguredIndustryModelClient(),
+    });
+  }
+  return contentGenerationService;
 };
 
 const resolveAgentDefaultWorkingDirectory = (agentId?: string): string => {
@@ -5343,6 +5383,20 @@ if (!gotTheLock) {
     getKitStoreUrl,
     getSkillManager,
     syncOpenClawConfig,
+  });
+
+  registerIndustryPackHandlers({
+    loader: {
+      listPacks: () => getIndustryPackLoader().listPacks(),
+      getPack: packId => getIndustryPackLoader().getPack(packId),
+    },
+    service: {
+      generate: request => getContentGenerationService().generate(request),
+    },
+    store: {
+      getGeneratedAsset: assetId => getIndustryPackStore().getGeneratedAsset(assetId),
+      listGeneratedAssets: workspaceId => getIndustryPackStore().listGeneratedAssets(workspaceId),
+    },
   });
 
   ipcMain.handle(OpenClawEngineIpc.GetStatus, async () => {

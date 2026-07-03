@@ -8,6 +8,7 @@ import { useDispatch, useSelector } from 'react-redux';
 
 import { getProviderIcon, ProviderIconId } from '../../providers/uiRegistry';
 import { authService } from '../../services/auth';
+import { getPortalPricingUrl } from '../../services/endpoints';
 import { i18nService } from '../../services/i18n';
 import { localStore } from '../../services/store';
 import { RootState } from '../../store';
@@ -603,7 +604,6 @@ const MediaModelPicker: React.FC<MediaModelPickerProps> = ({ draftKey, disabled 
 
   const handleSubscribe = async () => {
     setIsOpen(false);
-    const { getPortalPricingUrl } = await import('../../services/endpoints');
     await window.electron.shell.openExternal(getPortalPricingUrl());
   };
 

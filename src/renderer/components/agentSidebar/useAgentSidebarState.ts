@@ -112,6 +112,17 @@ export const sortRecentConversationSessions = (
   });
 };
 
+export const removeRecentConversationSessions = (
+  sessions: CoworkSessionSummary[],
+  sessionIds: Iterable<string>,
+): CoworkSessionSummary[] => {
+  const sessionIdSet = new Set(sessionIds);
+  if (sessionIdSet.size === 0) return sessions;
+
+  const next = sessions.filter((session) => !sessionIdSet.has(session.id));
+  return next.length === sessions.length ? sessions : next;
+};
+
 export const toAgentSidebarTaskNode = (
   session: CoworkSessionSummary,
   currentSessionId: string | null,

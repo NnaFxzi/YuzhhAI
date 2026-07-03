@@ -23,6 +23,11 @@ import {
   type HtmlShareSourceType,
   type HtmlShareStatus,
 } from '../shared/htmlShare/constants';
+import {
+  type IndustryExportFormat,
+  IndustryMarketingIpc,
+} from '../shared/industryPack/constants';
+import type { IndustryGenerationRequest } from '../shared/industryPack/types';
 import type {
   KitReference,
   KitSkillMetadata,
@@ -162,6 +167,16 @@ contextBridge.exposeInMainWorld('electron', {
       ipcRenderer.on(`api:stream:${requestId}:abort`, handler);
       return () => ipcRenderer.removeListener(`api:stream:${requestId}:abort`, handler);
     },
+  },
+  industryMarketing: {
+    listPacks: () => ipcRenderer.invoke(IndustryMarketingIpc.ListPacks),
+    getPack: (packId: string) => ipcRenderer.invoke(IndustryMarketingIpc.GetPack, packId),
+    generate: (request: IndustryGenerationRequest) =>
+      ipcRenderer.invoke(IndustryMarketingIpc.Generate, request),
+    listAssets: (workspaceId: string) =>
+      ipcRenderer.invoke(IndustryMarketingIpc.ListAssets, workspaceId),
+    exportAsset: (assetId: string, format: IndustryExportFormat) =>
+      ipcRenderer.invoke(IndustryMarketingIpc.ExportAsset, { assetId, format }),
   },
   ipcRenderer: {
     send: (channel: string, ...args: any[]) => {

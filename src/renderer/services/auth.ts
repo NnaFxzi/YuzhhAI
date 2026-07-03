@@ -15,6 +15,7 @@ import {
   clearServerModels,
   setServerModels,
 } from '../store/slices/modelSlice';
+import { getLoginOvermindUrl, getPortalLoginUrl } from './endpoints';
 
 interface AuthStateRefreshResult {
   isLoggedIn: boolean;
@@ -156,10 +157,8 @@ class AuthService {
    * Fetch login URL from overmind, fallback to Portal login page.
    */
   private async fetchLoginUrl(): Promise<string> {
-    const { getLoginOvermindUrl } = await import('./endpoints');
     const url = getLoginOvermindUrl();
     if (!url.trim()) {
-      const { getPortalLoginUrl } = await import('./endpoints');
       console.log('[Auth] cloud login URL endpoint disabled; using local independent account page');
       return getPortalLoginUrl();
     }
@@ -180,7 +179,6 @@ class AuthService {
       console.error('[Auth] Failed to fetch login URL from overmind:', e);
     }
     // Fallback: use Portal login page directly
-    const { getPortalLoginUrl } = await import('./endpoints');
     console.log('[Auth] using fallback portal login URL');
     return getPortalLoginUrl();
   }

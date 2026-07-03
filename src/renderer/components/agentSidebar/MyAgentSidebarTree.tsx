@@ -1,5 +1,5 @@
 import { AgentId } from '@shared/agent';
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 
 import { agentService } from '../../services/agent';
@@ -89,6 +89,7 @@ const MyAgentSidebarTree: React.FC<MyAgentSidebarTreeProps> = ({
   );
   const [settingsAgentId, setSettingsAgentId] = useState<string | null>(null);
   const [selectedSubagentId, setSelectedSubagentId] = useState<string | null>(null);
+  const [locallyDeletedSessionIds, setLocallyDeletedSessionIds] = useState<string[]>([]);
   const { subagentsBySessionId, refetchSubagents, removeSubagent } = useSubagentSessions(
     currentSessionId,
     currentSessionStatus,
@@ -106,6 +107,10 @@ const MyAgentSidebarTree: React.FC<MyAgentSidebarTreeProps> = ({
     collapseTasks,
     toggleAgentExpanded,
   } = useAgentSidebarState();
+  const recentDeletedSessionIds = useMemo(
+    () => [...deletedSessionIds, ...locallyDeletedSessionIds],
+    [deletedSessionIds, locallyDeletedSessionIds],
+  );
 
   const getAgentType = useCallback((agentId: string): 'main' | 'custom' => (
     isDefaultAgentId(agentId) ? 'main' : 'custom'
@@ -251,7 +256,28 @@ const MyAgentSidebarTree: React.FC<MyAgentSidebarTreeProps> = ({
     });
     if (deleted) {
       removeTaskPreview(task.id);
+      setLocallyDeletedSessionIds((previous) => [...previous, task.id]);
     }
+  };
+
+  const handleDeleteRecentConversation = async (session: {
+    id: string;
+    agentId?: string | null;
+    status: string;
+  }) => {
+    const agentId = session.agentId?.trim() || AgentId.Main;
+    const deleted = await coworkService.deleteSession(session.id);
+    onSidebarAction?.(deleted ? 'recent_conversation_delete_success' : 'recent_conversation_delete_failed', {
+      agentType: getAgentType(agentId),
+      isCurrentSession: session.id === currentSessionId,
+      result: deleted ? 'success' : 'failed',
+      taskStatus: session.status,
+    });
+    if (deleted) {
+      removeTaskPreview(session.id);
+      setLocallyDeletedSessionIds((previous) => [...previous, session.id]);
+    }
+    return deleted;
   };
 
   const handleDeleteSubagent = async (subagent: SubagentSessionSummary) => {
@@ -483,6 +509,8 @@ const MyAgentSidebarTree: React.FC<MyAgentSidebarTreeProps> = ({
     <div className="pb-3" role="tree" aria-label={i18nService.t('myAgents')}>
       <RecentConversationsSection
         onSelectConversation={(session) => void handleSelectRecentConversation(session)}
+        onDeleteConversation={handleDeleteRecentConversation}
+        deletedSessionIds={recentDeletedSessionIds}
       />
 
       {hasPinnedAgents && (

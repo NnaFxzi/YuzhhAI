@@ -1,4 +1,4 @@
-import { InboxStackIcon, ShieldCheckIcon } from '@heroicons/react/24/outline';
+import { ShieldCheckIcon } from '@heroicons/react/24/outline';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 
@@ -20,7 +20,6 @@ import {
   selectCurrentSession,
   selectIsStreaming,
 } from '../../store/selectors/coworkSelectors';
-import { selectSessionArtifacts } from '../../store/slices/artifactSlice';
 import { addMessage, setCurrentSession, setDraftCollaborationMode, setDraftKitIds, setDraftSkillIds, setStreaming, updateSessionStatus } from '../../store/slices/coworkSlice';
 import { clearActiveKits } from '../../store/slices/kitSlice';
 import { clearSelection, selectAction, selectPrompt, setActions } from '../../store/slices/quickActionSlice';
@@ -35,8 +34,7 @@ import SidebarToggleIcon from '../icons/SidebarToggleIcon';
 import { PromptPanel } from '../quick-actions';
 import type { SettingsOpenOptions } from '../Settings';
 import WindowTitleBar from '../window/WindowTitleBar';
-import { WorkbenchDrawer, WorkbenchWorkflowGrid } from '../workbench';
-import { getWorkbenchBadgeCount } from '../workbench/workbenchDisplay';
+import { WorkbenchWorkflowGrid } from '../workbench';
 import { useAgentSelectedModel } from './agentModelSelection';
 import { CoworkUiEvent } from './constants';
 import CoworkPromptInput, { type CoworkPromptInputRef } from './CoworkPromptInput';
@@ -66,7 +64,6 @@ const CoworkView: React.FC<CoworkViewProps> = ({ onRequestAppSettings, onShowSki
   const [isInitialized, setIsInitialized] = useState(false);
   const [openClawStatus, setOpenClawStatus] = useState<OpenClawEngineStatus | null>(null);
   const [isRestartingGateway, setIsRestartingGateway] = useState(false);
-  const [isWorkbenchDrawerOpen, setIsWorkbenchDrawerOpen] = useState(false);
   // Track if we're starting/continuing a session to prevent duplicate submissions
   const isStartingRef = useRef(false);
   const isContinuingRef = useRef(false);
@@ -100,7 +97,6 @@ const CoworkView: React.FC<CoworkViewProps> = ({ onRequestAppSettings, onShowSki
   // Clear subagent view when session changes
   useEffect(() => {
     setViewingSubagent(null);
-    setIsWorkbenchDrawerOpen(false);
   }, [currentSession?.id]);
 
   const activeSkillIds = useSelector((state: RootState) => state.skill.activeSkillIds);
@@ -115,19 +111,6 @@ const CoworkView: React.FC<CoworkViewProps> = ({ onRequestAppSettings, onShowSki
   const currentAgent = agents.find((agent) => agent.id === currentAgentId);
   const currentAgentWorkingDirectory = currentAgent?.workingDirectory?.trim() || config.workingDirectory || '';
   const currentAgentSelectedModel = useAgentSelectedModel(currentAgentId, currentAgent?.model ?? '');
-  const workbenchDraftKey = currentSession?.id || '__home__';
-  const workbenchArtifacts = useSelector((state: RootState) => (
-    currentSession ? selectSessionArtifacts(state, currentSession.id) : []
-  ));
-  const workbenchDraftAttachments = useSelector((state: RootState) => (
-    state.cowork.draftAttachments[workbenchDraftKey] ?? []
-  ));
-  const workbenchTasks = useSelector((state: RootState) => state.scheduledTask.tasks);
-  const workbenchBadgeCount = getWorkbenchBadgeCount({
-    materialCount: workbenchDraftAttachments.length,
-    artifactCount: workbenchArtifacts.length,
-    taskCount: workbenchTasks.length,
-  });
   const homeDraftCollaborationMode = useSelector((state: RootState) => (
     state.cowork.draftCollaborationModes.__home__ || CoworkCollaborationMode.Default
   ));
@@ -758,33 +741,6 @@ const CoworkView: React.FC<CoworkViewProps> = ({ onRequestAppSettings, onShowSki
     </div>
   ) : null;
 
-  const workbenchLauncherButton = (
-    <button
-      type="button"
-      className="non-draggable inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-subtle bg-surface/80 px-2.5 text-xs font-medium text-foreground shadow-sm transition-colors hover:border-primary/30 hover:bg-surface-raised"
-      onClick={() => setIsWorkbenchDrawerOpen(true)}
-    >
-      <InboxStackIcon className="h-4 w-4 text-primary" />
-      <span>{i18nService.t('workbenchBasket')}</span>
-      {workbenchBadgeCount > 0 && (
-        <span className="ml-0.5 rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white">
-          {workbenchBadgeCount}
-        </span>
-      )}
-    </button>
-  );
-
-  const workbenchDrawer = (
-    <WorkbenchDrawer
-      isOpen={isWorkbenchDrawerOpen}
-      onClose={() => setIsWorkbenchDrawerOpen(false)}
-      sessionId={currentSession?.id ?? null}
-      draftKey={workbenchDraftKey}
-      workflows={quickActions}
-      onWorkflowSelect={handleActionSelect}
-    />
-  );
-
   // When viewing a subagent, show the subagent detail view
   if (viewingSubagent) {
     return (
@@ -810,9 +766,6 @@ const CoworkView: React.FC<CoworkViewProps> = ({ onRequestAppSettings, onShowSki
     return (
       <div className="relative flex-1 flex flex-col h-full">
         {engineStatusBanner}
-        <div className="absolute right-24 top-2 z-40 hidden lg:block">
-          {workbenchLauncherButton}
-        </div>
         <div className="min-h-0 flex-1">
           <CoworkSessionDetail
             onManageSkills={() => onShowSkills?.()}
@@ -825,7 +778,6 @@ const CoworkView: React.FC<CoworkViewProps> = ({ onRequestAppSettings, onShowSki
             updateBadge={updateBadge}
           />
         </div>
-        {workbenchDrawer}
       </div>
     );
   }
@@ -841,9 +793,6 @@ const CoworkView: React.FC<CoworkViewProps> = ({ onRequestAppSettings, onShowSki
 
       {/* Main Content */}
       <div className="relative flex min-h-0 flex-1">
-        <div className="absolute right-5 top-3 z-40 hidden lg:block">
-          {workbenchLauncherButton}
-        </div>
         <div className="flex-1 overflow-y-auto min-h-0 relative">
           <div className="relative flex min-h-full w-full min-w-[320px] flex-col items-center px-6 pt-[clamp(48px,8vh,72px)] pb-10">
             <div className="w-full max-w-[920px]">
@@ -919,7 +868,6 @@ const CoworkView: React.FC<CoworkViewProps> = ({ onRequestAppSettings, onShowSki
           </div>
         </div>
       </div>
-      {workbenchDrawer}
     </div>
   );
 };

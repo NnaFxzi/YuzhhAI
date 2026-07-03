@@ -13,6 +13,7 @@ import { clearCurrentSession } from '../store/slices/coworkSlice';
 import { clearAgentSelectedModel } from '../store/slices/modelSlice';
 import { clearActiveSkills, setActiveSkillIds } from '../store/slices/skillSlice';
 import type { Agent, PresetAgent } from '../types/agent';
+import { coworkService } from './cowork';
 
 const syncActiveSkillsForCurrentAgent = (agentId: string, skillIds: string[]): void => {
   if (store.getState().agent.currentAgentId !== agentId) {
@@ -147,7 +148,6 @@ class AgentService {
       store.dispatch(clearAgentSelectedModel(id));
       if (wasCurrentAgent) {
         this.switchAgent(AgentId.Main);
-        const { coworkService } = await import('./cowork');
         coworkService.loadSessions(AgentId.Main);
       }
       return true;

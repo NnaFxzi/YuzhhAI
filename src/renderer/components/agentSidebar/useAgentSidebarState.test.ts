@@ -11,6 +11,7 @@ import {
   filterUserAgentSidebarAgents,
   removeAgentSidebarAgentTaskPreviews,
   removeAgentSidebarTaskPreviews,
+  removeRecentConversationSessions,
   sortAgentSidebarAgents,
   sortAgentSidebarTasks,
   sortRecentConversationSessions,
@@ -124,6 +125,18 @@ test('sortRecentConversationSessions ignores pins and keeps conversations ordere
     'middle-agent-task:researcher',
     'older-pinned-agent-task:writer',
   ]);
+});
+
+test('removeRecentConversationSessions removes deleted sessions from recent conversations', () => {
+  const recentSessions = [
+    makeSession('keep-newer', 100, 300),
+    makeSession('deleted', 100, 200),
+    makeSession('keep-older', 100, 100),
+  ];
+
+  const next = removeRecentConversationSessions(recentSessions, ['deleted']);
+
+  expect(next.map((session) => session.id)).toEqual(['keep-newer', 'keep-older']);
 });
 
 test('collapseAgentSidebarTaskList resets one agent history list to preview mode', () => {

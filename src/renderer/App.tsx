@@ -1025,7 +1025,7 @@ const App: React.FC = () => {
         />
         <div className={`flex-1 min-w-0 transition-[padding] duration-200 ease-out ${isSidebarCollapsed ? 'pl-1.5' : ''}`}>
           <div className="relative h-full min-h-0 rounded-xl border border-border bg-background overflow-hidden">
-            <EngineStartupOverlay />
+            {mainView === 'cowork' && <EngineStartupOverlay />}
             {mainView === 'skills' ? (
               <SkillsView
                 isSidebarCollapsed={isSidebarCollapsed}

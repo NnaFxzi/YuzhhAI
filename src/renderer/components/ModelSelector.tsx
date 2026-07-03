@@ -6,6 +6,7 @@ import { useDispatch, useSelector } from 'react-redux';
 
 import { getProviderIcon, ProviderIconId } from '../providers/uiRegistry';
 import { authService } from '../services/auth';
+import { getPortalPricingUrl } from '../services/endpoints';
 import { i18nService } from '../services/i18n';
 import { RootState } from '../store';
 import type { Model } from '../store/slices/modelSlice';
@@ -83,7 +84,6 @@ export const ModelAccessPromptModal: React.FC<ModelAccessPromptModalProps> = ({
 
   const openSubscriptionPage = async () => {
     onClose();
-    const { getPortalPricingUrl } = await import('../services/endpoints');
     await window.electron.shell.openExternal(getPortalPricingUrl());
   };
 

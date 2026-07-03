@@ -742,6 +742,27 @@ export class CoworkStore {
       .run(key, value, now);
   }
 
+  private getManagedPresetAgentHiddenConfigKey(id: string): string {
+    return `managedPresetAgentHidden:${id}`;
+  }
+
+  isManagedPresetAgentHidden(id: string): boolean {
+    const row = this.db
+      .prepare('SELECT value FROM cowork_config WHERE key = ?')
+      .get(this.getManagedPresetAgentHiddenConfigKey(id)) as { value?: string } | undefined;
+    return row?.value === '1';
+  }
+
+  markManagedPresetAgentHidden(id: string): void {
+    this.upsertConfig(this.getManagedPresetAgentHiddenConfigKey(id), '1', Date.now());
+  }
+
+  clearManagedPresetAgentHidden(id: string): void {
+    this.db
+      .prepare('DELETE FROM cowork_config WHERE key = ?')
+      .run(this.getManagedPresetAgentHiddenConfigKey(id));
+  }
+
   createSession(
     title: string,
     cwd: string,

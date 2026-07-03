@@ -25,6 +25,12 @@ import type {
   HtmlShareSourceType,
   HtmlShareStatus,
 } from '../../shared/htmlShare/constants';
+import type { IndustryExportFormat } from '../../shared/industryPack/constants';
+import type {
+  GeneratedAsset,
+  IndustryGenerationRequest,
+  IndustryPackManifest,
+} from '../../shared/industryPack/types';
 import type {
   InstalledKitRecord,
   KitReference,
@@ -200,6 +206,41 @@ interface CoworkApiConfig {
   model: string;
   apiType?: 'anthropic' | 'openai';
 }
+
+interface IndustryPackListItem {
+  id: string;
+  name: string;
+  version: string;
+}
+
+interface IndustryLoadedPack {
+  id: string;
+  manifest: IndustryPackManifest;
+  fields: {
+    groups: unknown[];
+  };
+  products: unknown;
+  themes: unknown;
+  tones: unknown;
+  tasks: unknown;
+  channels: Record<string, string>;
+  outputSchemas: Record<string, unknown>;
+  examples: Record<string, string>;
+}
+
+interface IndustryWorkspace {
+  id: string;
+  packId: string;
+  name: string;
+}
+
+type IndustryMarketingIpcResult<T> =
+  | ({ success: true } & T)
+  | { success: false; error: string };
+type IndustryMarketingExportResult =
+  | { success: true; filePath: string }
+  | { success: false; canceled: true }
+  | { success: false; error: string };
 
 type OpenClawEnginePhase = SharedOpenClawEnginePhase;
 
@@ -555,6 +596,23 @@ interface IElectronAPI {
     onStreamDone: (requestId: string, callback: () => void) => () => void;
     onStreamError: (requestId: string, callback: (error: string) => void) => () => void;
     onStreamAbort: (requestId: string, callback: () => void) => () => void;
+  };
+  industryMarketing: {
+    listPacks: () => Promise<IndustryMarketingIpcResult<{ packs: IndustryPackListItem[] }>>;
+    getPack: (packId: string) => Promise<IndustryMarketingIpcResult<{ pack: IndustryLoadedPack }>>;
+    generate: (
+      request: IndustryGenerationRequest,
+    ) => Promise<IndustryMarketingIpcResult<{
+      workspace: IndustryWorkspace;
+      assets: GeneratedAsset[];
+    }>>;
+    listAssets: (
+      workspaceId: string,
+    ) => Promise<IndustryMarketingIpcResult<{ assets: GeneratedAsset[] }>>;
+    exportAsset: (
+      assetId: string,
+      format: IndustryExportFormat,
+    ) => Promise<IndustryMarketingExportResult>;
   };
   getApiConfig: () => Promise<CoworkApiConfig | null>;
   checkApiConfig: (options?: {

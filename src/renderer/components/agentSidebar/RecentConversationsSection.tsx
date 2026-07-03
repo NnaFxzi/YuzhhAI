@@ -1,4 +1,4 @@
-import { ChatBubbleLeftRightIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline';
+import { ChatBubbleLeftRightIcon, ExclamationTriangleIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useSelector } from 'react-redux';
 
@@ -9,12 +9,16 @@ import { selectCurrentSession, selectCurrentSessionId } from '../../store/select
 import type { CoworkSessionSummary } from '../../types/cowork';
 import { getAgentDisplayNameById, isDefaultAgentId } from '../../utils/agentDisplay';
 import AgentAvatarIcon from '../agent/AgentAvatarIcon';
+import Modal from '../common/Modal';
 import { CoworkUiEvent } from '../cowork/constants';
+import TrashIcon from '../icons/TrashIcon';
 import { formatAgentTaskRelativeTime } from './time';
-import { sortRecentConversationSessions } from './useAgentSidebarState';
+import { removeRecentConversationSessions, sortRecentConversationSessions } from './useAgentSidebarState';
 
 interface RecentConversationsSectionProps {
   onSelectConversation: (session: CoworkSessionSummary) => void;
+  onDeleteConversation: (session: CoworkSessionSummary) => Promise<boolean>;
+  deletedSessionIds?: string[];
 }
 
 const RECENT_CONVERSATION_LIMIT = 6;
@@ -23,6 +27,8 @@ const normalizeAgentId = (agentId?: string | null): string => agentId?.trim() ||
 
 const RecentConversationsSection: React.FC<RecentConversationsSectionProps> = ({
   onSelectConversation,
+  onDeleteConversation,
+  deletedSessionIds = [],
 }) => {
   const agents = useSelector((state: RootState) => state.agent.agents);
   const currentSessionId = useSelector(selectCurrentSessionId);
@@ -31,6 +37,9 @@ const RecentConversationsSection: React.FC<RecentConversationsSectionProps> = ({
   const [recentSessions, setRecentSessions] = useState<CoworkSessionSummary[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [hasLoadError, setHasLoadError] = useState(false);
+  const [refreshVersion, setRefreshVersion] = useState(0);
+  const [pendingDeleteSession, setPendingDeleteSession] = useState<CoworkSessionSummary | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const recentRefreshKey = useMemo(() => {
     const currentSessionKey = currentSession
@@ -40,8 +49,8 @@ const RecentConversationsSection: React.FC<RecentConversationsSectionProps> = ({
       .slice(0, RECENT_CONVERSATION_LIMIT)
       .map((session) => `${session.id}:${session.updatedAt}:${session.status}`)
       .join('|');
-    return `${currentSessionKey}#${sessionListKey}`;
-  }, [currentSession, sessions]);
+    return `${currentSessionKey}#${sessionListKey}#${refreshVersion}`;
+  }, [currentSession, refreshVersion, sessions]);
 
   useEffect(() => {
     let cancelled = false;
@@ -74,6 +83,37 @@ const RecentConversationsSection: React.FC<RecentConversationsSectionProps> = ({
       cancelled = true;
     };
   }, [recentRefreshKey]);
+
+  useEffect(() => {
+    if (deletedSessionIds.length === 0) return;
+    setRecentSessions((previous) => removeRecentConversationSessions(previous, deletedSessionIds));
+  }, [deletedSessionIds]);
+
+  const handleConfirmDelete = async () => {
+    if (!pendingDeleteSession || isDeleting) return;
+
+    setIsDeleting(true);
+    const sessionId = pendingDeleteSession.id;
+    let deleted = false;
+    try {
+      deleted = await onDeleteConversation(pendingDeleteSession);
+    } catch {
+      deleted = false;
+    } finally {
+      setIsDeleting(false);
+    }
+
+    if (!deleted) {
+      window.dispatchEvent(new CustomEvent('app:showToast', {
+        detail: i18nService.t('deleteSessionFailed'),
+      }));
+      return;
+    }
+
+    setPendingDeleteSession(null);
+    setRecentSessions((previous) => removeRecentConversationSessions(previous, [sessionId]));
+    setRefreshVersion((previous) => previous + 1);
+  };
 
   const renderAgentBadge = (session: CoworkSessionSummary) => {
     const agentId = normalizeAgentId(session.agentId);
@@ -117,30 +157,46 @@ const RecentConversationsSection: React.FC<RecentConversationsSectionProps> = ({
             const relativeTime = formatAgentTaskRelativeTime(session.updatedAt || session.createdAt);
             const isActive = session.id === currentSessionId;
             return (
-              <button
+              <div
                 key={session.id}
-                type="button"
-                onClick={() => onSelectConversation(session)}
-                className={`-ml-[6px] flex min-h-9 w-[calc(100%+12px)] min-w-0 items-center gap-2 rounded-md py-1 pl-3 pr-2.5 text-left transition-colors hover:bg-black/[0.03] dark:hover:bg-white/[0.04] ${
+                className={`group relative -ml-[6px] flex min-h-9 w-[calc(100%+12px)] min-w-0 items-center rounded-md transition-colors hover:bg-black/[0.03] dark:hover:bg-white/[0.04] ${
                   isActive ? 'bg-black/[0.035] dark:bg-white/[0.055]' : ''
                 }`}
               >
-                <span className="flex h-4 w-4 shrink-0 items-center justify-center text-foreground opacity-[0.46]">
-                  <ChatBubbleLeftRightIcon className="h-4 w-4" />
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[13px] text-foreground opacity-[0.76]">
-                    {session.title}
-                  </span>
-                  {renderAgentBadge(session)}
-                </span>
-                <span
-                  className="shrink-0 text-[11px] text-secondary/70"
-                  title={relativeTime.full}
+                <button
+                  type="button"
+                  onClick={() => onSelectConversation(session)}
+                  className="flex min-h-9 min-w-0 flex-1 items-center gap-2 rounded-md py-1 pl-3 pr-8 text-left"
                 >
-                  {relativeTime.compact}
-                </span>
-              </button>
+                  <span className="flex h-4 w-4 shrink-0 items-center justify-center text-foreground opacity-[0.46]">
+                    <ChatBubbleLeftRightIcon className="h-4 w-4" />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[13px] text-foreground opacity-[0.76]">
+                      {session.title}
+                    </span>
+                    {renderAgentBadge(session)}
+                  </span>
+                  <span
+                    className="shrink-0 text-[11px] text-secondary/70 transition-opacity group-hover:opacity-0"
+                    title={relativeTime.full}
+                  >
+                    {relativeTime.compact}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setPendingDeleteSession(session);
+                  }}
+                  className="absolute right-1 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-foreground opacity-0 transition-opacity hover:opacity-[0.46] group-hover:opacity-[0.3]"
+                  aria-label={i18nService.t('deleteSession')}
+                  title={i18nService.t('deleteSession')}
+                >
+                  <TrashIcon className="h-3.5 w-3.5" />
+                </button>
+              </div>
             );
           })}
         </div>
@@ -152,6 +208,49 @@ const RecentConversationsSection: React.FC<RecentConversationsSectionProps> = ({
               : i18nService.t('myAgentSidebarNoRecentConversations')
           )}
         </div>
+      )}
+
+      {pendingDeleteSession && (
+        <Modal
+          onClose={() => {
+            if (!isDeleting) {
+              setPendingDeleteSession(null);
+            }
+          }}
+          className="w-full max-w-sm mx-4 bg-surface rounded-2xl shadow-xl overflow-hidden"
+        >
+          <div className="flex items-center gap-3 px-5 py-4">
+            <div className="p-2 rounded-full bg-red-100 dark:bg-red-900/30">
+              <ExclamationTriangleIcon className="h-5 w-5 text-red-600 dark:text-red-500" />
+            </div>
+            <h2 className="text-base font-semibold text-foreground">
+              {i18nService.t('deleteTaskConfirmTitle')}
+            </h2>
+          </div>
+          <div className="px-5 pb-4">
+            <p className="text-sm text-secondary">
+              {i18nService.t('deleteTaskConfirmMessage')}
+            </p>
+          </div>
+          <div className="flex items-center justify-end gap-3 px-5 py-4 border-t border-border">
+            <button
+              type="button"
+              onClick={() => setPendingDeleteSession(null)}
+              disabled={isDeleting}
+              className="px-4 py-2 text-sm font-medium rounded-lg text-secondary hover:bg-surface-raised transition-colors disabled:opacity-50"
+            >
+              {i18nService.t('cancel')}
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleConfirmDelete()}
+              disabled={isDeleting}
+              className="px-4 py-2 text-sm font-medium rounded-lg bg-red-500 text-white transition-colors hover:bg-red-600 disabled:opacity-60"
+            >
+              {i18nService.t('deleteSession')}
+            </button>
+          </div>
+        </Modal>
       )}
     </section>
   );
