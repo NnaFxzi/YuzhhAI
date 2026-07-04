@@ -1,4 +1,13 @@
 import { AgentId } from '@shared/agent';
+import type {
+  DomesticResearchConfig,
+  DomesticResearchStatusMap,
+} from '@shared/agent/domesticResearch';
+import type {
+  ExternalResearchEditConfig,
+  ExternalResearchProviderTestInput,
+  MaskedExternalResearchConfig,
+} from '@shared/agent/externalResearch';
 
 import { store } from '../store';
 import {
@@ -15,6 +24,17 @@ import { clearActiveSkills, setActiveSkillIds } from '../store/slices/skillSlice
 import type { Agent, PresetAgent } from '../types/agent';
 import { coworkService } from './cowork';
 
+interface ExternalResearchSettingsPayload {
+  appDefaults: MaskedExternalResearchConfig;
+  agentSettings: MaskedExternalResearchConfig | null;
+  availability: unknown;
+}
+
+interface DomesticResearchSettingsPayload {
+  settings: DomesticResearchConfig;
+  statuses: DomesticResearchStatusMap;
+}
+
 const syncActiveSkillsForCurrentAgent = (agentId: string, skillIds: string[]): void => {
   if (store.getState().agent.currentAgentId !== agentId) {
     return;
@@ -28,6 +48,10 @@ const syncActiveSkillsForCurrentAgent = (agentId: string, skillIds: string[]): v
 };
 
 class AgentService {
+  canSaveExternalResearchSettings(): boolean {
+    return typeof window.electron?.agents?.saveExternalResearchSettings === 'function';
+  }
+
   async loadAgents(): Promise<void> {
     store.dispatch(setLoading(true));
     try {
@@ -134,6 +158,64 @@ class AgentService {
     } catch (error) {
       console.error('Failed to update agent:', error);
       return null;
+    }
+  }
+
+  async getExternalResearchSettings(agentId?: string): Promise<ExternalResearchSettingsPayload | null> {
+    try {
+      return await window.electron?.agents?.getExternalResearchSettings(agentId) ?? null;
+    } catch (error) {
+      console.error('Failed to load external research settings:', error);
+      return null;
+    }
+  }
+
+  async saveExternalResearchSettings(
+    agentId: string | null,
+    config: ExternalResearchEditConfig,
+  ): Promise<MaskedExternalResearchConfig | null> {
+    try {
+      if (!this.canSaveExternalResearchSettings()) {
+        console.error('External research settings save bridge is unavailable.');
+        return null;
+      }
+      return await window.electron.agents.saveExternalResearchSettings(agentId, config) ?? null;
+    } catch (error) {
+      console.error('Failed to save external research settings:', error);
+      return null;
+    }
+  }
+
+  async getDomesticResearchSettings(agentId: string): Promise<DomesticResearchSettingsPayload | null> {
+    try {
+      return await window.electron?.agents?.getDomesticResearchSettings(agentId) ?? null;
+    } catch (error) {
+      console.error('Failed to load domestic research settings:', error);
+      return null;
+    }
+  }
+
+  async saveDomesticResearchSettings(
+    agentId: string,
+    config: DomesticResearchConfig,
+  ): Promise<DomesticResearchConfig | null> {
+    try {
+      return await window.electron?.agents?.saveDomesticResearchSettings(agentId, config) ?? null;
+    } catch (error) {
+      console.error('Failed to save domestic research settings:', error);
+      return null;
+    }
+  }
+
+  async testExternalResearchProvider(
+    input: ExternalResearchProviderTestInput,
+  ): Promise<{ ok: boolean; message: string }> {
+    try {
+      return await window.electron?.agents?.testExternalResearchProvider(input)
+        ?? { ok: false, message: 'Connection test failed.' };
+    } catch (error) {
+      console.error('Failed to test external research provider:', error);
+      return { ok: false, message: 'Connection test failed.' };
     }
   }
 

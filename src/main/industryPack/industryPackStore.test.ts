@@ -168,4 +168,67 @@ describe('IndustryPackStore', () => {
 
     expect(store.listGeneratedAssets(workspace.id)[0].keywords).toEqual([]);
   });
+
+  test('saves and reads the latest positioning report for a pack', () => {
+    setupStore();
+
+    const first = store.createPositioningReport({
+      packId: IndustryPackId.HeavyPackaging,
+      agentId: 'marketing',
+      requestedBy: 'agent',
+      recommendedDirectionId: 'wooden_box_replacement',
+      providerAvailability: { tavily: true, firecrawl: false },
+      sourceCounts: { searchResults: 3, extractedPages: 0 },
+      sourceSummary: { lanes: [] },
+      candidates: [
+        {
+          id: 'wooden_box_replacement',
+          name: '替代木箱包装',
+          summary: '适合出口重货。',
+          scores: {},
+          keywords: ['替代木箱'],
+          painPoints: ['木箱成本高'],
+          competitorSignals: ['厂家直销'],
+          opportunitySignals: ['方案表达不足'],
+          recommendedChannels: ['baidu_seo'],
+          missingFacts: ['案例'],
+        },
+      ],
+      backupDirectionIds: [],
+      nextActions: ['生成百度 SEO 文章'],
+    });
+    const second = store.createPositioningReport({
+      packId: IndustryPackId.HeavyPackaging,
+      agentId: 'content',
+      requestedBy: 'agent',
+      recommendedDirectionId: 'honeycomb_carton',
+      providerAvailability: { tavily: false, firecrawl: true },
+      sourceCounts: { searchResults: 1, extractedPages: 2 },
+      sourceSummary: { lanes: [] },
+      candidates: [
+        {
+          id: 'honeycomb_carton',
+          name: '蜂窝纸箱',
+          summary: '适合缓冲包装。',
+          scores: {},
+          keywords: ['蜂窝纸箱'],
+          painPoints: ['大件易损'],
+          competitorSignals: ['缓冲包装'],
+          opportunitySignals: ['轻量化表达'],
+          recommendedChannels: ['wechat_moments'],
+          missingFacts: [],
+        },
+      ],
+      backupDirectionIds: ['wooden_box_replacement'],
+      nextActions: ['生成朋友圈案例'],
+    });
+
+    expect(store.getPositioningReport(first.id)?.recommendedDirectionId).toBe('wooden_box_replacement');
+    expect(store.getPositioningReport(first.id)?.agentId).toBe('marketing');
+    expect(store.getPositioningReport(first.id)?.providerAvailability).toEqual({ tavily: true, firecrawl: false });
+    expect(store.getPositioningReport(first.id)?.sourceCounts).toEqual({ searchResults: 3, extractedPages: 0 });
+    expect(store.getLatestPositioningReport(IndustryPackId.HeavyPackaging)?.id).toBe(second.id);
+    expect(store.getLatestPositioningReport(IndustryPackId.HeavyPackaging, 'marketing')?.id).toBe(first.id);
+    expect(store.getLatestPositioningReport(IndustryPackId.HeavyPackaging, 'content')?.id).toBe(second.id);
+  });
 });

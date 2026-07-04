@@ -12,6 +12,7 @@ import { ContentGenerationService } from './contentGenerationService';
 import { IndustryPackLoader } from './industryPackLoader';
 import { IndustryPackStore } from './industryPackStore';
 import type { ModelClientAdapter } from './modelClientAdapter';
+import { PositioningService } from './positioningService';
 
 const createService = (
   modelClient: ModelClientAdapter,
@@ -25,6 +26,7 @@ const createService = (
   const loader = new IndustryPackLoader({
     packsRoot: path.resolve(process.cwd(), 'resources/industry-packs'),
   });
+  const positioningService = new PositioningService({ store });
 
   return {
     db,
@@ -32,6 +34,7 @@ const createService = (
       loader,
       modelClient,
       store,
+      positioningService,
     }),
     store,
   };
@@ -227,5 +230,60 @@ describe('ContentGenerationService', () => {
       tone: 'professional_sales',
       profile: { factoryName: '东莞重包包装厂' },
     })).rejects.toThrow('Calendar generation responses are not supported for asset persistence yet');
+  });
+
+  test('includes saved positioning context in later generation prompts', async () => {
+    let prompt = '';
+    const setup = createService({
+      async generate(input) {
+        prompt = input.prompt;
+        return {
+          text: JSON.stringify({
+            channel: IndustryPackChannel.WechatMoments,
+            theme: 'replace_wooden_box',
+            title: '替代木箱包装怎么选',
+            body: '先看出口、重量和运输线路。',
+            keywords: ['替代木箱'],
+            cta: '发尺寸重量，帮你评估。',
+          }),
+        };
+      },
+    });
+    db = setup.db;
+    setup.store.createPositioningReport({
+      packId: IndustryPackId.HeavyPackaging,
+      requestedBy: 'agent',
+      recommendedDirectionId: 'wooden_box_replacement',
+      sourceSummary: { lanes: [] },
+      candidates: [
+        {
+          id: 'wooden_box_replacement',
+          name: '替代木箱包装',
+          summary: '适合出口重货。',
+          scores: {},
+          keywords: ['替代木箱'],
+          painPoints: ['木箱成本高'],
+          competitorSignals: [],
+          opportunitySignals: ['整体方案表达不足'],
+          recommendedChannels: ['baidu_seo'],
+          missingFacts: [],
+        },
+      ],
+      backupDirectionIds: [],
+      nextActions: [],
+    });
+
+    await setup.service.generate({
+      packId: IndustryPackId.HeavyPackaging,
+      taskId: IndustryPackTask.GenerateContentPackage,
+      period: { kind: 'today', days: 1 },
+      channels: [IndustryPackChannel.WechatMoments],
+      themes: ['replace_wooden_box'],
+      tone: 'professional_sales',
+      profile: { factoryName: '东莞重包包装厂' },
+    });
+
+    expect(prompt).toContain('已保存的产品定位分析');
+    expect(prompt).toContain('推荐主推方向：替代木箱包装');
   });
 });

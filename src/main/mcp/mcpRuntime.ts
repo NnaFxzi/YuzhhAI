@@ -10,6 +10,8 @@ import { getElectronNodeRuntimePath } from '../libs/coworkUtil';
 import {
   type AskUserRequest,
   type AskUserResponse,
+  type IndustryPositioningToolRequest,
+  type IndustryPositioningToolResponse,
   McpBridgeServer,
   type MediaGenerationRequest,
   type MediaGenerationResponse,
@@ -22,7 +24,13 @@ import { createMcpLaunchSourceFingerprint, McpLaunchResolutionStatus } from './m
 import { McpLaunchResolverManager } from './mcpLaunchResolverManager';
 import { McpStore } from './mcpStore';
 
-export type { AskUserResponse, MediaGenerationRequest, MediaGenerationResponse };
+export type {
+  AskUserResponse,
+  IndustryPositioningToolRequest,
+  IndustryPositioningToolResponse,
+  MediaGenerationRequest,
+  MediaGenerationResponse,
+};
 
 export interface McpRuntimeDeps {
   getStore: () => SqliteStore;
@@ -41,6 +49,9 @@ export class McpRuntime {
   private resolvedServersCache: ResolvedMcpServer[] = [];
   private mediaGenerationHandler:
     | ((request: MediaGenerationRequest) => Promise<MediaGenerationResponse>)
+    | null = null;
+  private industryPositioningHandler:
+    | ((request: IndustryPositioningToolRequest) => Promise<IndustryPositioningToolResponse>)
     | null = null;
 
   constructor(private readonly deps: McpRuntimeDeps) {}
@@ -81,12 +92,22 @@ export class McpRuntime {
     this.mediaGenerationHandler = handler;
   }
 
+  setIndustryPositioningHandler(
+    handler: (request: IndustryPositioningToolRequest) => Promise<IndustryPositioningToolResponse>,
+  ): void {
+    this.industryPositioningHandler = handler;
+  }
+
   getAskUserCallbackUrl(): string | null {
     return this.bridgeServer?.askUserCallbackUrl ?? null;
   }
 
   getMediaCallbackUrl(): string | null {
     return this.bridgeServer?.mediaCallbackUrl ?? null;
+  }
+
+  getIndustryPositioningCallbackUrl(): string | null {
+    return this.bridgeServer?.industryPositioningCallbackUrl ?? null;
   }
 
   getBridgeSecret(): string {
@@ -154,6 +175,16 @@ export class McpRuntime {
         };
       }
       return await this.mediaGenerationHandler(request);
+    });
+
+    this.bridgeServer.onIndustryPositioning(async (request) => {
+      if (!this.industryPositioningHandler) {
+        return {
+          content: [{ type: 'text', text: 'Industry positioning service is not ready yet.' }],
+          isError: true,
+        };
+      }
+      return await this.industryPositioningHandler(request);
     });
   }
 

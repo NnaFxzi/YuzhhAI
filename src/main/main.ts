@@ -30,6 +30,11 @@ import {
   migrateScheduledTasksToOpenclaw,
 } from '../scheduledTask/migrate';
 import { AgentId, AgentIpcChannel } from '../shared/agent/constants';
+import type { DomesticResearchConfig } from '../shared/agent/domesticResearch';
+import type {
+  ExternalResearchEditConfig,
+  ExternalResearchProviderTestInput,
+} from '../shared/agent/externalResearch';
 import { AppIpcChannel } from '../shared/app/constants';
 import { AppSettingsAutoLaunchErrorCode, AppSettingsIpc } from '../shared/appSettings/constants';
 import { AppUpdateIpc } from '../shared/appUpdate/constants';
@@ -80,6 +85,7 @@ import {
   HtmlShareStatus,
   type HtmlShareStatus as HtmlShareStatusValue,
 } from '../shared/htmlShare/constants';
+import type { PositioningReportInput } from '../shared/industryPack/positioning';
 import type {
   KitReference,
   ResolvedKitCapabilities,
@@ -99,6 +105,10 @@ import { PlatformRegistry } from '../shared/platform';
 import { OpenClawProviderId, ProviderName } from '../shared/providers';
 import type { ShellOpenFailureReason as ShellOpenFailureReasonType } from '../shared/shell/constants';
 import { ShellOpenFailureReason } from '../shared/shell/constants';
+import { AgentDomesticResearchService } from './agentDomesticResearchService';
+import { AgentDomesticResearchStore } from './agentDomesticResearchStore';
+import { AgentExternalResearchService } from './agentExternalResearchService';
+import { AgentExternalResearchStore } from './agentExternalResearchStore';
 import { AgentManager } from './agentManager';
 import { APP_DISPLAY_NAME, APP_ID, APP_NAME, APP_PROTOCOL, APP_USER_MODEL_ID, DB_FILENAME } from './appConstants';
 import { createLocalFileProtocolResponse } from './artifactLocalFileProtocol';
@@ -132,6 +142,7 @@ import { IndustryPackLoader } from './industryPack/industryPackLoader';
 import { IndustryPackStore } from './industryPack/industryPackStore';
 import { registerIndustryPackHandlers } from './industryPack/ipcHandlers';
 import { createConfiguredIndustryModelClient } from './industryPack/modelClientAdapter';
+import { PositioningService } from './industryPack/positioningService';
 import { registerAsrIpcHandlers } from './ipcHandlers/asr';
 import { registerCoworkSubagentHandlers } from './ipcHandlers/coworkSubagent';
 import { registerKitHandlers } from './ipcHandlers/kits';
@@ -1293,6 +1304,11 @@ let appUpdateCoordinator: AppUpdateCoordinator | null = null;
 let industryPackLoader: IndustryPackLoader | null = null;
 let industryPackStore: IndustryPackStore | null = null;
 let contentGenerationService: ContentGenerationService | null = null;
+let positioningService: PositioningService | null = null;
+let agentExternalResearchStore: AgentExternalResearchStore | null = null;
+let agentExternalResearchService: AgentExternalResearchService | null = null;
+let agentDomesticResearchStore: AgentDomesticResearchStore | null = null;
+let agentDomesticResearchService: AgentDomesticResearchService | null = null;
 
 const AUTH_USER_STORE_KEY = 'auth_user';
 
@@ -1558,12 +1574,54 @@ const getIndustryPackStore = (): IndustryPackStore => {
   return industryPackStore;
 };
 
+const getAgentExternalResearchStore = (): AgentExternalResearchStore => {
+  if (!agentExternalResearchStore) {
+    agentExternalResearchStore = new AgentExternalResearchStore(getStore().getDatabase());
+  }
+  return agentExternalResearchStore;
+};
+
+const getAgentExternalResearchService = (): AgentExternalResearchService => {
+  if (!agentExternalResearchService) {
+    agentExternalResearchService = new AgentExternalResearchService({
+      store: getAgentExternalResearchStore(),
+    });
+  }
+  return agentExternalResearchService;
+};
+
+const getAgentDomesticResearchStore = (): AgentDomesticResearchStore => {
+  if (!agentDomesticResearchStore) {
+    agentDomesticResearchStore = new AgentDomesticResearchStore(getStore().getDatabase());
+  }
+  return agentDomesticResearchStore;
+};
+
+const getAgentDomesticResearchService = (): AgentDomesticResearchService => {
+  if (!agentDomesticResearchService) {
+    agentDomesticResearchService = new AgentDomesticResearchService({
+      store: getAgentDomesticResearchStore(),
+    });
+  }
+  return agentDomesticResearchService;
+};
+
+const getPositioningService = (): PositioningService => {
+  if (!positioningService) {
+    positioningService = new PositioningService({
+      store: getIndustryPackStore(),
+    });
+  }
+  return positioningService;
+};
+
 const getContentGenerationService = (): ContentGenerationService => {
   if (!contentGenerationService) {
     contentGenerationService = new ContentGenerationService({
       loader: getIndustryPackLoader(),
       store: getIndustryPackStore(),
       modelClient: createConfiguredIndustryModelClient(),
+      positioningService: getPositioningService(),
     });
   }
   return contentGenerationService;
@@ -1721,6 +1779,7 @@ const getOpenClawConfigSync = (): OpenClawConfigSync => {
       },
       getAskUserCallbackUrl: () => getMcpRuntime().getAskUserCallbackUrl(),
       getMediaCallbackUrl: () => getMcpRuntime().getMediaCallbackUrl(),
+      getIndustryPositioningCallbackUrl: () => getMcpRuntime().getIndustryPositioningCallbackUrl(),
       getMcpBridgeSecret: () => getMcpRuntime().getBridgeSecret(),
       getAgents: () => getCoworkStore().listAgents(),
       getUserPlugins: () =>
@@ -4275,6 +4334,216 @@ if (!gotTheLock) {
 
   getMcpRuntime().setMediaGenerationHandler(handleMediaGenerationCallback);
 
+  const resolveAgentIdFromIndustryToolRequest = (request: {
+    context?: { sessionKey?: string };
+  }): string => {
+    const parsed = parseManagedSessionKey(request.context?.sessionKey);
+    return parsed?.agentId?.trim() || AgentId.Main;
+  };
+
+  const normalizeResearchProvider = (value: unknown): 'auto' | 'tavily' | 'firecrawl' => (
+    value === 'tavily' || value === 'firecrawl' ? value : 'auto'
+  );
+
+  const isExternalResearchProviderAvailable = (
+    agentId: string,
+    provider: 'tavily' | 'firecrawl',
+  ): boolean => {
+    const config = getAgentExternalResearchService().getEffectiveSettings(agentId).providers[provider];
+    return config.enabled && config.apiKey.trim().length > 0;
+  };
+
+  const getExternalResearchConfigMessage = (): string =>
+    'External research is not configured. Open this agent\'s External Research settings and add Tavily or Firecrawl.';
+
+  const runExternalResearchSearch = async (options: {
+    agentId: string;
+    query: string;
+    maxResults: number;
+    provider: 'auto' | 'tavily' | 'firecrawl';
+  }): Promise<Record<string, unknown>> => {
+    const preferTavily = options.provider === 'tavily' || options.provider === 'auto';
+    const preferFirecrawl = options.provider === 'firecrawl';
+    if (preferTavily && isExternalResearchProviderAvailable(options.agentId, 'tavily')) {
+      return {
+        provider: 'tavily',
+        query: options.query,
+        result: await getAgentExternalResearchService().tavilySearch(
+          options.agentId,
+          options.query,
+          options.maxResults,
+        ),
+      };
+    }
+    if (preferFirecrawl && isExternalResearchProviderAvailable(options.agentId, 'firecrawl')) {
+      return {
+        provider: 'firecrawl',
+        query: options.query,
+        result: await getAgentExternalResearchService().firecrawlSearch(
+          options.agentId,
+          options.query,
+          options.maxResults,
+        ),
+      };
+    }
+    if (options.provider === 'auto' && isExternalResearchProviderAvailable(options.agentId, 'firecrawl')) {
+      return {
+        provider: 'firecrawl',
+        query: options.query,
+        result: await getAgentExternalResearchService().firecrawlSearch(
+          options.agentId,
+          options.query,
+          options.maxResults,
+        ),
+      };
+    }
+    throw new Error(getExternalResearchConfigMessage());
+  };
+
+  const runExternalResearchExtract = async (options: {
+    agentId: string;
+    urls: string[];
+    query?: string;
+    provider: 'auto' | 'tavily' | 'firecrawl';
+  }): Promise<Record<string, unknown>> => {
+    if (options.urls.length === 0) {
+      throw new Error('No URLs provided for external research extraction.');
+    }
+    if ((options.provider === 'firecrawl' || options.provider === 'auto')
+      && isExternalResearchProviderAvailable(options.agentId, 'firecrawl')) {
+      const pages = [];
+      for (const url of options.urls) {
+        pages.push({
+          url,
+          result: await getAgentExternalResearchService().firecrawlScrape(options.agentId, url),
+        });
+      }
+      return { provider: 'firecrawl', urls: options.urls, pages };
+    }
+    if ((options.provider === 'tavily' || options.provider === 'auto')
+      && isExternalResearchProviderAvailable(options.agentId, 'tavily')) {
+      return {
+        provider: 'tavily',
+        urls: options.urls,
+        result: await getAgentExternalResearchService().tavilyExtract(
+          options.agentId,
+          options.urls,
+          options.query,
+        ),
+      };
+    }
+    throw new Error(getExternalResearchConfigMessage());
+  };
+
+  getMcpRuntime().setIndustryPositioningHandler(async (request) => {
+    const service = getPositioningService();
+    const agentId = resolveAgentIdFromIndustryToolRequest(request);
+
+    if (request.tool === 'lobsterai_external_research_search') {
+      const query = typeof request.args.query === 'string' ? request.args.query.trim() : '';
+      if (!query) {
+        return { content: [{ type: 'text', text: 'Missing search query.' }], isError: true };
+      }
+      const maxResults = typeof request.args.maxResults === 'number'
+        ? Math.min(10, Math.max(1, Math.floor(request.args.maxResults)))
+        : 5;
+      try {
+        const research = await runExternalResearchSearch({
+          agentId,
+          query,
+          maxResults,
+          provider: normalizeResearchProvider(request.args.provider),
+        });
+        return {
+          content: [{ type: 'text', text: JSON.stringify(research, null, 2) }],
+          details: { agentId, provider: research.provider },
+        };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return { content: [{ type: 'text', text: message }], isError: true };
+      }
+    }
+
+    if (request.tool === 'lobsterai_external_research_extract') {
+      const urls = Array.isArray(request.args.urls)
+        ? request.args.urls.filter((url): url is string => typeof url === 'string' && url.trim().length > 0)
+        : [];
+      try {
+        const research = await runExternalResearchExtract({
+          agentId,
+          urls: urls.slice(0, 10),
+          query: typeof request.args.query === 'string' ? request.args.query : undefined,
+          provider: normalizeResearchProvider(request.args.provider),
+        });
+        return {
+          content: [{ type: 'text', text: JSON.stringify(research, null, 2) }],
+          details: { agentId, provider: research.provider },
+        };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return { content: [{ type: 'text', text: message }], isError: true };
+      }
+    }
+
+    if (request.tool === 'lobsterai_domestic_research_sources_get') {
+      const payload = getAgentDomesticResearchService().getStatusPayload(agentId);
+      return {
+        content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }],
+        details: { agentId },
+      };
+    }
+
+    if (request.tool === 'lobsterai_industry_positioning_get_latest') {
+      const packId = typeof request.args.packId === 'string' ? request.args.packId : '';
+      const report = packId ? service.getLatestReport(packId, agentId) : null;
+      return {
+        content: [{
+          type: 'text',
+          text: report
+            ? JSON.stringify(report, null, 2)
+            : `No positioning report saved for ${packId || 'unknown pack'}.`,
+        }],
+        details: report ? { reportId: report.id } : undefined,
+      };
+    }
+
+    if (request.tool === 'lobsterai_industry_positioning_save') {
+      const availability = getAgentExternalResearchService().getAvailability(agentId).providers;
+      const report = service.saveReport({
+        ...request.args,
+        agentId,
+        providerAvailability: {
+          tavily: availability.tavily.available,
+          firecrawl: availability.firecrawl.available,
+        },
+        sourceCounts: {
+          searchResults: typeof request.args.searchResultCount === 'number'
+            ? Math.max(0, Math.floor(request.args.searchResultCount))
+            : 0,
+          extractedPages: typeof request.args.extractedPageCount === 'number'
+            ? Math.max(0, Math.floor(request.args.extractedPageCount))
+            : 0,
+        },
+        requestedBy: 'agent',
+      } as PositioningReportInput);
+      return {
+        content: [{
+          type: 'text',
+          text: `Saved positioning report ${report.id}. Recommended direction: ${report.recommendedDirectionId}.`,
+        }],
+        details: {
+          reportId: report.id,
+          recommendedDirectionId: report.recommendedDirectionId,
+        },
+      };
+    }
+
+    return {
+      content: [{ type: 'text', text: `Unsupported industry positioning tool: ${request.tool}` }],
+      isError: true,
+    };
+  });
+
   const registerMediaTaskForPolling = (tracker: MediaTaskTracker) => {
     pendingMediaTasks.set(tracker.taskId, tracker);
     ensureMediaPollTimerRunning();
@@ -6602,6 +6871,93 @@ if (!gotTheLock) {
     },
   );
 
+  ipcMain.handle(AgentIpcChannel.GetExternalResearchSettings, async (_event, agentId?: string) => {
+    try {
+      const service = getAgentExternalResearchService();
+      return {
+        success: true,
+        appDefaults: service.getMaskedAppDefaults(),
+        agentSettings: agentId ? service.getMaskedAgentSettings(agentId) : null,
+        availability: agentId ? service.getAvailability(agentId) : null,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to load external research settings',
+      };
+    }
+  });
+
+  ipcMain.handle(
+    AgentIpcChannel.SaveExternalResearchSettings,
+    async (_event, agentId: string | null, config: ExternalResearchEditConfig) => {
+      try {
+        const service = getAgentExternalResearchService();
+        const settings = agentId
+          ? service.saveAgentSettings(agentId, config)
+          : service.saveAppDefaults(config);
+        syncOpenClawConfig({ reason: 'agent-external-research-updated' }).catch(err => {
+          console.error('[OpenClaw] config sync after external research update failed:', err);
+        });
+        return { success: true, settings };
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed to save external research settings',
+        };
+      }
+    },
+  );
+
+  ipcMain.handle(AgentIpcChannel.GetDomesticResearchSettings, async (_event, agentId: string) => {
+    try {
+      const service = getAgentDomesticResearchService();
+      return {
+        success: true,
+        payload: service.getStatusPayload(agentId || AgentId.Main),
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to load domestic research settings',
+      };
+    }
+  });
+
+  ipcMain.handle(
+    AgentIpcChannel.SaveDomesticResearchSettings,
+    async (_event, agentId: string, config: DomesticResearchConfig) => {
+      try {
+        const service = getAgentDomesticResearchService();
+        const settings = service.saveSettings(agentId || AgentId.Main, config);
+        syncOpenClawConfig({ reason: 'agent-domestic-research-updated' }).catch(err => {
+          console.error('[OpenClaw] config sync after domestic research update failed:', err);
+        });
+        return { success: true, settings };
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed to save domestic research settings',
+        };
+      }
+    },
+  );
+
+  ipcMain.handle(
+    AgentIpcChannel.TestExternalResearchProvider,
+    async (_event, input: ExternalResearchProviderTestInput) => {
+      try {
+        const result = await getAgentExternalResearchService().testProvider(input);
+        return { success: true, result };
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed to test external research provider',
+        };
+      }
+    },
+  );
+
   ipcMain.handle(AgentIpcChannel.Delete, async (_event, id: string) => {
     try {
       const agentExists = id !== AgentId.Main && getAgentManager().getAgent(id) !== null;
@@ -6612,6 +6968,9 @@ if (!gotTheLock) {
       }
 
       const result = getAgentManager().deleteAgent(id);
+      if (result) {
+        getAgentExternalResearchStore().deleteAgentSettings(id);
+      }
 
       // Clean up IM platform bindings that reference the deleted agent
       // so that channels fall back to the default 'main' agent.

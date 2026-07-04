@@ -1137,6 +1137,25 @@ describe('OpenClawConfigSync runtime config output', () => {
     expect(config.tools.deny).not.toContain('video_generate');
   });
 
+  test('enables industry positioning plugin when callback endpoint is available', async () => {
+    const sync = await createSync({
+      getIndustryPositioningCallbackUrl: () => 'http://127.0.0.1:5175/industry-positioning-callback',
+    });
+
+    const result = sync.sync('industry-positioning-enabled');
+    expect(result.ok).toBe(true);
+
+    const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    expect(config.plugins.entries['lobster-industry-positioning']).toEqual({
+      enabled: true,
+      config: {
+        callbackUrl: 'http://127.0.0.1:5175/industry-positioning-callback',
+        secret: '${LOBSTER_MCP_BRIDGE_SECRET}',
+        requestTimeoutMs: 120000,
+      },
+    });
+  });
+
   test('maps OpenAI OAuth mode to the ChatGPT Responses provider', async () => {
     const { AuthType, OpenClawApi, OpenClawProviderId, ProviderName } = await import('../../shared/providers');
     const { buildProviderSelection } = await import('./openclawConfigSync');

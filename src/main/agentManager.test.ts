@@ -131,6 +131,23 @@ describe('AgentManager managed preset agents', () => {
     expect(marketingAgent?.systemPrompt).toContain('生成前用一句话确认');
     expect(marketingAgent?.systemPrompt).toContain('不要编造没有提供的硬事实');
     expect(marketingAgent?.systemPrompt).toContain('成本降幅、承重范围、合作年限、交期承诺、认证资质、服务区域');
+    expect(marketingAgent?.systemPrompt).toContain('产品定位分析');
+    expect(marketingAgent?.systemPrompt).toContain('百度关键词、1688 同行、内容平台');
+    expect(marketingAgent?.systemPrompt).toContain('市场需求、竞争机会、工厂匹配、成交可行、内容扩展');
+    expect(marketingAgent?.systemPrompt).toContain('lobsterai_industry_positioning_save');
+    expect(marketingAgent?.systemPrompt).toContain('lobsterai_industry_positioning_get_latest');
+    expect(marketingAgent?.systemPrompt).toContain('Tavily');
+    expect(marketingAgent?.systemPrompt).toContain('Firecrawl');
+    expect(marketingAgent?.systemPrompt).toContain('外部调研设置');
+    expect(marketingAgent?.systemPrompt).toContain('lobsterai_external_research_search');
+    expect(marketingAgent?.systemPrompt).toContain('lobsterai_external_research_extract');
+    expect(marketingAgent?.systemPrompt).not.toContain('TAVILY_API_KEY');
+    expect(marketingAgent?.systemPrompt).not.toContain('FIRECRAWL_API_KEY');
+    expect(marketingAgent?.systemPrompt).toContain('主推方向');
+    expect(marketingAgent?.systemPrompt).toContain('我理解的是');
+    expect(marketingAgent?.systemPrompt).toContain('事实保护检查');
+    expect(marketingAgent?.systemPrompt).toContain('可直接复制的正文');
+    expect(marketingAgent?.systemPrompt).toContain('下一步快捷改写');
   });
 
   test('listAgents does not duplicate 推广agent across repeated loads', () => {

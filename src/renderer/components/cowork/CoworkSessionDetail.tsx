@@ -84,6 +84,11 @@ import {
 import CoworkPromptInput, { type CoworkPromptInputRef } from './CoworkPromptInput';
 import LazyRenderTurn, { clearHeightCache } from './LazyRenderTurn';
 import {
+  buildMarketingRewriteActions,
+  type MarketingRewriteAction,
+} from './marketingRewriteActions';
+import MarketingRewriteChips from './MarketingRewriteChips';
+import {
   buildConversationTurns,
   buildDisplayItems,
   type ConversationTurn,
@@ -1087,6 +1092,8 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
     left: number;
     top: number;
   } | null>(null);
+  const [pendingMarketingRewriteActionId, setPendingMarketingRewriteActionId] =
+    useState<MarketingRewriteAction['id'] | null>(null);
   const isLoadingMoreMessagesRef = useRef(false);
   const prevScrollHeightRef = useRef<number | null>(null);
   const scrollToBottomIntentRef = useRef(false);
@@ -1139,6 +1146,28 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
   const latestProposedPlan = useMemo(
     () => currentSession ? findLatestProposedPlan(currentSession.messages) : null,
     [currentSession],
+  );
+  const latestAssistantContent = useMemo(() => {
+    if (!currentSession) return null;
+    for (let index = currentSession.messages.length - 1; index >= 0; index -= 1) {
+      const message = currentSession.messages[index];
+      if (
+        message.type === 'assistant' &&
+        !message.metadata?.isThinking &&
+        message.content.trim()
+      ) {
+        return message.content;
+      }
+    }
+    return null;
+  }, [currentSession]);
+  const marketingRewriteActions = useMemo(
+    () => buildMarketingRewriteActions({
+      agentId: currentSession?.agentId,
+      isBusy: isSessionBusy || remoteManaged,
+      latestAssistantContent,
+    }),
+    [currentSession?.agentId, isSessionBusy, latestAssistantContent, remoteManaged],
   );
   const confirmExecutionSkillPrompt = useMemo(() => {
     const kitSkillIds = activeKitIds.flatMap(kitId => getInstalledKitSkillIds(installedKits[kitId]));
@@ -1410,6 +1439,32 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
       messageId,
     }));
   }, [confirmExecutionSkillPrompt, currentSession?.id, currentSession?.status, dispatch, isSessionBusy, latestProposedPlan, onContinue]);
+
+  const handleMarketingRewriteSelect = useCallback(async (action: MarketingRewriteAction) => {
+    if (
+      pendingMarketingRewriteActionId ||
+      remoteManaged ||
+      isSessionBusy ||
+      currentSession?.status === CoworkSessionStatusValue.Running
+    ) {
+      window.dispatchEvent(new CustomEvent('app:showToast', {
+        detail: i18nService.t('coworkSessionStillRunning'),
+      }));
+      return;
+    }
+    setPendingMarketingRewriteActionId(action.id);
+    try {
+      await onContinue(action.prompt);
+    } finally {
+      setPendingMarketingRewriteActionId(null);
+    }
+  }, [
+    currentSession?.status,
+    isSessionBusy,
+    onContinue,
+    pendingMarketingRewriteActionId,
+    remoteManaged,
+  ]);
 
   const handleAdjustPlan = useCallback((messageId: string) => {
     if (!currentSession?.id || !latestProposedPlan || latestProposedPlan.messageId !== messageId) return;
@@ -4433,6 +4488,12 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
           </div>
         )}
         <div className={COWORK_DETAIL_CONTENT_CLASS}>
+          <MarketingRewriteChips
+            actions={marketingRewriteActions}
+            disabled={Boolean(pendingMarketingRewriteActionId)}
+            onSelect={handleMarketingRewriteSelect}
+            pendingActionId={pendingMarketingRewriteActionId}
+          />
           <CoworkPromptInput
             ref={promptInputRef}
             onSubmit={onContinue}

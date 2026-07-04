@@ -1,0 +1,33 @@
+{
+  "id": "lobster-industry-positioning",
+  "name": "LobsterAI Industry Positioning",
+  "description": "Save and read structured industry positioning reports from LobsterAI desktop.",
+  "contracts": {
+    "tools": [
+      "lobsterai_industry_positioning_save",
+      "lobsterai_industry_positioning_get_latest",
+      "lobsterai_external_research_search",
+      "lobsterai_external_research_extract",
+      "lobsterai_domestic_research_sources_get"
+    ]
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "callbackUrl": {
+        "type": "string",
+        "description": "LobsterAI HTTP callback URL for industry positioning requests"
+      },
+      "secret": {
+        "type": "string",
+        "description": "Shared secret for callback authentication"
+      },
+      "requestTimeoutMs": {
+        "type": "number",
+        "minimum": 1000,
+        "description": "Request timeout in milliseconds"
+      }
+    }
+  }
+}

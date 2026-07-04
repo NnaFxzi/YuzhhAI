@@ -13,6 +13,11 @@ export const AgentIpcChannel = {
   Presets: 'agents:presets',
   PresetTemplates: 'agents:presetTemplates',
   AddPreset: 'agents:addPreset',
+  GetExternalResearchSettings: 'agents:externalResearch:get',
+  SaveExternalResearchSettings: 'agents:externalResearch:save',
+  TestExternalResearchProvider: 'agents:externalResearch:testProvider',
+  GetDomesticResearchSettings: 'agents:domesticResearch:get',
+  SaveDomesticResearchSettings: 'agents:domesticResearch:save',
 } as const;
 
 export type AgentIpcChannel = typeof AgentIpcChannel[keyof typeof AgentIpcChannel];

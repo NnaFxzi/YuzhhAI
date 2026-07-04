@@ -59,6 +59,21 @@ export type MediaGenerationResponse = {
   details?: Record<string, unknown>;
 };
 
+export type IndustryPositioningToolRequest = {
+  tool: string;
+  args: Record<string, unknown>;
+  context?: {
+    sessionKey?: string;
+    toolCallId?: string;
+  };
+};
+
+export type IndustryPositioningToolResponse = {
+  content: Array<{ type: string; text: string }>;
+  isError?: boolean;
+  details?: Record<string, unknown>;
+};
+
 export class McpBridgeServer {
   private server: http.Server | null = null;
   private _port: number | null = null;
@@ -67,6 +82,8 @@ export class McpBridgeServer {
   private onAskUserCallback: ((request: AskUserRequest) => void) | null = null;
   private onAskUserDismissCallback: ((requestId: string) => void) | null = null;
   private onMediaGenerationCallback: ((request: MediaGenerationRequest) => Promise<MediaGenerationResponse>) | null = null;
+  private onIndustryPositioningCallback:
+    ((request: IndustryPositioningToolRequest) => Promise<IndustryPositioningToolResponse>) | null = null;
 
   constructor(secret: string) {
     this.secret = secret;
@@ -83,6 +100,10 @@ export class McpBridgeServer {
 
   get mediaCallbackUrl(): string | null {
     return this._port ? `http://127.0.0.1:${this._port}/media-generation/tool` : null;
+  }
+
+  get industryPositioningCallbackUrl(): string | null {
+    return this._port ? `http://127.0.0.1:${this._port}/industry-positioning-callback` : null;
   }
 
   /**
@@ -107,6 +128,10 @@ export class McpBridgeServer {
    */
   onMediaGeneration(callback: (request: MediaGenerationRequest) => Promise<MediaGenerationResponse>): void {
     this.onMediaGenerationCallback = callback;
+  }
+
+  onIndustryPositioning(callback: (request: IndustryPositioningToolRequest) => Promise<IndustryPositioningToolResponse>): void {
+    this.onIndustryPositioningCallback = callback;
   }
 
   /**
@@ -215,7 +240,10 @@ export class McpBridgeServer {
     }
 
     // Verify secret token (accept any of the known header name for backwards compats)
-    const authHeader = req.headers['x-mcp-bridge-secret'] || req.headers['x-ask-user-secret'] || req.headers['x-lobster-media-secret'];
+    const authHeader = req.headers['x-mcp-bridge-secret']
+      || req.headers['x-ask-user-secret']
+      || req.headers['x-lobster-media-secret']
+      || req.headers['x-lobster-industry-positioning-secret'];
     if (authHeader !== this.secret) {
       log('WARN', `Auth rejected for ${req.url}: header=${authHeader ? 'present-but-mismatch' : 'missing'}`);
       res.writeHead(401, { 'Content-Type': 'application/json' });
@@ -230,6 +258,11 @@ export class McpBridgeServer {
 
     if (req.url?.startsWith('/media-generation/tool')) {
       await this.handleMediaGeneration(req, res);
+      return;
+    }
+
+    if (req.url?.startsWith('/industry-positioning-callback')) {
+      await this.handleIndustryPositioning(req, res);
       return;
     }
 
@@ -337,6 +370,40 @@ export class McpBridgeServer {
       if (!res.writableEnded) {
         res.writeHead(500, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ content: [{ type: 'text', text: `Media generation error: ${errMsg}` }], isError: true }));
+      }
+    }
+  }
+
+  private async handleIndustryPositioning(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+    const t0 = Date.now();
+    try {
+      const body = await this.readBody(req);
+      const request = JSON.parse(body) as IndustryPositioningToolRequest;
+      log('INFO', `Industry positioning request received for tool="${request.tool}" toolCallId="${request.context?.toolCallId ?? ''}" sessionKey="${request.context?.sessionKey?.slice(0, 30) ?? ''}…"`);
+
+      if (!request.tool) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ content: [{ type: 'text', text: 'Missing tool' }], isError: true }));
+        return;
+      }
+
+      if (!this.onIndustryPositioningCallback) {
+        log('WARN', 'Industry positioning callback not registered');
+        res.writeHead(503, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ content: [{ type: 'text', text: 'Industry positioning service not available.' }], isError: true }));
+        return;
+      }
+
+      const result = await this.onIndustryPositioningCallback(request);
+      log('INFO', `Industry positioning completed for tool="${request.tool}" in ${Date.now() - t0}ms with isError=${result.isError ?? false}. Details=${serializeForLog(result.details ?? {})}`);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(result));
+    } catch (error) {
+      const errMsg = error instanceof Error ? error.message : String(error);
+      log('ERROR', `Industry positioning request failed after ${Date.now() - t0}ms: ${errMsg}`);
+      if (!res.writableEnded) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ content: [{ type: 'text', text: `Industry positioning error: ${errMsg}` }], isError: true }));
       }
     }
   }

@@ -1,5 +1,15 @@
 import { XMarkIcon } from '@heroicons/react/24/outline';
 import { DefaultAgentAvatarIcon } from '@shared/agent/avatar';
+import {
+  buildDefaultDomesticResearchConfig,
+  type DomesticResearchConfig,
+} from '@shared/agent/domesticResearch';
+import {
+  AgentExternalResearchMode,
+  buildDefaultExternalResearchEditConfig,
+  type ExternalResearchEditConfig,
+  type MaskedExternalResearchConfig,
+} from '@shared/agent/externalResearch';
 import type { Platform } from '@shared/platform';
 import { PlatformRegistry } from '@shared/platform';
 import { ProviderName } from '@shared/providers';
@@ -24,6 +34,12 @@ import AgentAvatarIcon from './AgentAvatarIcon';
 import AgentAvatarPicker from './AgentAvatarPicker';
 import AgentConfirmDialog from './AgentConfirmDialog';
 import AgentDetailToolbar from './AgentDetailToolbar';
+import AgentDomesticResearchSourcesPanel from './AgentDomesticResearchSourcesPanel';
+import {
+  DEFAULT_USER_INFO_TEMPLATE,
+  getEditableUserInfo,
+} from './agentEditText';
+import AgentExternalResearchPanel from './AgentExternalResearchPanel';
 import AgentSkillSelector from './AgentSkillSelector';
 import { AgentConfirmDialogVariant, AgentDetailTab } from './constants';
 
@@ -97,6 +113,14 @@ const AgentCreateModal: React.FC<AgentCreateModalProps> = ({
   const [templatesLoading, setTemplatesLoading] = useState(false);
   const [showTemplatePicker, setShowTemplatePicker] = useState(false);
   const [activeTab, setActiveTab] = useState<AgentDetailTab>(AgentDetailTab.Identity);
+  const [externalResearchConfig, setExternalResearchConfig] = useState<ExternalResearchEditConfig>(
+    buildDefaultExternalResearchEditConfig(AgentExternalResearchMode.Inherit),
+  );
+  const [externalResearchDefaults, setExternalResearchDefaults] = useState<MaskedExternalResearchConfig | null>(null);
+  const [domesticResearchConfig, setDomesticResearchConfig] = useState<DomesticResearchConfig>(
+    buildDefaultDomesticResearchConfig(),
+  );
+  const initialDomesticResearchRef = useRef(JSON.stringify(buildDefaultDomesticResearchConfig()));
   const globalSelectedModel = useSelector((state: RootState) => state.model.defaultSelectedModel);
   const agents = useSelector((state: RootState) => state.agent.agents);
   const currentAgentId = useSelector((state: RootState) => state.agent.currentAgentId);
@@ -128,9 +152,11 @@ const AgentCreateModal: React.FC<AgentCreateModalProps> = ({
     if ((model ? toOpenClawModelRef(model) : '') !== initialModelRef.current) changedFields.push('model');
     if (workingDirectory !== initialWorkingDirectoryRef.current) changedFields.push('workingDirectory');
     if (skillIds.length > 0) changedFields.push('skillIds');
+    if (externalResearchConfig.mode !== AgentExternalResearchMode.Inherit) changedFields.push('externalResearch');
+    if (JSON.stringify(domesticResearchConfig) !== initialDomesticResearchRef.current) changedFields.push('domesticResearch');
     if (boundKeys.size > 0) changedFields.push('imBindings');
     return changedFields;
-  }, [boundKeys.size, description, icon, identity, model, name, skillIds.length, systemPrompt, userInfo, workingDirectory]);
+  }, [boundKeys.size, description, domesticResearchConfig, externalResearchConfig.mode, icon, identity, model, name, skillIds.length, systemPrompt, userInfo, workingDirectory]);
 
   const isDirty = useCallback((): boolean => {
     return getChangedFields().length > 0;
@@ -243,6 +269,10 @@ const AgentCreateModal: React.FC<AgentCreateModalProps> = ({
     setModel(globalSelectedModel ?? null);
     setWorkingDirectory(defaultWorkingDirectory);
     setSkillIds([]);
+    setExternalResearchConfig(buildDefaultExternalResearchEditConfig(AgentExternalResearchMode.Inherit));
+    const defaultDomesticResearch = buildDefaultDomesticResearchConfig();
+    setDomesticResearchConfig(defaultDomesticResearch);
+    initialDomesticResearchRef.current = JSON.stringify(defaultDomesticResearch);
     setActiveTab(AgentDetailTab.Identity);
     setShowUnsavedConfirm(false);
     setShowTemplatePicker(false);
@@ -254,12 +284,16 @@ const AgentCreateModal: React.FC<AgentCreateModalProps> = ({
       template: null,
     });
     void coworkService.readBootstrapFile('USER.md').then((content) => {
-      initialUserInfoRef.current = content;
-      setUserInfo(content);
+      const editableContent = getEditableUserInfo(content);
+      initialUserInfoRef.current = editableContent;
+      setUserInfo(editableContent);
     });
     imService.loadConfig().then((cfg) => {
       if (cfg) setImConfig(cfg);
     });
+    agentService.getExternalResearchSettings()
+      .then(settings => setExternalResearchDefaults(settings?.appDefaults ?? null))
+      .catch(() => setExternalResearchDefaults(null));
     setTemplatesLoading(true);
     agentService.getPresetTemplates()
       .then(setPresetTemplates)
@@ -287,6 +321,10 @@ const AgentCreateModal: React.FC<AgentCreateModalProps> = ({
     setModel(null);
     setWorkingDirectory('');
     setSkillIds([]);
+    setExternalResearchConfig(buildDefaultExternalResearchEditConfig(AgentExternalResearchMode.Inherit));
+    const defaultDomesticResearch = buildDefaultDomesticResearchConfig();
+    setDomesticResearchConfig(defaultDomesticResearch);
+    initialDomesticResearchRef.current = JSON.stringify(defaultDomesticResearch);
     setActiveTab(AgentDetailTab.Identity);
     setShowTemplatePicker(false);
     setSelectedTemplate(null);
@@ -361,6 +399,8 @@ const AgentCreateModal: React.FC<AgentCreateModalProps> = ({
   const handleCreate = async () => {
     if (!name.trim()) return;
     const changedFields = getChangedFields();
+    const externalResearchChanged = changedFields.includes('externalResearch');
+    const domesticResearchChanged = changedFields.includes('domesticResearch');
     reportAgentCreateAction('create_submit', {
       changedFields,
       includeConfigDetails: true,
@@ -368,6 +408,19 @@ const AgentCreateModal: React.FC<AgentCreateModalProps> = ({
     });
     setCreating(true);
     try {
+      if (externalResearchChanged && !agentService.canSaveExternalResearchSettings()) {
+        reportAgentCreateAction('create_failed', {
+          changedFields,
+          errorCode: 'unknown',
+          includeConfigDetails: true,
+          isDirty: changedFields.length > 0,
+          result: 'failed',
+        });
+        window.dispatchEvent(new CustomEvent('app:showToast', {
+          detail: i18nService.t('agentExternalResearchSaveUnavailable'),
+        }));
+        return;
+      }
       if (userInfo !== initialUserInfoRef.current) {
         const userInfoSaved = await coworkService.writeBootstrapFile('USER.md', userInfo);
         if (!userInfoSaved) {
@@ -393,6 +446,38 @@ const AgentCreateModal: React.FC<AgentCreateModalProps> = ({
         skillIds,
       });
       if (agent) {
+        if (externalResearchChanged) {
+          const researchSaved = await agentService.saveExternalResearchSettings(agent.id, externalResearchConfig);
+          if (!researchSaved) {
+            reportAgentCreateAction('create_failed', {
+              changedFields,
+              errorCode: 'unknown',
+              includeConfigDetails: true,
+              isDirty: changedFields.length > 0,
+              result: 'failed',
+            });
+            window.dispatchEvent(new CustomEvent('app:showToast', {
+              detail: i18nService.t('agentExternalResearchSaveFailed'),
+            }));
+            return;
+          }
+        }
+        if (domesticResearchChanged) {
+          const domesticSaved = await agentService.saveDomesticResearchSettings(agent.id, domesticResearchConfig);
+          if (!domesticSaved) {
+            reportAgentCreateAction('create_failed', {
+              changedFields,
+              errorCode: 'unknown',
+              includeConfigDetails: true,
+              isDirty: changedFields.length > 0,
+              result: 'failed',
+            });
+            window.dispatchEvent(new CustomEvent('app:showToast', {
+              detail: i18nService.t('agentDomesticResearchSaveFailed'),
+            }));
+            return;
+          }
+        }
         // Save IM bindings after agent is created
         if (boundKeys.size > 0 && imConfig) {
           const currentBindings = { ...(imConfig.settings?.platformAgentBindings || {}) };
@@ -488,6 +573,7 @@ const AgentCreateModal: React.FC<AgentCreateModalProps> = ({
     { key: AgentDetailTab.Prompt, label: i18nService.t('coworkBootstrapSoulTitle') },
     { key: AgentDetailTab.User, label: i18nService.t('coworkBootstrapUserTitle') },
     { key: AgentDetailTab.Skills, label: i18nService.t('agentTabSkills') },
+    { key: AgentDetailTab.ExternalResearch, label: i18nService.t('agentTabExternalResearch') },
     { key: AgentDetailTab.Im, label: i18nService.t('agentTabIM') },
   ];
 
@@ -497,11 +583,26 @@ const AgentCreateModal: React.FC<AgentCreateModalProps> = ({
     placeholder: string,
     ariaLabel: string,
     hint: string,
+    action?: {
+      label: string;
+      onClick: () => void;
+    },
   ) => (
     <div className="flex h-full min-h-0 flex-col gap-2">
-      <p className="shrink-0 text-xs leading-5 text-secondary">
-        {hint}
-      </p>
+      <div className="flex shrink-0 items-center justify-between gap-3">
+        <p className="text-xs leading-5 text-secondary">
+          {hint}
+        </p>
+        {action && (
+          <button
+            type="button"
+            onClick={action.onClick}
+            className="shrink-0 rounded-md border border-border px-2.5 py-1 text-xs font-medium text-secondary transition-colors hover:bg-surface-raised hover:text-foreground"
+          >
+            {action.label}
+          </button>
+        )}
+      </div>
       <textarea
         value={value}
         onChange={(e) => onChange(e.target.value)}
@@ -601,10 +702,29 @@ const AgentCreateModal: React.FC<AgentCreateModalProps> = ({
           i18nService.t('coworkBootstrapPlaceholder'),
           i18nService.t('coworkBootstrapUserTitle'),
           i18nService.t('coworkBootstrapUserHint'),
+          {
+            label: i18nService.t('coworkBootstrapUserEmptyAction'),
+            onClick: () => setUserInfo(DEFAULT_USER_INFO_TEMPLATE),
+          },
         )}
 
         {activeTab === AgentDetailTab.Skills && (
           <AgentSkillSelector selectedSkillIds={skillIds} onChange={setSkillIds} />
+        )}
+
+        {activeTab === AgentDetailTab.ExternalResearch && (
+          <div className="h-full overflow-y-auto space-y-6">
+            <AgentExternalResearchPanel
+              value={externalResearchConfig}
+              appDefaults={externalResearchDefaults}
+              onChange={setExternalResearchConfig}
+              onTestProvider={input => agentService.testExternalResearchProvider(input)}
+            />
+            <AgentDomesticResearchSourcesPanel
+              value={domesticResearchConfig}
+              onChange={setDomesticResearchConfig}
+            />
+          </div>
         )}
 
         {activeTab === AgentDetailTab.Im && (

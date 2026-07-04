@@ -9,6 +9,7 @@ import {
 import type { IndustryPackLoader, LoadedIndustryPack } from './industryPackLoader';
 import type { IndustryPackStore } from './industryPackStore';
 import type { ModelClientAdapter } from './modelClientAdapter';
+import type { PositioningService } from './positioningService';
 import { renderIndustryPrompt } from './templateRenderer';
 
 interface IndustryWorkspace {
@@ -21,6 +22,7 @@ interface ContentGenerationServiceOptions {
   loader: IndustryPackLoader;
   modelClient: ModelClientAdapter;
   store: IndustryPackStore;
+  positioningService?: Pick<PositioningService, 'buildLatestPromptContext'>;
 }
 
 export interface ContentGenerationResult {
@@ -201,7 +203,13 @@ export class ContentGenerationService {
       packId: pack.id,
       name: `${pack.manifest.name}工作台`,
     });
-    const prompt = renderIndustryPrompt(pack, normalizedRequest);
+    const basePrompt = renderIndustryPrompt(pack, normalizedRequest);
+    const positioningContext = this.options.positioningService
+      ?.buildLatestPromptContext(String(normalizedRequest.packId))
+      .trim();
+    const prompt = positioningContext
+      ? `${basePrompt}\n\n${positioningContext}\n`
+      : basePrompt;
     const modelResult = await this.options.modelClient.generate({ prompt });
     const payloads = parseGeneratedAssetPayloads(modelResult.text);
     validatePayloadsAgainstRequest(payloads, normalizedRequest);

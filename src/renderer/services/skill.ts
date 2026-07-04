@@ -9,6 +9,43 @@ export function resolveLocalizedText(text: string | LocalizedText): string {
   return text[lang] || text.en || '';
 }
 
+const CHINESE_SKILL_DESCRIPTION_FALLBACKS: Record<string, string> = {
+  'article-writer': '根据主题、素材和目标读者生成结构清晰的文章草稿，适合公众号、博客和内容运营。',
+  'content-planner': '规划选题、内容节奏和发布思路，帮助把零散想法整理成可执行的内容计划。',
+  'daily-trending': '追踪近期热点和内容趋势，为选题、营销和传播策略提供参考。',
+  'docx': '创建、编辑和检查 Word 文档，适合报告、合同、方案和正式文稿。',
+  'frontend-design': '设计并优化高质量前端界面，关注布局、视觉风格、交互细节和可用性。',
+  'stock-analyzer': '综合行情、财务、技术指标和成长性信息，生成股票分析报告。',
+  'stock-announcements': '查找并整理上市公司公告，辅助跟踪财报、分红、融资和重大事项。',
+  'stock-explorer': '探索股票、行业和市场线索，帮助发现可进一步分析的标的。',
+  'web-search': '联网搜索和读取网页内容，用于获取最新资料、核对事实和补充背景信息。',
+  'xlsx': '创建、编辑和分析 Excel 表格，支持数据整理、公式、图表和汇总。',
+};
+
+type ResolveSkillDescriptionOptions = {
+  fallback: string;
+  language: string;
+  skillId: string;
+  skillName: string;
+};
+
+export function resolveSkillDescriptionForDisplay({
+  fallback,
+  language,
+  skillId,
+  skillName,
+}: ResolveSkillDescriptionOptions): string {
+  if (language !== 'zh') {
+    return fallback;
+  }
+
+  const normalizedId = skillId.trim().toLowerCase();
+  const normalizedName = skillName.trim().toLowerCase();
+  return CHINESE_SKILL_DESCRIPTION_FALLBACKS[normalizedId]
+    ?? CHINESE_SKILL_DESCRIPTION_FALLBACKS[normalizedName]
+    ?? fallback;
+}
+
 export function compareVersions(a: string, b: string): number {
   const pa = a.split('.').map(s => parseInt(s, 10) || 0);
   const pb = b.split('.').map(s => parseInt(s, 10) || 0);
@@ -325,7 +362,12 @@ class SkillService {
     if (marketDesc != null) return resolveLocalizedText(marketDesc);
     const kitDesc = this.installedKitSkillDescriptions.get(skillId);
     if (kitDesc != null) return resolveLocalizedText(kitDesc);
-    return fallback;
+    return resolveSkillDescriptionForDisplay({
+      fallback,
+      language: i18nService.getLanguage(),
+      skillId,
+      skillName,
+    });
   }
 }
 

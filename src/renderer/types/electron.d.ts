@@ -1,4 +1,13 @@
 import type { OpenClawSessionPatch } from '../../common/openclawSession';
+import type {
+  DomesticResearchConfig,
+  DomesticResearchStatusMap,
+} from '../../shared/agent/domesticResearch';
+import type {
+  ExternalResearchEditConfig,
+  ExternalResearchProviderTestInput,
+  MaskedExternalResearchConfig,
+} from '../../shared/agent/externalResearch';
 import type { AppUpdateCheckResult, AppUpdateRuntimeState } from '../../shared/appUpdate/constants';
 import type {
   AsrRealtimeSessionRequest,
@@ -576,6 +585,24 @@ interface IElectronAPI {
     presets: () => Promise<PresetAgent[]>;
     presetTemplates: () => Promise<PresetAgent[]>;
     addPreset: (presetId: string) => Promise<Agent>;
+    getExternalResearchSettings: (agentId?: string) => Promise<{
+      appDefaults: MaskedExternalResearchConfig;
+      agentSettings: MaskedExternalResearchConfig | null;
+      availability: unknown;
+    } | null>;
+    saveExternalResearchSettings: (
+      agentId: string | null,
+      config: ExternalResearchEditConfig,
+    ) => Promise<MaskedExternalResearchConfig | null>;
+    getDomesticResearchSettings: (agentId: string) => Promise<{
+      settings: DomesticResearchConfig;
+      statuses: DomesticResearchStatusMap;
+    } | null>;
+    saveDomesticResearchSettings: (
+      agentId: string,
+      config: DomesticResearchConfig,
+    ) => Promise<DomesticResearchConfig | null>;
+    testExternalResearchProvider: (input: ExternalResearchProviderTestInput) => Promise<{ ok: boolean; message: string }>;
   };
   api: {
     fetch: (options: {

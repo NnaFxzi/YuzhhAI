@@ -3,6 +3,11 @@ import { randomUUID } from 'node:crypto';
 import Database from 'better-sqlite3';
 
 import { GeneratedAssetStatus } from '../../shared/industryPack/constants';
+import type {
+  PositioningReport,
+  PositioningReportInput,
+} from '../../shared/industryPack/positioning';
+import { normalizePositioningReportInput } from '../../shared/industryPack/positioning';
 import type { GeneratedAsset } from '../../shared/industryPack/types';
 
 interface WorkspaceInput {
@@ -34,6 +39,18 @@ type GeneratedAssetRow = Omit<GeneratedAsset, 'keywords'> & {
   keywords: string;
 };
 
+type PositioningReportRow = Omit<
+  PositioningReport,
+  'sourceSummary' | 'candidates' | 'backupDirectionIds' | 'nextActions' | 'providerAvailability' | 'sourceCounts'
+> & {
+  sourceSummary: string;
+  candidates: string;
+  backupDirectionIds: string;
+  nextActions: string;
+  providerAvailability: string;
+  sourceCounts: string;
+};
+
 const parseKeywords = (value: string): string[] => {
   try {
     const parsed = JSON.parse(value) as unknown;
@@ -47,9 +64,27 @@ const parseKeywords = (value: string): string[] => {
   return [];
 };
 
+const parseJsonValue = <T>(value: string, fallback: T): T => {
+  try {
+    return JSON.parse(value) as T;
+  } catch {
+    return fallback;
+  }
+};
+
 const mapGeneratedAssetRow = (row: GeneratedAssetRow): GeneratedAsset => ({
   ...row,
   keywords: parseKeywords(row.keywords),
+});
+
+const mapPositioningReportRow = (row: PositioningReportRow): PositioningReport => ({
+  ...row,
+  sourceSummary: parseJsonValue(row.sourceSummary, { lanes: [] }),
+  candidates: parseJsonValue(row.candidates, []),
+  backupDirectionIds: parseJsonValue(row.backupDirectionIds, []),
+  nextActions: parseJsonValue(row.nextActions, []),
+  providerAvailability: parseJsonValue(row.providerAvailability, { tavily: false, firecrawl: false }),
+  sourceCounts: parseJsonValue(row.sourceCounts, { searchResults: 0, extractedPages: 0 }),
 });
 
 export class IndustryPackStore {
@@ -83,7 +118,38 @@ export class IndustryPackStore {
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
       );
+
+      CREATE TABLE IF NOT EXISTS industry_positioning_reports (
+        id TEXT PRIMARY KEY,
+        pack_id TEXT NOT NULL,
+        agent_id TEXT NOT NULL DEFAULT 'main',
+        requested_by TEXT NOT NULL,
+        recommended_direction_id TEXT NOT NULL,
+        provider_availability TEXT NOT NULL DEFAULT '{}',
+        source_counts TEXT NOT NULL DEFAULT '{}',
+        source_summary TEXT NOT NULL,
+        candidates TEXT NOT NULL,
+        backup_direction_ids TEXT NOT NULL,
+        next_actions TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
     `);
+    this.ensurePositioningReportColumns();
+  }
+
+  private ensurePositioningReportColumns(): void {
+    const columns = this.db.pragma('table_info(industry_positioning_reports)') as Array<{ name: string }>;
+    const columnNames = new Set(columns.map(column => column.name));
+    if (!columnNames.has('agent_id')) {
+      this.db.exec("ALTER TABLE industry_positioning_reports ADD COLUMN agent_id TEXT NOT NULL DEFAULT 'main';");
+    }
+    if (!columnNames.has('provider_availability')) {
+      this.db.exec("ALTER TABLE industry_positioning_reports ADD COLUMN provider_availability TEXT NOT NULL DEFAULT '{}';");
+    }
+    if (!columnNames.has('source_counts')) {
+      this.db.exec("ALTER TABLE industry_positioning_reports ADD COLUMN source_counts TEXT NOT NULL DEFAULT '{}';");
+    }
   }
 
   ensureWorkspace(input: WorkspaceInput): IndustryWorkspace {
@@ -246,5 +312,103 @@ export class IndustryPackStore {
     `).get(assetId) as GeneratedAssetRow | undefined;
 
     return row ? mapGeneratedAssetRow(row) : null;
+  }
+
+  createPositioningReport(input: PositioningReportInput): PositioningReport {
+    const normalized = normalizePositioningReportInput(input);
+    const now = new Date().toISOString();
+    const report: PositioningReport = {
+      id: randomUUID(),
+      ...normalized,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    this.db.prepare(`
+      INSERT INTO industry_positioning_reports (
+        id,
+        pack_id,
+        agent_id,
+        requested_by,
+        recommended_direction_id,
+        provider_availability,
+        source_counts,
+        source_summary,
+        candidates,
+        backup_direction_ids,
+        next_actions,
+        created_at,
+        updated_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      report.id,
+      report.packId,
+      report.agentId,
+      report.requestedBy,
+      report.recommendedDirectionId,
+      JSON.stringify(report.providerAvailability),
+      JSON.stringify(report.sourceCounts),
+      JSON.stringify(report.sourceSummary),
+      JSON.stringify(report.candidates),
+      JSON.stringify(report.backupDirectionIds),
+      JSON.stringify(report.nextActions),
+      report.createdAt,
+      report.updatedAt,
+    );
+
+    return report;
+  }
+
+  getPositioningReport(reportId: string): PositioningReport | null {
+    const row = this.db.prepare(`
+      SELECT
+        id,
+        pack_id as packId,
+        agent_id as agentId,
+        requested_by as requestedBy,
+        recommended_direction_id as recommendedDirectionId,
+        provider_availability as providerAvailability,
+        source_counts as sourceCounts,
+        source_summary as sourceSummary,
+        candidates,
+        backup_direction_ids as backupDirectionIds,
+        next_actions as nextActions,
+        created_at as createdAt,
+        updated_at as updatedAt
+      FROM industry_positioning_reports
+      WHERE id = ?
+      LIMIT 1
+    `).get(reportId) as PositioningReportRow | undefined;
+
+    return row ? mapPositioningReportRow(row) : null;
+  }
+
+  getLatestPositioningReport(packId: string, agentId?: string): PositioningReport | null {
+    const normalizedAgentId = agentId?.trim();
+    const params = normalizedAgentId ? [packId, normalizedAgentId] : [packId];
+    const row = this.db.prepare(`
+      SELECT
+        id,
+        pack_id as packId,
+        agent_id as agentId,
+        requested_by as requestedBy,
+        recommended_direction_id as recommendedDirectionId,
+        provider_availability as providerAvailability,
+        source_counts as sourceCounts,
+        source_summary as sourceSummary,
+        candidates,
+        backup_direction_ids as backupDirectionIds,
+        next_actions as nextActions,
+        created_at as createdAt,
+        updated_at as updatedAt
+      FROM industry_positioning_reports
+      WHERE pack_id = ?
+      ${normalizedAgentId ? 'AND agent_id = ?' : ''}
+      ORDER BY created_at DESC, rowid DESC
+      LIMIT 1
+    `).get(...params) as PositioningReportRow | undefined;
+
+    return row ? mapPositioningReportRow(row) : null;
   }
 }

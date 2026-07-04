@@ -1,3 +1,4 @@
+import { buildDefaultDomesticResearchConfig } from '@shared/agent/domesticResearch';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 import { store } from '../store';
@@ -128,5 +129,124 @@ describe('agentService.updateAgent', () => {
     await agentService.updateAgent('agent-1', { skillIds: ['docx', 'web-search'] });
 
     expect(store.getState().skill.activeSkillIds).toEqual(['xlsx']);
+  });
+});
+
+describe('agentService external research settings', () => {
+  test('reports when external research settings save bridge is unavailable', () => {
+    (globalThis as { window?: unknown }).window = {
+      electron: {
+        agents: {},
+      },
+    };
+
+    expect(agentService.canSaveExternalResearchSettings()).toBe(false);
+  });
+
+  test('saves external research settings through preload API', async () => {
+    const saveExternalResearchSettings = vi.fn().mockResolvedValue({
+      mode: 'override',
+      providers: {
+        tavily: { enabled: true, hasApiKey: true, apiKeyPreview: 'tvly...test' },
+        firecrawl: { enabled: false, hasApiKey: false, apiKeyPreview: '' },
+      },
+    });
+    (globalThis as { window?: unknown }).window = {
+      electron: {
+        agents: {
+          saveExternalResearchSettings,
+        },
+      },
+    };
+
+    const result = await agentService.saveExternalResearchSettings('agent-1', {
+      mode: 'override',
+      providers: {
+        tavily: { enabled: true, apiKeyAction: 'replace', apiKey: 'tvly-test' },
+        firecrawl: { enabled: false, apiKeyAction: 'clear', apiKey: '' },
+      },
+    });
+
+    expect(result?.providers.tavily.hasApiKey).toBe(true);
+    expect(saveExternalResearchSettings).toHaveBeenCalledWith('agent-1', expect.objectContaining({ mode: 'override' }));
+  });
+
+  test('tests an external research provider through preload API', async () => {
+    const testExternalResearchProvider = vi.fn().mockResolvedValue({ ok: true, message: 'Connection successful.' });
+    (globalThis as { window?: unknown }).window = {
+      electron: {
+        agents: {
+          testExternalResearchProvider,
+        },
+      },
+    };
+
+    const result = await agentService.testExternalResearchProvider({
+      providerId: 'firecrawl',
+      apiKey: 'fc-test',
+    });
+
+    expect(result.ok).toBe(true);
+    expect(testExternalResearchProvider).toHaveBeenCalledWith({ providerId: 'firecrawl', apiKey: 'fc-test' });
+  });
+});
+
+describe('agentService domestic research settings', () => {
+  test('loads domestic research settings through preload API', async () => {
+    const getDomesticResearchSettings = vi.fn().mockResolvedValue({
+      settings: {
+        sources: {
+          douyin: { enabled: true, modes: ['url_import'] },
+          bilibili: { enabled: true, modes: ['search', 'url_import'] },
+        },
+        customSources: [],
+      },
+      statuses: {
+        douyin: { sourceId: 'douyin', enabled: true, status: 'link_import_only', modes: ['url_import'], limitations: [] },
+        bilibili: { sourceId: 'bilibili', enabled: true, status: 'available', modes: ['search', 'url_import'], limitations: [] },
+      },
+    });
+    (globalThis as { window?: unknown }).window = {
+      electron: {
+        agents: {
+          getDomesticResearchSettings,
+        },
+      },
+    };
+
+    const result = await agentService.getDomesticResearchSettings('agent-1');
+
+    expect(result?.statuses.douyin.status).toBe('link_import_only');
+    expect(getDomesticResearchSettings).toHaveBeenCalledWith('agent-1');
+  });
+
+  test('saves domestic research settings through preload API', async () => {
+    const config = buildDefaultDomesticResearchConfig();
+    config.sources.douyin.enabled = false;
+    const saveDomesticResearchSettings = vi.fn().mockResolvedValue({
+      sources: config.sources,
+      customSources: [
+        {
+          id: 'custom-1',
+          name: '行业论坛',
+          enabled: true,
+          modes: ['url_import'],
+          urls: ['https://example.com/topic'],
+        },
+      ],
+    });
+    (globalThis as { window?: unknown }).window = {
+      electron: {
+        agents: {
+          saveDomesticResearchSettings,
+        },
+      },
+    };
+
+    const result = await agentService.saveDomesticResearchSettings('agent-1', config);
+
+    expect(result?.sources.douyin.enabled).toBe(false);
+    expect(result?.customSources[0]?.urls).toEqual(['https://example.com/topic']);
+    expect(saveDomesticResearchSettings).toHaveBeenCalledWith('agent-1', expect.objectContaining({ sources: expect.any(Object) }));
   });
 });

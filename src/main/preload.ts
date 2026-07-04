@@ -2,6 +2,11 @@ import { contextBridge, ipcRenderer } from 'electron';
 
 import { IpcChannel as ScheduledTaskIpc } from '../scheduledTask/constants';
 import { AgentIpcChannel } from '../shared/agent/constants';
+import type { DomesticResearchConfig } from '../shared/agent/domesticResearch';
+import type {
+  ExternalResearchEditConfig,
+  ExternalResearchProviderTestInput,
+} from '../shared/agent/externalResearch';
 import { AppIpcChannel } from '../shared/app/constants';
 import { AppSettingsIpc } from '../shared/appSettings/constants';
 import { AppUpdateIpc } from '../shared/appUpdate/constants';
@@ -323,6 +328,38 @@ contextBridge.exposeInMainWorld('electron', {
     addPreset: async (presetId: string) => {
       const result = await ipcRenderer.invoke(AgentIpcChannel.AddPreset, presetId);
       return result?.success ? result.agent : null;
+    },
+    getExternalResearchSettings: async (agentId?: string) => {
+      const result = await ipcRenderer.invoke(AgentIpcChannel.GetExternalResearchSettings, agentId);
+      return result?.success
+        ? {
+            appDefaults: result.appDefaults,
+            agentSettings: result.agentSettings,
+            availability: result.availability,
+          }
+        : null;
+    },
+    saveExternalResearchSettings: async (
+      agentId: string | null,
+      config: ExternalResearchEditConfig,
+    ) => {
+      const result = await ipcRenderer.invoke(AgentIpcChannel.SaveExternalResearchSettings, agentId, config);
+      return result?.success ? result.settings : null;
+    },
+    getDomesticResearchSettings: async (agentId: string) => {
+      const result = await ipcRenderer.invoke(AgentIpcChannel.GetDomesticResearchSettings, agentId);
+      return result?.success ? result.payload : null;
+    },
+    saveDomesticResearchSettings: async (
+      agentId: string,
+      config: DomesticResearchConfig,
+    ) => {
+      const result = await ipcRenderer.invoke(AgentIpcChannel.SaveDomesticResearchSettings, agentId, config);
+      return result?.success ? result.settings : null;
+    },
+    testExternalResearchProvider: async (input: ExternalResearchProviderTestInput) => {
+      const result = await ipcRenderer.invoke(AgentIpcChannel.TestExternalResearchProvider, input);
+      return result?.success ? result.result : { ok: false, message: result?.error ?? 'Connection test failed.' };
     },
   },
   cowork: {

@@ -1327,6 +1327,7 @@ type OpenClawConfigSyncDeps = {
   getResolvedMcpServers?: () => ResolvedMcpServer[];
   getAskUserCallbackUrl?: () => string | null;
   getMediaCallbackUrl?: () => string | null;
+  getIndustryPositioningCallbackUrl?: () => string | null;
   getMcpBridgeSecret?: () => string;
   getSkillsList?: () => Array<{ id: string; enabled: boolean }>;
   getAgents?: () => Agent[];
@@ -1355,6 +1356,7 @@ export class OpenClawConfigSync {
   private readonly getResolvedMcpServers?: () => ResolvedMcpServer[];
   private readonly getAskUserCallbackUrl?: () => string | null;
   private readonly getMediaCallbackUrl?: () => string | null;
+  private readonly getIndustryPositioningCallbackUrl?: () => string | null;
   private readonly getMcpBridgeSecret?: () => string;
   private readonly getSkillsList?: () => Array<{ id: string; enabled: boolean }>;
   private readonly getAgents?: () => Agent[];
@@ -1384,6 +1386,7 @@ export class OpenClawConfigSync {
     this.getResolvedMcpServers = deps.getResolvedMcpServers;
     this.getAskUserCallbackUrl = deps.getAskUserCallbackUrl;
     this.getMediaCallbackUrl = deps.getMediaCallbackUrl;
+    this.getIndustryPositioningCallbackUrl = deps.getIndustryPositioningCallbackUrl;
     this.getMcpBridgeSecret = deps.getMcpBridgeSecret;
     this.getSkillsList = deps.getSkillsList;
     this.getAgents = deps.getAgents;
@@ -1681,6 +1684,7 @@ loopDetection: MANAGED_TOOL_LOOP_DETECTION,
     );
     const hasAskUserPlugin = isBundledPluginAvailable('ask-user-question');
     const hasMediaGenPlugin = isBundledPluginAvailable('lobster-media-generation');
+    const hasIndustryPositioningPlugin = isBundledPluginAvailable('lobster-industry-positioning');
     const qwenPortalAuthPluginId = resolveOpenClawExtensionPluginId('qwen-portal-auth');
 
     // Detect if any provider uses Qwen/Aliyun DashScope URLs — OpenClaw auto-injects
@@ -1908,6 +1912,7 @@ loopDetection: MANAGED_TOOL_LOOP_DETECTION,
             : {}),
           ...(hasAskUserPlugin ? { 'ask-user-question': { enabled: true } } : {}),
           ...(hasMediaGenPlugin ? { 'lobster-media-generation': { enabled: true } } : {}),
+          ...(hasIndustryPositioningPlugin ? { 'lobster-industry-positioning': { enabled: true } } : {}),
           // Some OpenClaw versions auto-inject qwen-portal-auth for
           // Qwen/DashScope URLs. Declare it only when the plugin actually
           // exists, otherwise it becomes a stale entry on every startup.
@@ -1999,6 +2004,20 @@ loopDetection: MANAGED_TOOL_LOOP_DETECTION,
         enabled: true,
         config: {
           callbackUrl: mediaCallbackUrl,
+          secret: '${LOBSTER_MCP_BRIDGE_SECRET}',
+          requestTimeoutMs: 120000,
+        },
+      };
+    }
+
+    const industryPositioningCallbackUrl = this.getIndustryPositioningCallbackUrl?.();
+    if (hasIndustryPositioningPlugin && industryPositioningCallbackUrl && managedConfig.plugins) {
+      const plugins = managedConfig.plugins as Record<string, unknown>;
+      const entries = plugins.entries as Record<string, Record<string, unknown>>;
+      entries['lobster-industry-positioning'] = {
+        enabled: true,
+        config: {
+          callbackUrl: industryPositioningCallbackUrl,
           secret: '${LOBSTER_MCP_BRIDGE_SECRET}',
           requestTimeoutMs: 120000,
         },
