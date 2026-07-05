@@ -1,4 +1,5 @@
 import {
+  ArrowLeftIcon,
   BookOpenIcon,
   ChatBubbleLeftRightIcon,
   ClockIcon,
@@ -28,6 +29,7 @@ interface WorkspaceShellProps {
   workspace: EnterpriseLeadWorkspace;
   activePage: EnterpriseLeadWorkspaceInternalPage;
   onPageChange: (page: EnterpriseLeadWorkspaceInternalPage) => void;
+  onExitWorkspace?: () => void;
   recentRuns?: EnterpriseLeadWorkspaceRunSummary[];
   onRecordSelect?: (runId: string) => void;
   children: React.ReactNode;
@@ -56,6 +58,7 @@ const runStatusLabelKeys: Record<string, string> = {
 export const WorkspaceShell: React.FC<WorkspaceShellProps> = ({
   activePage,
   onPageChange,
+  onExitWorkspace,
   recentRuns = [],
   onRecordSelect,
   children,
@@ -127,7 +130,24 @@ export const WorkspaceShell: React.FC<WorkspaceShellProps> = ({
               ))}
             </div>
           </section>
-        ) : null}
+        ) : (
+          <div className="min-h-0 flex-1" />
+        )}
+        {onExitWorkspace && (
+          <div className="shrink-0 border-t border-border pt-3">
+            <button
+              type="button"
+              onClick={onExitWorkspace}
+              className="flex h-10 w-full items-center gap-2 rounded-md px-2 text-left text-sm font-medium text-secondary transition-colors hover:bg-surface-raised hover:text-foreground"
+              aria-label={i18nService.t('enterpriseLeadWorkspaceExitToList')}
+            >
+              <ArrowLeftIcon className="h-4 w-4 shrink-0" />
+              <span className="min-w-0 truncate">
+                {i18nService.t('enterpriseLeadWorkspaceExitToList')}
+              </span>
+            </button>
+          </div>
+        )}
       </aside>
       <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
         {children}

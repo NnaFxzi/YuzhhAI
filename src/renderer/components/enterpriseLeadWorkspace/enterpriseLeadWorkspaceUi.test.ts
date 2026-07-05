@@ -979,6 +979,27 @@ describe('enterprise lead workspace UI helpers', () => {
     expect(markup).not.toContain(workspace.name);
   });
 
+  test('renders a persistent exit action at the bottom of the workspace shell sidebar', () => {
+    const workspace = createWorkspace('sidebar');
+
+    const markup = renderEnterpriseLeadComponent(
+      React.createElement(
+        WorkspaceShell,
+        {
+          workspace,
+          activePage: 'workbench',
+          onPageChange: vi.fn(),
+          onExitWorkspace: vi.fn(),
+          children: React.createElement('div', null, 'Active page body'),
+        },
+      ),
+    );
+
+    expect(markup).toContain('返回空间列表');
+    expect(markup).toContain('aria-label="返回空间列表"');
+    expect(markup).toContain('shrink-0 border-t border-border pt-3');
+  });
+
   test('renders recent execution records in the workspace shell sidebar', () => {
     const workspace = createWorkspace('sidebar');
     const recentRuns = [

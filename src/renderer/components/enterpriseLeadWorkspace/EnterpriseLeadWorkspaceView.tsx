@@ -1,3 +1,4 @@
+import { ArrowLeftIcon } from '@heroicons/react/24/outline';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 
 import type {
@@ -253,6 +254,17 @@ export const EnterpriseLeadWorkspaceView: React.FC<EnterpriseLeadWorkspaceViewPr
     return true;
   }, [activeWorkspaceId]);
 
+  const handleExitWorkspace = (): void => {
+    navigationRevisionRef.current += 1;
+    setActiveWorkspace(null);
+    setActiveWorkspaceId(null);
+    setWorkspaceError('');
+    setSelectedCreationRecordId(null);
+    setSidebarRunSummaries([]);
+    setActiveInternalPage(getDefaultWorkspaceInternalPage());
+    setScreen(EnterpriseLeadWorkspaceScreen.Entry);
+  };
+
   const handleInternalPageChange = (page: EnterpriseLeadWorkspaceInternalPageType): void => {
     if (page !== EnterpriseLeadWorkspaceInternalPage.CreationRecords) {
       setSelectedCreationRecordId(null);
@@ -390,6 +402,7 @@ export const EnterpriseLeadWorkspaceView: React.FC<EnterpriseLeadWorkspaceViewPr
               workspace={workspace}
               activePage={activeInternalPage}
               onPageChange={handleInternalPageChange}
+              onExitWorkspace={handleExitWorkspace}
               recentRuns={sidebarRunSummaries}
               onRecordSelect={handleSidebarRecordSelect}
             >
@@ -457,6 +470,16 @@ export const EnterpriseLeadWorkspaceView: React.FC<EnterpriseLeadWorkspaceViewPr
             )}
             {updateBadge}
           </div>
+          {screen === EnterpriseLeadWorkspaceScreen.Workspace && (
+            <button
+              type="button"
+              onClick={handleExitWorkspace}
+              className="non-draggable inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-secondary transition-colors hover:bg-surface-raised hover:text-foreground"
+              aria-label={i18nService.t('enterpriseLeadWorkspaceExitToList')}
+            >
+              <ArrowLeftIcon className="h-4 w-4" />
+            </button>
+          )}
           <h1 className="truncate text-lg font-semibold text-foreground">
             {headerTitle}
           </h1>
