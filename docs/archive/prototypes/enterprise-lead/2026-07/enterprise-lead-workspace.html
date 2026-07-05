@@ -1,0 +1,1472 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta content="width=device-width, initial-scale=1" name="viewport">
+  <title>企业获客工作空间 HTML 原型</title>
+  <style>
+    :root {
+      --bg: #f6f8f4;
+      --surface: #ffffff;
+      --surface-soft: #eef3ed;
+      --surface-raised: #f2f5f1;
+      --ink: #1d2226;
+      --ink-soft: #4d5963;
+      --muted: #7a858f;
+      --line: #dfe6de;
+      --line-strong: #cbd6cc;
+      --primary: #2f6bff;
+      --primary-dark: #1f54d6;
+      --primary-soft: #e8efff;
+      --green: #2f7d55;
+      --green-soft: #e7f4ec;
+      --amber: #bf7218;
+      --amber-soft: #fff4df;
+      --red: #c74a36;
+      --red-soft: #fff0ed;
+      --purple: #7257c9;
+      --purple-soft: #f0edff;
+      --shadow: 0 18px 48px rgba(29, 34, 38, 0.08);
+      --radius: 8px;
+      color-scheme: light;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      min-height: 100vh;
+      margin: 0;
+      background: linear-gradient(90deg, rgba(47, 107, 255, 0.035) 1px, transparent 1px),
+      linear-gradient(0deg, rgba(47, 125, 85, 0.035) 1px, transparent 1px),
+      var(--bg);
+      background-size: 28px 28px;
+      color: var(--ink);
+    }
+
+    button,
+    textarea,
+    input {
+      font: inherit;
+    }
+
+    button {
+      cursor: pointer;
+    }
+
+    button:focus-visible,
+    textarea:focus-visible,
+    input:focus-visible {
+      outline: 2px solid rgba(47, 107, 255, 0.32);
+      outline-offset: 2px;
+    }
+
+    .app-frame {
+      display: grid;
+      grid-template-columns: 236px minmax(0, 1fr) 356px;
+      min-height: 100vh;
+      background: rgba(255, 255, 255, 0.52);
+    }
+
+    .sidebar {
+      display: flex;
+      min-width: 0;
+      flex-direction: column;
+      border-right: 1px solid var(--line);
+      background: rgba(247, 249, 246, 0.92);
+      backdrop-filter: blur(14px);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-height: 52px;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .brand img {
+      width: 30px;
+      height: 30px;
+      border-radius: 7px;
+      box-shadow: 0 6px 18px rgba(47, 107, 255, 0.14);
+    }
+
+    .brand-title {
+      min-width: 0;
+      font-size: 14px;
+      font-weight: 700;
+      line-height: 18px;
+    }
+
+    .brand-subtitle {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 16px;
+    }
+
+    .side-section {
+      padding: 12px 10px;
+      border-bottom: 1px solid rgba(223, 230, 222, 0.7);
+    }
+
+    .side-label {
+      margin: 2px 6px 8px;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0;
+    }
+
+    .nav-button,
+    .workspace-button {
+      display: flex;
+      width: 100%;
+      align-items: center;
+      gap: 9px;
+      min-height: 34px;
+      border: 0;
+      border-radius: var(--radius);
+      background: transparent;
+      color: var(--ink-soft);
+      padding: 7px 8px;
+      text-align: left;
+      transition: background-color 160ms ease, color 160ms ease, transform 160ms ease;
+    }
+
+    .nav-button:hover,
+    .workspace-button:hover {
+      background: rgba(29, 34, 38, 0.045);
+      color: var(--ink);
+    }
+
+    .nav-button.active,
+    .workspace-button.active {
+      background: var(--primary-soft);
+      color: var(--primary-dark);
+      font-weight: 650;
+    }
+
+    .nav-icon {
+      display: grid;
+      place-items: center;
+      width: 20px;
+      height: 20px;
+      flex: 0 0 20px;
+      border: 1px solid currentColor;
+      border-radius: 6px;
+      font-size: 11px;
+      line-height: 1;
+    }
+
+    .workspace-button {
+      align-items: flex-start;
+      min-height: 58px;
+    }
+
+    .workspace-dot {
+      width: 9px;
+      height: 9px;
+      flex: 0 0 9px;
+      margin-top: 6px;
+      border-radius: 999px;
+      background: var(--green);
+    }
+
+    .workspace-name {
+      display: block;
+      overflow: hidden;
+      color: inherit;
+      font-size: 13px;
+      font-weight: 650;
+      line-height: 18px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .workspace-meta {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 17px;
+    }
+
+    .side-footer {
+      margin-top: auto;
+      padding: 12px 10px;
+      border-top: 1px solid var(--line);
+    }
+
+    .quota {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--surface);
+      padding: 10px;
+    }
+
+    .quota strong {
+      display: block;
+      font-size: 13px;
+      line-height: 18px;
+    }
+
+    .quota span {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 18px;
+    }
+
+    .main {
+      display: flex;
+      min-width: 0;
+      flex-direction: column;
+      border-right: 1px solid var(--line);
+      background: rgba(246, 248, 244, 0.72);
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      min-height: 52px;
+      gap: 16px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.78);
+      padding: 0 18px;
+      backdrop-filter: blur(16px);
+    }
+
+    .breadcrumbs {
+      display: flex;
+      min-width: 0;
+      align-items: center;
+      gap: 8px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .breadcrumbs strong {
+      overflow: hidden;
+      color: var(--ink);
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .top-actions {
+      display: flex;
+      flex: 0 0 auto;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      min-height: 28px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--surface);
+      color: var(--ink-soft);
+      padding: 5px 10px;
+      font-size: 12px;
+      font-weight: 650;
+      white-space: nowrap;
+    }
+
+    .pill.success {
+      border-color: rgba(47, 125, 85, 0.22);
+      background: var(--green-soft);
+      color: var(--green);
+    }
+
+    .pill.warning {
+      border-color: rgba(191, 114, 24, 0.22);
+      background: var(--amber-soft);
+      color: var(--amber);
+    }
+
+    .dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 999px;
+      background: currentColor;
+    }
+
+    .icon-button,
+    .primary-button,
+    .secondary-button,
+    .ghost-button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      border-radius: var(--radius);
+      font-weight: 650;
+      transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease, transform 160ms ease;
+    }
+
+    .icon-button {
+      width: 32px;
+      height: 32px;
+      border: 1px solid var(--line);
+      background: var(--surface);
+      color: var(--ink-soft);
+    }
+
+    .icon-button:hover,
+    .secondary-button:hover,
+    .ghost-button:hover {
+      background: var(--surface-raised);
+      color: var(--ink);
+    }
+
+    .primary-button {
+      min-height: 36px;
+      border: 1px solid var(--primary);
+      background: var(--primary);
+      color: white;
+      padding: 8px 13px;
+      font-size: 13px;
+    }
+
+    .primary-button:hover {
+      background: var(--primary-dark);
+      border-color: var(--primary-dark);
+    }
+
+    .secondary-button,
+    .ghost-button {
+      min-height: 34px;
+      border: 1px solid var(--line);
+      background: var(--surface);
+      color: var(--ink-soft);
+      padding: 7px 11px;
+      font-size: 13px;
+    }
+
+    .ghost-button {
+      border-color: transparent;
+      background: transparent;
+    }
+
+    .scroll-area {
+      min-height: 0;
+      flex: 1;
+      overflow: auto;
+      padding: 20px;
+    }
+
+    .workspace-hero {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 250px;
+      gap: 18px;
+      align-items: stretch;
+      border-bottom: 1px solid var(--line);
+      padding-bottom: 18px;
+    }
+
+    .hero-copy h1 {
+      margin: 0;
+      font-size: clamp(24px, 3vw, 34px);
+      font-weight: 760;
+      line-height: 1.14;
+      letter-spacing: 0;
+    }
+
+    .hero-copy p {
+      max-width: 760px;
+      margin: 10px 0 0;
+      color: var(--ink-soft);
+      font-size: 14px;
+      line-height: 24px;
+    }
+
+    .hero-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 14px;
+    }
+
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      min-height: 26px;
+      border-radius: 999px;
+      background: var(--surface);
+      color: var(--ink-soft);
+      padding: 5px 10px;
+      font-size: 12px;
+      font-weight: 650;
+      box-shadow: inset 0 0 0 1px var(--line);
+    }
+
+    .health-board {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--surface);
+      box-shadow: var(--shadow);
+    }
+
+    .health-cell {
+      min-height: 92px;
+      padding: 14px;
+      border-right: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+    }
+
+    .health-cell:nth-child(2n) {
+      border-right: 0;
+    }
+
+    .health-cell:nth-last-child(-n + 2) {
+      border-bottom: 0;
+    }
+
+    .health-cell strong {
+      display: block;
+      font-size: 22px;
+      line-height: 26px;
+    }
+
+    .health-cell span {
+      display: block;
+      margin-top: 6px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 17px;
+    }
+
+    .goal-panel {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 14px;
+      align-items: end;
+      margin-top: 18px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--surface);
+      padding: 14px;
+    }
+
+    .goal-panel label {
+      display: block;
+      margin-bottom: 8px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .goal-panel textarea {
+      width: 100%;
+      min-height: 72px;
+      resize: vertical;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: #fbfcfb;
+      color: var(--ink);
+      padding: 10px 12px;
+      line-height: 22px;
+    }
+
+    .workflow-header {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 16px;
+      margin: 22px 0 12px;
+    }
+
+    .workflow-header h2 {
+      margin: 0;
+      font-size: 18px;
+      line-height: 26px;
+    }
+
+    .workflow-header p {
+      margin: 3px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 20px;
+    }
+
+    .rail-map {
+      display: grid;
+      grid-template-columns: repeat(9, minmax(0, 1fr));
+      gap: 6px;
+      min-width: 720px;
+      margin-bottom: 14px;
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--surface);
+    }
+
+    .rail-step {
+      position: relative;
+      min-height: 58px;
+      border-radius: 6px;
+      background: var(--surface-raised);
+      padding: 9px 8px;
+      overflow: hidden;
+    }
+
+    .rail-step::after {
+      content: "";
+      position: absolute;
+      left: 8px;
+      right: 8px;
+      bottom: 8px;
+      height: 3px;
+      border-radius: 999px;
+      background: var(--line-strong);
+    }
+
+    .rail-step.done::after {
+      background: var(--green);
+    }
+
+    .rail-step.active {
+      background: var(--primary-soft);
+      color: var(--primary-dark);
+    }
+
+    .rail-step.active::after {
+      background: var(--primary);
+    }
+
+    .rail-step.warn {
+      background: var(--amber-soft);
+      color: var(--amber);
+    }
+
+    .rail-step.warn::after {
+      background: var(--amber);
+    }
+
+    .rail-step small {
+      display: block;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 700;
+      line-height: 14px;
+    }
+
+    .rail-step strong {
+      display: block;
+      overflow: hidden;
+      margin-top: 2px;
+      font-size: 12px;
+      line-height: 16px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .stage-list {
+      display: grid;
+      gap: 10px;
+    }
+
+    .stage-card {
+      display: grid;
+      grid-template-columns: 42px minmax(0, 1fr) 172px;
+      gap: 12px;
+      align-items: stretch;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--surface);
+      padding: 12px;
+      box-shadow: 0 8px 26px rgba(29, 34, 38, 0.04);
+    }
+
+    .stage-card.selected {
+      border-color: rgba(47, 107, 255, 0.45);
+      box-shadow: 0 12px 36px rgba(47, 107, 255, 0.11);
+    }
+
+    .stage-token {
+      display: grid;
+      place-items: center;
+      width: 42px;
+      height: 42px;
+      border-radius: var(--radius);
+      background: var(--surface-raised);
+      color: var(--ink-soft);
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    .stage-card.done .stage-token {
+      background: var(--green-soft);
+      color: var(--green);
+    }
+
+    .stage-card.selected .stage-token {
+      background: var(--primary-soft);
+      color: var(--primary-dark);
+    }
+
+    .stage-card.warn .stage-token {
+      background: var(--amber-soft);
+      color: var(--amber);
+    }
+
+    .stage-copy {
+      min-width: 0;
+    }
+
+    .stage-title-line {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .stage-title-line h3 {
+      margin: 0;
+      font-size: 15px;
+      line-height: 22px;
+    }
+
+    .status {
+      display: inline-flex;
+      align-items: center;
+      min-height: 22px;
+      border-radius: 6px;
+      padding: 3px 7px;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .status.done {
+      background: var(--green-soft);
+      color: var(--green);
+    }
+
+    .status.running {
+      background: var(--primary-soft);
+      color: var(--primary-dark);
+    }
+
+    .status.warn {
+      background: var(--amber-soft);
+      color: var(--amber);
+    }
+
+    .status.waiting {
+      background: var(--surface-raised);
+      color: var(--muted);
+    }
+
+    .stage-copy p {
+      margin: 6px 0 0;
+      color: var(--ink-soft);
+      font-size: 13px;
+      line-height: 21px;
+    }
+
+    .stage-facts {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 9px;
+    }
+
+    .fact {
+      border-radius: 6px;
+      background: var(--surface-raised);
+      color: var(--ink-soft);
+      padding: 4px 7px;
+      font-size: 12px;
+      line-height: 16px;
+    }
+
+    .stage-actions {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 7px;
+      min-width: 0;
+    }
+
+    .right-panel {
+      min-width: 0;
+      overflow: auto;
+      background: rgba(255, 255, 255, 0.84);
+    }
+
+    .right-inner {
+      padding: 16px;
+    }
+
+    .panel-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .panel-title h2 {
+      margin: 0;
+      font-size: 17px;
+      line-height: 24px;
+    }
+
+    .panel-block {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--surface);
+      margin-bottom: 12px;
+      overflow: hidden;
+    }
+
+    .panel-block-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      border-bottom: 1px solid var(--line);
+      padding: 12px 12px 10px;
+    }
+
+    .panel-block-header h3 {
+      margin: 0;
+      font-size: 14px;
+      line-height: 20px;
+    }
+
+    .panel-block-body {
+      padding: 12px;
+    }
+
+    .risk-meter {
+      display: grid;
+      gap: 9px;
+    }
+
+    .risk-line {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      color: var(--ink-soft);
+      font-size: 13px;
+      line-height: 20px;
+    }
+
+    .bar {
+      height: 8px;
+      border-radius: 999px;
+      background: var(--surface-raised);
+      overflow: hidden;
+    }
+
+    .bar span {
+      display: block;
+      width: 64%;
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, var(--green), var(--amber));
+    }
+
+    .list {
+      display: grid;
+      gap: 10px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .list-item {
+      border-left: 3px solid var(--line-strong);
+      padding-left: 10px;
+    }
+
+    .list-item strong {
+      display: block;
+      font-size: 13px;
+      line-height: 19px;
+    }
+
+    .list-item span {
+      display: block;
+      margin-top: 2px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 18px;
+    }
+
+    .list-item.warn {
+      border-color: var(--amber);
+    }
+
+    .list-item.success {
+      border-color: var(--green);
+    }
+
+    .list-item.primary {
+      border-color: var(--primary);
+    }
+
+    .deliverable {
+      display: grid;
+      grid-template-columns: 28px minmax(0, 1fr);
+      gap: 9px;
+      align-items: start;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .deliverable:last-child {
+      border-bottom: 0;
+      padding-bottom: 0;
+    }
+
+    .file-icon {
+      display: grid;
+      place-items: center;
+      width: 28px;
+      height: 32px;
+      border-radius: 6px;
+      background: var(--purple-soft);
+      color: var(--purple);
+      font-size: 11px;
+      font-weight: 800;
+    }
+
+    .deliverable strong {
+      display: block;
+      overflow: hidden;
+      font-size: 13px;
+      line-height: 18px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .deliverable span {
+      display: block;
+      margin-top: 3px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 18px;
+    }
+
+    .safe-list {
+      display: grid;
+      gap: 8px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      color: var(--ink-soft);
+      font-size: 13px;
+      line-height: 20px;
+    }
+
+    .safe-list li {
+      display: flex;
+      gap: 8px;
+    }
+
+    .safe-list li::before {
+      content: "";
+      width: 8px;
+      height: 8px;
+      flex: 0 0 8px;
+      margin-top: 6px;
+      border-radius: 999px;
+      background: var(--green);
+    }
+
+    .mobile-actions {
+      display: none;
+    }
+
+    @media (max-width: 1220px) {
+      .app-frame {
+        grid-template-columns: 220px minmax(0, 1fr);
+      }
+
+      .right-panel {
+        grid-column: 2;
+        border-top: 1px solid var(--line);
+      }
+
+      .right-inner {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      .panel-title,
+      .panel-block {
+        margin-bottom: 0;
+      }
+
+      .panel-title {
+        grid-column: 1 / -1;
+      }
+    }
+
+    @media (max-width: 900px) {
+      .app-frame {
+        display: block;
+      }
+
+      .sidebar {
+        position: sticky;
+        top: 0;
+        z-index: 20;
+        border-right: 0;
+      }
+
+      .side-section,
+      .side-footer {
+        display: none;
+      }
+
+      .brand {
+        min-height: 56px;
+      }
+
+      .topbar {
+        position: sticky;
+        top: 56px;
+        z-index: 18;
+      }
+
+      .top-actions .pill,
+      .top-actions .secondary-button {
+        display: none;
+      }
+
+      .mobile-actions {
+        display: flex;
+        gap: 8px;
+        margin-top: 12px;
+      }
+
+      .workspace-hero,
+      .goal-panel {
+        grid-template-columns: 1fr;
+      }
+
+      .rail-map {
+        overflow-x: auto;
+      }
+
+      .stage-card {
+        grid-template-columns: 42px minmax(0, 1fr);
+      }
+
+      .stage-actions {
+        grid-column: 2;
+        justify-content: flex-start;
+      }
+
+      .right-panel {
+        grid-column: auto;
+      }
+
+      .right-inner {
+        display: block;
+      }
+
+      .panel-title,
+      .panel-block {
+        margin-bottom: 12px;
+      }
+    }
+
+    @media (max-width: 560px) {
+      .scroll-area {
+        padding: 14px;
+      }
+
+      .topbar {
+        padding: 0 12px;
+      }
+
+      .hero-copy h1 {
+        font-size: 24px;
+      }
+
+      .health-board {
+        grid-template-columns: 1fr;
+      }
+
+      .health-cell,
+      .health-cell:nth-child(2n),
+      .health-cell:nth-last-child(-n + 2) {
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .health-cell:last-child {
+        border-bottom: 0;
+      }
+
+      .stage-card {
+        grid-template-columns: 1fr;
+      }
+
+      .stage-token {
+        width: 36px;
+        height: 36px;
+      }
+
+      .stage-actions {
+        grid-column: auto;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        scroll-behavior: auto !important;
+        transition-duration: 1ms !important;
+      }
+    }
+  </style>
+</head>
+<body>
+<div class="app-frame">
+  <aside aria-label="主导航" class="sidebar">
+    <div class="brand">
+      <img alt="LobsterAI" src="../../brand/yuzhh-lobster-ai-icon.svg">
+      <div class="brand-title">
+        宇智汇和 AI 助手
+        <div class="brand-subtitle">OpenClaw 已连接</div>
+      </div>
+    </div>
+
+    <nav aria-label="工作区导航" class="side-section">
+      <div class="side-label">工作台</div>
+      <button class="nav-button" type="button"><span class="nav-icon">C</span> Cowork 对话</button>
+      <button class="nav-button active" type="button"><span class="nav-icon">获</span> 企业获客</button>
+      <button class="nav-button" type="button"><span class="nav-icon">任</span> 定时任务</button>
+      <button class="nav-button" type="button"><span class="nav-icon">技</span> Skills</button>
+      <button class="nav-button" type="button"><span class="nav-icon">M</span> MCP</button>
+    </nav>
+
+    <section aria-label="最近工作空间" class="side-section">
+      <div class="side-label">最近工作空间</div>
+      <button class="workspace-button active" type="button">
+        <span class="workspace-dot"></span>
+        <span>
+            <span class="workspace-name">重型包装获客工作空间</span>
+            <span class="workspace-meta">汽配、机械设备 · 6/9 完成</span>
+          </span>
+      </button>
+      <button class="workspace-button" type="button">
+        <span class="workspace-dot" style="background:#7257c9"></span>
+        <span>
+            <span class="workspace-name">蜂窝纸箱内容推广</span>
+            <span class="workspace-meta">待风控复核 · 2 个草稿</span>
+          </span>
+      </button>
+      <button class="workspace-button" type="button">
+        <span class="workspace-dot" style="background:#bf7218"></span>
+        <span>
+            <span class="workspace-name">设备客户线索跟进</span>
+            <span class="workspace-meta">归档于 7 月 3 日</span>
+          </span>
+      </button>
+    </section>
+
+    <div class="side-footer">
+      <div class="quota">
+        <strong>安全边界已启用</strong>
+        <span>发布、评论、私信、邮件均保持为草稿或待办。</span>
+      </div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <div aria-label="当前位置" class="breadcrumbs">
+        <span>企业获客工作空间</span>
+        <span>/</span>
+        <strong>重型包装获客工作空间</strong>
+      </div>
+      <div class="top-actions">
+        <span class="pill success"><span class="dot"></span> OpenClaw 运行中</span>
+        <span class="pill warning"><span class="dot"></span> 风控门待确认</span>
+        <button class="secondary-button" type="button">导出成果包</button>
+        <button aria-label="设置" class="icon-button" type="button">⋯</button>
+      </div>
+    </header>
+
+    <div class="scroll-area">
+      <section aria-labelledby="workspace-title" class="workspace-hero">
+        <div class="hero-copy">
+          <h1 id="workspace-title">重型包装获客工作空间</h1>
+          <p>
+            围绕重型纸箱、蜂窝纸箱和大件物流包装，自动组织产品理解、商机判断、内容草稿、社媒运营、销售交接与风险复核。
+          </p>
+          <div aria-label="工作空间资料" class="hero-tags">
+            <span class="tag">产品：重型纸箱</span>
+            <span class="tag">产品：蜂窝纸箱</span>
+            <span class="tag">客户：汽配工厂</span>
+            <span class="tag">客户：机械设备</span>
+            <span class="tag">禁止夸大承重与交期</span>
+          </div>
+          <div class="mobile-actions">
+            <button class="primary-button" type="button">继续执行</button>
+            <button class="secondary-button" type="button">导出成果包</button>
+          </div>
+        </div>
+
+        <div aria-label="执行概览" class="health-board">
+          <div class="health-cell">
+            <strong>6/9</strong>
+            <span>Agent 已完成</span>
+          </div>
+          <div class="health-cell">
+            <strong>12</strong>
+            <span>成果草稿</span>
+          </div>
+          <div class="health-cell">
+            <strong>3</strong>
+            <span>人工待办</span>
+          </div>
+          <div class="health-cell">
+            <strong>中</strong>
+            <span>当前风险等级</span>
+          </div>
+        </div>
+      </section>
+
+      <section aria-labelledby="goal-label" class="goal-panel">
+        <div>
+          <label for="goal" id="goal-label">本次获客目标</label>
+          <textarea
+            id="goal">推广重型纸箱和蜂窝纸箱，面向汽配零部件、机械设备和大件物流客户，生成一周朋友圈/微信群内容与销售交接材料。</textarea>
+        </div>
+        <button class="primary-button" type="button">继续执行</button>
+      </section>
+
+      <section aria-labelledby="workflow-title">
+        <div class="workflow-header">
+          <div>
+            <h2 id="workflow-title">Agent 执行轨道</h2>
+            <p>总控 Agent 按固定流程推进；用户可查看输出、沟通 Agent、重新执行单个阶段。</p>
+          </div>
+          <button class="ghost-button" type="button">暂停自动执行</button>
+        </div>
+
+        <div aria-label="执行进度" class="rail-map">
+          <div class="rail-step done"><small>01</small><strong>总控</strong></div>
+          <div class="rail-step done"><small>02</small><strong>产品理解</strong></div>
+          <div class="rail-step done"><small>03</small><strong>商机雷达</strong></div>
+          <div class="rail-step done"><small>04</small><strong>内容策划</strong></div>
+          <div class="rail-step warn"><small>05</small><strong>社媒运营</strong></div>
+          <div class="rail-step done"><small>06</small><strong>销售交接</strong></div>
+          <div class="rail-step active"><small>07</small><strong>风控审核</strong></div>
+          <div class="rail-step"><small>08</small><strong>项目归纳</strong></div>
+          <div class="rail-step"><small>09</small><strong>项目归档</strong></div>
+        </div>
+
+        <div class="stage-list">
+          <article class="stage-card done">
+            <div class="stage-token">总</div>
+            <div class="stage-copy">
+              <div class="stage-title-line">
+                <h3>项目总控 Agent</h3>
+                <span class="status done">已完成</span>
+              </div>
+              <p>已生成本次执行计划，确认需要产品、商机、内容、社媒、销售与风控阶段。</p>
+              <div class="stage-facts">
+                <span class="fact">流程：固定 9 阶段</span>
+                <span class="fact">当前：风控审核</span>
+              </div>
+            </div>
+            <div class="stage-actions">
+              <button class="secondary-button" type="button">查看</button>
+              <button class="ghost-button" type="button">沟通</button>
+            </div>
+          </article>
+
+          <article class="stage-card done">
+            <div class="stage-token">产</div>
+            <div class="stage-copy">
+              <div class="stage-title-line">
+                <h3>产品理解 Agent</h3>
+                <span class="status done">已完成</span>
+              </div>
+              <p>提炼重型纸箱、蜂窝纸箱的使用场景、卖点、缺失资料与不可编造事实。</p>
+              <div class="stage-facts">
+                <span class="fact">输出：产品档案</span>
+                <span class="fact">缺失：承重测试来源</span>
+              </div>
+            </div>
+            <div class="stage-actions">
+              <button class="secondary-button" type="button">查看</button>
+              <button class="ghost-button" type="button">重跑</button>
+            </div>
+          </article>
+
+          <article class="stage-card done">
+            <div class="stage-token">机</div>
+            <div class="stage-copy">
+              <div class="stage-title-line">
+                <h3>商机雷达 Agent</h3>
+                <span class="status done">已完成</span>
+              </div>
+              <p>把汽配、机械设备、大件物流分为高、中、低优先级，并标记采购信号。</p>
+              <div class="stage-facts">
+                <span class="fact">高优先：汽配零部件</span>
+                <span class="fact">机会分：82</span>
+              </div>
+            </div>
+            <div class="stage-actions">
+              <button class="secondary-button" type="button">查看</button>
+              <button class="ghost-button" type="button">沟通</button>
+            </div>
+          </article>
+
+          <article class="stage-card done">
+            <div class="stage-token">策</div>
+            <div class="stage-copy">
+              <div class="stage-title-line">
+                <h3>内容策划 Agent</h3>
+                <span class="status done">已完成</span>
+              </div>
+              <p>已生成朋友圈、微信群、短视频脚本和产品介绍草稿，保留高风险表达清单。</p>
+              <div class="stage-facts">
+                <span class="fact">草稿：8 篇</span>
+                <span class="fact">风险表达：4 条</span>
+              </div>
+            </div>
+            <div class="stage-actions">
+              <button class="secondary-button" type="button">查看</button>
+              <button class="ghost-button" type="button">重跑</button>
+            </div>
+          </article>
+
+          <article class="stage-card warn">
+            <div class="stage-token">媒</div>
+            <div class="stage-copy">
+              <div class="stage-title-line">
+                <h3>社媒运营 Agent</h3>
+                <span class="status warn">需确认</span>
+              </div>
+              <p>输出了发布节奏、评论回复和私信草稿；所有外部动作已转为人工待办。</p>
+              <div class="stage-facts">
+                <span class="fact">待办：人工发布</span>
+                <span class="fact">待办：私信确认</span>
+              </div>
+            </div>
+            <div class="stage-actions">
+              <button class="secondary-button" type="button">查看</button>
+              <button class="ghost-button" type="button">沟通</button>
+            </div>
+          </article>
+
+          <article class="stage-card done">
+            <div class="stage-token">销</div>
+            <div class="stage-copy">
+              <div class="stage-title-line">
+                <h3>销售交接 Agent</h3>
+                <span class="status done">已完成</span>
+              </div>
+              <p>生成销售交接单、首触话术、异议处理建议，并区分事实、推断与未确认内容。</p>
+              <div class="stage-facts">
+                <span class="fact">输出：交接单</span>
+                <span class="fact">SOP：5 步</span>
+              </div>
+            </div>
+            <div class="stage-actions">
+              <button class="secondary-button" type="button">查看</button>
+              <button class="ghost-button" type="button">沟通</button>
+            </div>
+          </article>
+
+          <article class="stage-card selected">
+            <div class="stage-token">控</div>
+            <div class="stage-copy">
+              <div class="stage-title-line">
+                <h3>风控审核 Agent</h3>
+                <span class="status running">审核中</span>
+              </div>
+              <p>正在检查夸大承重、交期承诺、自动发布意图、未标注来源和私信合规风险。</p>
+              <div class="stage-facts">
+                <span class="fact">阻塞：0</span>
+                <span class="fact">需确认：2</span>
+                <span class="fact">草稿状态：已确认</span>
+              </div>
+            </div>
+            <div class="stage-actions">
+              <button class="primary-button" type="button">处理待办</button>
+              <button class="ghost-button" type="button">沟通</button>
+            </div>
+          </article>
+
+          <article class="stage-card">
+            <div class="stage-token">归</div>
+            <div class="stage-copy">
+              <div class="stage-title-line">
+                <h3>项目归纳 Agent</h3>
+                <span class="status waiting">等待</span>
+              </div>
+              <p>风控通过后，将生成用户可读的项目总结、执行结论与下一步建议。</p>
+              <div class="stage-facts">
+                <span class="fact">等待：风险结论</span>
+                <span class="fact">输出：最终摘要</span>
+              </div>
+            </div>
+            <div class="stage-actions">
+              <button class="secondary-button" type="button">查看输入</button>
+            </div>
+          </article>
+
+          <article class="stage-card">
+            <div class="stage-token">档</div>
+            <div class="stage-copy">
+              <div class="stage-title-line">
+                <h3>项目归档 Agent</h3>
+                <span class="status waiting">等待</span>
+              </div>
+              <p>最终结果会进入工作空间档案，保留成果索引、风控记录和人工确认事项。</p>
+              <div class="stage-facts">
+                <span class="fact">归档状态：未归档</span>
+                <span class="fact">可重开执行</span>
+              </div>
+            </div>
+            <div class="stage-actions">
+              <button class="secondary-button" type="button">预览</button>
+            </div>
+          </article>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <aside aria-label="成果与风控" class="right-panel">
+    <div class="right-inner">
+      <div class="panel-title">
+        <h2>成果包与人工确认</h2>
+        <button aria-label="刷新" class="icon-button" type="button">↻</button>
+      </div>
+
+      <section class="panel-block">
+        <div class="panel-block-header">
+          <h3>风控门</h3>
+          <span class="status warn">中风险</span>
+        </div>
+        <div class="panel-block-body">
+          <div class="risk-meter">
+            <div class="risk-line">
+              <span>可归档条件</span>
+              <strong>2 项待确认</strong>
+            </div>
+            <div class="bar"><span></span></div>
+            <div class="risk-line">
+              <span>阻塞问题</span>
+              <strong>0</strong>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel-block">
+        <div class="panel-block-header">
+          <h3>待应用版本</h3>
+          <span class="pill">1</span>
+        </div>
+        <div class="panel-block-body">
+          <ul class="list">
+            <li class="list-item primary">
+              <strong>内容策划 Agent 修改版</strong>
+              <span>把“承重强”替换为“适合大件周转包装场景”，下游阶段需重新确认。</span>
+            </li>
+          </ul>
+          <button class="primary-button" style="width:100%;margin-top:12px;" type="button">应用到当前执行</button>
+        </div>
+      </section>
+
+      <section class="panel-block">
+        <div class="panel-block-header">
+          <h3>人工待办</h3>
+          <span class="pill warning">3</span>
+        </div>
+        <div class="panel-block-body">
+          <ul class="list">
+            <li class="list-item warn">
+              <strong>确认承重测试来源</strong>
+              <span>产品理解阶段缺少可引用的测试文件或客户案例。</span>
+            </li>
+            <li class="list-item warn">
+              <strong>人工发布朋友圈</strong>
+              <span>系统只提供草稿，不会登录账号或代发内容。</span>
+            </li>
+            <li class="list-item warn">
+              <strong>私信话术人工确认</strong>
+              <span>销售跟进前需确认客户来源与可联系范围。</span>
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      <section class="panel-block">
+        <div class="panel-block-header">
+          <h3>成果包</h3>
+          <span class="pill success">12 项</span>
+        </div>
+        <div class="panel-block-body">
+          <div class="deliverable">
+            <div class="file-icon">档</div>
+            <div>
+              <strong>重型包装产品档案</strong>
+              <span>卖点、场景、禁用表述与缺失信息。</span>
+            </div>
+          </div>
+          <div class="deliverable">
+            <div class="file-icon">机</div>
+            <div>
+              <strong>汽配客户商机判断</strong>
+              <span>采购信号、优先级、跟进建议。</span>
+            </div>
+          </div>
+          <div class="deliverable">
+            <div class="file-icon">文</div>
+            <div>
+              <strong>一周社媒内容草稿</strong>
+              <span>朋友圈、微信群、短视频脚本方向。</span>
+            </div>
+          </div>
+          <div class="deliverable">
+            <div class="file-icon">销</div>
+            <div>
+              <strong>销售交接单</strong>
+              <span>首触话术、异议处理、每日跟进 SOP。</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel-block">
+        <div class="panel-block-header">
+          <h3>安全边界</h3>
+          <span class="pill success">启用</span>
+        </div>
+        <div class="panel-block-body">
+          <ul class="safe-list">
+            <li>不自动发布、评论、私信或发送邮件。</li>
+            <li>不编造客户、联系人、案例、认证、价格或交期。</li>
+            <li>所有外部动作都保留为草稿、待办或审批项。</li>
+            <li>最终归档保留风险审核记录。</li>
+          </ul>
+        </div>
+      </section>
+    </div>
+  </aside>
+</div>
+</body>
+</html>

@@ -1,0 +1,1551 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta content="width=device-width, initial-scale=1" name="viewport">
+  <title>宇智能AI 首页原型</title>
+  <style>
+    :root {
+      --bg: #fbfcfe;
+      --surface: #ffffff;
+      --surface-soft: #f6f8fb;
+      --line: #e3e8f0;
+      --line-strong: #d5dde8;
+      --text: #202938;
+      --secondary: #5f6b7a;
+      --muted: #9aa5b3;
+      --primary: #3b82f6;
+      --primary-strong: #2f75ee;
+      --primary-soft: #eaf2ff;
+      --rose-soft: #fff2f4;
+      --violet-soft: #f6edff;
+      --green: #11845b;
+      --green-soft: #edf8f2;
+      --amber: #a86712;
+      --amber-soft: #fff6e4;
+      --radius: 8px;
+      --shadow: 0 28px 70px rgba(32, 41, 56, 0.1);
+      --shadow-soft: 0 8px 24px rgba(32, 41, 56, 0.07);
+      color-scheme: light;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+      "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      min-height: 100vh;
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      letter-spacing: 0;
+    }
+
+    button,
+    input,
+    textarea {
+      font: inherit;
+    }
+
+    button {
+      cursor: pointer;
+    }
+
+    button:focus-visible,
+    input:focus-visible,
+    textarea:focus-visible {
+      outline: 2px solid rgba(59, 130, 246, 0.38);
+      outline-offset: 3px;
+    }
+
+    .app {
+      display: grid;
+      min-height: 100vh;
+      place-items: center;
+      padding: 48px 24px;
+    }
+
+    .stage {
+      display: grid;
+      width: min(880px, 100%);
+      gap: 34px;
+      justify-items: center;
+    }
+
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      color: var(--text);
+      user-select: none;
+    }
+
+    .brand-mark {
+      display: grid;
+      width: 44px;
+      height: 44px;
+      place-items: center;
+      overflow: hidden;
+      border-radius: var(--radius);
+      background: var(--surface);
+      box-shadow: var(--shadow-soft);
+    }
+
+    .brand-mark img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .brand-name {
+      font-size: clamp(24px, 3vw, 30px);
+      font-weight: 820;
+      line-height: 1.15;
+    }
+
+    .entry {
+      display: none;
+      width: 100%;
+    }
+
+    body[data-state="first"] .entry.first,
+    body[data-state="returning"] .entry.returning,
+    body[data-state="create"] .entry.create,
+    body[data-state="setup-material"] .entry.setup-material,
+    body[data-state="setup-paste"] .entry.setup-paste,
+    body[data-state="setup-blank"] .entry.setup-blank,
+    body[data-state="loading"] .entry.loading {
+      display: block;
+    }
+
+    .start-panel {
+      width: min(720px, 100%);
+      margin: 0 auto;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: var(--surface);
+      box-shadow: var(--shadow);
+      padding: 58px 56px 62px;
+    }
+
+    .start-copy h1 {
+      margin: 0;
+      color: var(--text);
+      font-size: clamp(30px, 4vw, 38px);
+      font-weight: 820;
+      line-height: 1.18;
+      letter-spacing: 0;
+    }
+
+    .start-copy p {
+      margin: 12px 0 0;
+      color: var(--secondary);
+      font-size: 18px;
+      line-height: 30px;
+    }
+
+    .action-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 20px;
+      margin-top: 36px;
+    }
+
+    .action-card {
+      display: flex;
+      min-height: 138px;
+      flex-direction: column;
+      align-items: flex-start;
+      justify-content: space-between;
+      border: 1px solid rgba(227, 232, 240, 0.86);
+      border-radius: var(--radius);
+      background: rgba(255, 255, 255, 0.82);
+      color: var(--text);
+      padding: 20px 22px;
+      text-align: left;
+      box-shadow: 0 2px 8px rgba(32, 41, 56, 0.04);
+      transition: border-color 160ms ease,
+      box-shadow 160ms ease,
+      transform 160ms ease,
+      background-color 160ms ease;
+    }
+
+    .action-card:hover {
+      border-color: rgba(59, 130, 246, 0.3);
+      background: #fff;
+      box-shadow: var(--shadow-soft);
+      transform: translateY(-2px);
+    }
+
+    .action-card:active {
+      transform: translateY(0);
+    }
+
+    .action-card.primary {
+      border-color: var(--primary);
+      background: var(--primary);
+      color: #fff;
+      box-shadow: none;
+    }
+
+    .action-card.primary:hover {
+      border-color: var(--primary-strong);
+      background: var(--primary-strong);
+      box-shadow: 0 16px 32px rgba(47, 117, 238, 0.22);
+    }
+
+    .action-card > span:first-child {
+      display: grid;
+      grid-template-columns: 42px minmax(0, 1fr);
+      column-gap: 14px;
+      align-items: center;
+      width: 100%;
+    }
+
+    .action-icon {
+      display: grid;
+      width: 42px;
+      height: 42px;
+      place-items: center;
+      grid-row: 1 / span 2;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--surface);
+      color: var(--primary-strong);
+      box-shadow: 0 2px 6px rgba(32, 41, 56, 0.05);
+    }
+
+    .action-label {
+      display: block;
+      margin-top: 0;
+      color: var(--text);
+      font-size: 16px;
+      font-weight: 760;
+      line-height: 23px;
+    }
+
+    .action-note {
+      display: block;
+      margin-top: 4px;
+      color: var(--secondary);
+      font-size: 13px;
+      line-height: 20px;
+    }
+
+    .action-card.primary .action-note {
+      color: rgba(255, 255, 255, 0.78);
+    }
+
+    .action-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 16px;
+      color: var(--primary-strong);
+      font-size: 13px;
+      font-weight: 780;
+      line-height: 20px;
+    }
+
+    .action-card.primary .action-link,
+    .action-card.primary .action-label {
+      color: #fff;
+    }
+
+    .loading-box {
+      display: grid;
+      justify-items: center;
+      gap: 16px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: var(--surface);
+      box-shadow: var(--shadow);
+      padding: 70px 20px;
+      text-align: center;
+    }
+
+    .spinner {
+      width: 34px;
+      height: 34px;
+      border: 3px solid var(--line);
+      border-top-color: var(--primary);
+      border-radius: 999px;
+      animation: spin 900ms linear infinite;
+    }
+
+    .loading-box strong {
+      font-size: 17px;
+      line-height: 24px;
+    }
+
+    .loading-box span {
+      color: var(--secondary);
+      font-size: 13px;
+      line-height: 21px;
+    }
+
+    .create-panel {
+      width: min(720px, 100%);
+      margin: 0 auto;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: var(--surface);
+      box-shadow: var(--shadow);
+      padding: 48px 56px 44px;
+    }
+
+    .create-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 24px;
+      margin-bottom: 30px;
+    }
+
+    .create-copy h1 {
+      margin: 0;
+      color: var(--text);
+      font-size: clamp(30px, 4vw, 38px);
+      font-weight: 820;
+      line-height: 1.18;
+    }
+
+    .create-copy p {
+      margin: 12px 0 0;
+      color: var(--secondary);
+      font-size: 17px;
+      line-height: 28px;
+    }
+
+    .create-back {
+      min-height: 34px;
+      border: 0;
+      background: transparent;
+      color: var(--secondary);
+      padding: 0;
+      font-size: 13px;
+      font-weight: 780;
+    }
+
+    .create-back:hover {
+      color: var(--primary-strong);
+      background: transparent;
+    }
+
+    .create-form {
+      display: grid;
+      gap: 24px;
+    }
+
+    .field {
+      display: grid;
+      gap: 10px;
+    }
+
+    .field label,
+    .choice-label {
+      color: var(--text);
+      font-size: 13px;
+      font-weight: 780;
+      line-height: 20px;
+    }
+
+    .text-input {
+      width: 100%;
+      min-height: 48px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: #fff;
+      color: var(--text);
+      padding: 0 14px;
+      font-size: 15px;
+      line-height: 22px;
+      box-shadow: 0 1px 2px rgba(32, 41, 56, 0.03);
+    }
+
+    .choice-grid {
+      display: grid;
+      gap: 10px;
+    }
+
+    .choice-card {
+      display: grid;
+      grid-template-columns: 42px minmax(0, 1fr) auto;
+      gap: 14px;
+      align-items: center;
+      min-height: 76px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: #fff;
+      color: var(--text);
+      padding: 15px 16px;
+      text-align: left;
+      transition: border-color 160ms ease,
+      background-color 160ms ease,
+      box-shadow 160ms ease,
+      transform 160ms ease;
+    }
+
+    .choice-card:hover {
+      border-color: rgba(59, 130, 246, 0.3);
+      box-shadow: var(--shadow-soft);
+      transform: translateY(-1px);
+    }
+
+    .choice-card.selected {
+      border-color: rgba(59, 130, 246, 0.62);
+      background: linear-gradient(135deg, #f7fbff 0%, #eef5ff 100%);
+      box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.08);
+    }
+
+    .choice-icon {
+      display: grid;
+      width: 42px;
+      height: 42px;
+      place-items: center;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--surface);
+      color: var(--primary-strong);
+      box-shadow: 0 2px 6px rgba(32, 41, 56, 0.05);
+    }
+
+    .choice-main {
+      display: grid;
+      gap: 3px;
+      min-width: 0;
+    }
+
+    .choice-card strong {
+      font-size: 15px;
+      line-height: 22px;
+    }
+
+    .choice-card span {
+      color: var(--secondary);
+      font-size: 13px;
+      line-height: 20px;
+    }
+
+    .choice-status {
+      display: inline-flex;
+      align-items: center;
+      min-height: 24px;
+      border-radius: 999px;
+      background: transparent;
+      color: var(--muted);
+      padding: 0 8px;
+      font-size: 12px;
+      font-weight: 820;
+      white-space: nowrap;
+    }
+
+    .choice-card.selected .choice-status {
+      background: var(--primary-soft);
+      color: var(--primary-strong);
+    }
+
+    .create-actions {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin-top: 30px;
+    }
+
+    .create-actions > div {
+      display: flex;
+      gap: 10px;
+    }
+
+    .create-hint {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 20px;
+    }
+
+    .setup-panel {
+      width: min(720px, 100%);
+      margin: 0 auto;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: var(--surface);
+      box-shadow: var(--shadow);
+      padding: 48px 56px 44px;
+    }
+
+    .setup-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 24px;
+      margin-bottom: 30px;
+    }
+
+    .setup-copy h1 {
+      margin: 0;
+      color: var(--text);
+      font-size: clamp(30px, 4vw, 38px);
+      font-weight: 820;
+      line-height: 1.18;
+    }
+
+    .setup-copy p {
+      margin: 12px 0 0;
+      color: var(--secondary);
+      font-size: 17px;
+      line-height: 28px;
+    }
+
+    .workspace-name {
+      color: var(--text);
+      font-weight: 780;
+    }
+
+    .setup-drop {
+      display: grid;
+      width: 100%;
+      min-height: 150px;
+      grid-template-columns: 52px minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 18px;
+      border: 1px dashed rgba(59, 130, 246, 0.42);
+      border-radius: var(--radius);
+      background: linear-gradient(135deg, #f9fcff 0%, #eef5ff 100%);
+      color: var(--text);
+      padding: 26px;
+      text-align: left;
+      transition: border-color 160ms ease,
+      box-shadow 160ms ease,
+      transform 160ms ease;
+    }
+
+    .setup-drop:hover {
+      border-color: rgba(47, 117, 238, 0.72);
+      box-shadow: var(--shadow-soft);
+      transform: translateY(-1px);
+    }
+
+    .setup-drop-icon {
+      display: grid;
+      width: 52px;
+      height: 52px;
+      place-items: center;
+      border-radius: 999px;
+      background: #fff;
+      color: var(--primary-strong);
+      box-shadow: 0 4px 14px rgba(32, 41, 56, 0.07);
+    }
+
+    .setup-drop-copy {
+      display: grid;
+      gap: 5px;
+      min-width: 0;
+    }
+
+    .setup-drop-copy strong {
+      font-size: 17px;
+      line-height: 24px;
+    }
+
+    .setup-drop-copy span {
+      color: var(--secondary);
+      font-size: 13px;
+      line-height: 20px;
+    }
+
+    .setup-drop-action {
+      color: var(--primary-strong);
+      font-size: 13px;
+      font-weight: 820;
+      white-space: nowrap;
+    }
+
+    .setup-actions-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 14px;
+    }
+
+    .setup-mini-card {
+      display: grid;
+      gap: 6px;
+      min-height: 88px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: #fff;
+      color: var(--text);
+      padding: 16px;
+      text-align: left;
+      transition: border-color 160ms ease,
+      box-shadow 160ms ease,
+      transform 160ms ease;
+    }
+
+    .setup-mini-card:hover {
+      border-color: rgba(59, 130, 246, 0.3);
+      box-shadow: var(--shadow-soft);
+      transform: translateY(-1px);
+    }
+
+    .setup-mini-card strong {
+      font-size: 15px;
+      line-height: 22px;
+    }
+
+    .setup-mini-card span {
+      color: var(--secondary);
+      font-size: 13px;
+      line-height: 20px;
+    }
+
+    .text-area {
+      width: 100%;
+      min-height: 104px;
+      resize: vertical;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: #fff;
+      color: var(--text);
+      padding: 12px 14px;
+      font-size: 14px;
+      line-height: 22px;
+      box-shadow: 0 1px 2px rgba(32, 41, 56, 0.03);
+    }
+
+    .paste-form {
+      display: grid;
+      gap: 14px;
+    }
+
+    .paste-form .text-area {
+      min-height: 190px;
+    }
+
+    .support-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 14px;
+    }
+
+    .support-chip {
+      display: inline-flex;
+      align-items: center;
+      min-height: 28px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--surface-soft);
+      color: var(--secondary);
+      padding: 0 10px;
+      font-size: 12px;
+      font-weight: 760;
+      line-height: 18px;
+    }
+
+    .blank-summary {
+      display: grid;
+      gap: 12px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: linear-gradient(135deg, #ffffff 0%, #f8fbff 100%);
+      padding: 18px;
+    }
+
+    .blank-summary-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      color: var(--text);
+      font-size: 15px;
+      font-weight: 820;
+      line-height: 22px;
+    }
+
+    .blank-summary-title span {
+      color: var(--primary-strong);
+      font-size: 13px;
+      font-weight: 820;
+      white-space: nowrap;
+    }
+
+    .blank-list {
+      display: grid;
+      gap: 8px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .blank-list li {
+      display: grid;
+      grid-template-columns: 8px minmax(0, 1fr);
+      align-items: center;
+      gap: 10px;
+      color: var(--secondary);
+      font-size: 13px;
+      line-height: 20px;
+    }
+
+    .blank-list li::before {
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: var(--primary);
+      content: "";
+    }
+
+    .setup-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin-top: 28px;
+    }
+
+    .setup-footer > div {
+      display: flex;
+      gap: 10px;
+    }
+
+    .history-modal {
+      position: fixed;
+      inset: 0;
+      z-index: 30;
+      display: none;
+      place-items: center;
+      background: rgba(32, 41, 56, 0.42);
+      padding: 20px;
+    }
+
+    .history-modal.open {
+      display: grid;
+    }
+
+    .history-card {
+      width: min(520px, 100%);
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--surface);
+      box-shadow: var(--shadow);
+    }
+
+    .history-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 14px;
+      border-bottom: 1px solid var(--line);
+      padding: 18px;
+    }
+
+    .history-head h2 {
+      margin: 0;
+      font-size: 18px;
+      line-height: 26px;
+    }
+
+    .history-head p {
+      margin: 4px 0 0;
+      color: var(--secondary);
+      font-size: 13px;
+      line-height: 21px;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      min-height: 40px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--surface);
+      color: var(--text);
+      padding: 0 15px;
+      font-size: 14px;
+      font-weight: 760;
+      transition: background-color 160ms ease,
+      border-color 160ms ease,
+      color 160ms ease,
+      transform 160ms ease,
+      box-shadow 160ms ease;
+    }
+
+    .btn:hover {
+      border-color: var(--line-strong);
+      background: var(--surface-soft);
+    }
+
+    .btn.primary {
+      min-height: 46px;
+      border-color: var(--primary-strong);
+      background: var(--primary-strong);
+      color: #fff;
+      box-shadow: 0 12px 24px rgba(37, 99, 235, 0.18);
+    }
+
+    .close {
+      width: 34px;
+      min-height: 34px;
+      padding: 0;
+      font-size: 18px;
+    }
+
+    .history-body {
+      display: grid;
+      gap: 10px;
+      padding: 14px;
+    }
+
+    .search {
+      width: 100%;
+      min-height: 38px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 0 11px;
+      color: var(--text);
+    }
+
+    .workspace-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--surface);
+      padding: 12px;
+      text-align: left;
+    }
+
+    .workspace-item:hover {
+      border-color: rgba(59, 130, 246, 0.34);
+      background: #fbfdff;
+    }
+
+    .workspace-item strong {
+      display: block;
+      font-size: 14px;
+      line-height: 20px;
+    }
+
+    .workspace-item span {
+      display: block;
+      margin-top: 2px;
+      color: var(--secondary);
+      font-size: 12px;
+      line-height: 18px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      min-height: 24px;
+      border-radius: 999px;
+      background: var(--amber-soft);
+      color: var(--amber);
+      padding: 0 8px;
+      font-size: 11px;
+      font-weight: 820;
+      white-space: nowrap;
+    }
+
+    .badge.ready {
+      background: var(--green-soft);
+      color: var(--green);
+    }
+
+    .debug-toggle,
+    .debug-panel {
+      position: fixed;
+      right: 18px;
+      bottom: 18px;
+      z-index: 40;
+    }
+
+    .debug-toggle {
+      box-shadow: var(--shadow-soft);
+    }
+
+    .debug-panel {
+      display: none;
+      width: min(360px, calc(100vw - 36px));
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--surface);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .debug-panel.open {
+      display: block;
+    }
+
+    .debug-panel.open + .debug-toggle {
+      display: none;
+    }
+
+    .debug-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      border-bottom: 1px solid var(--line);
+      padding: 12px;
+    }
+
+    .debug-head strong {
+      font-size: 14px;
+    }
+
+    .debug-body {
+      display: grid;
+      gap: 10px;
+      padding: 12px;
+    }
+
+    .debug-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
+      gap: 8px;
+    }
+
+    .state-chip {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--surface-soft);
+      color: var(--secondary);
+      padding: 9px 10px;
+      font-size: 12px;
+      font-weight: 760;
+    }
+
+    .toast {
+      position: fixed;
+      left: 50%;
+      bottom: 22px;
+      z-index: 50;
+      display: none;
+      max-width: min(460px, calc(100vw - 36px));
+      transform: translateX(-50%);
+      border: 1px solid rgba(17, 132, 91, 0.22);
+      border-radius: var(--radius);
+      background: #f8fffb;
+      color: #0f5d42;
+      box-shadow: var(--shadow);
+      padding: 11px 13px;
+      font-size: 13px;
+      font-weight: 760;
+    }
+
+    .toast.show {
+      display: block;
+      animation: rise 180ms ease;
+    }
+
+    svg {
+      width: 22px;
+      height: 22px;
+      stroke-width: 2;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    @keyframes rise {
+      from {
+        opacity: 0;
+        transform: translate(-50%, 8px);
+      }
+      to {
+        opacity: 1;
+        transform: translate(-50%, 0);
+      }
+    }
+
+    @media (max-width: 760px) {
+      .app {
+        align-items: start;
+        padding: 44px 18px;
+      }
+
+      .stage {
+        gap: 26px;
+      }
+
+      .brand {
+        gap: 10px;
+      }
+
+      .brand-name {
+        font-size: 22px;
+      }
+
+      .start-panel {
+        padding: 32px 22px 26px;
+      }
+
+      .start-copy h1 {
+        font-size: 28px;
+      }
+
+      .start-copy p {
+        font-size: 15px;
+        line-height: 24px;
+      }
+
+      .action-grid {
+        grid-template-columns: 1fr;
+        gap: 12px;
+        margin-top: 28px;
+      }
+
+      .action-card {
+        min-height: 128px;
+      }
+
+      .create-panel {
+        padding: 24px 18px;
+      }
+
+      .setup-panel {
+        padding: 24px 18px;
+      }
+
+      .create-head {
+        display: grid;
+      }
+
+      .setup-head {
+        display: grid;
+      }
+
+      .choice-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .setup-drop {
+        grid-template-columns: 1fr;
+        min-height: 0;
+        padding: 20px;
+      }
+
+      .setup-actions-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .create-actions {
+        display: grid;
+        align-items: stretch;
+      }
+
+      .setup-footer {
+        display: grid;
+        align-items: stretch;
+      }
+
+      .create-actions > div {
+        display: grid;
+        gap: 10px;
+      }
+
+      .setup-footer > div {
+        display: grid;
+        gap: 10px;
+      }
+
+      .create-actions .btn,
+      .setup-footer .btn {
+        width: 100%;
+      }
+    }
+  </style>
+</head>
+<body data-state="returning">
+<main aria-label="宇智能AI 首页原型" class="app">
+  <section class="stage">
+    <div aria-label="宇智能AI" class="brand">
+        <span aria-hidden="true" class="brand-mark">
+          <img alt="" src="../../brand/yuzhh-logo-ai-concept.png">
+        </span>
+      <span class="brand-name">宇智能AI</span>
+    </div>
+
+    <section aria-labelledby="firstTitle" class="entry first">
+      <div class="start-panel">
+        <div class="start-copy">
+          <h1 id="firstTitle">开始使用</h1>
+          <p>创建或者打开一个工作空间。</p>
+        </div>
+
+        <div aria-label="工作空间操作" class="action-grid">
+          <button class="action-card primary" data-action="create" type="button">
+              <span>
+                <span aria-hidden="true" class="action-icon">
+                  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path d="M12 5v14M5 12h14" stroke-linecap="round" />
+                  </svg>
+                </span>
+                <span class="action-label">创建工作区</span>
+                <span class="action-note">从资料、对话或产品说明开始整理业务画像。</span>
+              </span>
+            <span class="action-link">开始创建 <span aria-hidden="true">→</span></span>
+          </button>
+
+          <button class="action-card" data-action="history" type="button">
+              <span>
+                <span aria-hidden="true" class="action-icon">
+                  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path
+                      d="M3.5 7.5A2.5 2.5 0 0 1 6 5h3.2a2 2 0 0 1 1.4.58L12 7h6a2.5 2.5 0 0 1 2.5 2.5v7A2.5 2.5 0 0 1 18 19H6a2.5 2.5 0 0 1-2.5-2.5v-9Z" />
+                  </svg>
+                </span>
+                <span class="action-label">打开历史工作区</span>
+                <span class="action-note">查看已经创建的线索工作区。</span>
+              </span>
+            <span class="action-link">选择工作区 <span aria-hidden="true">→</span></span>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <section aria-labelledby="returningTitle" class="entry returning">
+      <div class="start-panel">
+        <div class="start-copy">
+          <h1 id="returningTitle">开始使用</h1>
+          <p>创建或者打开一个工作空间。</p>
+        </div>
+
+        <div aria-label="工作空间操作" class="action-grid">
+          <button class="action-card primary" data-action="create" type="button">
+              <span>
+                <span aria-hidden="true" class="action-icon">
+                  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path d="M12 5v14M5 12h14" stroke-linecap="round" />
+                  </svg>
+                </span>
+                <span class="action-label">创建工作区</span>
+                <span class="action-note">从资料、对话或产品说明开始整理业务画像。</span>
+              </span>
+            <span class="action-link">开始创建 <span aria-hidden="true">→</span></span>
+          </button>
+
+          <button class="action-card" data-action="history" type="button">
+              <span>
+                <span aria-hidden="true" class="action-icon">
+                  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path
+                      d="M3.5 7.5A2.5 2.5 0 0 1 6 5h3.2a2 2 0 0 1 1.4.58L12 7h6a2.5 2.5 0 0 1 2.5 2.5v7A2.5 2.5 0 0 1 18 19H6a2.5 2.5 0 0 1-2.5-2.5v-9Z" />
+                  </svg>
+                </span>
+                <span class="action-label">打开历史工作区</span>
+                <span class="action-note">查看已经创建的线索工作区。</span>
+              </span>
+            <span class="action-link">选择工作区 <span aria-hidden="true">→</span></span>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <section aria-labelledby="createTitle" class="entry create">
+      <div class="create-panel">
+        <div class="create-head">
+          <div class="create-copy">
+            <h1 id="createTitle">创建工作区</h1>
+            <p>设置名称，选择一个起步方式。</p>
+          </div>
+          <button class="create-back" data-action="back-home" type="button">返回</button>
+        </div>
+
+        <div class="create-form">
+          <div class="field">
+            <label for="workspaceName">工作区名称</label>
+            <input class="text-input" id="workspaceName" placeholder="例如：华东制造业拓客计划" value="">
+          </div>
+
+          <div class="field">
+            <span class="choice-label">起步方式</span>
+            <div aria-label="选择起步方式" class="choice-grid" role="group">
+              <button aria-pressed="true" class="choice-card selected" data-choice="material" type="button">
+                  <span aria-hidden="true" class="choice-icon">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path
+                        d="M4 7.5A2.5 2.5 0 0 1 6.5 5h3.2a2 2 0 0 1 1.4.58L12.5 7H18a2.5 2.5 0 0 1 2.5 2.5v7A2.5 2.5 0 0 1 18 19H6.5A2.5 2.5 0 0 1 4 16.5v-9Z" />
+                    </svg>
+                  </span>
+                <span class="choice-main">
+                    <strong>从资料开始</strong>
+                    <span>上传客户资料、产品说明或聊天记录。</span>
+                  </span>
+                <span class="choice-status">推荐</span>
+              </button>
+              <button aria-pressed="false" class="choice-card" data-choice="paste" type="button">
+                  <span aria-hidden="true" class="choice-icon">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path
+                        d="M8 5h8M8 9h8M8 13h5M6 3.5h12A1.5 1.5 0 0 1 19.5 5v14A1.5 1.5 0 0 1 18 20.5H6A1.5 1.5 0 0 1 4.5 19V5A1.5 1.5 0 0 1 6 3.5Z"
+                        stroke-linecap="round" />
+                    </svg>
+                  </span>
+                <span class="choice-main">
+                    <strong>粘贴内容</strong>
+                    <span>先粘贴一段业务背景，再进入工作区。</span>
+                  </span>
+                <span class="choice-status">可选</span>
+              </button>
+              <button aria-pressed="false" class="choice-card" data-choice="blank" type="button">
+                  <span aria-hidden="true" class="choice-icon">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path d="M12 5v14M5 12h14" stroke-linecap="round" />
+                    </svg>
+                  </span>
+                <span class="choice-main">
+                    <strong>空白创建</strong>
+                    <span>先进入工作区，稍后再补充资料。</span>
+                  </span>
+                <span class="choice-status">可选</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="create-actions">
+          <p class="create-hint">下一步会根据起步方式进入对应界面。</p>
+          <div>
+            <button class="btn" data-action="back-home" type="button">取消</button>
+            <button class="btn primary" data-action="finish-create" type="button">下一步</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section aria-labelledby="materialTitle" class="entry setup-material">
+      <div class="setup-panel">
+        <div class="setup-head">
+          <div class="setup-copy">
+            <h1 id="materialTitle">上传资料</h1>
+            <p>为「<span class="workspace-name" data-workspace-name>新业务线索空间</span>」添加第一批线索材料。</p>
+          </div>
+          <button class="create-back" data-action="back-create" type="button">返回</button>
+        </div>
+
+        <button class="setup-drop" data-action="choose-file" type="button">
+            <span aria-hidden="true" class="setup-drop-icon">
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path d="M12 15V4m0 0 4 4m-4-4-4 4" stroke-linecap="round" stroke-linejoin="round" />
+                <path d="M5 14v3.5A2.5 2.5 0 0 0 7.5 20h9A2.5 2.5 0 0 0 19 17.5V14" stroke-linecap="round" />
+              </svg>
+            </span>
+          <span class="setup-drop-copy">
+              <strong>选择或拖入资料文件</strong>
+              <span>适合已有客户名单、产品说明、聊天记录或调研文档。</span>
+            </span>
+          <span class="setup-drop-action">选择文件</span>
+        </button>
+
+        <div aria-label="支持的资料类型" class="support-list">
+          <span class="support-chip">客户名单</span>
+          <span class="support-chip">产品说明</span>
+          <span class="support-chip">聊天记录</span>
+          <span class="support-chip">调研文档</span>
+        </div>
+
+        <div class="setup-footer">
+          <p class="create-hint">上传后会进入工作区并生成初始业务画像。</p>
+          <div>
+            <button class="btn" data-action="back-create" type="button">上一步</button>
+            <button class="btn primary" data-action="enter-workspace" type="button">进入工作区</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section aria-labelledby="pasteTitle" class="entry setup-paste">
+      <div class="setup-panel">
+        <div class="setup-head">
+          <div class="setup-copy">
+            <h1 id="pasteTitle">粘贴内容</h1>
+            <p>把「<span class="workspace-name" data-workspace-name>新业务线索空间</span>」已有的业务背景先贴进来。</p>
+          </div>
+          <button class="create-back" data-action="back-create" type="button">返回</button>
+        </div>
+
+        <div class="paste-form">
+          <label class="choice-label" for="materialText">业务线索内容</label>
+          <textarea class="text-area" id="materialText"
+                    placeholder="可以粘贴客户背景、产品介绍、对话记录、目标人群或目前已知的线索信息。"></textarea>
+        </div>
+
+        <div aria-label="资料添加方式" class="setup-actions-grid">
+          <button class="setup-mini-card" data-action="fill-sample" type="button">
+            <strong>填入示例</strong>
+            <span>快速查看粘贴后的页面状态。</span>
+          </button>
+          <button class="setup-mini-card" data-action="enter-workspace" type="button">
+            <strong>先跳过</strong>
+            <span>不填写内容，直接进入工作区。</span>
+          </button>
+        </div>
+
+        <div class="setup-footer">
+          <p class="create-hint">粘贴内容会作为工作区的初始线索背景。</p>
+          <div>
+            <button class="btn" data-action="back-create" type="button">上一步</button>
+            <button class="btn primary" data-action="enter-workspace" type="button">用内容创建</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section aria-labelledby="blankTitle" class="entry setup-blank">
+      <div class="setup-panel">
+        <div class="setup-head">
+          <div class="setup-copy">
+            <h1 id="blankTitle">空白创建</h1>
+            <p>先进入「<span class="workspace-name" data-workspace-name>新业务线索空间</span>」，之后再补充资料。</p>
+          </div>
+          <button class="create-back" data-action="back-create" type="button">返回</button>
+        </div>
+
+        <div class="blank-summary">
+          <div class="blank-summary-title">
+            <strong>即将创建一个空白工作区</strong>
+            <span>无初始资料</span>
+          </div>
+          <ul class="blank-list">
+            <li>进入后可以继续上传资料或粘贴线索内容。</li>
+            <li>适合先建立空间，再逐步补充客户画像。</li>
+            <li>工作区会保留当前名称和起步方式。</li>
+          </ul>
+        </div>
+
+        <div class="setup-footer">
+          <p class="create-hint">适合资料还没准备好，但想先占位管理。</p>
+          <div>
+            <button class="btn" data-action="back-create" type="button">上一步</button>
+            <button class="btn primary" data-action="enter-workspace" type="button">进入空白工作区</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section aria-label="加载状态" class="entry loading">
+      <div class="loading-box">
+        <span aria-hidden="true" class="spinner"></span>
+        <strong>正在准备工作空间</strong>
+        <span>稍等一下。</span>
+      </div>
+    </section>
+  </section>
+</main>
+
+<section aria-hidden="true" class="history-modal" id="historyModal">
+  <div aria-labelledby="historyTitle" aria-modal="true" class="history-card" role="dialog">
+    <div class="history-head">
+      <div>
+        <h2 id="historyTitle">打开历史工作区</h2>
+        <p>选择一个已创建的工作空间。</p>
+      </div>
+      <button aria-label="关闭" class="btn close" id="closeHistory" type="button">×</button>
+    </div>
+    <div class="history-body">
+      <input class="search" id="historySearch" placeholder="搜索工作空间">
+      <button class="workspace-item" data-workspace="华东制造业拓客计划" type="button">
+          <span>
+            <strong>华东制造业拓客计划</strong>
+            <span>今天 14:32 更新 · 销售增长组</span>
+          </span>
+        <span class="badge">待补全</span>
+      </button>
+      <button class="workspace-item" data-workspace="跨境 SaaS 线索池" type="button">
+          <span>
+            <strong>跨境 SaaS 线索池</strong>
+            <span>昨天 18:10 更新 · 海外增长组</span>
+          </span>
+        <span class="badge ready">已就绪</span>
+      </button>
+    </div>
+  </div>
+</section>
+
+<section aria-label="调试面板" class="debug-panel" id="debugPanel">
+  <div class="debug-head">
+    <strong>调试</strong>
+    <button aria-label="关闭调试" class="btn close" id="closeDebug" type="button">×</button>
+  </div>
+  <div class="debug-body">
+    <div class="debug-row">
+      <button class="btn" data-state="first" type="button">首次</button>
+      <button class="btn" data-state="returning" type="button">非首次</button>
+      <button class="btn" data-state="create" type="button">创建</button>
+      <button class="btn" data-state="setup-material" type="button">资料</button>
+      <button class="btn" data-state="setup-paste" type="button">粘贴</button>
+      <button class="btn" data-state="setup-blank" type="button">空白</button>
+      <button class="btn" data-state="loading" type="button">加载中</button>
+    </div>
+    <div class="state-chip" id="debugState">当前：非首次使用</div>
+  </div>
+</section>
+<button class="btn primary debug-toggle" id="openDebug" type="button">打开调试</button>
+
+<div aria-live="polite" class="toast" id="toast" role="status"></div>
+
+<script>
+  const body = document.body;
+  const debugPanel = document.getElementById('debugPanel');
+  const debugState = document.getElementById('debugState');
+  const historyModal = document.getElementById('historyModal');
+  const toast = document.getElementById('toast');
+  let toastTimer = null;
+  let selectedChoice = 'material';
+
+  const stateLabel = {
+    first: '首次使用',
+    returning: '非首次使用',
+    create: '创建工作区',
+    'setup-material': '上传资料',
+    'setup-paste': '粘贴内容',
+    'setup-blank': '空白创建',
+    loading: '加载中',
+  };
+
+  function getWorkspaceName() {
+    return document.getElementById('workspaceName').value.trim() || '新业务线索空间';
+  }
+
+  function syncSetupWorkspaceName() {
+    document.querySelectorAll('[data-workspace-name]').forEach(element => {
+      element.textContent = getWorkspaceName();
+    });
+  }
+
+  function setState(nextState) {
+    body.dataset.state = nextState;
+    debugState.textContent = `当前：${stateLabel[nextState] || nextState}`;
+    if (nextState === 'create') {
+      window.setTimeout(() => document.getElementById('workspaceName').focus(), 0);
+    }
+    if (nextState.startsWith('setup-')) {
+      syncSetupWorkspaceName();
+    }
+    if (nextState === 'setup-paste') {
+      window.setTimeout(() => document.getElementById('materialText').focus(), 0);
+    }
+  }
+
+  function showToast(message) {
+    window.clearTimeout(toastTimer);
+    toast.textContent = message;
+    toast.classList.add('show');
+    toastTimer = window.setTimeout(() => toast.classList.remove('show'), 1800);
+  }
+
+  function setHistoryOpen(isOpen) {
+    historyModal.classList.toggle('open', isOpen);
+    historyModal.setAttribute('aria-hidden', String(!isOpen));
+    if (isOpen) {
+      document.getElementById('historySearch').focus();
+    }
+  }
+
+  document.querySelectorAll('[data-state]').forEach(button => {
+    button.addEventListener('click', () => setState(button.dataset.state));
+  });
+
+  document.querySelectorAll('[data-action]').forEach(button => {
+    button.addEventListener('click', () => {
+      const action = button.dataset.action;
+      if (action === 'history') {
+        setHistoryOpen(true);
+        return;
+      }
+      if (action === 'create') {
+        setState('create');
+        return;
+      }
+      if (action === 'back-home') {
+        setState('returning');
+        return;
+      }
+      if (action === 'back-create') {
+        setState('create');
+        return;
+      }
+      if (action === 'finish-create') {
+        const nextStateByChoice = {
+          material: 'setup-material',
+          paste: 'setup-paste',
+          blank: 'setup-blank',
+        };
+        setState(nextStateByChoice[selectedChoice] || 'setup-material');
+        return;
+      }
+      if (action === 'choose-file') {
+        showToast('原型动作：选择资料文件');
+        return;
+      }
+      if (action === 'fill-sample') {
+        document.getElementById('materialText').value = '我们正在拓展华东制造业客户，重点关注汽车零部件和工业自动化企业。已有产品说明、部分客户名单和销售对话记录，希望整理目标客户画像、触达限制和下一步动作。';
+        document.getElementById('materialText').focus();
+        return;
+      }
+      if (action === 'enter-workspace') {
+        setState('loading');
+        window.setTimeout(() => showToast(`原型动作：进入 ${getWorkspaceName()}`), 420);
+      }
+    });
+  });
+
+  document.querySelectorAll('[data-choice]').forEach(button => {
+    button.addEventListener('click', () => {
+      selectedChoice = button.dataset.choice;
+      document.querySelectorAll('[data-choice]').forEach(item => {
+        item.classList.toggle('selected', item === button);
+        item.setAttribute('aria-pressed', String(item === button));
+      });
+    });
+  });
+
+  document.querySelectorAll('[data-workspace]').forEach(button => {
+    button.addEventListener('click', () => {
+      showToast(`原型动作：打开 ${button.dataset.workspace}`);
+      setHistoryOpen(false);
+    });
+  });
+
+  document.getElementById('closeHistory').addEventListener('click', () => setHistoryOpen(false));
+  historyModal.addEventListener('click', event => {
+    if (event.target === historyModal) {
+      setHistoryOpen(false);
+    }
+  });
+
+  document.getElementById('openDebug').addEventListener('click', () => {
+    debugPanel.classList.add('open');
+  });
+  document.getElementById('closeDebug').addEventListener('click', () => {
+    debugPanel.classList.remove('open');
+  });
+
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape') {
+      setHistoryOpen(false);
+    }
+    if (event.key === 'd' || event.key === 'D') {
+      debugPanel.classList.toggle('open');
+    }
+  });
+</script>
+</body>
+</html>
