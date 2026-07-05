@@ -1008,6 +1008,15 @@ describe('enterprise lead workspace UI helpers', () => {
         userGoal: '帮我找长三角机械厂线索',
         status: EnterpriseLeadRunStatus.Running,
       }),
+      {
+        ...createRunSummary(workspace.id, {
+          id: 'run-needs-input',
+          userGoal: '整理本周可跟进的机械厂线索',
+          status: EnterpriseLeadRunStatus.NeedsInput,
+        }),
+        todoCount: 7,
+        riskCount: 5,
+      },
     ];
 
     const markup = renderEnterpriseLeadComponent(
@@ -1025,9 +1034,38 @@ describe('enterprise lead workspace UI helpers', () => {
     );
 
     expect(markup).toContain('对话记录');
+    expect(markup).toContain('2 条');
+    expect(markup).toContain('全部');
     expect(markup).toContain('帮我找长三角机械厂线索');
     expect(markup).toContain('运行中');
     expect(markup).toContain('2 成果');
+    expect(markup).toContain('1 待办');
+    expect(markup).toContain('0 风险');
+    expect(markup).toContain('整理本周可跟进的机械厂线索');
+    expect(markup).toContain('需补充');
+    expect(markup).toContain('7 待办');
+    expect(markup).toContain('5 风险');
+  });
+
+  test('keeps an actionable empty state for workspace shell conversation records', () => {
+    const workspace = createWorkspace('sidebar-empty');
+
+    const markup = renderEnterpriseLeadComponent(
+      React.createElement(
+        WorkspaceShell,
+        {
+          workspace,
+          activePage: 'workbench',
+          onPageChange: vi.fn(),
+          recentRuns: [],
+          children: React.createElement('div', null, 'Active page body'),
+        },
+      ),
+    );
+
+    expect(markup).toContain('对话记录');
+    expect(markup).toContain('还没有对话记录');
+    expect(markup).toContain('完成一次工作台任务后会出现在这里。');
   });
 
   test('renders workspace start dashboard with next actions and readiness', () => {
