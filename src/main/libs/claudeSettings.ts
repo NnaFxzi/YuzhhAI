@@ -526,30 +526,7 @@ export function resolveModelConfigReadiness(): ApiConfigResolution & { hasConfig
   };
 }
 
-/**
- * Resolve the raw API config directly from the app config,
- * without requiring the OpenAI compatibility proxy.
- * Used by OpenClaw config sync which has its own model routing.
- */
-export function resolveRawApiConfig(): ApiConfigResolution {
-  const sqliteStore = getStore();
-  if (!sqliteStore) {
-    console.debug('[ClaudeSettings] resolveRawApiConfig: store is null, storeGetter not set yet');
-    return { config: null, error: 'Store is not initialized.' };
-  }
-  const appConfig = sqliteStore.get<AppConfig>('app_config');
-  if (!appConfig) {
-    console.debug('[ClaudeSettings] resolveRawApiConfig: app_config not found in store');
-    return { config: null, error: 'Application config not found.' };
-  }
-  const { matched, error } = resolveMatchedProvider(appConfig);
-  if (!matched) {
-    const providerKeys = Object.keys(appConfig.providers ?? {});
-    const defaultModel = appConfig.model?.defaultModel;
-    const defaultProvider = appConfig.model?.defaultModelProvider;
-    console.debug(`[ClaudeSettings] resolveRawApiConfig: no matched provider, error=${error}, providers=[${providerKeys.join(',')}], defaultModel=${defaultModel}, defaultProvider=${defaultProvider}`);
-    return { config: null, error };
-  }
+const resolveRawApiConfigFromMatchedProvider = (matched: MatchedProvider): ApiConfigResolution => {
   let apiKey = matched.providerConfig.apiKey?.trim() || '';
   let effectiveBaseURL = matched.baseURL;
   let effectiveApiFormat = matched.apiFormat;
@@ -592,6 +569,40 @@ export function resolveRawApiConfig(): ApiConfigResolution {
       contextWindow: matched.contextWindow,
     },
   };
+};
+
+export function resolveRawApiConfigFromAppConfig(appConfig: AppConfig): ApiConfigResolution {
+  const { matched, error } = resolveMatchedProvider(appConfig);
+  if (!matched) {
+    return { config: null, error };
+  }
+  return resolveRawApiConfigFromMatchedProvider(matched);
+}
+
+/**
+ * Resolve the raw API config directly from the app config,
+ * without requiring the OpenAI compatibility proxy.
+ * Used by OpenClaw config sync which has its own model routing.
+ */
+export function resolveRawApiConfig(): ApiConfigResolution {
+  const sqliteStore = getStore();
+  if (!sqliteStore) {
+    console.debug('[ClaudeSettings] resolveRawApiConfig: store is null, storeGetter not set yet');
+    return { config: null, error: 'Store is not initialized.' };
+  }
+  const appConfig = sqliteStore.get<AppConfig>('app_config');
+  if (!appConfig) {
+    console.debug('[ClaudeSettings] resolveRawApiConfig: app_config not found in store');
+    return { config: null, error: 'Application config not found.' };
+  }
+  const resolution = resolveRawApiConfigFromAppConfig(appConfig);
+  if (!resolution.config) {
+    const providerKeys = Object.keys(appConfig.providers ?? {});
+    const defaultModel = appConfig.model?.defaultModel;
+    const defaultProvider = appConfig.model?.defaultModelProvider;
+    console.debug(`[ClaudeSettings] resolveRawApiConfig: no matched provider, error=${resolution.error}, providers=[${providerKeys.join(',')}], defaultModel=${defaultModel}, defaultProvider=${defaultProvider}`);
+  }
+  return resolution;
 }
 
 /**

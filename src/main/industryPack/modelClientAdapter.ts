@@ -1,8 +1,10 @@
 import { type ApiConfigResolution, resolveRawApiConfig } from '../libs/claudeSettings';
+import type { CoworkApiConfig } from '../libs/coworkConfigStore';
 
 export interface ModelGenerationInput {
   prompt: string;
   systemPrompt?: string;
+  apiConfig?: CoworkApiConfig;
   model?: string;
   temperature?: number;
   maxTokens?: number;
@@ -135,10 +137,9 @@ export function createConfiguredIndustryModelClient(
 
   return {
     async generate(input) {
-      const resolution = resolveApiConfig();
-      const config = resolution.config;
+      const config = input.apiConfig ?? resolveApiConfig().config;
       if (!config) {
-        throw new Error(resolution.error || 'Industry marketing generation requires an API configuration.');
+        throw new Error('Industry marketing generation requires an API configuration.');
       }
       if (config.apiType !== 'openai') {
         throw new Error(

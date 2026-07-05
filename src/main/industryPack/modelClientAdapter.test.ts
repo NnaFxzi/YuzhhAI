@@ -38,6 +38,46 @@ describe('createOpenAICompatibleModelClient', () => {
 });
 
 describe('createConfiguredIndustryModelClient', () => {
+  test('uses per-request API config before the global resolver', async () => {
+    const fetchImpl = async (url: string | URL | Request, init?: RequestInit) => {
+      expect(String(url)).toBe('https://workspace.example/v1/chat/completions');
+      expect(init?.headers).toMatchObject({
+        Authorization: 'Bearer sk-workspace',
+      });
+      expect(JSON.parse(String(init?.body))).toMatchObject({
+        model: 'workspace-model',
+        messages: [{ role: 'user', content: 'hello' }],
+      });
+      return new Response(JSON.stringify({
+        choices: [{ message: { content: 'workspace ok' } }],
+      }), { status: 200 });
+    };
+    const client = createConfiguredIndustryModelClient({
+      resolveApiConfig: () => ({
+        config: {
+          apiKey: 'sk-global',
+          baseURL: 'https://global.example/v1',
+          model: 'global-model',
+          apiType: 'openai',
+        },
+      }),
+      fetchImpl: fetchImpl as typeof fetch,
+    });
+
+    await expect(client.generate({
+      prompt: 'hello',
+      apiConfig: {
+        apiKey: 'sk-workspace',
+        baseURL: 'https://workspace.example/v1',
+        model: 'workspace-model',
+        apiType: 'openai',
+      },
+    })).resolves.toEqual({
+      text: 'workspace ok',
+      raw: { choices: [{ message: { content: 'workspace ok' } }] },
+    });
+  });
+
   test('uses the current OpenAI-compatible API config for generation', async () => {
     const fetchImpl = async (url: string | URL | Request, init?: RequestInit) => {
       expect(String(url)).toBe('https://example.test/v1/chat/completions');

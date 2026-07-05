@@ -117,6 +117,9 @@ import { type AutoLaunchStatus, getAutoLaunchStatus, isAutoLaunched, setAutoLaun
 import { getRecentComputerUseLogEntries } from './computerUse/computerUseLogs';
 import { type CoworkForkContextMessage, type CoworkMessage, CoworkStore } from './coworkStore';
 import { buildDevServerUnavailableDataUrl } from './devServerErrorPage';
+import { registerEnterpriseLeadWorkspaceHandlers } from './enterpriseLeadWorkspace/ipcHandlers';
+import { EnterpriseLeadWorkspaceService } from './enterpriseLeadWorkspace/service';
+import { EnterpriseLeadWorkspaceStore } from './enterpriseLeadWorkspace/store';
 import { setLanguage, t } from './i18n';
 import { IMGatewayConfig, IMGatewayManager } from './im';
 import {
@@ -1303,6 +1306,8 @@ let preventSleepBlockerId: number | null = null;
 let appUpdateCoordinator: AppUpdateCoordinator | null = null;
 let industryPackLoader: IndustryPackLoader | null = null;
 let industryPackStore: IndustryPackStore | null = null;
+let enterpriseLeadWorkspaceStore: EnterpriseLeadWorkspaceStore | null = null;
+let enterpriseLeadWorkspaceService: EnterpriseLeadWorkspaceService | null = null;
 let contentGenerationService: ContentGenerationService | null = null;
 let positioningService: PositioningService | null = null;
 let agentExternalResearchStore: AgentExternalResearchStore | null = null;
@@ -1572,6 +1577,51 @@ const getIndustryPackStore = (): IndustryPackStore => {
     industryPackStore = new IndustryPackStore(getStore().getDatabase());
   }
   return industryPackStore;
+};
+
+const getEnterpriseLeadWorkspaceStore = (): EnterpriseLeadWorkspaceStore => {
+  if (!enterpriseLeadWorkspaceStore) {
+    enterpriseLeadWorkspaceStore = new EnterpriseLeadWorkspaceStore(getStore().getDatabase());
+  }
+  return enterpriseLeadWorkspaceStore;
+};
+
+const getEnterpriseLeadWorkspaceService = (): EnterpriseLeadWorkspaceService => {
+  if (!enterpriseLeadWorkspaceService) {
+    enterpriseLeadWorkspaceService = new EnterpriseLeadWorkspaceService({
+      store: getEnterpriseLeadWorkspaceStore(),
+      modelClient: createConfiguredIndustryModelClient(),
+      agentProvider: getAgentManager(),
+      researchClient: {
+        tavilySearch: (apiKey, query, maxResults) =>
+          getAgentExternalResearchService().tavilySearchWithConfig(
+            { enabled: true, apiKey },
+            query,
+            maxResults,
+          ),
+        tavilyExtract: (apiKey, urls, query) =>
+          getAgentExternalResearchService().tavilyExtractWithConfig(
+            { enabled: true, apiKey },
+            urls,
+            query,
+          ),
+        firecrawlSearch: (apiKey, query, maxResults) =>
+          getAgentExternalResearchService().firecrawlSearchWithConfig(
+            { enabled: true, apiKey },
+            query,
+            maxResults,
+          ),
+        firecrawlScrape: (apiKey, url) =>
+          getAgentExternalResearchService().firecrawlScrapeWithConfig(
+            { enabled: true, apiKey },
+            url,
+          ),
+        domesticSearch: (sourceId, query, maxResults) =>
+          getAgentDomesticResearchService().domesticSearch(sourceId, query, maxResults),
+      },
+    });
+  }
+  return enterpriseLeadWorkspaceService;
 };
 
 const getAgentExternalResearchStore = (): AgentExternalResearchStore => {
@@ -5665,6 +5715,40 @@ if (!gotTheLock) {
     store: {
       getGeneratedAsset: assetId => getIndustryPackStore().getGeneratedAsset(assetId),
       listGeneratedAssets: workspaceId => getIndustryPackStore().listGeneratedAssets(workspaceId),
+    },
+  });
+
+  registerEnterpriseLeadWorkspaceHandlers({
+    service: {
+      listWorkspaces: () => getEnterpriseLeadWorkspaceService().listWorkspaces(),
+      getWorkspace: id => getEnterpriseLeadWorkspaceService().getWorkspace(id),
+      extractDraftFromConversation: text =>
+        getEnterpriseLeadWorkspaceService().extractDraftFromConversation(text),
+      createWorkspace: draft => getEnterpriseLeadWorkspaceService().createWorkspace(draft),
+      deleteWorkspace: workspaceId =>
+        getEnterpriseLeadWorkspaceService().deleteWorkspace(workspaceId),
+      updateWorkspaceProfile: (workspaceId, profile) =>
+        getEnterpriseLeadWorkspaceService().updateWorkspaceProfile(workspaceId, profile),
+      updateWorkspaceSettings: (workspaceId, input) =>
+        getEnterpriseLeadWorkspaceService().updateWorkspaceSettings(workspaceId, input),
+      updateWorkspaceAgents: (workspaceId, agents) =>
+        getEnterpriseLeadWorkspaceService().updateWorkspaceAgents(workspaceId, agents),
+      listRuns: workspaceId => getEnterpriseLeadWorkspaceService().listRuns(workspaceId),
+      chat: (workspaceId, request) => getEnterpriseLeadWorkspaceService().chat(workspaceId, request),
+      createRun: (workspaceId, userGoal) =>
+        getEnterpriseLeadWorkspaceService().createRun(workspaceId, userGoal),
+      getSnapshot: (workspaceId, runId) =>
+        getEnterpriseLeadWorkspaceService().getSnapshot(workspaceId, runId),
+      runWorkflow: (workspaceId, runId) =>
+        getEnterpriseLeadWorkspaceService().runWorkflow(workspaceId, runId),
+      runTask: taskId => getEnterpriseLeadWorkspaceService().runTask(taskId),
+      rerunTask: taskId => getEnterpriseLeadWorkspaceService().rerunTask(taskId),
+      createPendingVersionFromChat: (taskId, message) =>
+        getEnterpriseLeadWorkspaceService().createPendingVersionFromChat(taskId, message),
+      applyPendingVersion: pendingVersionId =>
+        getEnterpriseLeadWorkspaceService().applyPendingVersion(pendingVersionId),
+      archiveRun: (workspaceId, runId) =>
+        getEnterpriseLeadWorkspaceService().archiveRun(workspaceId, runId),
     },
   });
 

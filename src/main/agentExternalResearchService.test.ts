@@ -160,4 +160,115 @@ describe('AgentExternalResearchService', () => {
       }),
     );
   });
+
+  test('searches Tavily with a direct workspace provider config', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ results: [{ title: 'Lead', url: 'https://example.com' }] }),
+    });
+    const service = new AgentExternalResearchService({ store, fetch: fetchMock });
+
+    const result = await service.tavilySearchWithConfig(
+      { enabled: true, apiKey: 'tvly-workspace' },
+      '重型纸箱 机械设备厂',
+      3,
+    );
+
+    expect(result).toEqual({ results: [{ title: 'Lead', url: 'https://example.com' }] });
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://api.tavily.com/search',
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: 'Bearer tvly-workspace' }),
+        body: expect.stringContaining('"max_results":3'),
+      }),
+    );
+  });
+
+  test('extracts Tavily URLs with a direct workspace provider config', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ results: [{ url: 'https://example.com/a', raw_content: 'page' }] }),
+    });
+    const service = new AgentExternalResearchService({ store, fetch: fetchMock });
+
+    await service.tavilyExtractWithConfig(
+      { enabled: true, apiKey: 'tvly-workspace' },
+      ['https://example.com/a'],
+      '客户信息',
+    );
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://api.tavily.com/extract',
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: 'Bearer tvly-workspace' }),
+        body: expect.stringContaining('"https://example.com/a"'),
+      }),
+    );
+  });
+
+  test('searches Firecrawl with a direct workspace provider config', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ success: true, data: { web: [] } }),
+    });
+    const service = new AgentExternalResearchService({ store, fetch: fetchMock });
+
+    await service.firecrawlSearchWithConfig(
+      { enabled: true, apiKey: 'fc-workspace' },
+      '包装采购',
+      2,
+    );
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://api.firecrawl.dev/v2/search',
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: 'Bearer fc-workspace' }),
+        body: expect.stringContaining('"limit":2'),
+      }),
+    );
+  });
+
+  test('scrapes Firecrawl with a direct workspace provider config', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ success: true, data: { markdown: '# page' } }),
+    });
+    const service = new AgentExternalResearchService({ store, fetch: fetchMock });
+
+    await service.firecrawlScrapeWithConfig(
+      { enabled: true, apiKey: 'fc-workspace' },
+      'https://example.com/a',
+    );
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://api.firecrawl.dev/v2/scrape',
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: 'Bearer fc-workspace' }),
+        body: expect.stringContaining('"https://example.com/a"'),
+      }),
+    );
+  });
+
+  test('redacts direct workspace provider secrets from failed requests', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 401,
+      statusText: 'Unauthorized',
+      text: async () => 'Authorization: Bearer tvly-workspace-secret apiKey=tvly-workspace-secret',
+    });
+    const service = new AgentExternalResearchService({ store, fetch: fetchMock });
+
+    await expect(service.tavilySearchWithConfig(
+      { enabled: true, apiKey: 'tvly-workspace-secret' },
+      '包装采购',
+    )).rejects.toThrow(/Bearer \[redacted\]/);
+    await expect(service.tavilySearchWithConfig(
+      { enabled: true, apiKey: 'tvly-workspace-secret' },
+      '包装采购',
+    )).rejects.not.toThrow('tvly-workspace-secret');
+  });
 });

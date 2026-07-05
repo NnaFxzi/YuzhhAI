@@ -16,6 +16,11 @@ import { CoworkShortcutDirection, CoworkUiEvent } from './components/cowork/cons
 import CoworkPermissionModal from './components/cowork/CoworkPermissionModal';
 import CoworkQuestionWizard from './components/cowork/CoworkQuestionWizard';
 import EngineStartupOverlay from './components/cowork/EngineStartupOverlay';
+import {
+  EnterpriseLeadWorkspaceShellMode,
+  type EnterpriseLeadWorkspaceShellModeType,
+  EnterpriseLeadWorkspaceView,
+} from './components/enterpriseLeadWorkspace';
 import KitsView from './components/kits/KitsView';
 import { McpView } from './components/mcp';
 import PrivacyDialog from './components/PrivacyDialog';
@@ -84,15 +89,19 @@ const SETTINGS_TAB_SHORTCUT_ACTIONS: Array<{
 const INIT_STEP_TIMEOUT_MS_WINDOWS = 24_000;
 const INIT_STEP_TIMEOUT_MS_DEFAULT = 16_000;
 
+type MainView = 'cowork' | 'skills' | 'scheduledTasks' | 'enterpriseLeadWorkspace' | 'kits' | 'mcp';
+
 const App: React.FC = () => {
   const [showSettings, setShowSettings] = useState(false);
   const [settingsOptions, setSettingsOptions] = useState<SettingsOpenOptions & { requestId: number }>({ requestId: 0 });
-  const [mainView, setMainView] = useState<'cowork' | 'skills' | 'scheduledTasks' | 'kits' | 'mcp'>('cowork');
+  const [mainView, setMainView] = useState<MainView>('enterpriseLeadWorkspace');
   const [isInitialized, setIsInitialized] = useState(false);
   const [initError, setInitError] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [, forceLanguageRefresh] = useState(0);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [enterpriseLeadWorkspaceShellMode, setEnterpriseLeadWorkspaceShellMode] =
+    useState<EnterpriseLeadWorkspaceShellModeType>(EnterpriseLeadWorkspaceShellMode.Focused);
   const [appUpdateState, setAppUpdateState] = useState<AppUpdateRuntimeState>({
     status: AppUpdateStatus.Idle,
     source: null,
@@ -345,6 +354,11 @@ const App: React.FC = () => {
 
   const handleShowScheduledTasks = useCallback(() => {
     setMainView('scheduledTasks');
+  }, []);
+
+  const handleShowEnterpriseLeadWorkspace = useCallback(() => {
+    setEnterpriseLeadWorkspaceShellMode(EnterpriseLeadWorkspaceShellMode.Focused);
+    setMainView('enterpriseLeadWorkspace');
   }, []);
 
   const handleShowMcp = useCallback(() => {
@@ -1002,70 +1016,93 @@ const App: React.FC = () => {
     );
   }
 
+  const isEnterpriseLeadWorkspaceActive = mainView === 'enterpriseLeadWorkspace';
+  const isEnterpriseLeadFocusedShell =
+    isEnterpriseLeadWorkspaceActive &&
+    enterpriseLeadWorkspaceShellMode === EnterpriseLeadWorkspaceShellMode.Focused;
+  const isEnterpriseLeadInteriorShell =
+    isEnterpriseLeadWorkspaceActive &&
+    enterpriseLeadWorkspaceShellMode === EnterpriseLeadWorkspaceShellMode.Workspace;
+  const isEnterpriseLeadShellActive = isEnterpriseLeadFocusedShell || isEnterpriseLeadInteriorShell;
+  const shouldShowGlobalSidebar = !isEnterpriseLeadShellActive;
+  const contentHasSidebarInset = shouldShowGlobalSidebar && isSidebarCollapsed;
+  const viewSidebarCollapsed = isEnterpriseLeadShellActive || isSidebarCollapsed;
+
   return (
     <div className="h-screen overflow-hidden flex flex-col bg-surface-raised">
       {toastMessage && (
         <Toast message={toastMessage} onClose={() => setToastMessage(null)} />
       )}
       <div className="flex flex-1 min-h-0 overflow-hidden">
-        <Sidebar
-          onShowLogin={handleShowLogin}
-          onShowSettings={handleShowSettings}
-          activeView={mainView}
-          onShowSkills={handleShowSkills}
-          onShowCowork={handleShowCowork}
-          onShowScheduledTasks={handleShowScheduledTasks}
-          onShowKits={handleShowKits}
-          onShowMcp={handleShowMcp}
-          onNewChat={handleNewChat}
-          isCollapsed={isSidebarCollapsed}
-          onToggleCollapse={handleToggleSidebar}
-          updateBadge={!isSidebarCollapsed ? updateBadge : null}
-          hideLogin={enterpriseConfig?.ui?.login === 'hide'}
-        />
-        <div className={`flex-1 min-w-0 transition-[padding] duration-200 ease-out ${isSidebarCollapsed ? 'pl-1.5' : ''}`}>
+        {shouldShowGlobalSidebar && (
+          <Sidebar
+            onShowLogin={handleShowLogin}
+            onShowSettings={handleShowSettings}
+            activeView={mainView}
+            onShowSkills={handleShowSkills}
+            onShowCowork={handleShowCowork}
+            onShowScheduledTasks={handleShowScheduledTasks}
+            onShowEnterpriseLeadWorkspace={handleShowEnterpriseLeadWorkspace}
+            onShowKits={handleShowKits}
+            onShowMcp={handleShowMcp}
+            onNewChat={handleNewChat}
+            isCollapsed={isSidebarCollapsed}
+            onToggleCollapse={handleToggleSidebar}
+            updateBadge={!isSidebarCollapsed ? updateBadge : null}
+            hideLogin={enterpriseConfig?.ui?.login === 'hide'}
+          />
+        )}
+        <div className={`flex-1 min-w-0 transition-[padding] duration-200 ease-out ${contentHasSidebarInset ? 'pl-1.5' : ''}`}>
           <div className="relative h-full min-h-0 rounded-xl border border-border bg-background overflow-hidden">
             {mainView === 'cowork' && <EngineStartupOverlay />}
             {mainView === 'skills' ? (
               <SkillsView
-                isSidebarCollapsed={isSidebarCollapsed}
+                isSidebarCollapsed={viewSidebarCollapsed}
                 onToggleSidebar={handleToggleSidebar}
                 onNewChat={handleNewChat}
                 onCreateSkillByChat={handleCreateSkillByChat}
-                updateBadge={isSidebarCollapsed ? updateBadge : null}
+                updateBadge={viewSidebarCollapsed ? updateBadge : null}
                 readOnly={enterpriseConfig?.ui?.skills === 'readonly'}
               />
             ) : mainView === 'scheduledTasks' ? (
               <ScheduledTasksView
-                isSidebarCollapsed={isSidebarCollapsed}
+                isSidebarCollapsed={viewSidebarCollapsed}
                 onToggleSidebar={handleToggleSidebar}
                 onNewChat={handleNewChat}
-                updateBadge={isSidebarCollapsed ? updateBadge : null}
+                updateBadge={viewSidebarCollapsed ? updateBadge : null}
+              />
+            ) : mainView === 'enterpriseLeadWorkspace' ? (
+              <EnterpriseLeadWorkspaceView
+                isSidebarCollapsed={viewSidebarCollapsed}
+                hideSidebarToggle={isEnterpriseLeadShellActive}
+                onToggleSidebar={handleToggleSidebar}
+                onShellModeChange={setEnterpriseLeadWorkspaceShellMode}
+                updateBadge={viewSidebarCollapsed ? updateBadge : null}
               />
             ) : mainView === 'kits' ? (
               <KitsView
-                isSidebarCollapsed={isSidebarCollapsed}
+                isSidebarCollapsed={viewSidebarCollapsed}
                 onToggleSidebar={handleToggleSidebar}
                 onNewChat={handleNewChat}
-                updateBadge={isSidebarCollapsed ? updateBadge : null}
+                updateBadge={viewSidebarCollapsed ? updateBadge : null}
                 onTryAsking={handleKitTryAsking}
               />
             ) : mainView === 'mcp' ? (
               <McpView
-                isSidebarCollapsed={isSidebarCollapsed}
+                isSidebarCollapsed={viewSidebarCollapsed}
                 onToggleSidebar={handleToggleSidebar}
                 onNewChat={handleNewChat}
-                updateBadge={isSidebarCollapsed ? updateBadge : null}
+                updateBadge={viewSidebarCollapsed ? updateBadge : null}
               />
             ) : (
               <CoworkView
                 onRequestAppSettings={privacyAgreed === true && !showWelcome ? handleShowSettings : undefined}
                 onShowSkills={handleShowSkills}
                 onShowKits={handleShowKits}
-                isSidebarCollapsed={isSidebarCollapsed}
+                isSidebarCollapsed={viewSidebarCollapsed}
                 onToggleSidebar={handleToggleSidebar}
                 onNewChat={handleNewChat}
-                updateBadge={isSidebarCollapsed ? updateBadge : null}
+                updateBadge={viewSidebarCollapsed ? updateBadge : null}
               />
             )}
           </div>

@@ -21,6 +21,14 @@ import { ClipboardIpc } from '../shared/clipboard/constants';
 import { CoworkIpcChannel } from '../shared/cowork/constants';
 import { DataMigrationIpc } from '../shared/dataMigration/constants';
 import { DialogIpc } from '../shared/dialog/constants';
+import { EnterpriseLeadWorkspaceIpc } from '../shared/enterpriseLeadWorkspace/constants';
+import type {
+  EnterpriseLeadWorkspaceAgentBinding,
+  EnterpriseLeadWorkspaceChatRequest,
+  EnterpriseLeadWorkspaceDraft,
+  EnterpriseLeadWorkspaceProfile,
+  EnterpriseLeadWorkspaceSettingsUpdate,
+} from '../shared/enterpriseLeadWorkspace/types';
 import {
   type HtmlShareAccessMode,
   type HtmlShareConfigurableStatus,
@@ -182,6 +190,41 @@ contextBridge.exposeInMainWorld('electron', {
       ipcRenderer.invoke(IndustryMarketingIpc.ListAssets, workspaceId),
     exportAsset: (assetId: string, format: IndustryExportFormat) =>
       ipcRenderer.invoke(IndustryMarketingIpc.ExportAsset, { assetId, format }),
+  },
+  enterpriseLeadWorkspace: {
+    listWorkspaces: () => ipcRenderer.invoke(EnterpriseLeadWorkspaceIpc.ListWorkspaces),
+    getWorkspace: (id: string) => ipcRenderer.invoke(EnterpriseLeadWorkspaceIpc.GetWorkspace, id),
+    extractDraft: (text: string) =>
+      ipcRenderer.invoke(EnterpriseLeadWorkspaceIpc.ExtractDraft, { text }),
+    createWorkspace: (draft: EnterpriseLeadWorkspaceDraft) =>
+      ipcRenderer.invoke(EnterpriseLeadWorkspaceIpc.CreateWorkspace, draft),
+    deleteWorkspace: (workspaceId: string) =>
+      ipcRenderer.invoke(EnterpriseLeadWorkspaceIpc.DeleteWorkspace, workspaceId),
+    updateWorkspaceProfile: (workspaceId: string, profile: EnterpriseLeadWorkspaceProfile) =>
+      ipcRenderer.invoke(EnterpriseLeadWorkspaceIpc.UpdateWorkspaceProfile, { workspaceId, profile }),
+    updateWorkspaceSettings: (workspaceId: string, settings: EnterpriseLeadWorkspaceSettingsUpdate) =>
+      ipcRenderer.invoke(EnterpriseLeadWorkspaceIpc.UpdateWorkspaceSettings, { workspaceId, settings }),
+    updateWorkspaceAgents: (workspaceId: string, agents: EnterpriseLeadWorkspaceAgentBinding[]) =>
+      ipcRenderer.invoke(EnterpriseLeadWorkspaceIpc.UpdateWorkspaceAgents, { workspaceId, agents }),
+    listRuns: (workspaceId: string) =>
+      ipcRenderer.invoke(EnterpriseLeadWorkspaceIpc.ListRuns, workspaceId),
+    createRun: (workspaceId: string, userGoal: string) =>
+      ipcRenderer.invoke(EnterpriseLeadWorkspaceIpc.CreateRun, { workspaceId, userGoal }),
+    getRun: (workspaceId: string, runId?: string) =>
+      ipcRenderer.invoke(EnterpriseLeadWorkspaceIpc.GetRun, { workspaceId, runId }),
+    runWorkflow: (workspaceId: string, runId: string) =>
+      ipcRenderer.invoke(EnterpriseLeadWorkspaceIpc.RunWorkflow, { workspaceId, runId }),
+    chat: (workspaceId: string, request: EnterpriseLeadWorkspaceChatRequest) =>
+      ipcRenderer.invoke(EnterpriseLeadWorkspaceIpc.Chat, { workspaceId, request }),
+    runTask: (taskId: string) => ipcRenderer.invoke(EnterpriseLeadWorkspaceIpc.RunTask, taskId),
+    rerunTask: (taskId: string) =>
+      ipcRenderer.invoke(EnterpriseLeadWorkspaceIpc.RerunTask, { taskId }),
+    createPendingVersion: (taskId: string, message: string) =>
+      ipcRenderer.invoke(EnterpriseLeadWorkspaceIpc.CreatePendingVersion, { taskId, message }),
+    applyPendingVersion: (pendingVersionId: string) =>
+      ipcRenderer.invoke(EnterpriseLeadWorkspaceIpc.ApplyPendingVersion, pendingVersionId),
+    archiveRun: (workspaceId: string, runId: string) =>
+      ipcRenderer.invoke(EnterpriseLeadWorkspaceIpc.ArchiveRun, { workspaceId, runId }),
   },
   ipcRenderer: {
     send: (channel: string, ...args: any[]) => {

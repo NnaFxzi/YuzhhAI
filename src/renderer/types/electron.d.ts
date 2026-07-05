@@ -28,6 +28,20 @@ import type {
   DataMigrationRestoreScheduleResult,
 } from '../../shared/dataMigration/constants';
 import type {
+  EnterpriseLeadAgentTask,
+  EnterpriseLeadIpcResult,
+  EnterpriseLeadPendingVersion,
+  EnterpriseLeadWorkspace,
+  EnterpriseLeadWorkspaceAgentBinding,
+  EnterpriseLeadWorkspaceChatRequest,
+  EnterpriseLeadWorkspaceChatResponse,
+  EnterpriseLeadWorkspaceDraft,
+  EnterpriseLeadWorkspaceProfile,
+  EnterpriseLeadWorkspaceRunSummary,
+  EnterpriseLeadWorkspaceSettingsUpdate,
+  EnterpriseLeadWorkspaceSnapshot,
+} from '../../shared/enterpriseLeadWorkspace/types';
+import type {
   HtmlShareAccessMode,
   HtmlShareConfigurableStatus,
   HtmlShareDisabledSource,
@@ -640,6 +654,59 @@ interface IElectronAPI {
       assetId: string,
       format: IndustryExportFormat,
     ) => Promise<IndustryMarketingExportResult>;
+  };
+  enterpriseLeadWorkspace: {
+    listWorkspaces: () => Promise<EnterpriseLeadIpcResult<EnterpriseLeadWorkspace[]>>;
+    getWorkspace: (id: string) => Promise<EnterpriseLeadIpcResult<EnterpriseLeadWorkspace | null>>;
+    extractDraft: (text: string) => Promise<EnterpriseLeadIpcResult<EnterpriseLeadWorkspaceDraft>>;
+    createWorkspace: (
+      draft: EnterpriseLeadWorkspaceDraft,
+    ) => Promise<EnterpriseLeadIpcResult<EnterpriseLeadWorkspace>>;
+    deleteWorkspace: (workspaceId: string) => Promise<EnterpriseLeadIpcResult<boolean>>;
+    updateWorkspaceProfile: (
+      workspaceId: string,
+      profile: EnterpriseLeadWorkspaceProfile,
+    ) => Promise<EnterpriseLeadIpcResult<EnterpriseLeadWorkspace>>;
+    updateWorkspaceSettings: (
+      workspaceId: string,
+      settings: EnterpriseLeadWorkspaceSettingsUpdate,
+    ) => Promise<EnterpriseLeadIpcResult<EnterpriseLeadWorkspace>>;
+    updateWorkspaceAgents: (
+      workspaceId: string,
+      agents: EnterpriseLeadWorkspaceAgentBinding[],
+    ) => Promise<EnterpriseLeadIpcResult<EnterpriseLeadWorkspace>>;
+    listRuns: (
+      workspaceId: string,
+    ) => Promise<EnterpriseLeadIpcResult<EnterpriseLeadWorkspaceRunSummary[]>>;
+    createRun: (
+      workspaceId: string,
+      userGoal: string,
+    ) => Promise<EnterpriseLeadIpcResult<EnterpriseLeadWorkspaceSnapshot>>;
+    getRun: (
+      workspaceId: string,
+      runId?: string,
+    ) => Promise<EnterpriseLeadIpcResult<EnterpriseLeadWorkspaceSnapshot>>;
+    runWorkflow: (
+      workspaceId: string,
+      runId: string,
+    ) => Promise<EnterpriseLeadIpcResult<EnterpriseLeadWorkspaceSnapshot>>;
+    chat: (
+      workspaceId: string,
+      request: EnterpriseLeadWorkspaceChatRequest,
+    ) => Promise<EnterpriseLeadIpcResult<EnterpriseLeadWorkspaceChatResponse>>;
+    runTask: (taskId: string) => Promise<EnterpriseLeadIpcResult<EnterpriseLeadAgentTask>>;
+    rerunTask: (taskId: string) => Promise<EnterpriseLeadIpcResult<EnterpriseLeadAgentTask>>;
+    createPendingVersion: (
+      taskId: string,
+      message: string,
+    ) => Promise<EnterpriseLeadIpcResult<EnterpriseLeadPendingVersion>>;
+    applyPendingVersion: (
+      pendingVersionId: string,
+    ) => Promise<EnterpriseLeadIpcResult<EnterpriseLeadWorkspaceSnapshot>>;
+    archiveRun: (
+      workspaceId: string,
+      runId: string,
+    ) => Promise<EnterpriseLeadIpcResult<EnterpriseLeadWorkspaceSnapshot>>;
   };
   getApiConfig: () => Promise<CoworkApiConfig | null>;
   checkApiConfig: (options?: {

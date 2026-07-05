@@ -1,6 +1,7 @@
 import {
   type ExternalResearchConfig,
   type ExternalResearchEditConfig,
+  type ExternalResearchProviderConfig,
   ExternalResearchProviderId,
   type ExternalResearchProviderId as ExternalResearchProviderIdValue,
   type ExternalResearchProviderTestInput,
@@ -110,6 +111,14 @@ export class AgentExternalResearchService {
 
   async tavilySearch(agentId: string, query: string, maxResults = 5): Promise<unknown> {
     const config = this.getEffectiveSettings(agentId).providers.tavily;
+    return this.tavilySearchWithConfig(config, query, maxResults);
+  }
+
+  async tavilySearchWithConfig(
+    config: ExternalResearchProviderConfig,
+    query: string,
+    maxResults = 5,
+  ): Promise<unknown> {
     this.assertProviderReady(ExternalResearchProviderId.Tavily, config.enabled, config.apiKey);
     return this.postJson('https://api.tavily.com/search', config.apiKey, {
       query,
@@ -124,6 +133,14 @@ export class AgentExternalResearchService {
 
   async tavilyExtract(agentId: string, urls: string[], query?: string): Promise<unknown> {
     const config = this.getEffectiveSettings(agentId).providers.tavily;
+    return this.tavilyExtractWithConfig(config, urls, query);
+  }
+
+  async tavilyExtractWithConfig(
+    config: ExternalResearchProviderConfig,
+    urls: string[],
+    query?: string,
+  ): Promise<unknown> {
     this.assertProviderReady(ExternalResearchProviderId.Tavily, config.enabled, config.apiKey);
     return this.postJson('https://api.tavily.com/extract', config.apiKey, {
       urls,
@@ -134,10 +151,18 @@ export class AgentExternalResearchService {
 
   async firecrawlSearch(agentId: string, query: string, limit = 5): Promise<unknown> {
     const config = this.getEffectiveSettings(agentId).providers.firecrawl;
+    return this.firecrawlSearchWithConfig(config, query, limit);
+  }
+
+  async firecrawlSearchWithConfig(
+    config: ExternalResearchProviderConfig,
+    query: string,
+    maxResults = 5,
+  ): Promise<unknown> {
     this.assertProviderReady(ExternalResearchProviderId.Firecrawl, config.enabled, config.apiKey);
     return this.postJson('https://api.firecrawl.dev/v2/search', config.apiKey, {
       query,
-      limit,
+      limit: maxResults,
       sources: ['web'],
       country: 'CN',
       timeout: 60_000,
@@ -146,6 +171,13 @@ export class AgentExternalResearchService {
 
   async firecrawlScrape(agentId: string, url: string): Promise<unknown> {
     const config = this.getEffectiveSettings(agentId).providers.firecrawl;
+    return this.firecrawlScrapeWithConfig(config, url);
+  }
+
+  async firecrawlScrapeWithConfig(
+    config: ExternalResearchProviderConfig,
+    url: string,
+  ): Promise<unknown> {
     this.assertProviderReady(ExternalResearchProviderId.Firecrawl, config.enabled, config.apiKey);
     return this.postJson('https://api.firecrawl.dev/v2/scrape', config.apiKey, {
       url,
@@ -177,7 +209,8 @@ export class AgentExternalResearchService {
     });
     const text = await response.text();
     if (!response.ok) {
-      throw new Error(`${url} HTTP ${response.status}: ${text.trim() || response.statusText}`);
+      const message = `${url} HTTP ${response.status}: ${text.trim() || response.statusText}`;
+      throw new Error(redactExternalResearchSecret(message, [apiKey]));
     }
     return text.trim() ? JSON.parse(text) as unknown : {};
   }

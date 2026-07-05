@@ -1,0 +1,1607 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>企业获客空间知识库 - 控制台原型</title>
+  <style>
+    :root {
+      --bg: #ffffff;
+      --sidebar: #f4f6f8;
+      --surface: #f7f8fa;
+      --surface-strong: #edf1f5;
+      --panel: #ffffff;
+      --border: #e2e6ec;
+      --border-strong: #cfd6df;
+      --text: #23262b;
+      --secondary: #5f6774;
+      --muted: #8a93a0;
+      --primary: #2f80ff;
+      --primary-soft: #eaf2ff;
+      --green: #168a5b;
+      --green-soft: #e7f7ee;
+      --amber: #a66b12;
+      --amber-soft: #fff4d8;
+      --red: #c93f4d;
+      --red-soft: #fff0f2;
+      --purple: #7557d8;
+      --purple-soft: #f0edff;
+      --shadow: 0 18px 44px rgba(31, 35, 41, 0.10);
+      --shadow-soft: 0 10px 24px rgba(31, 35, 41, 0.07);
+      color-scheme: light;
+      font-family:
+        Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+        "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-width: 1180px;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--text);
+      letter-spacing: 0;
+    }
+
+    button,
+    input,
+    textarea,
+    select {
+      font: inherit;
+    }
+
+    button {
+      cursor: pointer;
+    }
+
+    .app {
+      display: grid;
+      grid-template-columns: 248px minmax(0, 1fr);
+      min-height: 100vh;
+      background: var(--bg);
+    }
+
+    .sidebar {
+      display: flex;
+      min-height: 100vh;
+      flex-direction: column;
+      border-right: 1px solid var(--border);
+      background: var(--sidebar);
+      padding: 14px 14px 16px;
+    }
+
+    .traffic {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      height: 26px;
+      margin-bottom: 18px;
+    }
+
+    .dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 999px;
+    }
+
+    .dot.red { background: #ff5f57; }
+    .dot.yellow { background: #ffbd2e; }
+    .dot.green { background: #28c840; }
+
+    .nav {
+      display: grid;
+      gap: 3px;
+    }
+
+    .nav-button {
+      display: grid;
+      grid-template-columns: 22px minmax(0, 1fr);
+      align-items: center;
+      gap: 8px;
+      min-height: 38px;
+      border: 0;
+      border-radius: 8px;
+      background: transparent;
+      color: var(--text);
+      padding: 8px 9px;
+      text-align: left;
+    }
+
+    .nav-button:hover,
+    .nav-button.active {
+      background: #e8edf4;
+    }
+
+    .nav-button.active {
+      font-weight: 720;
+    }
+
+    .icon {
+      display: inline-flex;
+      width: 22px;
+      height: 22px;
+      align-items: center;
+      justify-content: center;
+      color: var(--secondary);
+      font-size: 16px;
+      line-height: 1;
+    }
+
+    .nav-text,
+    .recent-title {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .divider {
+      height: 1px;
+      margin: 18px 0;
+      background: var(--border);
+    }
+
+    .section-label {
+      margin: 18px 8px 8px;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 680;
+    }
+
+    .recent-list {
+      display: grid;
+      gap: 2px;
+    }
+
+    .recent {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 8px;
+      border: 0;
+      border-radius: 8px;
+      background: transparent;
+      padding: 7px 8px;
+      text-align: left;
+    }
+
+    .recent:hover {
+      background: #e8edf4;
+    }
+
+    .recent-title {
+      font-size: 14px;
+      font-weight: 640;
+    }
+
+    .recent-time {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .main {
+      display: grid;
+      min-width: 0;
+      min-height: 100vh;
+      grid-template-rows: auto minmax(0, 1fr);
+      background:
+        linear-gradient(180deg, rgba(246, 247, 249, 0.72), rgba(255, 255, 255, 0) 180px),
+        var(--bg);
+    }
+
+    .topbar {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: end;
+      gap: 20px;
+      border-bottom: 1px solid var(--border);
+      padding: 24px 34px 18px;
+    }
+
+    .eyebrow {
+      margin: 0 0 5px;
+      color: var(--primary);
+      font-size: 12px;
+      font-weight: 780;
+      text-transform: uppercase;
+    }
+
+    h1,
+    h2,
+    h3,
+    p {
+      margin: 0;
+    }
+
+    h1 {
+      color: var(--text);
+      font-size: 24px;
+      font-weight: 760;
+      line-height: 1.22;
+    }
+
+    .subtitle {
+      margin-top: 7px;
+      color: var(--secondary);
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .button {
+      display: inline-flex;
+      min-height: 34px;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      background: #fff;
+      color: var(--text);
+      padding: 0 12px;
+      font-size: 13px;
+      font-weight: 680;
+      box-shadow: 0 1px 0 rgba(31, 35, 41, 0.04);
+    }
+
+    .button:hover {
+      border-color: var(--border-strong);
+      background: var(--surface);
+    }
+
+    .button.primary {
+      border-color: var(--primary);
+      background: var(--primary);
+      color: #fff;
+    }
+
+    .button.danger {
+      border-color: #f0c4ca;
+      background: var(--red-soft);
+      color: var(--red);
+    }
+
+    .summary-strip {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 1px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: var(--border);
+      box-shadow: var(--shadow-soft);
+    }
+
+    .metric {
+      min-width: 0;
+      background: #fff;
+      padding: 14px 16px;
+    }
+
+    .metric-value {
+      font-size: 22px;
+      font-weight: 780;
+      line-height: 1;
+    }
+
+    .metric-label {
+      margin-top: 5px;
+      color: var(--secondary);
+      font-size: 12px;
+      font-weight: 650;
+    }
+
+    .metric.warning .metric-value {
+      color: var(--amber);
+    }
+
+    .metric.good .metric-value {
+      color: var(--green);
+    }
+
+    .workspace {
+      display: grid;
+      min-height: 0;
+      grid-template-rows: auto minmax(0, 1fr);
+      gap: 18px;
+      padding: 18px 34px 28px;
+    }
+
+    .knowledge-layout {
+      display: grid;
+      min-height: 0;
+      grid-template-columns: 220px minmax(420px, 1fr) 360px;
+      gap: 16px;
+    }
+
+    .panel {
+      min-height: 0;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: #fff;
+      box-shadow: var(--shadow-soft);
+    }
+
+    .category-panel {
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+      overflow: hidden;
+    }
+
+    .panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      border-bottom: 1px solid var(--border);
+      padding: 13px 14px;
+    }
+
+    .panel-title {
+      font-size: 13px;
+      font-weight: 760;
+    }
+
+    .tiny {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 650;
+    }
+
+    .category-list {
+      display: grid;
+      align-content: start;
+      gap: 4px;
+      overflow: auto;
+      padding: 10px;
+    }
+
+    .category {
+      display: grid;
+      grid-template-columns: 24px minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 8px;
+      min-height: 42px;
+      border: 0;
+      border-radius: 9px;
+      background: transparent;
+      color: var(--text);
+      padding: 7px 8px;
+      text-align: left;
+    }
+
+    .category:hover,
+    .category.active {
+      background: var(--surface);
+    }
+
+    .category.active {
+      box-shadow: inset 3px 0 0 var(--primary);
+    }
+
+    .category-name {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .category-sub {
+      margin-top: 1px;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    .count {
+      min-width: 24px;
+      border-radius: 999px;
+      background: var(--surface-strong);
+      color: var(--secondary);
+      padding: 2px 7px;
+      text-align: center;
+      font-size: 12px;
+      font-weight: 720;
+    }
+
+    .list-panel {
+      display: grid;
+      grid-template-rows: auto auto minmax(0, 1fr);
+      overflow: hidden;
+    }
+
+    .toolbar {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 10px;
+      border-bottom: 1px solid var(--border);
+      padding: 12px 14px;
+    }
+
+    .search {
+      display: grid;
+      grid-template-columns: 24px minmax(0, 1fr);
+      align-items: center;
+      gap: 8px;
+      min-height: 34px;
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      background: var(--surface);
+      padding: 0 10px;
+    }
+
+    .search input {
+      min-width: 0;
+      border: 0;
+      outline: none;
+      background: transparent;
+      color: var(--text);
+      font-size: 13px;
+    }
+
+    .select {
+      height: 34px;
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      background: #fff;
+      color: var(--secondary);
+      padding: 0 9px;
+      font-size: 13px;
+      font-weight: 650;
+    }
+
+    .section-context {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      border-bottom: 1px solid var(--border);
+      padding: 11px 14px;
+      color: var(--secondary);
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    .item-list {
+      display: grid;
+      align-content: start;
+      gap: 8px;
+      overflow: auto;
+      padding: 12px;
+    }
+
+    .knowledge-item {
+      display: grid;
+      gap: 8px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: #fff;
+      padding: 12px;
+      text-align: left;
+    }
+
+    .knowledge-item:hover,
+    .knowledge-item.active {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(47, 128, 255, 0.10);
+    }
+
+    .item-head {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 12px;
+      align-items: start;
+    }
+
+    .item-title {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 14px;
+      font-weight: 760;
+    }
+
+    .item-summary {
+      color: var(--secondary);
+      font-size: 13px;
+      line-height: 1.55;
+    }
+
+    .tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .tag {
+      border-radius: 999px;
+      background: var(--surface);
+      color: var(--secondary);
+      padding: 3px 8px;
+      font-size: 11px;
+      font-weight: 680;
+      white-space: nowrap;
+    }
+
+    .tag.primary {
+      background: var(--primary-soft);
+      color: var(--primary);
+    }
+
+    .tag.good {
+      background: var(--green-soft);
+      color: var(--green);
+    }
+
+    .tag.warn {
+      background: var(--amber-soft);
+      color: var(--amber);
+    }
+
+    .tag.red {
+      background: var(--red-soft);
+      color: var(--red);
+    }
+
+    .detail-panel {
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr) auto;
+      overflow: hidden;
+    }
+
+    .detail-body {
+      display: grid;
+      align-content: start;
+      gap: 16px;
+      overflow: auto;
+      padding: 16px;
+    }
+
+    .detail-title {
+      font-size: 18px;
+      font-weight: 780;
+      line-height: 1.35;
+    }
+
+    .detail-text {
+      color: var(--secondary);
+      font-size: 13px;
+      line-height: 1.7;
+    }
+
+    .fact-box {
+      display: grid;
+      gap: 10px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--surface);
+      padding: 12px;
+    }
+
+    .fact-row {
+      display: grid;
+      grid-template-columns: 88px minmax(0, 1fr);
+      gap: 10px;
+      color: var(--secondary);
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    .fact-label {
+      color: var(--muted);
+      font-weight: 700;
+    }
+
+    .agent-list {
+      display: grid;
+      gap: 7px;
+    }
+
+    .agent {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      background: #fff;
+      padding: 8px 10px;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .detail-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      border-top: 1px solid var(--border);
+      padding: 12px 14px;
+    }
+
+    .detail-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .empty {
+      margin: 22px;
+      border: 1px dashed var(--border-strong);
+      border-radius: 12px;
+      color: var(--secondary);
+      padding: 20px;
+      text-align: center;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      display: none;
+      place-items: center;
+      background: rgba(20, 24, 31, 0.22);
+      padding: 24px;
+      z-index: 20;
+    }
+
+    body[data-modal="knowledge"] .modal-backdrop {
+      display: grid;
+    }
+
+    .modal {
+      width: min(840px, 100%);
+      max-height: min(860px, calc(100vh - 48px));
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      background: #fff;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .modal-header,
+    .modal-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px 16px;
+    }
+
+    .modal-header {
+      border-bottom: 1px solid var(--border);
+    }
+
+    .modal-footer {
+      border-top: 1px solid var(--border);
+    }
+
+    .modal-body {
+      display: grid;
+      max-height: calc(100vh - 180px);
+      gap: 14px;
+      overflow: auto;
+      padding: 16px;
+    }
+
+    .type-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .type-card {
+      display: grid;
+      gap: 4px;
+      min-height: 74px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: #fff;
+      color: var(--text);
+      padding: 10px;
+      text-align: left;
+    }
+
+    .type-card:hover,
+    .type-card.active {
+      border-color: var(--primary);
+      background: var(--primary-soft);
+    }
+
+    .type-card strong {
+      font-size: 13px;
+    }
+
+    .type-card span {
+      color: var(--secondary);
+      font-size: 11px;
+      line-height: 1.45;
+    }
+
+    .field-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .company-material {
+      display: none;
+      gap: 12px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: var(--surface);
+      padding: 12px;
+    }
+
+    body[data-knowledge-type="company"] .company-material {
+      display: grid;
+    }
+
+    .agent-scope {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .check-card {
+      display: flex;
+      min-height: 38px;
+      align-items: center;
+      gap: 8px;
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      background: #fff;
+      color: var(--secondary);
+      padding: 8px 10px;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .modal-note {
+      border: 1px solid var(--amber-soft);
+      border-radius: 10px;
+      background: #fffaf0;
+      color: var(--amber);
+      padding: 10px 12px;
+      font-size: 12px;
+      line-height: 1.55;
+    }
+
+    label {
+      display: grid;
+      gap: 6px;
+      color: var(--secondary);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .field,
+    textarea.field {
+      width: 100%;
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      background: var(--surface);
+      color: var(--text);
+      outline: none;
+      padding: 10px;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    textarea.field {
+      min-height: 116px;
+      resize: vertical;
+    }
+
+    .toast {
+      position: fixed;
+      right: 28px;
+      bottom: 24px;
+      display: none;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: #fff;
+      box-shadow: var(--shadow);
+      color: var(--text);
+      padding: 12px 14px;
+      font-size: 13px;
+      font-weight: 700;
+      z-index: 30;
+    }
+
+    body[data-toast="sync"] .toast {
+      display: block;
+    }
+
+    @media (max-width: 980px) {
+      body {
+        min-width: 0;
+      }
+
+      .app {
+        grid-template-columns: 1fr;
+      }
+
+      .sidebar {
+        display: none;
+      }
+
+      .topbar,
+      .workspace {
+        padding-left: 16px;
+        padding-right: 16px;
+      }
+
+      .summary-strip {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .knowledge-layout {
+        grid-template-columns: 1fr;
+      }
+
+      .detail-panel {
+        min-height: 420px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar" aria-label="空间侧栏">
+      <div class="traffic" aria-hidden="true">
+        <span class="dot red"></span>
+        <span class="dot yellow"></span>
+        <span class="dot green"></span>
+      </div>
+      <nav class="nav" aria-label="空间操作">
+        <button class="nav-button"><span class="icon">✎</span><span class="nav-text">新对话</span></button>
+        <button class="nav-button"><span class="icon">⌕</span><span class="nav-text">搜索</span></button>
+      </nav>
+      <div class="divider"></div>
+      <nav class="nav" aria-label="空间功能">
+        <button class="nav-button"><span class="icon">▦</span><span class="nav-text">工作台</span></button>
+        <button class="nav-button active"><span class="icon">□</span><span class="nav-text">知识库</span></button>
+        <button class="nav-button"><span class="icon">⚙</span><span class="nav-text">空间设置</span></button>
+      </nav>
+      <div class="section-label">对话记录</div>
+      <div class="recent-list">
+        <button class="recent"><span class="recent-title">帮我找长三角机械厂线索</span><span class="recent-time">6 分</span></button>
+        <button class="recent"><span class="recent-title">改写小红书获客文案</span><span class="recent-time">20 分</span></button>
+        <button class="recent"><span class="recent-title">生成销售交接清单</span><span class="recent-time">14 小时</span></button>
+        <button class="recent"><span class="recent-title">检查外发内容风险</span><span class="recent-time">昨天</span></button>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div class="min-title">
+          <p class="eyebrow">知识库</p>
+          <h1>杭州启盛精密制造有限公司</h1>
+          <p class="subtitle">管理当前空间会被 AI 对话、工作台 Agent 和任务沉淀引用的上下文。</p>
+        </div>
+        <div class="actions">
+          <button class="button" id="syncBtn">↻ 同步来源</button>
+          <button class="button" id="companyBtn">▣ 维护公司资料</button>
+          <button class="button primary" id="addBtn">＋ 添加内容</button>
+        </div>
+      </header>
+
+      <section class="workspace" aria-label="知识控制台">
+        <div class="summary-strip" aria-label="知识状态摘要">
+          <div class="metric good">
+            <div class="metric-value">43</div>
+            <div class="metric-label">可被 AI 引用</div>
+          </div>
+          <div class="metric">
+            <div class="metric-value">8</div>
+            <div class="metric-label">知识分类</div>
+          </div>
+          <div class="metric warning">
+            <div class="metric-value">6</div>
+            <div class="metric-label">待补充信息</div>
+          </div>
+          <div class="metric">
+            <div class="metric-value">2</div>
+            <div class="metric-label">任务沉淀</div>
+          </div>
+        </div>
+
+        <div class="knowledge-layout">
+          <section class="panel category-panel" aria-label="知识分类">
+            <div class="panel-header">
+              <h2 class="panel-title">分类</h2>
+              <span class="tiny">空间内生效</span>
+            </div>
+            <div class="category-list" id="categoryList"></div>
+          </section>
+
+          <section class="panel list-panel" aria-label="知识条目">
+            <div class="toolbar">
+              <div class="search">
+                <span class="icon">⌕</span>
+                <input id="searchInput" type="search" placeholder="搜索产品、客户、规则、来源">
+              </div>
+              <select class="select" id="filterSelect" aria-label="筛选知识状态">
+                <option value="all">全部状态</option>
+                <option value="ready">可引用</option>
+                <option value="missing">待补充</option>
+                <option value="review">需确认</option>
+              </select>
+            </div>
+            <div class="section-context">
+              <span id="sectionDescription">这些知识会作为 AI 对话和 Agent 任务的上下文。</span>
+              <span id="visibleCount">0 条</span>
+            </div>
+            <div class="item-list" id="itemList"></div>
+          </section>
+
+          <aside class="panel detail-panel" aria-label="知识详情">
+            <div class="panel-header">
+              <h2 class="panel-title">详情</h2>
+              <span class="tiny" id="detailStatus">可引用</span>
+            </div>
+            <div class="detail-body" id="detailBody"></div>
+            <div class="detail-footer">
+              <div class="detail-actions">
+                <button class="button" id="editBtn">编辑</button>
+                <button class="button danger" id="archiveBtn">归档</button>
+              </div>
+              <div class="detail-actions">
+                <button class="button" id="askBtn">发到 AI 对话</button>
+                <button class="button primary" id="confirmBtn">确认入库</button>
+              </div>
+            </div>
+          </aside>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div class="modal-backdrop" role="presentation">
+    <section class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+      <div class="modal-header">
+        <h2 class="panel-title" id="modalTitle">维护知识内容</h2>
+        <button class="button" id="closeModalBtn">关闭</button>
+      </div>
+      <div class="modal-body">
+        <div class="type-grid" role="list" aria-label="维护入口">
+          <button class="type-card active" type="button" data-type="company">
+            <strong>公司资料</strong>
+            <span>公司介绍、产品、客户、话术、禁用表达</span>
+          </button>
+          <button class="type-card" type="button" data-type="manual">
+            <strong>手动知识</strong>
+            <span>直接补充一条可维护知识</span>
+          </button>
+          <button class="type-card" type="button" data-type="link">
+            <strong>链接来源</strong>
+            <span>企业官网、产品页、公开资料</span>
+          </button>
+          <button class="type-card" type="button" data-type="run">
+            <strong>任务沉淀</strong>
+            <span>把 Agent 输出整理入库</span>
+          </button>
+        </div>
+
+        <div class="company-material" id="companyMaterial">
+          <div class="field-grid">
+            <label>
+              公司介绍
+              <textarea class="field" id="companyIntro">杭州启盛精密制造有限公司，专注精密金属加工和工业配套件生产。</textarea>
+            </label>
+            <label>
+              产品与能力
+              <textarea class="field" id="companyProducts">精密金属支架、钣金件、设备连接件，支持 OEM/ODM 定制。</textarea>
+            </label>
+            <label>
+              目标客户
+              <textarea class="field" id="companyCustomers">自动化设备厂、包装机械厂、物流设备厂、工程承包商。</textarea>
+            </label>
+            <label>
+              销售话术方向
+              <textarea class="field" id="companyPitch">源头工厂、支持打样、可按图定制、适合长期稳定配套。</textarea>
+            </label>
+            <label>
+              禁用表述
+              <textarea class="field" id="companyBanned">不要承诺最低价、最快交付、绝对质量保证。</textarea>
+            </label>
+            <label>
+              联系方式与渠道规则
+              <textarea class="field" id="companyContact">正式外发前确认联系人、电话、邮箱和授权使用范围。</textarea>
+            </label>
+          </div>
+          <div class="modal-note">保存公司资料时，会拆成企业画像、产品能力、客户场景、卖点渠道和外发规则等知识条目，默认先进入“需确认”。</div>
+        </div>
+
+        <div class="field-grid">
+          <label>
+            分类
+            <select class="field" id="modalCategory">
+              <option value="company">企业画像</option>
+              <option value="products">产品能力</option>
+              <option value="customers">客户场景</option>
+              <option value="selling">卖点渠道</option>
+              <option value="rules">外发规则</option>
+              <option value="sources">来源资料</option>
+              <option value="runs">任务沉淀</option>
+              <option value="gaps">待补充</option>
+            </select>
+          </label>
+          <label>
+            状态
+            <select class="field" id="modalStatus">
+              <option value="review">需确认</option>
+              <option value="ready">可引用</option>
+              <option value="missing">待补充</option>
+            </select>
+          </label>
+        </div>
+
+        <label>
+          标题
+          <input class="field" id="modalTitleInput" value="新增客户画像">
+        </label>
+        <label>
+          摘要
+          <textarea class="field" id="modalSummaryInput">补充一条可被 AI 引用的空间知识。保存后只在当前工作空间生效。</textarea>
+        </label>
+        <label>
+          正文 / 维护说明
+          <textarea class="field" id="modalDetailInput">这里写给 AI 和 Agent 使用的具体上下文，尽量包含事实、限制和适用场景。</textarea>
+        </label>
+
+        <div class="field-grid">
+          <label>
+            来源
+            <input class="field" id="modalSourceInput" value="手动添加">
+          </label>
+          <label>
+            标签
+            <input class="field" id="modalTagsInput" value="销售, 产品, 需确认">
+          </label>
+        </div>
+
+        <label>
+          可引用 Agent 范围
+          <div class="agent-scope">
+            <span class="check-card"><input type="checkbox" checked value="产品理解 Agent">产品理解</span>
+            <span class="check-card"><input type="checkbox" checked value="商机雷达 Agent">商机雷达</span>
+            <span class="check-card"><input type="checkbox" checked value="内容策划 Agent">内容策划</span>
+            <span class="check-card"><input type="checkbox" value="销售交接 Agent">销售交接</span>
+            <span class="check-card"><input type="checkbox" value="风控审核 Agent">风控审核</span>
+            <span class="check-card"><input type="checkbox" value="全部 Agent">全部 Agent</span>
+          </div>
+        </label>
+      </div>
+      <div class="modal-footer">
+        <span class="tiny" id="modalHint">新增内容默认先进入需确认，只影响当前空间。</span>
+        <button class="button primary" id="saveModalBtn">保存到知识库</button>
+      </div>
+    </section>
+  </div>
+
+  <div class="toast" id="toast">已同步来源并更新知识状态</div>
+
+  <script>
+    const categories = [
+      { id: 'company', icon: '▣', name: '企业画像', sub: '公司概况与资质', description: 'AI 会优先使用这些内容理解企业定位。' },
+      { id: 'products', icon: '✦', name: '产品能力', sub: '产品、工艺、产能', description: '用于产品理解、线索筛选和内容生成。' },
+      { id: 'customers', icon: '◎', name: '客户场景', sub: '客户类型与应用场景', description: '用于判断目标客户和生成触达角度。' },
+      { id: 'selling', icon: '☰', name: '卖点渠道', sub: '优势、渠道、合作方式', description: '用于生成文案和销售话术。' },
+      { id: 'rules', icon: '◇', name: '外发规则', sub: '禁用表达与联系规则', description: '用于风控审核和外发前校验。' },
+      { id: 'sources', icon: '◫', name: '来源资料', sub: '文件、对话、网页', description: '用于追踪知识从哪里来。' },
+      { id: 'runs', icon: '◷', name: '任务沉淀', sub: 'Agent 输出与成果', description: '来自任务执行结果，可确认后沉淀为长期知识。' },
+      { id: 'gaps', icon: '!', name: '待补充', sub: '缺失信息与风险', description: '补齐这些信息后，AI 回答和获客任务会更稳。' }
+    ];
+
+    let items = [
+      {
+        id: 'company-summary',
+        category: 'company',
+        title: '启盛制造基础画像',
+        summary: '成立于 2016 年，位于杭州萧山区，厂房约 12,000 平方米，员工约 180 人。',
+        detail: '启盛制造专注精密金属加工和工业配套件生产，提供从图纸评估、打样到批量交付的一站式服务，支持 OEM/ODM 定制。',
+        status: 'ready',
+        statusText: '可引用',
+        source: '对话输入',
+        updated: '今天 12:36',
+        agents: ['产品理解 Agent', '商机雷达 Agent']
+      },
+      {
+        id: 'product-bracket',
+        category: 'products',
+        title: '精密金属支架',
+        summary: '适合设备安装、墙面固定、机械连接、工程配套等应用场景。',
+        detail: '可处理不锈钢、铝合金、碳钢、铜件等材料，支持激光切割、折弯、冲压、CNC、焊接、打磨抛光。',
+        status: 'ready',
+        statusText: '可引用',
+        source: '企业资料',
+        updated: '今天 12:36',
+        agents: ['产品理解 Agent', '内容策划 Agent']
+      },
+      {
+        id: 'capability-line',
+        category: 'products',
+        title: '6 条生产线，月产能约 80 万件',
+        summary: '适合长期合作型客户和稳定订单客户。',
+        detail: '该信息可用于销售话术，但涉及产能承诺时应避免绝对化表达，建议在外发前由风控 Agent 复核。',
+        status: 'review',
+        statusText: '需确认',
+        source: '对话输入',
+        updated: '今天 12:36',
+        agents: ['销售交接 Agent', '风控审核 Agent']
+      },
+      {
+        id: 'customer-machinery',
+        category: 'customers',
+        title: '自动化设备、包装机械、物流设备等行业企业',
+        summary: '可作为本空间默认优先获客方向。',
+        detail: '目标客户包括机械设备厂、工程承包商、外贸公司、跨境电商客户和海外采购商。',
+        status: 'ready',
+        statusText: '可引用',
+        source: '空间画像',
+        updated: '今天 12:36',
+        agents: ['商机雷达 Agent']
+      },
+      {
+        id: 'selling-source-factory',
+        category: 'selling',
+        title: '源头工厂，支持 OEM/ODM 定制',
+        summary: '适合放在触达开头或产品介绍里。',
+        detail: '用于强调直接工厂、定制能力和一站式交付，但需要避免夸大“最低价”“最快交付”等无法确认表达。',
+        status: 'ready',
+        statusText: '可引用',
+        source: '企业资料',
+        updated: '今天 12:36',
+        agents: ['内容策划 Agent', '销售交接 Agent']
+      },
+      {
+        id: 'rule-contact',
+        category: 'rules',
+        title: '外发联系方式',
+        summary: '联系人李经理，电话 138-0000-0000，商务邮箱 sales@example.com。',
+        detail: '联系方式看起来像示例信息，正式外发前应确认真实联系人、电话、邮箱和授权使用范围。',
+        status: 'review',
+        statusText: '需确认',
+        source: '对话输入',
+        updated: '今天 12:36',
+        agents: ['风控审核 Agent']
+      },
+      {
+        id: 'source-dialogue',
+        category: 'sources',
+        title: '对话输入',
+        summary: '当前空间的初始资料来自用户对话输入。',
+        detail: '建议后续补充营业执照、产品图册、案例图片、质量认证、真实联系方式和客户案例，提高后续任务可信度。',
+        status: 'ready',
+        statusText: '可引用',
+        source: '系统记录',
+        updated: '今天 12:30',
+        agents: ['全部 Agent']
+      },
+      {
+        id: 'run-product',
+        category: 'runs',
+        title: '产品理解 Agent 输出',
+        summary: '已完成产品画像、卖点、适合客户和应用场景整理。',
+        detail: '识别出影响销售信任的关键缺失信息：质量认证、真实联系方式、具体出口国家、付款细节等。',
+        status: 'ready',
+        statusText: '可沉淀',
+        source: '任务：生成销售交接清单',
+        updated: '今天 12:36',
+        agents: ['产品理解 Agent']
+      },
+      {
+        id: 'gap-certification',
+        category: 'gaps',
+        title: '缺少质量认证与检测报告',
+        summary: '影响客户信任，也影响销售话术的确定性。',
+        detail: '建议补充 ISO、材质证明、检测报告、第三方验货记录或内部质检流程说明。未补齐前，外发内容只能写“可按需提供”。',
+        status: 'missing',
+        statusText: '待补充',
+        source: '产品理解 Agent',
+        updated: '今天 12:36',
+        agents: ['风控审核 Agent', '销售交接 Agent']
+      },
+      {
+        id: 'gap-export',
+        category: 'gaps',
+        title: '缺少具体出口国家和案例',
+        summary: '影响海外采购商触达和可信案例表达。',
+        detail: '可以补充出口国家、客户行业、项目规模、交付周期和匿名案例。补齐后可用于小红书、公众号和销售私信草稿。',
+        status: 'missing',
+        statusText: '待补充',
+        source: '项目总控 Agent',
+        updated: '今天 12:36',
+        agents: ['内容策划 Agent', '商机雷达 Agent']
+      }
+    ];
+
+    const categoryList = document.querySelector('#categoryList');
+    const itemList = document.querySelector('#itemList');
+    const detailBody = document.querySelector('#detailBody');
+    const searchInput = document.querySelector('#searchInput');
+    const filterSelect = document.querySelector('#filterSelect');
+    const sectionDescription = document.querySelector('#sectionDescription');
+    const visibleCount = document.querySelector('#visibleCount');
+    const detailStatus = document.querySelector('#detailStatus');
+    const modalTitle = document.querySelector('#modalTitle');
+    const modalHint = document.querySelector('#modalHint');
+    const modalCategory = document.querySelector('#modalCategory');
+    const modalStatus = document.querySelector('#modalStatus');
+    const modalTitleInput = document.querySelector('#modalTitleInput');
+    const modalSummaryInput = document.querySelector('#modalSummaryInput');
+    const modalDetailInput = document.querySelector('#modalDetailInput');
+    const modalSourceInput = document.querySelector('#modalSourceInput');
+    const modalTagsInput = document.querySelector('#modalTagsInput');
+    const typeCards = Array.from(document.querySelectorAll('.type-card'));
+    const agentScopeInputs = Array.from(document.querySelectorAll('.agent-scope input'));
+    let activeCategory = 'company';
+    let activeItemId = 'company-summary';
+    let editingItemId = '';
+    let activeKnowledgeType = 'company';
+
+    const statusLabelMap = {
+      ready: '可引用',
+      missing: '待补充',
+      review: '需确认'
+    };
+
+    function getCategoryItems(categoryId) {
+      return items.filter(item => item.category === categoryId && !item.archived);
+    }
+
+    function renderCategories() {
+      categoryList.innerHTML = categories.map(category => {
+        const count = getCategoryItems(category.id).length;
+        return `
+          <button class="category ${category.id === activeCategory ? 'active' : ''}" data-category="${category.id}">
+            <span class="icon">${category.icon}</span>
+            <span>
+              <span class="category-name">${category.name}</span>
+              <span class="category-sub">${category.sub}</span>
+            </span>
+            <span class="count">${count}</span>
+          </button>
+        `;
+      }).join('');
+    }
+
+    function getFilteredItems() {
+      const query = searchInput.value.trim().toLowerCase();
+      const filter = filterSelect.value;
+      return getCategoryItems(activeCategory).filter(item => {
+        const matchesQuery = !query || [item.title, item.summary, item.detail, item.source].join(' ').toLowerCase().includes(query);
+        const matchesFilter = filter === 'all' || item.status === filter;
+        return matchesQuery && matchesFilter;
+      });
+    }
+
+    function renderItems() {
+      const filteredItems = getFilteredItems();
+      const category = categories.find(item => item.id === activeCategory);
+      sectionDescription.textContent = category ? category.description : '';
+      visibleCount.textContent = `${filteredItems.length} 条`;
+
+      if (!filteredItems.some(item => item.id === activeItemId)) {
+        activeItemId = filteredItems[0]?.id || '';
+      }
+
+      if (filteredItems.length === 0) {
+        itemList.innerHTML = '<div class="empty">没有匹配的知识。可以换个关键词，或添加一条新内容。</div>';
+        renderDetail(null);
+        return;
+      }
+
+      itemList.innerHTML = filteredItems.map(item => `
+        <button class="knowledge-item ${item.id === activeItemId ? 'active' : ''}" data-item="${item.id}">
+          <span class="item-head">
+            <span class="item-title">${item.title}</span>
+            <span class="tag ${getStatusClass(item.status)}">${item.statusText}</span>
+          </span>
+          <span class="item-summary">${item.summary}</span>
+          <span class="tags">
+            <span class="tag primary">${item.source}</span>
+            <span class="tag">${item.updated}</span>
+          </span>
+        </button>
+      `).join('');
+
+      renderDetail(getCurrentItem());
+    }
+
+    function getStatusClass(status) {
+      if (status === 'ready') return 'good';
+      if (status === 'missing') return 'warn';
+      if (status === 'review') return 'red';
+      return '';
+    }
+
+    function getCurrentItem() {
+      return items.find(item => item.id === activeItemId && !item.archived);
+    }
+
+    function renderDetail(item) {
+      if (!item) {
+        detailStatus.textContent = '未选择';
+        detailBody.innerHTML = '<div class="empty">选择一条知识后查看详情、来源和会引用它的 Agent。</div>';
+        return;
+      }
+
+      detailStatus.textContent = item.statusText;
+      detailBody.innerHTML = `
+        <div>
+          <h2 class="detail-title">${item.title}</h2>
+          <p class="detail-text" style="margin-top:8px">${item.detail}</p>
+        </div>
+        <div class="fact-box">
+          <div class="fact-row"><span class="fact-label">状态</span><span>${item.statusText}</span></div>
+          <div class="fact-row"><span class="fact-label">来源</span><span>${item.source}</span></div>
+          <div class="fact-row"><span class="fact-label">更新</span><span>${item.updated}</span></div>
+          <div class="fact-row"><span class="fact-label">标签</span><span>${item.tags || '未设置'}</span></div>
+          <div class="fact-row"><span class="fact-label">范围</span><span>只在当前工作空间生效</span></div>
+        </div>
+        <div>
+          <h3 class="panel-title">会引用它的 Agent</h3>
+          <div class="agent-list" style="margin-top:10px">
+            ${item.agents.map(agent => `<div class="agent"><span>${agent}</span><span class="tag good">可读</span></div>`).join('')}
+          </div>
+        </div>
+        <div class="fact-box">
+          <h3 class="panel-title">建议动作</h3>
+          <p class="detail-text">${item.status === 'missing' ? '补齐后再交给 AI 生成外发内容。' : item.status === 'review' ? '确认真实性后再允许风控 Agent 放行。' : '可直接作为 AI 对话和任务执行上下文。'}</p>
+        </div>
+      `;
+    }
+
+    function setModalType(type) {
+      activeKnowledgeType = type;
+      document.body.dataset.knowledgeType = type;
+      typeCards.forEach(card => card.classList.toggle('active', card.dataset.type === type));
+
+      if (type === 'company') {
+        modalCategory.value = 'company';
+        modalTitleInput.value = '公司资料维护';
+        modalSummaryInput.value = '维护当前空间的公司基础资料，供 AI 对话和工作台 Agent 使用。';
+        modalDetailInput.value = '保存后会作为当前空间的长期上下文，只在本空间生效。';
+        modalSourceInput.value = '公司资料维护';
+        modalTagsInput.value = '公司资料, 空间画像, 需确认';
+        modalStatus.value = 'review';
+        modalHint.textContent = '公司资料保存后默认进入需确认，确认后才会作为 AI 的稳定上下文。';
+      }
+
+      if (type === 'manual') {
+        modalSourceInput.value = '手动添加';
+        modalHint.textContent = '适合补充一条明确事实、话术、规则或客户场景。';
+      }
+
+      if (type === 'link') {
+        modalCategory.value = 'sources';
+        modalTitleInput.value = '新增链接来源';
+        modalSummaryInput.value = '补充官网、产品页、公开资料或内容平台链接。';
+        modalDetailInput.value = '粘贴链接后，可由系统同步为可引用片段；未确认前不会直接影响外发内容。';
+        modalSourceInput.value = '链接来源';
+        modalTagsInput.value = '链接, 来源资料, 待同步';
+        modalStatus.value = 'review';
+        modalHint.textContent = '链接来源需要同步和确认后，才建议交给 Agent 长期引用。';
+      }
+
+      if (type === 'run') {
+        modalCategory.value = 'runs';
+        modalTitleInput.value = '任务结果沉淀';
+        modalSummaryInput.value = '把本次 Agent 输出整理成可复用知识。';
+        modalDetailInput.value = '选择关键结论、风险提醒和可复用素材，不要整段照搬任务过程。';
+        modalSourceInput.value = '任务沉淀';
+        modalTagsInput.value = '任务沉淀, Agent 输出, 需确认';
+        modalStatus.value = 'review';
+        modalHint.textContent = '任务沉淀建议先确认事实，再转为可引用知识。';
+      }
+    }
+
+    function setAgentScope(agents) {
+      agentScopeInputs.forEach(input => {
+        input.checked = agents.includes(input.value) || agents.includes('全部 Agent');
+      });
+    }
+
+    function getSelectedAgents() {
+      const selected = agentScopeInputs.filter(input => input.checked).map(input => input.value);
+      return selected.length > 0 ? selected : ['全部 Agent'];
+    }
+
+    function buildCompanyDetail() {
+      const parts = [
+        ['公司介绍', document.querySelector('#companyIntro').value],
+        ['产品与能力', document.querySelector('#companyProducts').value],
+        ['目标客户', document.querySelector('#companyCustomers').value],
+        ['销售话术方向', document.querySelector('#companyPitch').value],
+        ['禁用表述', document.querySelector('#companyBanned').value],
+        ['联系方式与渠道规则', document.querySelector('#companyContact').value]
+      ];
+      return parts.map(([label, value]) => `${label}：${value.trim()}`).join('\n');
+    }
+
+    function openKnowledgeModal(mode, presetType = 'manual') {
+      const item = mode === 'edit' ? getCurrentItem() : null;
+      editingItemId = item?.id || '';
+      modalTitle.textContent = item ? '编辑知识内容' : '添加知识内容';
+      document.body.dataset.modal = 'knowledge';
+
+      if (item) {
+        setModalType(item.type || 'manual');
+        modalCategory.value = item.category;
+        modalStatus.value = item.status;
+        modalTitleInput.value = item.title;
+        modalSummaryInput.value = item.summary;
+        modalDetailInput.value = item.detail;
+        modalSourceInput.value = item.source;
+        modalTagsInput.value = item.tags || '';
+        modalHint.textContent = '编辑只影响当前空间，保存后会立即更新知识列表和右侧详情。';
+        setAgentScope(item.agents);
+        return;
+      }
+
+      setModalType(presetType);
+      if (presetType === 'manual') {
+        modalCategory.value = activeCategory;
+        modalStatus.value = 'review';
+        modalTitleInput.value = '';
+        modalSummaryInput.value = '';
+        modalDetailInput.value = '';
+        modalTagsInput.value = '';
+      }
+      setAgentScope(['产品理解 Agent', '商机雷达 Agent', '内容策划 Agent']);
+    }
+
+    function closeKnowledgeModal() {
+      document.body.dataset.modal = '';
+    }
+
+    function saveKnowledgeModal() {
+      const category = modalCategory.value;
+      const status = modalStatus.value;
+      const title = modalTitleInput.value.trim() || '未命名知识';
+      const summary = modalSummaryInput.value.trim() || '暂无摘要。';
+      const detail = activeKnowledgeType === 'company' ? buildCompanyDetail() : modalDetailInput.value.trim();
+      const payload = {
+        category,
+        title,
+        summary,
+        detail: detail || '暂无正文。',
+        status,
+        statusText: statusLabelMap[status],
+        source: modalSourceInput.value.trim() || '手动添加',
+        updated: '刚刚',
+        agents: getSelectedAgents(),
+        tags: modalTagsInput.value.trim(),
+        type: activeKnowledgeType,
+        archived: false
+      };
+
+      if (editingItemId) {
+        const index = items.findIndex(item => item.id === editingItemId);
+        if (index >= 0) {
+          items[index] = { ...items[index], ...payload };
+          activeItemId = editingItemId;
+        }
+        showToast('已更新当前空间知识');
+      } else {
+        const id = `knowledge-${Date.now()}`;
+        items = [{ id, ...payload }, ...items];
+        activeItemId = id;
+        showToast(activeKnowledgeType === 'company' ? '公司资料已保存，等待确认引用' : '已添加知识，等待确认引用');
+      }
+
+      activeCategory = category;
+      closeKnowledgeModal();
+      renderCategories();
+      renderItems();
+    }
+
+    categoryList.addEventListener('click', event => {
+      const button = event.target.closest('[data-category]');
+      if (!button) return;
+      activeCategory = button.dataset.category;
+      activeItemId = getCategoryItems(activeCategory)[0]?.id || '';
+      renderCategories();
+      renderItems();
+    });
+
+    itemList.addEventListener('click', event => {
+      const button = event.target.closest('[data-item]');
+      if (!button) return;
+      activeItemId = button.dataset.item;
+      renderItems();
+    });
+
+    searchInput.addEventListener('input', renderItems);
+    filterSelect.addEventListener('change', renderItems);
+
+    typeCards.forEach(card => {
+      card.addEventListener('click', () => {
+        setModalType(card.dataset.type);
+      });
+    });
+
+    document.querySelector('#addBtn').addEventListener('click', () => {
+      openKnowledgeModal('add', activeCategory === 'company' ? 'company' : 'manual');
+    });
+
+    document.querySelector('#companyBtn').addEventListener('click', () => {
+      openKnowledgeModal('add', 'company');
+    });
+
+    document.querySelector('#closeModalBtn').addEventListener('click', () => {
+      closeKnowledgeModal();
+    });
+
+    document.querySelector('#saveModalBtn').addEventListener('click', () => {
+      saveKnowledgeModal();
+    });
+
+    document.querySelector('#editBtn').addEventListener('click', () => {
+      if (!getCurrentItem()) {
+        showToast('请先选择一条知识');
+        return;
+      }
+      openKnowledgeModal('edit');
+    });
+
+    document.querySelector('#archiveBtn').addEventListener('click', () => {
+      const item = getCurrentItem();
+      if (!item) {
+        showToast('请先选择一条知识');
+        return;
+      }
+      item.archived = true;
+      activeItemId = getCategoryItems(activeCategory)[0]?.id || '';
+      renderCategories();
+      renderItems();
+      showToast('已归档，不再作为默认知识显示');
+    });
+
+    document.querySelector('#syncBtn').addEventListener('click', () => {
+      showToast('已同步来源并更新知识状态');
+    });
+
+    document.querySelector('#askBtn').addEventListener('click', () => {
+      showToast('已带入 AI 对话上下文');
+    });
+
+    document.querySelector('#confirmBtn').addEventListener('click', () => {
+      const item = getCurrentItem();
+      if (!item) {
+        showToast('请先选择一条知识');
+        return;
+      }
+      item.status = 'ready';
+      item.statusText = '可引用';
+      item.updated = '刚刚';
+      renderItems();
+      showToast('已确认，后续任务可引用');
+    });
+
+    function showToast(text) {
+      document.querySelector('#toast').textContent = text;
+      document.body.dataset.toast = 'sync';
+      window.clearTimeout(showToast.timer);
+      showToast.timer = window.setTimeout(() => {
+        document.body.dataset.toast = '';
+      }, 1800);
+    }
+
+    renderCategories();
+    renderItems();
+  </script>
+</body>
+</html>

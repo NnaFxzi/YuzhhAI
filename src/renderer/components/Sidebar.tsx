@@ -35,10 +35,11 @@ import LoginButton from './LoginButton';
 interface SidebarProps {
   onShowSettings: () => void;
   onShowLogin?: () => void;
-  activeView: 'cowork' | 'skills' | 'scheduledTasks' | 'kits' | 'mcp';
+  activeView: 'cowork' | 'skills' | 'scheduledTasks' | 'enterpriseLeadWorkspace' | 'kits' | 'mcp';
   onShowSkills: () => void;
   onShowCowork: () => void;
   onShowScheduledTasks: () => void;
+  onShowEnterpriseLeadWorkspace: () => void;
   onShowKits: () => void;
   onShowMcp: () => void;
   onNewChat: () => void;
@@ -58,6 +59,19 @@ const sidebarNavItemClassName =
 const activeSidebarNavItemClassName =
   `${sidebarNavItemClassName} bg-black/[0.06] hover:bg-black/[0.06] dark:bg-white/[0.07] dark:hover:bg-white/[0.07]`;
 const sidebarCreateIconClassName = 'h-4 w-4 shrink-0';
+
+const EnterpriseLeadNavIcon: React.FC<{ className?: string }> = ({ className }) => (
+  <svg className={className} viewBox="0 0 16 16" fill="none" aria-hidden="true">
+    <path
+      d="M3 4.5h10M4.5 8h7M6.5 11.5h3"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+    />
+    <circle cx="12" cy="4.5" r="1.3" fill="currentColor" />
+    <circle cx="9.5" cy="11.5" r="1.3" fill="currentColor" />
+  </svg>
+);
 
 type SidebarAnalyticsSource = 'home_sidebar' | 'home_agent_sidebar';
 
@@ -120,6 +134,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   activeView,
   onShowCowork,
   onShowScheduledTasks,
+  onShowEnterpriseLeadWorkspace,
   onNewChat,
   isCollapsed,
   onToggleCollapse,
@@ -533,6 +548,21 @@ const Sidebar: React.FC<SidebarProps> = ({
           >
             <ComposeIcon className="h-4 w-4 shrink-0" />
             {i18nService.t('workbench')}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              reportSidebarAction('open_enterprise_lead_workspace', { activeView, isCollapsed });
+              setIsSearchOpen(false);
+              onShowEnterpriseLeadWorkspace();
+            }}
+            className={
+              activeView === 'enterpriseLeadWorkspace' ? activeSidebarNavItemClassName : sidebarNavItemClassName
+            }
+            aria-current={activeView === 'enterpriseLeadWorkspace' ? 'page' : undefined}
+          >
+            <EnterpriseLeadNavIcon className="h-4 w-4 shrink-0" />
+            {i18nService.t('enterpriseLeadNavLabel')}
           </button>
           <button
             type="button"
