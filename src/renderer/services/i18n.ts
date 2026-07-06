@@ -116,11 +116,14 @@ const translations: Record<LanguageType, Record<string, string>> = {
     modelNameHint: '自定义模型在列表中显示的名称',
     modelIdHint: '模型的唯一标识符，将用于 API 调用',
     supportsImageInputHint: '开启后可在对话中发送图片，实际是否支持取决于模型本身',
-    supportsThinkingOutputHint: '开启后会将该模型标记为可返回思考内容；实际是否产生思考取决于模型能力和自定义参数',
+    supportsThinkingOutputHint:
+      '开启后会将该模型标记为可返回思考内容；实际是否产生思考取决于模型能力和自定义参数',
     contextWindow: '上下文窗口',
-    contextWindowHint: '模型一次可处理的最大 token 数量，窗口越大可容纳越多对话历史与文档。较低的窗口大小可能无法体验完整功能，实际支持的窗口大小取决于模型本身。',
+    contextWindowHint:
+      '模型一次可处理的最大 token 数量，窗口越大可容纳越多对话历史与文档。较低的窗口大小可能无法体验完整功能，实际支持的窗口大小取决于模型本身。',
     customParams: '自定义参数',
-    customParamsHint: '以 JSON 格式填写需要透传给模型的额外参数，如 {"reasoning_effort": "high"}。这些参数将直接传递给模型 API。',
+    customParamsHint:
+      '以 JSON 格式填写需要透传给模型的额外参数，如 {"reasoning_effort": "high"}。这些参数将直接传递给模型 API。',
     customParamsInvalidJson: '自定义参数格式不正确，请输入合法的 JSON 对象',
     imageInput: '图像',
     thinkingOutput: '思考',
@@ -239,7 +242,8 @@ const translations: Record<LanguageType, Record<string, string>> = {
     sendMessageShortcut: '发送消息',
     shortcutConflict: '快捷键 "{0}" 已被 "{1}" 使用',
     shortcutSearchPlaceholder: '搜索快捷键',
-    shortcutScopeHint: '快捷键仅在 宇智汇和 AI 助手 窗口获得焦点时生效；正在编辑输入框时不会触发全局快捷键。',
+    shortcutScopeHint:
+      '快捷键仅在 宇智汇和 AI 助手 窗口获得焦点时生效；正在编辑输入框时不会触发全局快捷键。',
     shortcutNoResults: '没有匹配的快捷键',
     shortcutClear: '清除快捷键',
     shortcutEditCommand: '更改 {command} 的快捷键',
@@ -683,7 +687,8 @@ const translations: Record<LanguageType, Record<string, string>> = {
     workspaceSettingsCurrentWorkspace: '当前工作空间',
     workspaceSettingsNoWorkspace: '未选择工作空间',
     workspaceSettingsDisabledHint: '选择一个工作空间后才能编辑这些设置。',
-    workspaceSettingsDefaultFallbackDisabledHint: '当前仅显示系统默认工作目录。请选择会话工作空间，或先在全局设置中保存工作目录后再编辑工作空间覆盖。',
+    workspaceSettingsDefaultFallbackDisabledHint:
+      '当前仅显示系统默认工作目录。请选择会话工作空间，或先在全局设置中保存工作目录后再编辑工作空间覆盖。',
     workspaceSettingsNoSecrets: '不包含 API Key',
     workspaceSettingsInheritGlobal: '继承全局',
     workspaceSettingsCustom: '自定义',
@@ -806,7 +811,8 @@ const translations: Record<LanguageType, Record<string, string>> = {
     openClawRepairConfigApplyPendingError: 'OpenClaw 正在应用配置变更，请稍后再修复。',
     openClawRepairApiUnavailable: '修复接口不可用，请重启应用后再试。',
     openClawDataBackupTitle: '数据备份',
-    openClawDataBackupDesc: '备份登录态、任务记录、模型配置、技能、记忆和 OpenClaw 状态，不包含项目工作目录。',
+    openClawDataBackupDesc:
+      '备份登录态、任务记录、模型配置、技能、记忆和 OpenClaw 状态，不包含项目工作目录。',
     openClawDataBackupAction: '备份数据',
     openClawDataBackupRunning: '正在备份...',
     openClawDataBackupSuccess: '数据备份已保存。',
@@ -815,7 +821,8 @@ const translations: Record<LanguageType, Record<string, string>> = {
     openClawDataBackupSize: '大小',
     openClawDataBackupBlockingTitle: '正在备份 宇智汇和 AI 助手 数据',
     openClawDataBackupBlockingDesc: '备份期间应用会暂时锁定，请等待备份完成后再继续操作。',
-    openClawDataBackupBlockingWarning: '请不要关闭应用。关闭应用会中断备份，并可能留下不完整的备份文件。',
+    openClawDataBackupBlockingWarning:
+      '请不要关闭应用。关闭应用会中断备份，并可能留下不完整的备份文件。',
     openClawDataMigrationTitle: '数据迁移',
     openClawDataMigrationDesc: '导入另一台机器导出的备份，替换当前应用数据。',
     openClawDataMigrationAction: '导入备份',
@@ -824,11 +831,15 @@ const translations: Record<LanguageType, Record<string, string>> = {
     openClawDataMigrationFailed: '数据迁移失败',
     openClawDataMigrationRestarting: '已选择备份文件，应用将重启并导入数据。',
     openClawDataMigrationBlockingTitle: '正在准备导入 宇智汇和 AI 助手 数据',
-    openClawDataMigrationBlockingDesc: '导入期间应用会暂时锁定。选择备份文件后，应用会自动重启并完成导入。',
-    openClawDataMigrationBlockingWarning: '请不要关闭应用。关闭应用会中断导入准备流程，可能需要重新选择备份文件。',
+    openClawDataMigrationBlockingDesc:
+      '导入期间应用会暂时锁定。选择备份文件后，应用会自动重启并完成导入。',
+    openClawDataMigrationBlockingWarning:
+      '请不要关闭应用。关闭应用会中断导入准备流程，可能需要重新选择备份文件。',
     openClawDataMigrationConfirmTitle: '导入 宇智汇和 AI 助手 数据备份？',
-    openClawDataMigrationConfirmDesc: '导入会替换当前应用数据，包括登录态、会话、配置、技能、记忆和 OpenClaw 状态。',
-    openClawDataMigrationConfirmSafeDesc: '应用会先为当前数据生成回滚备份，然后重启并完成导入。项目工作目录不会被导入包覆盖。',
+    openClawDataMigrationConfirmDesc:
+      '导入会替换当前应用数据，包括登录态、会话、配置、技能、记忆和 OpenClaw 状态。',
+    openClawDataMigrationConfirmSafeDesc:
+      '应用会先为当前数据生成回滚备份，然后重启并完成导入。项目工作目录不会被导入包覆盖。',
     openClawDataMigrationConfirmAction: '选择备份并导入',
     openClawMaintenanceComingSoon: '即将支持',
     coworkMemoryTitle: '记忆',
@@ -1104,7 +1115,8 @@ const translations: Record<LanguageType, Record<string, string>> = {
     agentTemplateNew: '新建',
     agentTemplateEmpty: '暂无可用模板',
     systemAgentTemplateTitle: '添加系统 Agent',
-    systemAgentTemplateDesc: '全局 Agent 由系统内置模板提供。工作空间里的私有 Agent 请在对应工作空间中创建。',
+    systemAgentTemplateDesc:
+      '全局 Agent 由系统内置模板提供。工作空间里的私有 Agent 请在对应工作空间中创建。',
     systemAgentTemplateEmpty: '暂无可添加的系统 Agent',
     systemAgentAdding: '添加中',
     addSystemAgent: '添加系统 Agent',
@@ -1115,7 +1127,8 @@ const translations: Record<LanguageType, Record<string, string>> = {
     systemAgentStatusEnabled: '已启用',
     systemAgentStatusDisabled: '已停用',
     systemAgentAddFailed: '添加系统 Agent 失败',
-    systemAgentManagedNotice: '系统 Agent 的名称、人设、提示词、头像和技能由系统维护。你仍可调整模型、工作目录、调研和 IM 绑定。',
+    systemAgentManagedNotice:
+      '系统 Agent 的名称、人设、提示词、头像和技能由系统维护。你仍可调整模型、工作目录、调研和 IM 绑定。',
     systemAgentEnabledLabel: '启用此系统 Agent',
     systemAgentEnabledHint: '关闭后会从侧边栏隐藏，可从添加系统 Agent 恢复。',
     agentEnabledLabel: '启用此 Agent',
@@ -1236,7 +1249,8 @@ const translations: Record<LanguageType, Record<string, string>> = {
     agentTabExternalResearch: '外部调研',
     agentTabIM: 'IM 渠道',
     agentExternalResearchTitle: '外部调研能力',
-    agentExternalResearchHint: '用于行业、同行、关键词和客户痛点调研。API Key 只保存在本地，不会写入提示词。',
+    agentExternalResearchHint:
+      '用于行业、同行、关键词和客户痛点调研。API Key 只保存在本地，不会写入提示词。',
     agentExternalResearchUseDefault: '使用默认调研配置',
     agentExternalResearchUseDefaultHint: '沿用应用级 Tavily / Firecrawl 配置，适合大多数 Agent。',
     agentExternalResearchOverride: '单独配置这个 Agent',
@@ -1289,19 +1303,23 @@ const translations: Record<LanguageType, Record<string, string>> = {
     agentRuntimeImpactJoiner: '；',
     agentRuntimeImpactModel: '模型用于新会话和新任务，已有运行任务保持原快照',
     agentRuntimeImpactSkills: '技能用于新会话和新任务，已有运行任务保持原快照',
-    agentRuntimeImpactWorkingDirectory: '工作目录保存后会同步到 OpenClaw，并在需要时重启 gateway；已有运行任务不切换目录',
-    agentRuntimeImpactImBindings: 'IM 绑定保存后会同步到 OpenClaw，并重启 gateway；影响新的 IM 会话；已有 IM 会话保持原 session 映射',
+    agentRuntimeImpactWorkingDirectory:
+      '工作目录保存后会同步到 OpenClaw，并在需要时重启 gateway；已有运行任务不切换目录',
+    agentRuntimeImpactImBindings:
+      'IM 绑定保存后会同步到 OpenClaw，并重启 gateway；影响新的 IM 会话；已有 IM 会话保持原 session 映射',
     agentExternalResearchSaveFailed: '保存外部调研设置失败',
     agentExternalResearchSaveUnavailable: '外部调研设置需要重启应用后使用',
     agentDomesticResearchTitle: '国内内容平台',
-    agentDomesticResearchHint: '用于参考小红书、抖音、快手、视频号、B站和公众号内容信号。第一版会优先使用稳定搜索和链接导入。',
+    agentDomesticResearchHint:
+      '用于参考小红书、抖音、快手、视频号、B站和公众号内容信号。第一版会优先使用稳定搜索和链接导入。',
     agentDomesticResearchSourceCount: '已启用 {enabled}/{total} 个来源',
     agentDomesticResearchBulkRecommended: '启用推荐来源',
     agentDomesticResearchBulkAll: '全部开启',
     agentDomesticResearchBulkNone: '全部关闭',
     agentDomesticResearchEnabled: '参与分析',
     agentDomesticResearchCustomTitle: '自定义链接来源',
-    agentDomesticResearchCustomHint: '添加行业论坛、竞品页面、客户案例或你手头的内容链接。Agent 会把这些链接作为国内调研素材导入分析。',
+    agentDomesticResearchCustomHint:
+      '添加行业论坛、竞品页面、客户案例或你手头的内容链接。Agent 会把这些链接作为国内调研素材导入分析。',
     agentDomesticResearchCustomAdd: '添加来源',
     agentDomesticResearchCustomEmpty: '还没有自定义来源，可以添加一组链接作为补充素材。',
     agentDomesticResearchCustomNamePlaceholder: '来源名称，例如：竞品案例库',
@@ -1309,7 +1327,8 @@ const translations: Record<LanguageType, Record<string, string>> = {
     agentDomesticResearchCustomRemove: '删除自定义来源',
     agentDomesticResearchSourceUrlsTitle: '已导入链接',
     agentDomesticResearchSourceUrlsCount: '{count} 个链接',
-    agentDomesticResearchSourceUrlsPlaceholder: '每行粘贴一个平台链接，支持笔记、视频、账号或文章链接',
+    agentDomesticResearchSourceUrlsPlaceholder:
+      '每行粘贴一个平台链接，支持笔记、视频、账号或文章链接',
     agentDomesticResearchSourceUrlsHint: '保存后，这些链接会随该平台一起作为调研素材提供给 Agent。',
     agentDomesticResearchSourceXiaohongshu: '小红书',
     agentDomesticResearchSourceDouyin: '抖音',
@@ -1324,8 +1343,10 @@ const translations: Record<LanguageType, Record<string, string>> = {
     agentDomesticResearchStatusUnsupported: '未启用',
     agentDomesticResearchModeSearch: '搜索',
     agentDomesticResearchModeUrlImport: '链接导入',
-    agentDomesticResearchSearchReadyHint: '推广 agent 可自动参考公开搜索结果，也可分析你粘贴的链接。',
-    agentDomesticResearchLinkImportHint: '推广 agent 会在需要时提示你粘贴相关笔记、视频或账号链接。',
+    agentDomesticResearchSearchReadyHint:
+      '推广 agent 可自动参考公开搜索结果，也可分析你粘贴的链接。',
+    agentDomesticResearchLinkImportHint:
+      '推广 agent 会在需要时提示你粘贴相关笔记、视频或账号链接。',
     agentDomesticResearchSaveFailed: '保存国内内容平台设置失败',
     agentDeleteFailed: '删除 Agent 失败',
     agentDefaultCannotDelete: '主 Agent 不能删除',
@@ -1400,7 +1421,8 @@ const translations: Record<LanguageType, Record<string, string>> = {
     voiceInputDailyLimitExceeded: '今日语音输入额度已用完，明天可继续使用',
     voiceInputQuotaExhausted: '暂无语音输入时长',
     voiceInputQuotaExhaustedTitle: '语音输入时长已用完',
-    voiceInputQuotaExhaustedFreeDesc: '今日 {limit} 语音输入时长已用完。升级订阅可获得每日 200 分钟语音输入时长。',
+    voiceInputQuotaExhaustedFreeDesc:
+      '今日 {limit} 语音输入时长已用完。升级订阅可获得每日 200 分钟语音输入时长。',
     voiceInputQuotaExhaustedSubscribedDesc: '今日 {limit} 语音输入时长已用完。',
     voiceInputUpgradeSubscription: '升级订阅',
     voiceInputQuotaAcknowledge: '知道了',
@@ -1503,7 +1525,8 @@ const translations: Record<LanguageType, Record<string, string>> = {
       '本次消息过大，请减少附件、压缩图片或拆分提交。（单次整体需小于 30MB）',
     coworkErrorCouldNotProcessPdf: '无法处理 PDF 文件。请尝试将 PDF 转换为文本格式后重新发送。',
     coworkErrorModelNotFound: '请求的模型不存在或不可用，请在设置中检查模型配置。',
-    coworkGatewaySessionSyncTimeout: 'OpenClaw 引擎响应缓慢，消息尚未发送。请等待 1~2 分钟后重新发送；若频繁出现，请检查系统内存与磁盘占用，并将 宇智汇和 AI 助手 加入杀毒软件白名单。',
+    coworkGatewaySessionSyncTimeout:
+      'OpenClaw 引擎响应缓慢，消息尚未发送。请等待 1~2 分钟后重新发送；若频繁出现，请检查系统内存与磁盘占用，并将 宇智汇和 AI 助手 加入杀毒软件白名单。',
     coworkErrorGatewayDisconnected: 'AI 引擎连接中断，请重试。如果问题持续，请尝试重启应用。',
     coworkErrorServiceRestart: 'AI 引擎正在重启，请稍后重试。',
     coworkErrorGatewayDraining: 'AI 引擎正在重启中，请稍等片刻后重试。',
@@ -1712,7 +1735,8 @@ const translations: Record<LanguageType, Record<string, string>> = {
     kitUninstalling: '卸载中...',
     kitInstalled: '已安装',
     kitReinstallRequiredBadge: '需重新安装',
-    kitReinstallRequiredDetail: '已安装版本 v{installedVersion}，当前版本 v{currentVersion}。请先卸载后重新安装以使用新版本。',
+    kitReinstallRequiredDetail:
+      '已安装版本 v{installedVersion}，当前版本 v{currentVersion}。请先卸载后重新安装以使用新版本。',
     kitLoading: '加载中...',
     kitEmpty: '暂无套件',
     kitBack: '返回',
@@ -2243,7 +2267,8 @@ const translations: Record<LanguageType, Record<string, string>> = {
     browserNetworkOpen: '优先保证网页能打开（推荐）',
     browserNetworkOpenDescription: '更适合日常浏览器任务，特别是开启系统代理时。',
     browserNetworkStrict: '严格保护本机和内网',
-    browserNetworkStrictDescription: '阻止访问本机、内网和特殊地址段；开启代理时可能导致部分网页打不开。',
+    browserNetworkStrictDescription:
+      '阻止访问本机、内网和特殊地址段；开启代理时可能导致部分网页打不开。',
     browserNetworkStrictProxyWarning: '当前已开启系统代理，严格模式可能重新触发网页打不开的问题。',
     browserWebFetchSectionTitle: '网页抓取',
     browserWebFetchEnable: '启用网页抓取',
@@ -2272,7 +2297,8 @@ const translations: Record<LanguageType, Record<string, string>> = {
     browserResetFailed: '清除独立浏览器数据失败',
     browserAdvancedTitle: '高级设置',
     browserFollowGlobalProxy: '浏览器跟随全局代理',
-    browserFollowGlobalProxyDescription: '默认开启。关闭后仅作为 宇智汇和 AI 助手 配置保留，当前版本仍受浏览器自身代理设置影响。',
+    browserFollowGlobalProxyDescription:
+      '默认开启。关闭后仅作为 宇智汇和 AI 助手 配置保留，当前版本仍受浏览器自身代理设置影响。',
     browserEvaluateEnabled: '允许页面内执行脚本',
     browserEvaluateEnabledDescription: '关闭后更保守，但部分复杂网页操作可能不可用。',
     browserEfficientSnapshot: '使用精简网页快照',
@@ -2302,7 +2328,8 @@ const translations: Record<LanguageType, Record<string, string>> = {
     browserExtraArgsDescription: '每行一个 Chrome 启动参数；配置错误可能导致浏览器无法启动。',
     browserWebFetchTimeout: '网页抓取超时（秒）',
     browserWebFetchFollowGlobalProxy: '网页抓取跟随全局代理',
-    browserWebFetchFollowGlobalProxyDescription: '开启后，仅当应用总开关“使用系统代理”已开启时，网页抓取才使用系统代理。',
+    browserWebFetchFollowGlobalProxyDescription:
+      '开启后，仅当应用总开关“使用系统代理”已开启时，网页抓取才使用系统代理。',
     browserWebFetchMaxRedirects: '最大重定向次数',
     browserWebFetchMaxChars: '最大返回字符数',
     browserWebFetchUserAgent: '网页抓取 User-Agent',
@@ -2317,7 +2344,8 @@ const translations: Record<LanguageType, Record<string, string>> = {
     skipMissedJobs: '跳过未执行任务',
     skipMissedJobsDescription: '启动时跳过离线期间未触发的定时任务，不补充执行（保存后生效）',
     usageAnalyticsEnabled: '帮助改进 宇智汇和 AI 助手',
-    usageAnalyticsEnabledDescription: '允许发送基础使用统计，帮助我们改进功能体验。不会上传对话内容、文件内容或 API Key。',
+    usageAnalyticsEnabledDescription:
+      '允许发送基础使用统计，帮助我们改进功能体验。不会上传对话内容、文件内容或 API Key。',
 
     // 定时任务
     scheduledTasks: '定时任务',
@@ -2735,14 +2763,17 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadHistoryWorkspaceActions: '打开工作区操作',
     enterpriseLeadHistoryDeleteWorkspace: '删除工作区',
     enterpriseLeadHistoryDeleteConfirmTitle: '删除「{name}」？',
-    enterpriseLeadHistoryDeleteWarning: '删除后会移除这个空间的资料、知识库、Agent 设置和创作记录，不能恢复。',
+    enterpriseLeadHistoryDeleteWarning:
+      '删除后会移除这个空间的资料、知识库、Agent 设置和创作记录，不能恢复。',
     enterpriseLeadHistoryCancelDelete: '取消',
     enterpriseLeadHistoryDeleting: '删除中...',
     enterpriseLeadHistoryDeleteFailed: '删除工作区失败，请稍后重试。',
     enterpriseLeadWorkspaceTitle: '企业线索工作区',
-    enterpriseLeadWorkspaceSubtitle: '从对话、文档或表格中提取产品、客户、渠道和合规信息，快速创建可协作的线索运营空间。',
+    enterpriseLeadWorkspaceSubtitle:
+      '从对话、文档或表格中提取产品、客户、渠道和合规信息，快速创建可协作的线索运营空间。',
     enterpriseLeadCreateWorkspace: '创建工作区',
-    enterpriseLeadCreateWorkspaceDesc: '粘贴已有对话或上传素材，自动整理业务画像并启动线索运营准备。',
+    enterpriseLeadCreateWorkspaceDesc:
+      '粘贴已有对话或上传素材，自动整理业务画像并启动线索运营准备。',
     enterpriseLeadImportMaterial: '导入资料',
     enterpriseLeadImportMaterialDesc: '读取 .txt、.md 或 .csv 文件，先抽取业务草稿，再确认创建。',
     enterpriseLeadRecentWorkspaces: '最近工作区',
@@ -2794,10 +2825,12 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadCreatePasteTitle: '粘贴内容',
     enterpriseLeadCreatePasteSubtitle: '把「{name}」已有的业务背景先贴进来。',
     enterpriseLeadCreatePasteFieldLabel: '业务线索内容',
-    enterpriseLeadCreatePastePlaceholder: '可以粘贴客户背景、产品介绍、对话记录、目标人群或目前已知的线索信息。',
+    enterpriseLeadCreatePastePlaceholder:
+      '可以粘贴客户背景、产品介绍、对话记录、目标人群或目前已知的线索信息。',
     enterpriseLeadCreatePasteSampleTitle: '填入示例',
     enterpriseLeadCreatePasteSampleDesc: '快速查看粘贴后的页面状态。',
-    enterpriseLeadCreatePasteSampleText: '我们正在拓展华东制造业客户，重点关注汽车零部件和工业自动化企业。已有产品说明、部分客户名单和销售对话记录，希望整理目标客户画像、触达限制和下一步动作。',
+    enterpriseLeadCreatePasteSampleText:
+      '我们正在拓展华东制造业客户，重点关注汽车零部件和工业自动化企业。已有产品说明、部分客户名单和销售对话记录，希望整理目标客户画像、触达限制和下一步动作。',
     enterpriseLeadCreatePasteSkipTitle: '先跳过',
     enterpriseLeadCreatePasteSkipDesc: '不填写内容，直接进入工作区。',
     enterpriseLeadCreatePasteFooterHint: '粘贴内容会作为工作区的初始线索背景。',
@@ -2834,7 +2867,8 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadStartRun: '启动 Agent 任务',
     enterpriseLeadRunLoading: '正在加载 Agent 工作台...',
     enterpriseLeadNoRunTitle: '还没有当前任务',
-    enterpriseLeadNoRunDesc: '输入这次要完成的目标后，系统会创建固定 Agent 卡片；工作空间配置可在右侧统一管理。',
+    enterpriseLeadNoRunDesc:
+      '输入这次要完成的目标后，系统会创建固定 Agent 卡片；工作空间配置可在右侧统一管理。',
     enterpriseLeadCurrentGoal: '当前目标',
     enterpriseLeadAgentStatusWaiting: '待运行',
     enterpriseLeadAgentStatusRunning: '运行中',
@@ -2855,22 +2889,26 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadAgentRoleControllerOutput: '执行计划、阶段状态、总控总结',
     enterpriseLeadAgentRoleProductUnderstandingTitle: '产品理解 Agent',
     enterpriseLeadAgentRoleProductUnderstandingShortLabel: '产',
-    enterpriseLeadAgentRoleProductUnderstandingDescription: '整理产品画像、卖点、适合客户、应用场景和缺失资料。',
+    enterpriseLeadAgentRoleProductUnderstandingDescription:
+      '整理产品画像、卖点、适合客户、应用场景和缺失资料。',
     enterpriseLeadAgentRoleProductUnderstandingInput: '用户目标、企业资料、产品资料',
     enterpriseLeadAgentRoleProductUnderstandingOutput: '产品画像、核心卖点、适合客户、缺失信息',
     enterpriseLeadAgentRoleOpportunityRadarTitle: '商机雷达 Agent',
     enterpriseLeadAgentRoleOpportunityRadarShortLabel: '商',
-    enterpriseLeadAgentRoleOpportunityRadarDescription: '判断客户方向、采购信号、商机评分和跟进优先级。',
+    enterpriseLeadAgentRoleOpportunityRadarDescription:
+      '判断客户方向、采购信号、商机评分和跟进优先级。',
     enterpriseLeadAgentRoleOpportunityRadarInput: '产品画像、客户方向、市场线索',
     enterpriseLeadAgentRoleOpportunityRadarOutput: '商机评分、采购信号、优先级建议',
     enterpriseLeadAgentRoleContentPlanningTitle: '内容策划 Agent',
     enterpriseLeadAgentRoleContentPlanningShortLabel: '内',
-    enterpriseLeadAgentRoleContentPlanningDescription: '生成小红书、短视频、公众号、产品介绍和销售话术草稿。',
+    enterpriseLeadAgentRoleContentPlanningDescription:
+      '生成小红书、短视频、公众号、产品介绍和销售话术草稿。',
     enterpriseLeadAgentRoleContentPlanningInput: '产品理解、商机判断、渠道偏好、禁用表达',
     enterpriseLeadAgentRoleContentPlanningOutput: '内容草稿、高风险表达、下游上下文',
     enterpriseLeadAgentRoleSocialOperationTitle: '社媒运营 Agent',
     enterpriseLeadAgentRoleSocialOperationShortLabel: '媒',
-    enterpriseLeadAgentRoleSocialOperationDescription: '生成发布计划、评论回复草稿、私信草稿和运营待办。',
+    enterpriseLeadAgentRoleSocialOperationDescription:
+      '生成发布计划、评论回复草稿、私信草稿和运营待办。',
     enterpriseLeadAgentRoleSocialOperationInput: '内容草稿、平台偏好、互动规则',
     enterpriseLeadAgentRoleSocialOperationOutput: '社媒计划、评论草稿、私信草稿、人工待办',
     enterpriseLeadAgentRoleSalesHandoffTitle: '销售交接 Agent',
@@ -2885,7 +2923,8 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadAgentRoleRiskReviewOutput: '风险等级、返工项、审批项',
     enterpriseLeadAgentRoleProjectSummaryTitle: '项目归纳 Agent',
     enterpriseLeadAgentRoleProjectSummaryShortLabel: '归',
-    enterpriseLeadAgentRoleProjectSummaryDescription: '汇总所有 Agent 输出，生成用户可读的最终总结。',
+    enterpriseLeadAgentRoleProjectSummaryDescription:
+      '汇总所有 Agent 输出，生成用户可读的最终总结。',
     enterpriseLeadAgentRoleProjectSummaryInput: '全部模块结果、返工日志、风控结论',
     enterpriseLeadAgentRoleProjectSummaryOutput: '最终总结、待确认事项、下一步建议',
     enterpriseLeadAgentRoleProjectArchiveTitle: '项目归档 Agent',
@@ -2904,7 +2943,8 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadStartSourceMaterial: '上传资料',
     enterpriseLeadStartSourcePaste: '粘贴内容',
     enterpriseLeadStartSourceBlank: '空白创建',
-    enterpriseLeadStartSubtitleMaterial: '已接收初始资料，建议先查看业务画像，再生成第一轮线索动作。',
+    enterpriseLeadStartSubtitleMaterial:
+      '已接收初始资料，建议先查看业务画像，再生成第一轮线索动作。',
     enterpriseLeadStartSubtitlePaste: '已记录业务背景，建议先补齐目标客户和触达限制。',
     enterpriseLeadStartSubtitleBlank: '当前还没有初始资料，建议先补充线索背景，再开始后续动作。',
     enterpriseLeadStartManageSettings: '空间设置',
@@ -2935,7 +2975,8 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadStartNoMaterialDesc: '先补充一点背景，工作区会更快进入可用状态。',
     enterpriseLeadStartMaterialReadyDesc: '资料已进入工作区，可继续补充或进入业务画像确认。',
     enterpriseLeadWorkspacePagePreparingTitle: '页面准备中',
-    enterpriseLeadWorkspacePagePreparingDescription: '该页面将在后续任务中接入完整能力，当前先保留稳定入口。',
+    enterpriseLeadWorkspacePagePreparingDescription:
+      '该页面将在后续任务中接入完整能力，当前先保留稳定入口。',
     enterpriseLeadWorkspaceSearchDescription: '搜索当前空间的对话、画像、来源和 Agent 配置。',
     enterpriseLeadWorkspaceSearchInputLabel: '搜索当前空间',
     enterpriseLeadWorkspaceSearchPlaceholder: '搜索对话、产品、客户、来源、规则或 Agent',
@@ -2958,7 +2999,8 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadWorkspaceDeleteConversation: '删除对话',
     enterpriseLeadWorkspaceDeleteConversationAria: '删除对话 {title}',
     enterpriseLeadWorkspaceDeleteConversationTitle: '删除「{title}」？',
-    enterpriseLeadWorkspaceDeleteConversationWarning: '这会永久删除这条对话及其中的消息，不能恢复。',
+    enterpriseLeadWorkspaceDeleteConversationWarning:
+      '这会永久删除这条对话及其中的消息，不能恢复。',
     enterpriseLeadWorkspaceDeleteConversationFailed: '删除对话失败，请稍后重试。',
     enterpriseLeadWorkspaceSidebarToday: '今天',
     enterpriseLeadWorkspaceSidebarDaysAgo: '{count} 天',
@@ -2971,19 +3013,26 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadWorkspaceSettingsReady: '可用',
     enterpriseLeadWorkspaceSettingsNeedsSetup: '需补充',
     enterpriseLeadWorkspaceSettingsReadinessModel: '模型接入',
-    enterpriseLeadWorkspaceSettingsReadinessModelReadyDesc: '默认模型已连接，本空间对话和 Agent 可直接调用。',
-    enterpriseLeadWorkspaceSettingsReadinessModelSetupDesc: '请启用一个模型厂商，并填写 API Key 与模型 ID。',
+    enterpriseLeadWorkspaceSettingsReadinessModelReadyDesc:
+      '默认模型已连接，本空间对话和 Agent 可直接调用。',
+    enterpriseLeadWorkspaceSettingsReadinessModelSetupDesc:
+      '请启用一个模型厂商，并填写 API Key 与模型 ID。',
     enterpriseLeadWorkspaceSettingsReadinessResearch: '调研接入',
-    enterpriseLeadWorkspaceSettingsReadinessResearchReadyDesc: '至少一个外部调研来源已配置 API Key。',
-    enterpriseLeadWorkspaceSettingsReadinessResearchSetupDesc: '请为 Tavily 或 Firecrawl 填写 API Key 后启用。',
+    enterpriseLeadWorkspaceSettingsReadinessResearchReadyDesc:
+      '至少一个外部调研来源已配置 API Key。',
+    enterpriseLeadWorkspaceSettingsReadinessResearchSetupDesc:
+      '请为 Tavily 或 Firecrawl 填写 API Key 后启用。',
     enterpriseLeadWorkspaceSettingsReadinessContent: '内容平台',
-    enterpriseLeadWorkspaceSettingsReadinessContentReadyDesc: '至少一个内容平台已启用并完成必要字段。',
-    enterpriseLeadWorkspaceSettingsReadinessContentSetupDesc: '请启用内容平台，并补齐 Token、Endpoint 或 AppID。',
+    enterpriseLeadWorkspaceSettingsReadinessContentReadyDesc:
+      '至少一个内容平台已启用并完成必要字段。',
+    enterpriseLeadWorkspaceSettingsReadinessContentSetupDesc:
+      '请启用内容平台，并补齐 Token、Endpoint 或 AppID。',
     enterpriseLeadAiChatTitle: 'AI 对话',
     enterpriseLeadAiChatUntitledSession: '新对话',
     enterpriseLeadAiChatEmptyTitle: '今天要完成什么？',
     enterpriseLeadAiChatSubtitle: '输入想推进的事项，我会结合当前空间、Agent 和知识库继续处理。',
-    enterpriseLeadAiChatPlaceholder: '例如：帮我调研 20 家自动化设备厂，并生成适合销售直接发送的第一版私信',
+    enterpriseLeadAiChatPlaceholder:
+      '例如：帮我调研 20 家自动化设备厂，并生成适合销售直接发送的第一版私信',
     enterpriseLeadAiChatSend: '发送',
     enterpriseLeadAiChatSending: '发送中...',
     enterpriseLeadAiChatThinking: '正在处理',
@@ -3056,7 +3105,8 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadKnowledgeKindSource: '来源',
     enterpriseLeadKnowledgeKindDeliverable: '成果',
     enterpriseLeadKnowledgeKindArchive: '归档',
-    enterpriseLeadKnowledgeMaintenanceSubtitle: '维护当前空间会被 AI 对话、工作台 Agent 和任务成果引用的公司资料与规则。',
+    enterpriseLeadKnowledgeMaintenanceSubtitle:
+      '维护当前空间会被 AI 对话、工作台 Agent 和任务成果引用的公司资料与规则。',
     enterpriseLeadKnowledgeSyncSources: '同步来源',
     enterpriseLeadKnowledgeSourcesSynced: '已同步来源，当前版本会优先使用已确认的空间资料。',
     enterpriseLeadKnowledgeMaintainCompany: '维护公司资料',
@@ -3084,8 +3134,10 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadKnowledgeUsageEditable: 'AI 对话和工作台 Agent 会读取这条资料。',
     enterpriseLeadKnowledgeUsageReadonly: '这条内容来自来源资料或任务结果，本轮先作为只读上下文。',
     enterpriseLeadKnowledgeSuggestedAction: '建议动作',
-    enterpriseLeadKnowledgeSuggestedEditable: '可以直接编辑、归档或确认入库，保存后会更新当前空间资料。',
-    enterpriseLeadKnowledgeSuggestedReadonly: '如需长期维护，建议复制关键信息后添加为公司资料或手动知识。',
+    enterpriseLeadKnowledgeSuggestedEditable:
+      '可以直接编辑、归档或确认入库，保存后会更新当前空间资料。',
+    enterpriseLeadKnowledgeSuggestedReadonly:
+      '如需长期维护，建议复制关键信息后添加为公司资料或手动知识。',
     enterpriseLeadKnowledgeArchiveAction: '归档',
     enterpriseLeadKnowledgeConfirmAction: '确认入库',
     enterpriseLeadKnowledgeNoSelection: '选择一条知识后查看详情和维护动作。',
@@ -3165,26 +3217,33 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadWorkbenchModeExecution: '任务执行',
     enterpriseLeadWorkbenchModeAgents: 'Agent 团队',
     enterpriseLeadWorkbenchAgentManagementTitle: 'Agent 团队',
-    enterpriseLeadWorkbenchAgentManagementDesc: '管理当前工作空间中会参与执行的 Agent 团队；名称、职责、提示词、模型和技能只在本空间生效。',
+    enterpriseLeadWorkbenchAgentManagementDesc:
+      '管理当前工作空间中会参与执行的 Agent 团队；名称、职责、提示词、模型和技能只在本空间生效。',
     enterpriseLeadWorkbenchAgentCount: '9 个 Agent',
     enterpriseLeadWorkbenchWorkspaceAgentCount: '{count} 个工作区 Agent',
     enterpriseLeadWorkbenchSystemAgentsTitle: '系统 Agent 模板',
-    enterpriseLeadWorkbenchSystemAgentsDesc: '产品内置的只读模板，可以添加到当前工作空间后再按空间需求调整。',
+    enterpriseLeadWorkbenchSystemAgentsDesc:
+      '产品内置的只读模板，可以添加到当前工作空间后再按空间需求调整。',
     enterpriseLeadWorkbenchWorkspaceAgentsTitle: '本工作空间 Agent',
-    enterpriseLeadWorkbenchWorkspaceAgentsDesc: '只在当前空间中执行和维护的 Agent；自建和从模板添加的实例都不会暴露给其他空间。',
+    enterpriseLeadWorkbenchWorkspaceAgentsDesc:
+      '只在当前空间中执行和维护的 Agent；自建和从模板添加的实例都不会暴露给其他空间。',
     enterpriseLeadWorkbenchAddSystemAgent: '添加到本空间',
     enterpriseLeadWorkbenchSystemAgentAlreadyAdded: '已添加',
     enterpriseLeadWorkbenchNewWorkspaceAgent: '新建工作区 Agent',
     enterpriseLeadWorkbenchAddFromTemplate: '从模板添加',
     enterpriseLeadWorkbenchCapabilityAuditTitle: '空间能力检查',
-    enterpriseLeadWorkbenchCapabilityAuditDesc: '这些能力决定 Agent 能否调用模型、技能、调研和内容来源；需要调整时进入空间设置。',
-    enterpriseLeadWorkbenchTemplateLibrarySummary: '{count} 个系统模板可添加；已添加模板会作为本空间副本编辑。',
+    enterpriseLeadWorkbenchCapabilityAuditDesc:
+      '这些能力决定 Agent 能否调用模型、技能、调研和内容来源；需要调整时进入空间设置。',
+    enterpriseLeadWorkbenchTemplateLibrarySummary:
+      '{count} 个系统模板可添加；已添加模板会作为本空间副本编辑。',
     enterpriseLeadWorkbenchExpandTemplateLibrary: '展开模板库',
     enterpriseLeadWorkbenchCollapseTemplateLibrary: '收起模板库',
     enterpriseLeadWorkbenchAgentSourceSystemTemplate: '系统内置模板',
     enterpriseLeadWorkbenchAgentSourceWorkspaceCreated: '本空间自建',
-    enterpriseLeadWorkbenchAgentScopeNotice: '系统 Agent 只作为内置模板；自建 Agent 只属于当前工作空间。',
-    enterpriseLeadWorkbenchRuntimeEffectNotice: '对新的对话和新运行生效；已创建的任务继续使用创建时的 Agent 快照。',
+    enterpriseLeadWorkbenchAgentScopeNotice:
+      '系统 Agent 只作为内置模板；自建 Agent 只属于当前工作空间。',
+    enterpriseLeadWorkbenchRuntimeEffectNotice:
+      '对新的对话和新运行生效；已创建的任务继续使用创建时的 Agent 快照。',
     enterpriseLeadWorkbenchSaveFailedDraftKept: '保存失败，当前草稿已保留，请检查后重试。',
     enterpriseLeadWorkbenchAgentValidationFailed: '请先修正标出的设置，修改后再保存。',
     enterpriseLeadWorkbenchAgentNameRequired: '请输入 Agent 名称。',
@@ -3240,7 +3299,8 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadWorkbenchAddExistingAgentSelectLabel: '选择要添加到工作区的已有 Agent',
     enterpriseLeadWorkbenchNoAvailableAgents: '没有可添加的 Agent',
     enterpriseLeadWorkbenchCreateAgentTitle: '创建工作区 Agent',
-    enterpriseLeadWorkbenchCreateAgentDesc: '在当前工作空间中新建一个执行 Agent；后续修改只影响本空间。',
+    enterpriseLeadWorkbenchCreateAgentDesc:
+      '在当前工作空间中新建一个执行 Agent；后续修改只影响本空间。',
     enterpriseLeadWorkbenchCreateAgent: '创建 Agent',
     enterpriseLeadWorkbenchCreateAndBindAgent: '创建 Agent',
     enterpriseLeadWorkbenchCreateAgentName: 'Agent 名称',
@@ -3253,7 +3313,8 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadWorkbenchMoveAgentUp: '上移 Agent',
     enterpriseLeadWorkbenchMoveAgentDown: '下移 Agent',
     enterpriseLeadWorkbenchNoWorkspaceAgentsTitle: '还没有工作区 Agent',
-    enterpriseLeadWorkbenchNoWorkspaceAgentsDesc: '在当前工作空间中新建 Agent，或从默认执行链恢复一组空间 Agent。',
+    enterpriseLeadWorkbenchNoWorkspaceAgentsDesc:
+      '在当前工作空间中新建 Agent，或从默认执行链恢复一组空间 Agent。',
     enterpriseLeadWorkbenchLegacyRolesDesc: '这个工作区会把旧版固定角色呈现为可编辑的空间 Agent。',
     enterpriseLeadWorkbenchLegacyRole: '空间 Agent',
     enterpriseLeadWorkbenchMissingAgent: '未初始化',
@@ -3265,7 +3326,8 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadWorkbenchConfirmRemoveAgent: '确认移出',
     enterpriseLeadWorkbenchRemoveAgentConfirmDesc: '只会从当前工作空间移出，历史任务快照不受影响。',
     enterpriseLeadWorkbenchOverrideTitle: '编辑工作区 Agent',
-    enterpriseLeadWorkbenchOverrideDesc: '这里的修改只保存到当前工作空间，并会用于本空间的 AI 对话和下一次任务执行。',
+    enterpriseLeadWorkbenchOverrideDesc:
+      '这里的修改只保存到当前工作空间，并会用于本空间的 AI 对话和下一次任务执行。',
     enterpriseLeadWorkbenchOverrideName: 'Agent 名称',
     enterpriseLeadWorkbenchOverrideDescription: 'Agent 介绍',
     enterpriseLeadWorkbenchOverrideIdentity: 'Agent 身份',
@@ -3300,16 +3362,20 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadWorkbenchModelTitle: '模型配置',
     enterpriseLeadWorkbenchModelDesc: '配置该空间运行 Agent 工作流时使用的大模型厂商信息。',
     enterpriseLeadWorkbenchUseDefaultModel: '使用模型设置中的默认模型',
-    enterpriseLeadWorkbenchSettingsQuickDesc: '完成下面 3 步就可以开始使用。高级模型、技能和平台细节都先收起来，避免一上来就填很多表单。',
+    enterpriseLeadWorkbenchSettingsQuickDesc:
+      '完成下面 3 步就可以开始使用。高级模型、技能和平台细节都先收起来，避免一上来就填很多表单。',
     enterpriseLeadWorkbenchQuickSetupTitle: '快速设置',
-    enterpriseLeadWorkbenchQuickSetupDesc: '按顺序完成即可运行空间任务。系统会先使用推荐值，后续再细调。',
+    enterpriseLeadWorkbenchQuickSetupDesc:
+      '按顺序完成即可运行空间任务。系统会先使用推荐值，后续再细调。',
     enterpriseLeadWorkbenchQuickSetupProgress: '已完成',
     enterpriseLeadWorkbenchQuickModelTitle: '选择默认模型',
     enterpriseLeadWorkbenchQuickModelDesc: '当前空间的对话和 Agent 会优先使用这个模型。',
     enterpriseLeadWorkbenchQuickSkillPresetTitle: '选择一个能力包',
-    enterpriseLeadWorkbenchQuickSkillPresetDesc: '不用逐个勾选所有技能。先选场景包，系统自动带出推荐技能。',
+    enterpriseLeadWorkbenchQuickSkillPresetDesc:
+      '不用逐个勾选所有技能。先选场景包，系统自动带出推荐技能。',
     enterpriseLeadWorkbenchQuickResearchOutputTitle: '配置调研和输出',
-    enterpriseLeadWorkbenchQuickResearchOutputDesc: '先选择调研方式。没有 API Key 时也能运行，系统会使用你粘贴的链接和本地资料。',
+    enterpriseLeadWorkbenchQuickResearchOutputDesc:
+      '先选择调研方式。没有 API Key 时也能运行，系统会使用你粘贴的链接和本地资料。',
     enterpriseLeadWorkbenchQuickSkillsSelected: '个技能已选',
     enterpriseLeadWorkbenchQuickSkillsPending: '待保存',
     enterpriseLeadWorkbenchQuickResearchOptional: '可稍后补',
@@ -3326,7 +3392,8 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadWorkbenchAdvancedSkillsTitle: '技能明细',
     enterpriseLeadWorkbenchAdvancedSkillsDesc: '查看能力包包含哪些技能，也可以改为逐个选择。',
     enterpriseLeadWorkbenchResearchProvidersTitle: '外部调研服务商',
-    enterpriseLeadWorkbenchResearchProvidersDesc: '需要联网搜索或网页抓取时，再补对应服务商的 API Key。',
+    enterpriseLeadWorkbenchResearchProvidersDesc:
+      '需要联网搜索或网页抓取时，再补对应服务商的 API Key。',
     enterpriseLeadWorkbenchOptional: '可选',
     enterpriseLeadWorkbenchResearchSourcesTitle: '调研来源',
     enterpriseLeadWorkbenchResearchSourcesDesc: '小红书、抖音、B站、公众号和自定义链接。',
@@ -3344,13 +3411,16 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadWorkbenchResearchMaterialSource: '调研素材来源',
     enterpriseLeadWorkbenchResearchMaterialDomesticLinks: '国内平台 + 粘贴链接',
     enterpriseLeadWorkbenchProviderConfigTitle: '大模型厂商配置',
-    enterpriseLeadWorkbenchProviderConfigDesc: '配置当前工作台独立使用的厂商、密钥、接口地址和模型 ID。',
+    enterpriseLeadWorkbenchProviderConfigDesc:
+      '配置当前工作台独立使用的厂商、密钥、接口地址和模型 ID。',
     enterpriseLeadWorkbenchWorkspaceScoped: '工作区内生效',
     enterpriseLeadWorkbenchCustomModelProvider: '自定义模型厂商',
     enterpriseLeadWorkbenchCustomModelProviderAdd: '新增模型厂商',
     enterpriseLeadWorkbenchDefaultModelSelect: '本空间默认模型',
-    enterpriseLeadWorkbenchDefaultModelSelectDesc: 'AI 对话和未单独指定模型的工作区 Agent 会优先使用这个模型。',
-    enterpriseLeadWorkbenchDefaultModelNoOptions: '暂无可用模型，请先启用厂商并补齐 API Key、Base URL 和模型 ID',
+    enterpriseLeadWorkbenchDefaultModelSelectDesc:
+      'AI 对话和未单独指定模型的工作区 Agent 会优先使用这个模型。',
+    enterpriseLeadWorkbenchDefaultModelNoOptions:
+      '暂无可用模型，请先启用厂商并补齐 API Key、Base URL 和模型 ID',
     enterpriseLeadWorkbenchDefaultModelUnavailable: '默认模型不可用',
     enterpriseLeadAgentDefaultInputPrefix: '输入：',
     enterpriseLeadAgentDefaultOutputPrefix: '输出：',
@@ -3423,17 +3493,23 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadWorkbenchPlatformsDesc: '配置社媒运营和销售触达平台。',
     enterpriseLeadWorkbenchPlatformsRealDesc: '配置当前工作台可调研的国内内容平台来源。',
     enterpriseLeadWorkbenchDomesticSourcesTitle: '国内内容来源',
-    enterpriseLeadWorkbenchDomesticSourcesDesc: '配置当前空间可用于调研的小红书、公众号、B2B 页面和公开内容链接。',
+    enterpriseLeadWorkbenchDomesticSourcesDesc:
+      '配置当前空间可用于调研的小红书、公众号、B2B 页面和公开内容链接。',
     enterpriseLeadWorkbenchContentPlatformsTitle: '内容平台接入',
-    enterpriseLeadWorkbenchContentPlatformsDesc: '配置当前空间可生成、导出或投递的内容渠道。完成字段配置后，AI 对话和工作台任务可按平台输出草稿。',
+    enterpriseLeadWorkbenchContentPlatformsDesc:
+      '配置当前空间可生成、导出或投递的内容渠道。完成字段配置后，AI 对话和工作台任务可按平台输出草稿。',
     enterpriseLeadWorkbenchContentPlatformXiaohongshuDraft: '小红书草稿',
-    enterpriseLeadWorkbenchContentPlatformXiaohongshuDraftDesc: '生成标题、正文、标签和封面要点，可导出或写入草稿服务。',
+    enterpriseLeadWorkbenchContentPlatformXiaohongshuDraftDesc:
+      '生成标题、正文、标签和封面要点，可导出或写入草稿服务。',
     enterpriseLeadWorkbenchContentPlatformSalesMessage: '销售私信 / 企微',
-    enterpriseLeadWorkbenchContentPlatformSalesMessageDesc: '生成可直接跟进的私信话术，并可推送到企微机器人或 CRM 草稿箱。',
+    enterpriseLeadWorkbenchContentPlatformSalesMessageDesc:
+      '生成可直接跟进的私信话术，并可推送到企微机器人或 CRM 草稿箱。',
     enterpriseLeadWorkbenchContentPlatformWechatArticle: '公众号草稿箱',
-    enterpriseLeadWorkbenchContentPlatformWechatArticleDesc: '生成长文、摘要、封面标题和排版提示，写入草稿箱前先人工确认。',
+    enterpriseLeadWorkbenchContentPlatformWechatArticleDesc:
+      '生成长文、摘要、封面标题和排版提示，写入草稿箱前先人工确认。',
     enterpriseLeadWorkbenchContentPlatformCustomWebhook: '自定义内容 Webhook',
-    enterpriseLeadWorkbenchContentPlatformCustomWebhookDesc: '把客户清单、话术、风险提醒等结果投递到自建内容系统或自动化流程。',
+    enterpriseLeadWorkbenchContentPlatformCustomWebhookDesc:
+      '把客户清单、话术、风险提醒等结果投递到自建内容系统或自动化流程。',
     enterpriseLeadWorkbenchContentPlatformMissingToken: '缺少 Token',
     enterpriseLeadWorkbenchContentPlatformMissingEndpoint: '缺少地址',
     enterpriseLeadWorkbenchContentPlatformMissingSecret: '缺少密钥',
@@ -3453,7 +3529,8 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadWorkbenchContentPayloadMarkdown: 'Markdown body',
     enterpriseLeadWorkbenchContentPayloadFeishuTable: '飞书多维表格',
     enterpriseLeadWorkbenchContentOutputRulesTitle: '输出规则',
-    enterpriseLeadWorkbenchContentOutputRulesDesc: '这些规则会进入生成前的提示词和生成后的校验流程，确保不同平台的内容可以直接进入下一步。',
+    enterpriseLeadWorkbenchContentOutputRulesDesc:
+      '这些规则会进入生成前的提示词和生成后的校验流程，确保不同平台的内容可以直接进入下一步。',
     enterpriseLeadWorkbenchContentDefaultTarget: '默认输出目标',
     enterpriseLeadWorkbenchContentLengthPolicy: '平台字数超限处理',
     enterpriseLeadWorkbenchContentLengthCompress: '自动压缩到平台上限',
@@ -3607,7 +3684,8 @@ const translations: Record<LanguageType, Record<string, string>> = {
     contextWindowHint:
       'Maximum tokens the model can process at once. A larger window fits more conversation history and documents. A smaller window may limit features. Actual supported size depends on the model itself.',
     customParams: 'Custom Params',
-    customParamsHint: 'Extra parameters to pass through to the model API in JSON format, e.g. {"reasoning_effort": "high"}.',
+    customParamsHint:
+      'Extra parameters to pass through to the model API in JSON format, e.g. {"reasoning_effort": "high"}.',
     customParamsInvalidJson: 'Invalid JSON format. Please enter a valid JSON object.',
     imageInput: 'Image',
     thinkingOutput: 'Thinking',
@@ -3743,8 +3821,10 @@ const translations: Record<LanguageType, Record<string, string>> = {
     deliverables: 'Deliverables',
     advancedCapabilities: 'Advanced',
     workbenchHomeTitle: 'What do you need to finish today?',
-    workbenchHomeSubtitle: 'Drop in source material and turn it into reports, slides, sheets, or content calendars.',
-    workbenchPromptPlaceholder: 'Drop in material, then ask for a report, slides, sheet, or web page',
+    workbenchHomeSubtitle:
+      'Drop in source material and turn it into reports, slides, sheets, or content calendars.',
+    workbenchPromptPlaceholder:
+      'Drop in material, then ask for a report, slides, sheet, or web page',
     workbenchCommonTasks: 'Common tasks',
     workbenchCommonTasksHint: 'Pick a task template, then adjust the request before sending',
     workbenchTasks: 'Automations',
@@ -3754,7 +3834,8 @@ const translations: Record<LanguageType, Record<string, string>> = {
     sendMessageShortcut: 'Send Message',
     shortcutConflict: 'Shortcut "{0}" is already used by "{1}"',
     shortcutSearchPlaceholder: 'Search shortcuts',
-    shortcutScopeHint: 'Shortcuts only run while the 宇智汇和 AI 助手 window is focused; global shortcuts are ignored while editing text fields.',
+    shortcutScopeHint:
+      'Shortcuts only run while the 宇智汇和 AI 助手 window is focused; global shortcuts are ignored while editing text fields.',
     shortcutNoResults: 'No matching shortcuts',
     shortcutClear: 'Clear shortcut',
     shortcutEditCommand: 'Change {command} shortcut',
@@ -3907,7 +3988,8 @@ const translations: Record<LanguageType, Record<string, string>> = {
     coworkSelectedTextInvalid: 'Unable to add this text excerpt',
     coworkSelectedTextTooLong: 'Each text excerpt can contain up to 4000 characters',
     coworkSelectedTextTooMany: 'You can add up to 8 text excerpts',
-    coworkSelectedTextTotalTooLong: 'Selected text excerpts can contain up to 12000 characters in total',
+    coworkSelectedTextTotalTooLong:
+      'Selected text excerpts can contain up to 12000 characters in total',
     coworkSelectedTextDuplicate: 'This text excerpt has already been added',
     coworkSelectedTextSourceUnavailable: 'The source message is not currently visible',
     coworkSelectedTextArtifactMarkdownSource: 'Markdown file excerpt',
@@ -3974,12 +4056,14 @@ const translations: Record<LanguageType, Record<string, string>> = {
     htmlShareUploading: 'Sharing...',
     htmlShareViewHint: 'The share link is ready.',
     htmlShareSuccess: 'Share created',
-    htmlShareSuccessMessage: 'The share link is ready. You can copy the details for the selected access mode.',
+    htmlShareSuccessMessage:
+      'The share link is ready. You can copy the details for the selected access mode.',
     htmlShareFailed: 'Share failed',
     htmlShareCreateDialogTitle: 'Create share',
     htmlShareCreateAction: 'Create share',
     htmlShareManageDialogTitle: 'Share settings',
-    htmlShareExistingShareMessage: 'This file is already shared. Copy the share details, or update the share.',
+    htmlShareExistingShareMessage:
+      'This file is already shared. Copy the share details, or update the share.',
     htmlShareAccessMode: 'Access mode',
     htmlShareAccessModeCode: 'Share code',
     htmlShareAccessModeCodeHint: 'Viewers need the link and share code.',
@@ -4022,15 +4106,19 @@ const translations: Record<LanguageType, Record<string, string>> = {
     htmlShareStoppedByActiveLimitNotice:
       'This share was closed because the active share limit was reached. Click "Open sharing" to make it accessible again.',
     htmlShareStoppedByAdminNotice: 'This share was closed by an administrator',
-    htmlShareStoppedByModerationNotice: 'This share was closed because it did not pass content review',
+    htmlShareStoppedByModerationNotice:
+      'This share was closed because it did not pass content review',
     htmlShareActiveLimitUpdateSideEffect:
       'Updating will reopen this share and automatically close the oldest other share to keep the active share limit.',
     htmlShareResultStatusDisabled: 'Share closed',
     htmlShareResultStatusFailed: 'Failed',
-    htmlShareCodeUnavailable: 'The legacy share code cannot be shown again. Update the share to generate a new code.',
+    htmlShareCodeUnavailable:
+      'The legacy share code cannot be shown again. Update the share to generate a new code.',
     htmlShareReopenUnavailable: 'This share cannot be reopened.',
-    htmlShareActiveLimitReached: 'The active share limit has been reached. Close another share first.',
-    htmlShareDisabledCannotUpdate: 'This share is closed, so its content cannot be updated. Open the share first.',
+    htmlShareActiveLimitReached:
+      'The active share limit has been reached. Close another share first.',
+    htmlShareDisabledCannotUpdate:
+      'This share is closed, so its content cannot be updated. Open the share first.',
     htmlShareActiveLimitCannotUpdate:
       'This share is closed. Click "Open sharing" before updating the file.',
     htmlShareLoginRequiredTitle: 'Log in and subscribe to share content',
@@ -4203,7 +4291,8 @@ const translations: Record<LanguageType, Record<string, string>> = {
     workspaceSettingsCurrentWorkspace: 'Current workspace',
     workspaceSettingsNoWorkspace: 'No workspace selected',
     workspaceSettingsDisabledHint: 'Select a workspace before editing these settings.',
-    workspaceSettingsDefaultFallbackDisabledHint: 'Only the system default working directory is available. Select a session workspace, or save a global working directory before editing workspace overrides.',
+    workspaceSettingsDefaultFallbackDisabledHint:
+      'Only the system default working directory is available. Select a session workspace, or save a global working directory before editing workspace overrides.',
     workspaceSettingsNoSecrets: 'No API keys',
     workspaceSettingsInheritGlobal: 'Inherited from global',
     workspaceSettingsCustom: 'Custom',
@@ -4237,7 +4326,8 @@ const translations: Record<LanguageType, Record<string, string>> = {
     modelGroupUser: 'Custom Models',
     modelSelectorCurrentModel: 'In use',
     modelSelectorLockedOverlay: 'Subscribe or purchase a booster pack to unlock more models',
-    modelSelectorLockedModelHint: 'Log in and subscribe or purchase a booster pack before selecting plan models',
+    modelSelectorLockedModelHint:
+      'Log in and subscribe or purchase a booster pack before selecting plan models',
     modelSelectorLoginTitle: 'Plan Models',
     modelSelectorLoginDesc: 'Log in and subscribe or purchase a booster pack to use plan models',
     modelSelectorLoginBtn: 'Log in',
@@ -4257,7 +4347,8 @@ const translations: Record<LanguageType, Record<string, string>> = {
     mediaTokenPricingTextOutput: 'Text output',
     mediaTokenPricingImageOutput: 'Image output',
     mediaTokenPricingThinkingOutput: 'Thinking output',
-    mediaTokenBillingEstimateNote: 'Billed by actual tokens. List price is the estimate for the default 1-image output.',
+    mediaTokenBillingEstimateNote:
+      'Billed by actual tokens. List price is the estimate for the default 1-image output.',
     modelSelectorNoModels: 'Please configure models in settings first',
     coworkApiConfigTitle: 'API Configuration',
     coworkApiConfigHint:
@@ -4307,16 +4398,23 @@ const translations: Record<LanguageType, Record<string, string>> = {
     engineStartingSlowHintTitle: 'This can take a moment',
     engineStartingSlowHint: 'First launch may take longer. Future launches are usually faster.',
     engineStartingTipLabel: 'Tip',
-    engineStartingTip1: 'Ask AI for HTML, SVG, or Mermaid diagrams — the side panel previews them live',
-    engineStartingTip2: 'Enable Word, Excel, and PPT skills in Skills, and AI can generate office documents for you',
-    engineStartingTip3: 'Use Scheduled Tasks to have AI run routine work automatically at fixed times',
-    engineStartingTip4: 'Connect WeChat, Feishu, DingTalk and more to summon AI right from your IM apps',
-    engineStartingTip5: 'Tell AI to "remember..." and it saves key facts to long-term memory for future chats',
-    engineStartingTip6: 'AI asks for your approval before sensitive operations, so you stay in control',
+    engineStartingTip1:
+      'Ask AI for HTML, SVG, or Mermaid diagrams — the side panel previews them live',
+    engineStartingTip2:
+      'Enable Word, Excel, and PPT skills in Skills, and AI can generate office documents for you',
+    engineStartingTip3:
+      'Use Scheduled Tasks to have AI run routine work automatically at fixed times',
+    engineStartingTip4:
+      'Connect WeChat, Feishu, DingTalk and more to summon AI right from your IM apps',
+    engineStartingTip5:
+      'Tell AI to "remember..." and it saves key facts to long-term memory for future chats',
+    engineStartingTip6:
+      'AI asks for your approval before sensitive operations, so you stay in control',
     coworkOpenClawError: 'OpenClaw gateway failed to become healthy in time.',
     openClawMaintenanceTitle: 'Run Maintenance',
     openClawRepairGatewayStateTitle: 'Repair Startup',
-    openClawRepairGatewayStateDesc: 'Back up and rebuild the OpenClaw config, then restart the gateway.',
+    openClawRepairGatewayStateDesc:
+      'Back up and rebuild the OpenClaw config, then restart the gateway.',
     openClawRepairConfirmTitle: 'Repair OpenClaw startup?',
     openClawRepairConfirmDesc:
       'The app will stop the current gateway, back up openclaw.json, regenerate the config, and start the gateway.',
@@ -4349,12 +4447,14 @@ const translations: Record<LanguageType, Record<string, string>> = {
     openClawDataBackupBlockingWarning:
       'Do not close the app. Closing it will interrupt the backup and may leave an incomplete backup file.',
     openClawDataMigrationTitle: 'Data Migration',
-    openClawDataMigrationDesc: 'Import a backup exported from another machine and replace current app data.',
+    openClawDataMigrationDesc:
+      'Import a backup exported from another machine and replace current app data.',
     openClawDataMigrationAction: 'Import Backup',
     openClawDataMigrationRunning: 'Importing...',
     openClawDataMigrationSuccess: 'Data migration completed.',
     openClawDataMigrationFailed: 'Data migration failed',
-    openClawDataMigrationRestarting: 'Backup file selected. The app will restart and import the data.',
+    openClawDataMigrationRestarting:
+      'Backup file selected. The app will restart and import the data.',
     openClawDataMigrationBlockingTitle: 'Preparing to import 宇智汇和 AI 助手 data',
     openClawDataMigrationBlockingDesc:
       'The app is temporarily locked during import preparation. After you choose a backup file, the app will restart and finish the import.',
@@ -4368,7 +4468,8 @@ const translations: Record<LanguageType, Record<string, string>> = {
     openClawDataMigrationConfirmAction: 'Choose Backup and Import',
     openClawMaintenanceComingSoon: 'Coming soon',
     coworkMemoryTitle: 'Memory',
-    coworkGlobalDefaultsNotice: 'This page saves global defaults; the current workspace can override them on the Agent Engine page.',
+    coworkGlobalDefaultsNotice:
+      'This page saves global defaults; the current workspace can override them on the Agent Engine page.',
     coworkBootstrapIdentityTitle: 'Assistant Identity',
     coworkBootstrapIdentityHint: 'Define who the assistant is — name, role, and capabilities.',
     coworkBootstrapUserTitle: 'About You',
@@ -4654,7 +4755,8 @@ const translations: Record<LanguageType, Record<string, string>> = {
     agentTemplateNew: 'New',
     agentTemplateEmpty: 'No templates available',
     systemAgentTemplateTitle: 'Add System Agent',
-    systemAgentTemplateDesc: 'Global Agents come from built-in system templates. Create private Agents inside the workspace where they belong.',
+    systemAgentTemplateDesc:
+      'Global Agents come from built-in system templates. Create private Agents inside the workspace where they belong.',
     systemAgentTemplateEmpty: 'No system Agents available to add',
     systemAgentAdding: 'Adding',
     addSystemAgent: 'Add System Agent',
@@ -4665,9 +4767,11 @@ const translations: Record<LanguageType, Record<string, string>> = {
     systemAgentStatusEnabled: 'Enabled',
     systemAgentStatusDisabled: 'Disabled',
     systemAgentAddFailed: 'Failed to add system Agent',
-    systemAgentManagedNotice: 'System Agent name, persona, prompt, avatar, and skills are maintained by LobsterAI. You can still adjust model, working directory, research, and IM bindings.',
+    systemAgentManagedNotice:
+      'System Agent name, persona, prompt, avatar, and skills are maintained by LobsterAI. You can still adjust model, working directory, research, and IM bindings.',
     systemAgentEnabledLabel: 'Enable this system Agent',
-    systemAgentEnabledHint: 'When off, it is hidden from the sidebar and can be restored from Add System Agent.',
+    systemAgentEnabledHint:
+      'When off, it is hidden from the sidebar and can be restored from Add System Agent.',
     agentEnabledLabel: 'Enable this Agent',
     agentEnabledHint: 'When off, it is hidden from the sidebar.',
     agentSettings: 'Agent Settings',
@@ -4761,13 +4865,15 @@ const translations: Record<LanguageType, Record<string, string>> = {
     agentSkillsClearSelection: 'Clear selection',
     agentSkillsSelectedTitle: 'Selected skills',
     agentSkillsAvailableTitle: 'Available skills',
-    agentSkillsSelectedEmpty: 'No skill limit is set. After saving, this Agent can use all enabled skills.',
+    agentSkillsSelectedEmpty:
+      'No skill limit is set. After saving, this Agent can use all enabled skills.',
     agentSkillsFilterAll: 'All',
     agentSkillsFilterSelected: 'Selected',
     agentSkillsFilterRecommended: 'Recommended',
     agentSkillsFilterBuiltIn: 'Built-in',
     agentSkillsFilterCustom: 'Custom',
-    agentSkillsRecommendedHint: 'Recommended prioritizes skills useful for promotion, research, and content work.',
+    agentSkillsRecommendedHint:
+      'Recommended prioritizes skills useful for promotion, research, and content work.',
     agentSkillsRemoveSkill: 'Remove {skill}',
     agentSkillsSearch: 'Search skills...',
     agentSkillsNoInstalled: 'No enabled skills',
@@ -4787,16 +4893,20 @@ const translations: Record<LanguageType, Record<string, string>> = {
     agentTabExternalResearch: 'Research',
     agentTabIM: 'IM Channels',
     agentExternalResearchTitle: 'External research',
-    agentExternalResearchHint: 'Used for industry, competitor, keyword, and pain-point research. API keys stay local and are never written into prompts.',
+    agentExternalResearchHint:
+      'Used for industry, competitor, keyword, and pain-point research. API keys stay local and are never written into prompts.',
     agentExternalResearchUseDefault: 'Use default research settings',
-    agentExternalResearchUseDefaultHint: 'Use the app-level Tavily / Firecrawl config. Best for most Agents.',
+    agentExternalResearchUseDefaultHint:
+      'Use the app-level Tavily / Firecrawl config. Best for most Agents.',
     agentExternalResearchOverride: 'Configure this Agent separately',
     agentExternalResearchOverrideHint: 'Set dedicated API keys and enablement for this Agent.',
     agentExternalResearchDisabled: 'Turn off external research',
-    agentExternalResearchDisabledHint: 'This Agent will not proactively use external research tools.',
+    agentExternalResearchDisabledHint:
+      'This Agent will not proactively use external research tools.',
     agentExternalResearchSummaryMode: 'Research mode',
     agentExternalResearchSummaryProviders: 'Providers',
-    agentExternalResearchSummaryProviderCount: '{configured}/{total} configured · {enabled} enabled',
+    agentExternalResearchSummaryProviderCount:
+      '{configured}/{total} configured · {enabled} enabled',
     agentExternalResearchModeInheritShort: 'Default',
     agentExternalResearchModeOverrideShort: 'Custom',
     agentExternalResearchModeDisabledShort: 'Off',
@@ -4813,7 +4923,8 @@ const translations: Record<LanguageType, Record<string, string>> = {
     agentExternalResearchTesting: 'Testing',
     agentExternalResearchTestSuccess: 'Connection succeeded',
     agentExternalResearchTestFailed: 'Connection failed',
-    agentExternalResearchTestUnexpectedError: 'Unexpected error while testing the connection. Please try again later.',
+    agentExternalResearchTestUnexpectedError:
+      'Unexpected error while testing the connection. Please try again later.',
     agentExternalResearchClear: 'Clear {provider} API Key',
     agentExternalResearchShow: 'Show {provider} API Key',
     agentExternalResearchHide: 'Hide {provider} API Key',
@@ -4838,30 +4949,40 @@ const translations: Record<LanguageType, Record<string, string>> = {
     agentRuntimeImpactPrefix: 'Runtime impact',
     agentRuntimeImpactSeparator: ': ',
     agentRuntimeImpactJoiner: '; ',
-    agentRuntimeImpactModel: 'Model changes apply to new conversations and new tasks; running tasks keep their current snapshot',
-    agentRuntimeImpactSkills: 'Skill changes apply to new conversations and new tasks; running tasks keep their current snapshot',
-    agentRuntimeImpactWorkingDirectory: 'Working directory changes sync to OpenClaw after save and may restart the gateway; running tasks stay in their current directory',
-    agentRuntimeImpactImBindings: 'IM binding changes sync to OpenClaw after save and restart the gateway; they apply to new IM conversations, while existing IM conversations keep their session mapping',
+    agentRuntimeImpactModel:
+      'Model changes apply to new conversations and new tasks; running tasks keep their current snapshot',
+    agentRuntimeImpactSkills:
+      'Skill changes apply to new conversations and new tasks; running tasks keep their current snapshot',
+    agentRuntimeImpactWorkingDirectory:
+      'Working directory changes sync to OpenClaw after save and may restart the gateway; running tasks stay in their current directory',
+    agentRuntimeImpactImBindings:
+      'IM binding changes sync to OpenClaw after save and restart the gateway; they apply to new IM conversations, while existing IM conversations keep their session mapping',
     agentExternalResearchSaveFailed: 'Failed to save external research settings',
     agentExternalResearchSaveUnavailable: 'Restart the app to use external research settings',
     agentDomesticResearchTitle: 'Domestic content platforms',
-    agentDomesticResearchHint: 'Uses signals from Xiaohongshu, Douyin, Kuaishou, WeChat Channels, Bilibili, and WeChat articles. The first version prefers stable search and link import.',
+    agentDomesticResearchHint:
+      'Uses signals from Xiaohongshu, Douyin, Kuaishou, WeChat Channels, Bilibili, and WeChat articles. The first version prefers stable search and link import.',
     agentDomesticResearchSourceCount: '{enabled}/{total} sources enabled',
     agentDomesticResearchBulkRecommended: 'Use recommended',
     agentDomesticResearchBulkAll: 'Enable all',
     agentDomesticResearchBulkNone: 'Disable all',
     agentDomesticResearchEnabled: 'Use in analysis',
     agentDomesticResearchCustomTitle: 'Custom link sources',
-    agentDomesticResearchCustomHint: 'Add industry forums, competitor pages, customer cases, or content links you already have. The Agent imports these links as research material.',
+    agentDomesticResearchCustomHint:
+      'Add industry forums, competitor pages, customer cases, or content links you already have. The Agent imports these links as research material.',
     agentDomesticResearchCustomAdd: 'Add source',
-    agentDomesticResearchCustomEmpty: 'No custom sources yet. Add a set of links as supplemental material.',
+    agentDomesticResearchCustomEmpty:
+      'No custom sources yet. Add a set of links as supplemental material.',
     agentDomesticResearchCustomNamePlaceholder: 'Source name, e.g. Competitor case library',
-    agentDomesticResearchCustomUrlsPlaceholder: 'Paste one link per line, e.g. https://example.com/topic',
+    agentDomesticResearchCustomUrlsPlaceholder:
+      'Paste one link per line, e.g. https://example.com/topic',
     agentDomesticResearchCustomRemove: 'Remove custom source',
     agentDomesticResearchSourceUrlsTitle: 'Imported links',
     agentDomesticResearchSourceUrlsCount: '{count} links',
-    agentDomesticResearchSourceUrlsPlaceholder: 'Paste one platform link per line: notes, videos, accounts, or articles',
-    agentDomesticResearchSourceUrlsHint: 'After saving, these links are included as research material for this platform.',
+    agentDomesticResearchSourceUrlsPlaceholder:
+      'Paste one platform link per line: notes, videos, accounts, or articles',
+    agentDomesticResearchSourceUrlsHint:
+      'After saving, these links are included as research material for this platform.',
     agentDomesticResearchSourceXiaohongshu: 'Xiaohongshu',
     agentDomesticResearchSourceDouyin: 'Douyin',
     agentDomesticResearchSourceKuaishou: 'Kuaishou',
@@ -4875,8 +4996,10 @@ const translations: Record<LanguageType, Record<string, string>> = {
     agentDomesticResearchStatusUnsupported: 'Disabled',
     agentDomesticResearchModeSearch: 'Search',
     agentDomesticResearchModeUrlImport: 'Link import',
-    agentDomesticResearchSearchReadyHint: 'The promotion agent can use public search results and links you paste.',
-    agentDomesticResearchLinkImportHint: 'The promotion agent will ask for note, video, or account links when useful.',
+    agentDomesticResearchSearchReadyHint:
+      'The promotion agent can use public search results and links you paste.',
+    agentDomesticResearchLinkImportHint:
+      'The promotion agent will ask for note, video, or account links when useful.',
     agentDomesticResearchSaveFailed: 'Failed to save domestic content platform settings',
     agentDeleteFailed: 'Failed to delete Agent',
     agentDefaultCannotDelete: 'The primary Agent cannot be deleted',
@@ -4945,7 +5068,8 @@ const translations: Record<LanguageType, Record<string, string>> = {
     voiceInputLoginTitle: 'Sign in required for voice input',
     voiceInputLoginDesc: 'Voice input is available only after you sign in.',
     voiceInputFailed: 'Voice input failed. Please try again later.',
-    voiceInputMicrophoneDenied: 'Microphone access is blocked. Check system microphone permissions.',
+    voiceInputMicrophoneDenied:
+      'Microphone access is blocked. Check system microphone permissions.',
     voiceInputMicrophoneUnavailable: 'No available microphone was detected.',
     voiceInputNoAudioCaptured: 'No valid audio was recorded. Please try again.',
     voiceInputAudioInvalid: 'The recording format is invalid. Please try again.',
@@ -4954,7 +5078,8 @@ const translations: Record<LanguageType, Record<string, string>> = {
     voiceInputDailyLimitExceeded: 'Today’s voice input quota has been used up. Try again tomorrow.',
     voiceInputQuotaExhausted: 'No voice input time available',
     voiceInputQuotaExhaustedTitle: 'Voice input time used up',
-    voiceInputQuotaExhaustedFreeDesc: 'Today’s {limit} voice input time has been used up. Upgrade to get 200 minutes per day.',
+    voiceInputQuotaExhaustedFreeDesc:
+      'Today’s {limit} voice input time has been used up. Upgrade to get 200 minutes per day.',
     voiceInputQuotaExhaustedSubscribedDesc: 'Today’s {limit} voice input time has been used up.',
     voiceInputUpgradeSubscription: 'Upgrade subscription',
     voiceInputQuotaAcknowledge: 'Got it',
@@ -4962,7 +5087,8 @@ const translations: Record<LanguageType, Record<string, string>> = {
     voiceInputQuotaHours: '{count} hours',
     voiceInputRateLimited: 'Voice recognition is busy. Please try again later.',
     voiceInputRecognitionFailed: 'No valid speech was recognized. Please try again.',
-    voiceInputServiceUnavailable: 'Voice recognition is temporarily unavailable. Please try again later.',
+    voiceInputServiceUnavailable:
+      'Voice recognition is temporarily unavailable. Please try again later.',
     coworkDropFileHint: 'Drop files here, or paste files directly',
     coworkAddImage: 'Add Image',
     coworkInputFileLabel: 'Input file',
@@ -5023,9 +5149,12 @@ const translations: Record<LanguageType, Record<string, string>> = {
     marketingRewrite1688Title: '1688 titles',
     marketingRewriteBaiduSeoLongForm: 'Baidu SEO long-form',
     marketingRewriteSubmitting: 'Rewriting...',
-    coworkImageAttachmentTooLarge: 'Image {name} is larger than {limit}. Compress it before sending.',
-    coworkImageAttachmentPreviewFailed: 'Could not create a preview for image {name}. Compress it before sending.',
-    coworkImageAttachmentOriginalMissing: 'Cannot re-edit this image message because the original image file is missing or unreadable.',
+    coworkImageAttachmentTooLarge:
+      'Image {name} is larger than {limit}. Compress it before sending.',
+    coworkImageAttachmentPreviewFailed:
+      'Could not create a preview for image {name}. Compress it before sending.',
+    coworkImageAttachmentOriginalMissing:
+      'Cannot re-edit this image message because the original image file is missing or unreadable.',
     coworkContextUsageUnknown: 'Context usage is unavailable',
     coworkContextUsagePercent: 'Context: {percent}% used',
     coworkContextUsageTokens: 'Used {used} tokens, total {total}',
@@ -5102,7 +5231,8 @@ const translations: Record<LanguageType, Record<string, string>> = {
     mediaNoModels: 'No models available',
     mediaLoadingModels: 'Loading models...',
     mediaLoginTitle: 'Image/Video Generation Service',
-    mediaLoginDesc: 'Exclusive for plan users. Log in and subscribe or purchase a booster pack to use',
+    mediaLoginDesc:
+      'Exclusive for plan users. Log in and subscribe or purchase a booster pack to use',
     mediaLoginBtn: 'Log in',
     mediaSubscribeTitle: 'Image/Video Generation Service',
     mediaSubscribeDesc: 'Exclusive for plan users. Subscribe or purchase a booster pack to use',
@@ -5275,7 +5405,8 @@ const translations: Record<LanguageType, Record<string, string>> = {
     // Kits
     kits: 'Kits',
     newFeatureBadge: 'NEW',
-    kitSearchPlaceholder: 'Search kits or capabilities, such as "design", "marketing", "data analysis"',
+    kitSearchPlaceholder:
+      'Search kits or capabilities, such as "design", "marketing", "data analysis"',
     kitInstall: 'Install',
     kitInstalling: 'Installing...',
     kitUninstall: 'Uninstall',
@@ -5290,7 +5421,8 @@ const translations: Record<LanguageType, Record<string, string>> = {
     kitBack: 'Back',
     kitTryAsking: 'Try asking...',
     kitSkills: 'Skills',
-    kitDescription: 'Install capability packs for common work scenarios and use their skills directly',
+    kitDescription:
+      'Install capability packs for common work scenarios and use their skills directly',
     kitMarketplace: 'Marketplace',
     kitSkillCount: '{count} skills',
     kitOfficial: 'Official',
@@ -5467,7 +5599,8 @@ const translations: Record<LanguageType, Record<string, string>> = {
     pluginsSyncNone: 'No new plugins found',
     pluginsSyncNow: 'Sync Now',
     pluginsSyncSkip: 'Not Now',
-    pluginsSyncLater: 'You can always sync later from the "Install Plugin" dialog under the OpenClaw tab.',
+    pluginsSyncLater:
+      'You can always sync later from the "Install Plugin" dialog under the OpenClaw tab.',
     pluginsUnsavedTitle: 'Unsaved Changes',
     pluginsUnsavedMessage: 'Plugin setting changes will be lost. Leave anyway?',
     pluginsUnsavedStay: 'Keep Editing',
@@ -5788,7 +5921,8 @@ const translations: Record<LanguageType, Record<string, string>> = {
     imWeixinQrExpired: 'QR code expired, please try again',
     imWeixinQrAccountMissing:
       'WeChat is already connected to this OpenClaw, but no local account ID was found. Refresh status and try again.',
-    imWeixinCredentialsMissing: 'WeChat login credentials are missing. Please scan the QR code again.',
+    imWeixinCredentialsMissing:
+      'WeChat login credentials are missing. Please scan the QR code again.',
     imPopoCredentialHint: 'Get AppKey, AppSecret and AES Key from the POPO Developer Portal',
     imPopoGuideStep1: 'Click "Scan to Bind POPO Bot" or enter credentials manually',
     imPopoGuideStep2: 'Scan the QR code with POPO to bind the bot',
@@ -5827,32 +5961,44 @@ const translations: Record<LanguageType, Record<string, string>> = {
     autoLaunchRequiresApproval: 'Launch at login requires approval in System Settings',
     autoLaunchUpdateFailed: 'Failed to update launch at login setting',
     useSystemProxy: 'Use System Proxy',
-    useSystemProxyDescription: 'When enabled, network requests follow system proxy settings (applies after Save)',
+    useSystemProxyDescription:
+      'When enabled, network requests follow system proxy settings (applies after Save)',
     browserWebAccessTab: 'Browser',
     browserWebAccessTitle: 'Browser',
-    browserWebAccessDescription: 'Use the 宇智汇和 AI 助手 separate browser and manage page access rules.',
+    browserWebAccessDescription:
+      'Use the 宇智汇和 AI 助手 separate browser and manage page access rules.',
     browserSectionTitle: 'Browser',
     browserEnableTool: 'Enable browser',
     browserEnableToolDescription: 'Allow the agent to open and operate web pages.',
     browserProfileManaged: 'Separate browser (recommended)',
-    browserProfileManagedDescription: '宇智汇和 AI 助手 starts a dedicated browser that is stable and clean.',
+    browserProfileManagedDescription:
+      '宇智汇和 AI 助手 starts a dedicated browser that is stable and clean.',
     browserProfileUser: 'My Chrome',
-    browserProfileUserDescription: 'Use this for sites that need your login state, such as X, Google, or internal systems.',
+    browserProfileUserDescription:
+      'Use this for sites that need your login state, such as X, Google, or internal systems.',
     browserNetworkSectionTitle: 'Network access mode',
-    browserSystemProxyOn: 'System proxy is enabled for the app, and the browser follows that global switch.',
-    browserSystemProxyOff: 'System proxy is not enabled for the app; this page will not turn it on automatically.',
+    browserSystemProxyOn:
+      'System proxy is enabled for the app, and the browser follows that global switch.',
+    browserSystemProxyOff:
+      'System proxy is not enabled for the app; this page will not turn it on automatically.',
     browserNetworkOpen: 'Prefer opening pages successfully (recommended)',
-    browserNetworkOpenDescription: 'Better for everyday browser tasks, especially when system proxy is enabled.',
+    browserNetworkOpenDescription:
+      'Better for everyday browser tasks, especially when system proxy is enabled.',
     browserNetworkStrict: 'Strictly protect local and private networks',
-    browserNetworkStrictDescription: 'Blocks localhost, private networks, and special address ranges; some pages may fail when proxy is enabled.',
-    browserNetworkStrictProxyWarning: 'System proxy is currently enabled, so strict mode may make some pages fail again.',
+    browserNetworkStrictDescription:
+      'Blocks localhost, private networks, and special address ranges; some pages may fail when proxy is enabled.',
+    browserNetworkStrictProxyWarning:
+      'System proxy is currently enabled, so strict mode may make some pages fail again.',
     browserWebFetchSectionTitle: 'Web fetch',
     browserWebFetchEnable: 'Enable web fetch',
-    browserWebFetchEnableDescription: 'Read regular articles, documentation pages, and lightweight web pages.',
+    browserWebFetchEnableDescription:
+      'Read regular articles, documentation pages, and lightweight web pages.',
     browserWebFetchReadability: 'Extract main content',
-    browserWebFetchReadabilityDescription: 'Try to remove navigation, ads, and unrelated page content.',
+    browserWebFetchReadabilityDescription:
+      'Try to remove navigation, ads, and unrelated page content.',
     browserDiagnosticsTitle: 'Diagnostics',
-    browserDiagnosticsDescription: 'Automatically checks whether the browser can start and open a test page.',
+    browserDiagnosticsDescription:
+      'Automatically checks whether the browser can start and open a test page.',
     browserDiagnosticsRun: 'Test browser',
     browserDiagnosticsRunning: 'Testing...',
     browserDiagnosticFailed: 'Browser diagnostic failed',
@@ -5869,23 +6015,31 @@ const translations: Record<LanguageType, Record<string, string>> = {
     browserDiagnosticOpenPageFailed: 'Failed to open test page',
     browserResetManagedData: 'Clear separate browser data',
     browserResetting: 'Clearing...',
-    browserResetConfirm: 'Clear separate browser data? This removes website data and cache from that browser.',
+    browserResetConfirm:
+      'Clear separate browser data? This removes website data and cache from that browser.',
     browserResetFailed: 'Failed to clear separate browser data',
     browserAdvancedTitle: 'Advanced settings',
     browserFollowGlobalProxy: 'Browser follows global proxy',
-    browserFollowGlobalProxyDescription: 'Enabled by default. Turning it off is stored for 宇智汇和 AI 助手, but this version can still be affected by the browser proxy settings.',
+    browserFollowGlobalProxyDescription:
+      'Enabled by default. Turning it off is stored for 宇智汇和 AI 助手, but this version can still be affected by the browser proxy settings.',
     browserEvaluateEnabled: 'Allow scripts inside pages',
-    browserEvaluateEnabledDescription: 'Turning this off is more conservative, but some complex page actions may stop working.',
+    browserEvaluateEnabledDescription:
+      'Turning this off is more conservative, but some complex page actions may stop working.',
     browserEfficientSnapshot: 'Use compact page snapshots',
-    browserEfficientSnapshotDescription: 'Reduces page content size and works better for everyday tasks.',
+    browserEfficientSnapshotDescription:
+      'Reduces page content size and works better for everyday tasks.',
     browserHeadless: 'Run browser without a visible window',
-    browserHeadlessDescription: 'Useful for automation environments; not recommended for normal desktop use.',
+    browserHeadlessDescription:
+      'Useful for automation environments; not recommended for normal desktop use.',
     browserAttachOnly: 'Only connect to an already running browser',
-    browserAttachOnlyDescription: 'Does not start a browser automatically. Intended for advanced debugging.',
+    browserAttachOnlyDescription:
+      'Does not start a browser automatically. Intended for advanced debugging.',
     browserExecutablePath: 'Browser executable path',
-    browserExecutablePathDescription: 'Specify the Chrome, Brave, or Edge executable path. Leave empty to auto-detect.',
+    browserExecutablePathDescription:
+      'Specify the Chrome, Brave, or Edge executable path. Leave empty to auto-detect.',
     browserCdpUrl: 'Remote browser URL',
-    browserCdpUrlDescription: 'Connect to remote Chrome DevTools or Browserless. Most users do not need this.',
+    browserCdpUrlDescription:
+      'Connect to remote Chrome DevTools or Browserless. Most users do not need this.',
     browserCdpUrlInvalid: 'Enter a URL starting with http, https, ws, or wss.',
     browserAllowedHostnames: 'Allowed domains',
     browserAllowedHostnamesDescription: 'Domains that can be opened without asking',
@@ -5900,15 +6054,18 @@ const translations: Record<LanguageType, Record<string, string>> = {
     browserRemoteCdpTimeout: 'Remote connection timeout (ms)',
     browserRemoteCdpHandshakeTimeout: 'Remote handshake timeout (ms)',
     browserExtraArgs: 'Browser launch arguments',
-    browserExtraArgsDescription: 'One Chrome launch argument per line. Incorrect values may prevent the browser from starting.',
+    browserExtraArgsDescription:
+      'One Chrome launch argument per line. Incorrect values may prevent the browser from starting.',
     browserWebFetchTimeout: 'Web fetch timeout (seconds)',
     browserWebFetchFollowGlobalProxy: 'Web fetch follows global proxy',
-    browserWebFetchFollowGlobalProxyDescription: 'When enabled, web fetch uses the system proxy only if the app-wide Use System Proxy switch is on.',
+    browserWebFetchFollowGlobalProxyDescription:
+      'When enabled, web fetch uses the system proxy only if the app-wide Use System Proxy switch is on.',
     browserWebFetchMaxRedirects: 'Maximum redirects',
     browserWebFetchMaxChars: 'Maximum returned characters',
     browserWebFetchUserAgent: 'Web fetch User-Agent',
     browserWebFetchAllowFakeIp: 'Allow fake-IP proxy range',
-    browserWebFetchAllowFakeIpDescription: 'Only enable this when using proxy setups such as Clash TUN or Surge.',
+    browserWebFetchAllowFakeIpDescription:
+      'Only enable this when using proxy setups such as Clash TUN or Surge.',
     sqliteAutoBackupEnabled: 'Enable Auto Backup and Recovery',
     sqliteAutoBackupEnabledDescription:
       'When enabled, the app automatically backs up data and tries to restore corrupted data on startup',
@@ -6343,35 +6500,43 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadHistoryModalDesc: 'Choose an existing lead workspace.',
     enterpriseLeadHistoryModalClose: 'Close historical workspace list',
     enterpriseLeadHistoryEmptyTitle: 'No historical workspaces yet',
-    enterpriseLeadHistoryEmptyDesc: 'Create a lead workspace first, then reopen it from here later.',
+    enterpriseLeadHistoryEmptyDesc:
+      'Create a lead workspace first, then reopen it from here later.',
     enterpriseLeadHistoryLoadFailed: 'Failed to load historical workspaces. Try again later.',
     enterpriseLeadHistoryUpdatedAtPrefix: 'Updated: ',
     enterpriseLeadHistoryWorkspaceActions: 'Workspace actions',
     enterpriseLeadHistoryDeleteWorkspace: 'Delete workspace',
     enterpriseLeadHistoryDeleteConfirmTitle: 'Delete "{name}"?',
-    enterpriseLeadHistoryDeleteWarning: 'This removes the workspace material, knowledge base, Agent settings, and creation records. This cannot be undone.',
+    enterpriseLeadHistoryDeleteWarning:
+      'This removes the workspace material, knowledge base, Agent settings, and creation records. This cannot be undone.',
     enterpriseLeadHistoryCancelDelete: 'Cancel',
     enterpriseLeadHistoryDeleting: 'Deleting...',
     enterpriseLeadHistoryDeleteFailed: 'Failed to delete the workspace. Try again later.',
     enterpriseLeadWorkspaceTitle: 'Enterprise Lead Workspace',
-    enterpriseLeadWorkspaceSubtitle: 'Extract product, customer, channel, and compliance context from conversations or source files, then create a workspace for lead operations.',
+    enterpriseLeadWorkspaceSubtitle:
+      'Extract product, customer, channel, and compliance context from conversations or source files, then create a workspace for lead operations.',
     enterpriseLeadCreateWorkspace: 'Create workspace',
-    enterpriseLeadCreateWorkspaceDesc: 'Paste a conversation or upload source material to organize the business profile before lead work starts.',
+    enterpriseLeadCreateWorkspaceDesc:
+      'Paste a conversation or upload source material to organize the business profile before lead work starts.',
     enterpriseLeadImportMaterial: 'Import material',
-    enterpriseLeadImportMaterialDesc: 'Load a .txt, .md, or .csv file, extract a workspace draft, and confirm before creating it.',
+    enterpriseLeadImportMaterialDesc:
+      'Load a .txt, .md, or .csv file, extract a workspace draft, and confirm before creating it.',
     enterpriseLeadRecentWorkspaces: 'Recent workspaces',
-    enterpriseLeadRecentWorkspacesDesc: 'Continue a recent enterprise lead workspace, or create a new business profile.',
+    enterpriseLeadRecentWorkspacesDesc:
+      'Continue a recent enterprise lead workspace, or create a new business profile.',
     enterpriseLeadRecentlyOpened: 'Recently opened',
     enterpriseLeadProfileIncomplete: 'Business profile can be improved',
     enterpriseLeadCreateNewWorkspace: 'Create new workspace',
     enterpriseLeadCreateByExtraction: 'Create from material',
     enterpriseLeadUploadMaterial: 'Upload material',
     enterpriseLeadConversationMaterial: 'Conversation or source material',
-    enterpriseLeadConversationMaterialPlaceholder: 'Paste sales conversations, product notes, customer feedback, or table text...',
+    enterpriseLeadConversationMaterialPlaceholder:
+      'Paste sales conversations, product notes, customer feedback, or table text...',
     enterpriseLeadExtractWorkspace: 'Extract workspace draft',
     enterpriseLeadExtracting: 'Extracting...',
     enterpriseLeadDraftEmpty: 'Paste or upload source material first.',
-    enterpriseLeadExtractFailed: 'Failed to extract a workspace draft. Check the material and try again.',
+    enterpriseLeadExtractFailed:
+      'Failed to extract a workspace draft. Check the material and try again.',
     enterpriseLeadReadFileFailed: 'Failed to read the file. Try another .txt, .md, or .csv file.',
     enterpriseLeadCreateFailed: 'Failed to create the workspace. Try again later.',
     enterpriseLeadCreateStartSubtitle: 'Set a name and choose how to start.',
@@ -6394,13 +6559,15 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadCreateMaterialTitle: 'Upload material',
     enterpriseLeadCreateMaterialSubtitle: 'Add the first lead material for "{name}".',
     enterpriseLeadCreateMaterialDropTitle: 'Choose or drop material files',
-    enterpriseLeadCreateMaterialDropDesc: 'Best for customer lists, product notes, chat records, or research docs.',
+    enterpriseLeadCreateMaterialDropDesc:
+      'Best for customer lists, product notes, chat records, or research docs.',
     enterpriseLeadCreateMaterialChooseFile: 'Choose file',
     enterpriseLeadCreateMaterialTypeCustomerList: 'Customer list',
     enterpriseLeadCreateMaterialTypeProductDoc: 'Product notes',
     enterpriseLeadCreateMaterialTypeChat: 'Chat records',
     enterpriseLeadCreateMaterialTypeResearch: 'Research doc',
-    enterpriseLeadCreateMaterialFooterHint: 'After upload, the workspace opens with an initial business profile.',
+    enterpriseLeadCreateMaterialFooterHint:
+      'After upload, the workspace opens with an initial business profile.',
     enterpriseLeadCreateMaterialRequired: 'Choose a material file first.',
     enterpriseLeadCreateMaterialSourceLabel: 'Uploaded material',
     enterpriseLeadCreateSkipForNow: 'Add later',
@@ -6408,10 +6575,12 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadCreatePasteTitle: 'Paste content',
     enterpriseLeadCreatePasteSubtitle: 'Paste existing business context for "{name}".',
     enterpriseLeadCreatePasteFieldLabel: 'Lead context',
-    enterpriseLeadCreatePastePlaceholder: 'Paste customer context, product notes, conversation records, target segments, or known lead information.',
+    enterpriseLeadCreatePastePlaceholder:
+      'Paste customer context, product notes, conversation records, target segments, or known lead information.',
     enterpriseLeadCreatePasteSampleTitle: 'Fill sample',
     enterpriseLeadCreatePasteSampleDesc: 'Quickly preview the pasted-content state.',
-    enterpriseLeadCreatePasteSampleText: 'We are expanding East China manufacturing accounts, focusing on automotive parts and industrial automation companies. We have product notes, a partial customer list, and sales conversation records, and want to organize target customer profiles, outreach constraints, and next actions.',
+    enterpriseLeadCreatePasteSampleText:
+      'We are expanding East China manufacturing accounts, focusing on automotive parts and industrial automation companies. We have product notes, a partial customer list, and sales conversation records, and want to organize target customer profiles, outreach constraints, and next actions.',
     enterpriseLeadCreatePasteSkipTitle: 'Skip for now',
     enterpriseLeadCreatePasteSkipDesc: 'Enter the workspace without initial content.',
     enterpriseLeadCreatePasteFooterHint: 'Pasted content becomes the initial lead context.',
@@ -6422,10 +6591,13 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadCreateBlankSubtitle: 'Enter "{name}" first and add material later.',
     enterpriseLeadCreateBlankSummaryTitle: 'A blank workspace will be created',
     enterpriseLeadCreateBlankSummaryBadge: 'No initial material',
-    enterpriseLeadCreateBlankPointUploadLater: 'You can upload files or paste lead content after entering.',
-    enterpriseLeadCreateBlankPointBuildFirst: 'Best when you want to create the space before completing the customer profile.',
+    enterpriseLeadCreateBlankPointUploadLater:
+      'You can upload files or paste lead content after entering.',
+    enterpriseLeadCreateBlankPointBuildFirst:
+      'Best when you want to create the space before completing the customer profile.',
     enterpriseLeadCreateBlankPointKeepName: 'The workspace keeps the current name and start mode.',
-    enterpriseLeadCreateBlankFooterHint: 'Useful when material is not ready but the workspace should exist now.',
+    enterpriseLeadCreateBlankFooterHint:
+      'Useful when material is not ready but the workspace should exist now.',
     enterpriseLeadCreateBlankSourceLabel: 'Blank creation',
     enterpriseLeadCreateBlankSubmit: 'Enter blank workspace',
     enterpriseLeadCompanySummary: 'Company summary',
@@ -6443,12 +6615,15 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadProductsFallback: 'No product info yet',
     enterpriseLeadCustomersFallback: 'No target customers yet',
     enterpriseLeadTargetCustomersPrefix: 'Target customers: ',
-    enterpriseLeadWorkspaceLoadFailed: 'Workspace details failed to load. Showing local list information instead.',
-    enterpriseLeadRunGoalPlaceholder: 'Enter this lead goal, for example: organize the factory leads to follow up this week',
+    enterpriseLeadWorkspaceLoadFailed:
+      'Workspace details failed to load. Showing local list information instead.',
+    enterpriseLeadRunGoalPlaceholder:
+      'Enter this lead goal, for example: organize the factory leads to follow up this week',
     enterpriseLeadStartRun: 'Start Agent tasks',
     enterpriseLeadRunLoading: 'Loading Agent console...',
     enterpriseLeadNoRunTitle: 'No current task yet',
-    enterpriseLeadNoRunDesc: 'Enter the goal for this run. The workspace will create fixed Agent cards, and workspace settings stay together on the right.',
+    enterpriseLeadNoRunDesc:
+      'Enter the goal for this run. The workspace will create fixed Agent cards, and workspace settings stay together on the right.',
     enterpriseLeadCurrentGoal: 'Current goal',
     enterpriseLeadAgentStatusWaiting: 'Waiting',
     enterpriseLeadAgentStatusRunning: 'Running',
@@ -6464,48 +6639,69 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadArchived: 'Archived',
     enterpriseLeadAgentRoleControllerTitle: 'Controller Agent',
     enterpriseLeadAgentRoleControllerShortLabel: 'CTL',
-    enterpriseLeadAgentRoleControllerDescription: 'Understands the goal, breaks down tasks, coordinates specialist Agents, and summarizes status.',
+    enterpriseLeadAgentRoleControllerDescription:
+      'Understands the goal, breaks down tasks, coordinates specialist Agents, and summarizes status.',
     enterpriseLeadAgentRoleControllerInput: 'User goal, workspace material, run history',
     enterpriseLeadAgentRoleControllerOutput: 'Execution plan, stage status, controller summary',
     enterpriseLeadAgentRoleProductUnderstandingTitle: 'Product Understanding Agent',
     enterpriseLeadAgentRoleProductUnderstandingShortLabel: 'PRD',
-    enterpriseLeadAgentRoleProductUnderstandingDescription: 'Organizes product profile, selling points, suitable customers, scenarios, and missing facts.',
-    enterpriseLeadAgentRoleProductUnderstandingInput: 'User goal, company material, product material',
-    enterpriseLeadAgentRoleProductUnderstandingOutput: 'Product profile, core selling points, suitable customers, missing facts',
+    enterpriseLeadAgentRoleProductUnderstandingDescription:
+      'Organizes product profile, selling points, suitable customers, scenarios, and missing facts.',
+    enterpriseLeadAgentRoleProductUnderstandingInput:
+      'User goal, company material, product material',
+    enterpriseLeadAgentRoleProductUnderstandingOutput:
+      'Product profile, core selling points, suitable customers, missing facts',
     enterpriseLeadAgentRoleOpportunityRadarTitle: 'Opportunity Radar Agent',
     enterpriseLeadAgentRoleOpportunityRadarShortLabel: 'OPP',
-    enterpriseLeadAgentRoleOpportunityRadarDescription: 'Evaluates customer direction, buying signals, opportunity score, and follow-up priority.',
-    enterpriseLeadAgentRoleOpportunityRadarInput: 'Product profile, customer direction, market leads',
-    enterpriseLeadAgentRoleOpportunityRadarOutput: 'Opportunity score, buying signals, priority recommendations',
+    enterpriseLeadAgentRoleOpportunityRadarDescription:
+      'Evaluates customer direction, buying signals, opportunity score, and follow-up priority.',
+    enterpriseLeadAgentRoleOpportunityRadarInput:
+      'Product profile, customer direction, market leads',
+    enterpriseLeadAgentRoleOpportunityRadarOutput:
+      'Opportunity score, buying signals, priority recommendations',
     enterpriseLeadAgentRoleContentPlanningTitle: 'Content Planning Agent',
     enterpriseLeadAgentRoleContentPlanningShortLabel: 'CNT',
-    enterpriseLeadAgentRoleContentPlanningDescription: 'Creates drafts for Xiaohongshu, short video, official accounts, product notes, and sales scripts.',
-    enterpriseLeadAgentRoleContentPlanningInput: 'Product understanding, opportunity judgment, channel preferences, prohibited claims',
-    enterpriseLeadAgentRoleContentPlanningOutput: 'Content drafts, high-risk expressions, downstream context',
+    enterpriseLeadAgentRoleContentPlanningDescription:
+      'Creates drafts for Xiaohongshu, short video, official accounts, product notes, and sales scripts.',
+    enterpriseLeadAgentRoleContentPlanningInput:
+      'Product understanding, opportunity judgment, channel preferences, prohibited claims',
+    enterpriseLeadAgentRoleContentPlanningOutput:
+      'Content drafts, high-risk expressions, downstream context',
     enterpriseLeadAgentRoleSocialOperationTitle: 'Social Operation Agent',
     enterpriseLeadAgentRoleSocialOperationShortLabel: 'SOC',
-    enterpriseLeadAgentRoleSocialOperationDescription: 'Creates publishing plans, comment reply drafts, direct message drafts, and operation todos.',
-    enterpriseLeadAgentRoleSocialOperationInput: 'Content drafts, platform preferences, interaction rules',
-    enterpriseLeadAgentRoleSocialOperationOutput: 'Social plan, comment drafts, direct message drafts, human todos',
+    enterpriseLeadAgentRoleSocialOperationDescription:
+      'Creates publishing plans, comment reply drafts, direct message drafts, and operation todos.',
+    enterpriseLeadAgentRoleSocialOperationInput:
+      'Content drafts, platform preferences, interaction rules',
+    enterpriseLeadAgentRoleSocialOperationOutput:
+      'Social plan, comment drafts, direct message drafts, human todos',
     enterpriseLeadAgentRoleSalesHandoffTitle: 'Sales Handoff Agent',
     enterpriseLeadAgentRoleSalesHandoffShortLabel: 'SAL',
-    enterpriseLeadAgentRoleSalesHandoffDescription: 'Creates sales handoff notes, SOPs, objection handling, and daily human todos.',
-    enterpriseLeadAgentRoleSalesHandoffInput: 'Opportunity score, customer pain points, content results',
+    enterpriseLeadAgentRoleSalesHandoffDescription:
+      'Creates sales handoff notes, SOPs, objection handling, and daily human todos.',
+    enterpriseLeadAgentRoleSalesHandoffInput:
+      'Opportunity score, customer pain points, content results',
     enterpriseLeadAgentRoleSalesHandoffOutput: 'Sales handoff, follow-up SOP, sales todos',
     enterpriseLeadAgentRoleRiskReviewTitle: 'Risk Review Agent',
     enterpriseLeadAgentRoleRiskReviewShortLabel: 'RSK',
-    enterpriseLeadAgentRoleRiskReviewDescription: 'Checks external-facing risk, exaggerated claims, missing sources, and human approvals.',
+    enterpriseLeadAgentRoleRiskReviewDescription:
+      'Checks external-facing risk, exaggerated claims, missing sources, and human approvals.',
     enterpriseLeadAgentRoleRiskReviewInput: 'All drafts, external actions, source statements',
     enterpriseLeadAgentRoleRiskReviewOutput: 'Risk level, revision items, approval items',
     enterpriseLeadAgentRoleProjectSummaryTitle: 'Project Summary Agent',
     enterpriseLeadAgentRoleProjectSummaryShortLabel: 'SUM',
-    enterpriseLeadAgentRoleProjectSummaryDescription: 'Summarizes all Agent outputs into a final user-readable summary.',
-    enterpriseLeadAgentRoleProjectSummaryInput: 'All module results, revision logs, risk review conclusion',
-    enterpriseLeadAgentRoleProjectSummaryOutput: 'Final summary, confirmation items, next-step recommendations',
+    enterpriseLeadAgentRoleProjectSummaryDescription:
+      'Summarizes all Agent outputs into a final user-readable summary.',
+    enterpriseLeadAgentRoleProjectSummaryInput:
+      'All module results, revision logs, risk review conclusion',
+    enterpriseLeadAgentRoleProjectSummaryOutput:
+      'Final summary, confirmation items, next-step recommendations',
     enterpriseLeadAgentRoleProjectArchiveTitle: 'Project Archive Agent',
     enterpriseLeadAgentRoleProjectArchiveShortLabel: 'ARC',
-    enterpriseLeadAgentRoleProjectArchiveDescription: 'Saves deliverables, risk records, todos, and history entry points.',
-    enterpriseLeadAgentRoleProjectArchiveInput: 'Final summary, deliverable package, risk records, todos',
+    enterpriseLeadAgentRoleProjectArchiveDescription:
+      'Saves deliverables, risk records, todos, and history entry points.',
+    enterpriseLeadAgentRoleProjectArchiveInput:
+      'Final summary, deliverable package, risk records, todos',
     enterpriseLeadAgentRoleProjectArchiveOutput: 'Archive record, result index, reopen entry point',
     enterpriseLeadWorkbenchNavWorkbench: 'Workbench',
     enterpriseLeadWorkbenchNavAiChat: 'New chat',
@@ -6518,21 +6714,30 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadStartSourceMaterial: 'Uploaded material',
     enterpriseLeadStartSourcePaste: 'Pasted content',
     enterpriseLeadStartSourceBlank: 'Blank creation',
-    enterpriseLeadStartSubtitleMaterial: 'Initial material is in. Review the business profile first, then generate the first lead actions.',
-    enterpriseLeadStartSubtitlePaste: 'Business context is saved. Add target customers and outreach constraints next.',
-    enterpriseLeadStartSubtitleBlank: 'No initial material yet. Add lead context before starting follow-up actions.',
+    enterpriseLeadStartSubtitleMaterial:
+      'Initial material is in. Review the business profile first, then generate the first lead actions.',
+    enterpriseLeadStartSubtitlePaste:
+      'Business context is saved. Add target customers and outreach constraints next.',
+    enterpriseLeadStartSubtitleBlank:
+      'No initial material yet. Add lead context before starting follow-up actions.',
     enterpriseLeadStartManageSettings: 'Workspace settings',
     enterpriseLeadStartNextActionTitle: 'Next step',
     enterpriseLeadStartNextActionHint: 'Keep one clear entry',
     enterpriseLeadStartActionAddMaterialTitle: 'Add material',
-    enterpriseLeadStartActionAddMaterialDescMaterial: 'Add more customer lists, product notes, or chat records.',
-    enterpriseLeadStartActionAddMaterialDescPaste: 'Add customer lists or product notes to complete the profile.',
-    enterpriseLeadStartActionAddMaterialDescBlank: 'Start with customer context, product notes, or sales conversations.',
+    enterpriseLeadStartActionAddMaterialDescMaterial:
+      'Add more customer lists, product notes, or chat records.',
+    enterpriseLeadStartActionAddMaterialDescPaste:
+      'Add customer lists or product notes to complete the profile.',
+    enterpriseLeadStartActionAddMaterialDescBlank:
+      'Start with customer context, product notes, or sales conversations.',
     enterpriseLeadStartActionReviewProfileTitle: 'Review business profile',
-    enterpriseLeadStartActionReviewProfileDesc: 'Confirm customers, selling points, and outreach limits.',
+    enterpriseLeadStartActionReviewProfileDesc:
+      'Confirm customers, selling points, and outreach limits.',
     enterpriseLeadStartActionStartWorkflowTitle: 'Generate lead actions',
-    enterpriseLeadStartActionStartWorkflowDesc: 'Create the first customer segments, outreach scripts, and action list.',
-    enterpriseLeadStartActionStartWorkflowDescBlank: 'Add material first for more reliable results.',
+    enterpriseLeadStartActionStartWorkflowDesc:
+      'Create the first customer segments, outreach scripts, and action list.',
+    enterpriseLeadStartActionStartWorkflowDescBlank:
+      'Add material first for more reliable results.',
     enterpriseLeadStartReadinessTitle: 'Readiness',
     enterpriseLeadStartReadinessMaterial: 'Lead material',
     enterpriseLeadStartReadinessProfile: 'Business profile',
@@ -6546,13 +6751,18 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadStartCurrentMaterialTitle: 'Current material',
     enterpriseLeadStartManageMaterial: 'Manage',
     enterpriseLeadStartNoMaterialTitle: 'No material yet',
-    enterpriseLeadStartNoMaterialDesc: 'Add a little context first so the workspace becomes useful faster.',
-    enterpriseLeadStartMaterialReadyDesc: 'Material is available in the workspace. You can add more or review the profile.',
+    enterpriseLeadStartNoMaterialDesc:
+      'Add a little context first so the workspace becomes useful faster.',
+    enterpriseLeadStartMaterialReadyDesc:
+      'Material is available in the workspace. You can add more or review the profile.',
     enterpriseLeadWorkspacePagePreparingTitle: 'Page in preparation',
-    enterpriseLeadWorkspacePagePreparingDescription: 'This page will receive its full workflow in a later task. The stable entry point is available now.',
-    enterpriseLeadWorkspaceSearchDescription: 'Search this workspace conversations, profile, sources, and Agent configuration.',
+    enterpriseLeadWorkspacePagePreparingDescription:
+      'This page will receive its full workflow in a later task. The stable entry point is available now.',
+    enterpriseLeadWorkspaceSearchDescription:
+      'Search this workspace conversations, profile, sources, and Agent configuration.',
     enterpriseLeadWorkspaceSearchInputLabel: 'Search current workspace',
-    enterpriseLeadWorkspaceSearchPlaceholder: 'Search conversations, products, customers, sources, rules, or Agents',
+    enterpriseLeadWorkspaceSearchPlaceholder:
+      'Search conversations, products, customers, sources, rules, or Agents',
     enterpriseLeadWorkspaceSearchResultCount: '{count} results',
     enterpriseLeadWorkspaceSearchScope: 'Scope: current workspace conversations and material',
     enterpriseLeadWorkspaceSearchEmpty: 'No matching content found.',
@@ -6562,7 +6772,8 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadWorkspaceSearchAreaSources: 'Content sources',
     enterpriseLeadWorkspaceSearchAreaAgents: 'Agent config',
     enterpriseLeadWorkspaceSearchAreaRules: 'Rules and risk',
-    enterpriseLeadWorkspaceSearchConversationDescription: 'From this workspace conversation, {count} messages.',
+    enterpriseLeadWorkspaceSearchConversationDescription:
+      'From this workspace conversation, {count} messages.',
     enterpriseLeadWorkspaceSearchProfileResultDescription: 'From the current workspace profile.',
     enterpriseLeadWorkspaceSearchWorkspaceFallback: 'Current workspace basic information.',
     enterpriseLeadWorkspaceSearchSourceFallback: 'Current workspace content source.',
@@ -6574,7 +6785,8 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadWorkspaceDeleteConversationTitle: 'Delete "{title}"?',
     enterpriseLeadWorkspaceDeleteConversationWarning:
       'This permanently deletes this conversation and its messages. This cannot be undone.',
-    enterpriseLeadWorkspaceDeleteConversationFailed: 'Failed to delete the conversation. Try again later.',
+    enterpriseLeadWorkspaceDeleteConversationFailed:
+      'Failed to delete the conversation. Try again later.',
     enterpriseLeadWorkspaceSidebarToday: 'Today',
     enterpriseLeadWorkspaceSidebarDaysAgo: '{count}d',
     enterpriseLeadWorkspaceSidebarRecordCount: '{count} records',
@@ -6586,19 +6798,27 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadWorkspaceSettingsReady: 'Ready',
     enterpriseLeadWorkspaceSettingsNeedsSetup: 'Needs setup',
     enterpriseLeadWorkspaceSettingsReadinessModel: 'Model access',
-    enterpriseLeadWorkspaceSettingsReadinessModelReadyDesc: 'The default model is connected for workspace chat and Agents.',
-    enterpriseLeadWorkspaceSettingsReadinessModelSetupDesc: 'Enable a model provider and fill in its API key and model IDs.',
+    enterpriseLeadWorkspaceSettingsReadinessModelReadyDesc:
+      'The default model is connected for workspace chat and Agents.',
+    enterpriseLeadWorkspaceSettingsReadinessModelSetupDesc:
+      'Enable a model provider and fill in its API key and model IDs.',
     enterpriseLeadWorkspaceSettingsReadinessResearch: 'Research access',
-    enterpriseLeadWorkspaceSettingsReadinessResearchReadyDesc: 'At least one external research source has an API key configured.',
-    enterpriseLeadWorkspaceSettingsReadinessResearchSetupDesc: 'Enable Tavily or Firecrawl after filling in an API key.',
+    enterpriseLeadWorkspaceSettingsReadinessResearchReadyDesc:
+      'At least one external research source has an API key configured.',
+    enterpriseLeadWorkspaceSettingsReadinessResearchSetupDesc:
+      'Enable Tavily or Firecrawl after filling in an API key.',
     enterpriseLeadWorkspaceSettingsReadinessContent: 'Content platform',
-    enterpriseLeadWorkspaceSettingsReadinessContentReadyDesc: 'At least one content platform is enabled and fully configured.',
-    enterpriseLeadWorkspaceSettingsReadinessContentSetupDesc: 'Enable a platform and fill required token, endpoint, or AppID fields.',
+    enterpriseLeadWorkspaceSettingsReadinessContentReadyDesc:
+      'At least one content platform is enabled and fully configured.',
+    enterpriseLeadWorkspaceSettingsReadinessContentSetupDesc:
+      'Enable a platform and fill required token, endpoint, or AppID fields.',
     enterpriseLeadAiChatTitle: 'AI chat',
     enterpriseLeadAiChatUntitledSession: 'New chat',
     enterpriseLeadAiChatEmptyTitle: 'What do you need to finish today?',
-    enterpriseLeadAiChatSubtitle: 'Describe what you want to move forward. I will use this workspace, its Agents, and knowledge base.',
-    enterpriseLeadAiChatPlaceholder: 'Example: research 20 automation equipment factories and draft the first sales message',
+    enterpriseLeadAiChatSubtitle:
+      'Describe what you want to move forward. I will use this workspace, its Agents, and knowledge base.',
+    enterpriseLeadAiChatPlaceholder:
+      'Example: research 20 automation equipment factories and draft the first sales message',
     enterpriseLeadAiChatSend: 'Send',
     enterpriseLeadAiChatSending: 'Sending...',
     enterpriseLeadAiChatThinking: 'Working',
@@ -6620,7 +6840,8 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadAiChatCapabilityKnowledge: 'Use knowledge base',
     enterpriseLeadAiChatUserRole: 'Me',
     enterpriseLeadAiChatAssistantRole: 'Assistant',
-    enterpriseLeadAiChatEmpty: 'No conversation yet. Choose a target Agent and send the first message.',
+    enterpriseLeadAiChatEmpty:
+      'No conversation yet. Choose a target Agent and send the first message.',
     enterpriseLeadAiChatResearchSkipped: 'Research skipped',
     enterpriseLeadAiChatResearchCompleted: 'Research completed',
     enterpriseLeadAiChatResearchFailed: 'Research failed',
@@ -6636,13 +6857,16 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadAiChatAdjustReasonTone: 'Wrong tone',
     enterpriseLeadAiChatAdjustReasonWrongAgent: 'Wrong Agent',
     enterpriseLeadAiChatAdjustInstructionLabel: 'Adjustment',
-    enterpriseLeadAiChatAdjustInstructionPlaceholder: 'Example: include customer industries, evidence sources, and next steps.',
+    enterpriseLeadAiChatAdjustInstructionPlaceholder:
+      'Example: include customer industries, evidence sources, and next steps.',
     enterpriseLeadAiChatAdjustApplyTo: 'Apply to',
     enterpriseLeadAiChatAdjustRetryOnly: 'Retry this answer only',
     enterpriseLeadAiChatAdjustRetry: 'Retry answer',
-    enterpriseLeadAiChatAdjustRetryDraft: 'Ask {agent} to retry the previous answer with this adjustment:\n\n{instruction}',
+    enterpriseLeadAiChatAdjustRetryDraft:
+      'Ask {agent} to retry the previous answer with this adjustment:\n\n{instruction}',
     enterpriseLeadKnowledgeReadOnly: 'Read-only knowledge',
-    enterpriseLeadKnowledgeLoadFailed: 'Recent run material failed to load. Showing the workspace profile for now.',
+    enterpriseLeadKnowledgeLoadFailed:
+      'Recent run material failed to load. Showing the workspace profile for now.',
     enterpriseLeadKnowledgeCompanyTitle: 'Enterprise profile',
     enterpriseLeadKnowledgeProductsTitle: 'Products and capabilities',
     enterpriseLeadKnowledgeCustomersTitle: 'Customers and scenarios',
@@ -6671,9 +6895,11 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadKnowledgeKindSource: 'Source',
     enterpriseLeadKnowledgeKindDeliverable: 'Deliverable',
     enterpriseLeadKnowledgeKindArchive: 'Archive',
-    enterpriseLeadKnowledgeMaintenanceSubtitle: 'Maintain the company material and rules used by workspace AI chat, Agents, and task outputs.',
+    enterpriseLeadKnowledgeMaintenanceSubtitle:
+      'Maintain the company material and rules used by workspace AI chat, Agents, and task outputs.',
     enterpriseLeadKnowledgeSyncSources: 'Sync sources',
-    enterpriseLeadKnowledgeSourcesSynced: 'Sources synced. Confirmed workspace material will be prioritized.',
+    enterpriseLeadKnowledgeSourcesSynced:
+      'Sources synced. Confirmed workspace material will be prioritized.',
     enterpriseLeadKnowledgeMaintainCompany: 'Maintain company material',
     enterpriseLeadKnowledgeAddContent: 'Add content',
     enterpriseLeadKnowledgeEditableMetric: 'Maintainable material',
@@ -6689,7 +6915,8 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadKnowledgeItemUnit: 'items',
     enterpriseLeadKnowledgeStatusEditable: 'Maintainable',
     enterpriseLeadKnowledgeStatusReadonly: 'Read-only',
-    enterpriseLeadKnowledgeNoMatches: 'No matching knowledge. Try another keyword or add new content.',
+    enterpriseLeadKnowledgeNoMatches:
+      'No matching knowledge. Try another keyword or add new content.',
     enterpriseLeadKnowledgeDetailTitle: 'Details',
     enterpriseLeadKnowledgeDetailScope: 'Scope',
     enterpriseLeadKnowledgeDetailSource: 'Source',
@@ -6697,17 +6924,22 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadKnowledgeSourceWorkspaceProfile: 'Workspace material',
     enterpriseLeadKnowledgeSourceGenerated: 'Source / task output',
     enterpriseLeadKnowledgeUsageEditable: 'AI chat and workspace Agents can read this material.',
-    enterpriseLeadKnowledgeUsageReadonly: 'This comes from source material or task output and is read-only in this pass.',
+    enterpriseLeadKnowledgeUsageReadonly:
+      'This comes from source material or task output and is read-only in this pass.',
     enterpriseLeadKnowledgeSuggestedAction: 'Suggested action',
-    enterpriseLeadKnowledgeSuggestedEditable: 'Edit, archive, or confirm it. Saving updates the current workspace material.',
-    enterpriseLeadKnowledgeSuggestedReadonly: 'To maintain it long term, copy the key facts into company material or manual knowledge.',
+    enterpriseLeadKnowledgeSuggestedEditable:
+      'Edit, archive, or confirm it. Saving updates the current workspace material.',
+    enterpriseLeadKnowledgeSuggestedReadonly:
+      'To maintain it long term, copy the key facts into company material or manual knowledge.',
     enterpriseLeadKnowledgeArchiveAction: 'Archive',
     enterpriseLeadKnowledgeConfirmAction: 'Confirm',
-    enterpriseLeadKnowledgeNoSelection: 'Select one knowledge item to see details and maintenance actions.',
+    enterpriseLeadKnowledgeNoSelection:
+      'Select one knowledge item to see details and maintenance actions.',
     enterpriseLeadKnowledgeCompanyModalTitle: 'Maintain company material',
     enterpriseLeadKnowledgeEditModalTitle: 'Edit knowledge content',
     enterpriseLeadKnowledgeAddModalTitle: 'Add knowledge content',
-    enterpriseLeadKnowledgeModalSubtitle: 'Saving only affects this workspace and will not change other spaces.',
+    enterpriseLeadKnowledgeModalSubtitle:
+      'Saving only affects this workspace and will not change other spaces.',
     enterpriseLeadKnowledgeCompanySummaryField: 'Company intro',
     enterpriseLeadKnowledgeProductListField: 'Product list',
     enterpriseLeadKnowledgeProductCapabilitiesField: 'Products and capabilities',
@@ -6720,8 +6952,10 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadKnowledgeMissingInfoField: 'Missing info',
     enterpriseLeadKnowledgeKindField: 'Knowledge type',
     enterpriseLeadKnowledgeContentField: 'Content',
-    enterpriseLeadKnowledgeContentPlaceholder: 'Write the facts, limits, and applicable scenarios for this knowledge.',
-    enterpriseLeadKnowledgeModalHint: 'Enter multiple items on separate lines. Saving writes back to this workspace material.',
+    enterpriseLeadKnowledgeContentPlaceholder:
+      'Write the facts, limits, and applicable scenarios for this knowledge.',
+    enterpriseLeadKnowledgeModalHint:
+      'Enter multiple items on separate lines. Saving writes back to this workspace material.',
     enterpriseLeadKnowledgeSaveAction: 'Save to knowledge base',
     enterpriseLeadKnowledgeSaveFailed: 'Save failed. Try again later.',
     enterpriseLeadKnowledgeEmptyContentError: 'Enter knowledge content first.',
@@ -6756,9 +6990,11 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadCreationUpdatedAt: 'Updated: ',
     enterpriseLeadCreationUntitledGoal: 'Untitled goal',
     enterpriseLeadCreationRecordsLoadFailed: 'Failed to load creation records. Try again later.',
-    enterpriseLeadCreationRecordDetailLoadFailed: 'Failed to load conversation details. Try again later.',
+    enterpriseLeadCreationRecordDetailLoadFailed:
+      'Failed to load conversation details. Try again later.',
     enterpriseLeadCreationRecordsEmpty: 'No creation records yet.',
-    enterpriseLeadCreationRecordSelectEmpty: 'Select a record on the left to view the conversation.',
+    enterpriseLeadCreationRecordSelectEmpty:
+      'Select a record on the left to view the conversation.',
     enterpriseLeadCreationResultSummary: 'Summary',
     enterpriseLeadCreationDeliverablePackage: 'Deliverable package',
     enterpriseLeadCreationArchive: 'Archive',
@@ -6780,49 +7016,63 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadWorkbenchModeExecution: 'Task execution',
     enterpriseLeadWorkbenchModeAgents: 'Agent team',
     enterpriseLeadWorkbenchAgentManagementTitle: 'Agent team',
-    enterpriseLeadWorkbenchAgentManagementDesc: 'Manage the Agents that can act in this workspace. Names, responsibilities, prompts, models, and skills apply only here.',
+    enterpriseLeadWorkbenchAgentManagementDesc:
+      'Manage the Agents that can act in this workspace. Names, responsibilities, prompts, models, and skills apply only here.',
     enterpriseLeadWorkbenchAgentCount: '9 Agents',
     enterpriseLeadWorkbenchWorkspaceAgentCount: '{count} workspace Agents',
     enterpriseLeadWorkbenchSystemAgentsTitle: 'System Agent templates',
-    enterpriseLeadWorkbenchSystemAgentsDesc: 'Built-in read-only templates. Add one to this workspace before customizing it for local execution.',
+    enterpriseLeadWorkbenchSystemAgentsDesc:
+      'Built-in read-only templates. Add one to this workspace before customizing it for local execution.',
     enterpriseLeadWorkbenchWorkspaceAgentsTitle: 'This workspace Agents',
-    enterpriseLeadWorkbenchWorkspaceAgentsDesc: 'Agents executed and maintained only in this workspace. Created and template-based instances stay private here.',
+    enterpriseLeadWorkbenchWorkspaceAgentsDesc:
+      'Agents executed and maintained only in this workspace. Created and template-based instances stay private here.',
     enterpriseLeadWorkbenchAddSystemAgent: 'Add to this workspace',
     enterpriseLeadWorkbenchSystemAgentAlreadyAdded: 'Added',
     enterpriseLeadWorkbenchNewWorkspaceAgent: 'New workspace Agent',
     enterpriseLeadWorkbenchAddFromTemplate: 'Add from template',
     enterpriseLeadWorkbenchCapabilityAuditTitle: 'Workspace capability check',
-    enterpriseLeadWorkbenchCapabilityAuditDesc: 'These capabilities decide whether Agents can use models, skills, research, and content sources. Adjust them in workspace settings.',
-    enterpriseLeadWorkbenchTemplateLibrarySummary: '{count} system templates are still available. Added templates are edited as local workspace copies.',
+    enterpriseLeadWorkbenchCapabilityAuditDesc:
+      'These capabilities decide whether Agents can use models, skills, research, and content sources. Adjust them in workspace settings.',
+    enterpriseLeadWorkbenchTemplateLibrarySummary:
+      '{count} system templates are still available. Added templates are edited as local workspace copies.',
     enterpriseLeadWorkbenchExpandTemplateLibrary: 'Expand template library',
     enterpriseLeadWorkbenchCollapseTemplateLibrary: 'Collapse template library',
     enterpriseLeadWorkbenchAgentSourceSystemTemplate: 'Built-in template',
     enterpriseLeadWorkbenchAgentSourceWorkspaceCreated: 'Created here',
-    enterpriseLeadWorkbenchAgentScopeNotice: 'System Agents are built-in templates; created Agents belong only to this workspace.',
-    enterpriseLeadWorkbenchRuntimeEffectNotice: 'Applies to new chats and new runs. Existing tasks keep the Agent snapshot captured when they were created.',
-    enterpriseLeadWorkbenchSaveFailedDraftKept: 'Save failed. The current draft is still here; review it and try again.',
+    enterpriseLeadWorkbenchAgentScopeNotice:
+      'System Agents are built-in templates; created Agents belong only to this workspace.',
+    enterpriseLeadWorkbenchRuntimeEffectNotice:
+      'Applies to new chats and new runs. Existing tasks keep the Agent snapshot captured when they were created.',
+    enterpriseLeadWorkbenchSaveFailedDraftKept:
+      'Save failed. The current draft is still here; review it and try again.',
     enterpriseLeadWorkbenchAgentValidationFailed: 'Fix the highlighted settings before saving.',
     enterpriseLeadWorkbenchAgentNameRequired: 'Enter an Agent name.',
     enterpriseLeadWorkbenchAgentModelInvalid: 'Select an available model.',
     enterpriseLeadWorkbenchAgentSkillsInvalid: 'Remove unavailable skills before saving.',
     enterpriseLeadWorkbenchAgentOperationAddTemplateSaving: 'Adding template to this workspace',
     enterpriseLeadWorkbenchAgentOperationAddTemplateSaved: 'Template added to this workspace',
-    enterpriseLeadWorkbenchAgentOperationAddTemplateError: 'Template add failed; workspace Agents were not changed',
+    enterpriseLeadWorkbenchAgentOperationAddTemplateError:
+      'Template add failed; workspace Agents were not changed',
     enterpriseLeadWorkbenchAgentOperationEnableSaving: 'Enabling Agent',
     enterpriseLeadWorkbenchAgentOperationEnableSaved: 'Agent enabled',
-    enterpriseLeadWorkbenchAgentOperationEnableError: 'Enable failed; the Agent kept its previous state',
+    enterpriseLeadWorkbenchAgentOperationEnableError:
+      'Enable failed; the Agent kept its previous state',
     enterpriseLeadWorkbenchAgentOperationDisableSaving: 'Disabling Agent',
     enterpriseLeadWorkbenchAgentOperationDisableSaved: 'Agent disabled',
-    enterpriseLeadWorkbenchAgentOperationDisableError: 'Disable failed; the Agent kept its previous state',
+    enterpriseLeadWorkbenchAgentOperationDisableError:
+      'Disable failed; the Agent kept its previous state',
     enterpriseLeadWorkbenchAgentOperationReorderSaving: 'Updating Agent order',
     enterpriseLeadWorkbenchAgentOperationReorderSaved: 'Agent order updated',
-    enterpriseLeadWorkbenchAgentOperationReorderError: 'Order update failed; the order was not changed',
+    enterpriseLeadWorkbenchAgentOperationReorderError:
+      'Order update failed; the order was not changed',
     enterpriseLeadWorkbenchAgentOperationRemoveSaving: 'Removing Agent from this workspace',
     enterpriseLeadWorkbenchAgentOperationRemoveSaved: 'Agent removed from this workspace',
-    enterpriseLeadWorkbenchAgentOperationRemoveError: 'Remove failed; the Agent is still in this workspace',
+    enterpriseLeadWorkbenchAgentOperationRemoveError:
+      'Remove failed; the Agent is still in this workspace',
     enterpriseLeadWorkbenchAgentOperationSaveEditsSaving: 'Saving Agent changes',
     enterpriseLeadWorkbenchAgentOperationSaveEditsSaved: 'Agent changes saved',
-    enterpriseLeadWorkbenchAgentOperationSaveEditsError: 'Agent changes failed to save; the draft was kept',
+    enterpriseLeadWorkbenchAgentOperationSaveEditsError:
+      'Agent changes failed to save; the draft was kept',
     enterpriseLeadWorkbenchAgentOperationCreateSaving: 'Creating workspace Agent',
     enterpriseLeadWorkbenchAgentOperationCreateSaved: 'Workspace Agent created',
     enterpriseLeadWorkbenchAgentOperationCreateError: 'Create failed; the draft was kept',
@@ -6852,10 +7102,12 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadWorkbenchManageAgents: 'Manage Agents',
     enterpriseLeadWorkbenchAddAgent: 'Add Agent',
     enterpriseLeadWorkbenchAddExistingAgent: 'Add existing Agent',
-    enterpriseLeadWorkbenchAddExistingAgentSelectLabel: 'Select an existing Agent to add to this workspace',
+    enterpriseLeadWorkbenchAddExistingAgentSelectLabel:
+      'Select an existing Agent to add to this workspace',
     enterpriseLeadWorkbenchNoAvailableAgents: 'No Agents available to add',
     enterpriseLeadWorkbenchCreateAgentTitle: 'Create workspace Agent',
-    enterpriseLeadWorkbenchCreateAgentDesc: 'Create an executable Agent inside this workspace. Later edits affect only this workspace.',
+    enterpriseLeadWorkbenchCreateAgentDesc:
+      'Create an executable Agent inside this workspace. Later edits affect only this workspace.',
     enterpriseLeadWorkbenchCreateAgent: 'Create Agent',
     enterpriseLeadWorkbenchCreateAndBindAgent: 'Create Agent',
     enterpriseLeadWorkbenchCreateAgentName: 'Agent name',
@@ -6868,8 +7120,10 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadWorkbenchMoveAgentUp: 'Move Agent up',
     enterpriseLeadWorkbenchMoveAgentDown: 'Move Agent down',
     enterpriseLeadWorkbenchNoWorkspaceAgentsTitle: 'No workspace Agents yet',
-    enterpriseLeadWorkbenchNoWorkspaceAgentsDesc: 'Create an Agent inside this workspace, or restore the default execution team as workspace Agents.',
-    enterpriseLeadWorkbenchLegacyRolesDesc: 'This workspace presents legacy fixed roles as editable workspace Agents.',
+    enterpriseLeadWorkbenchNoWorkspaceAgentsDesc:
+      'Create an Agent inside this workspace, or restore the default execution team as workspace Agents.',
+    enterpriseLeadWorkbenchLegacyRolesDesc:
+      'This workspace presents legacy fixed roles as editable workspace Agents.',
     enterpriseLeadWorkbenchLegacyRole: 'Workspace Agent',
     enterpriseLeadWorkbenchMissingAgent: 'Not initialized',
     enterpriseLeadWorkbenchNoAgentDescription: 'No Agent description yet.',
@@ -6878,9 +7132,11 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadWorkbenchDisableAgent: 'Disable',
     enterpriseLeadWorkbenchRemoveAgent: 'Remove from workspace',
     enterpriseLeadWorkbenchConfirmRemoveAgent: 'Confirm remove',
-    enterpriseLeadWorkbenchRemoveAgentConfirmDesc: 'Only removes it from this workspace. Historical task snapshots are not affected.',
+    enterpriseLeadWorkbenchRemoveAgentConfirmDesc:
+      'Only removes it from this workspace. Historical task snapshots are not affected.',
     enterpriseLeadWorkbenchOverrideTitle: 'Edit workspace Agent',
-    enterpriseLeadWorkbenchOverrideDesc: 'Changes are saved only in this workspace and will be used by its AI chat and next task run.',
+    enterpriseLeadWorkbenchOverrideDesc:
+      'Changes are saved only in this workspace and will be used by its AI chat and next task run.',
     enterpriseLeadWorkbenchOverrideName: 'Agent name',
     enterpriseLeadWorkbenchOverrideDescription: 'Agent description',
     enterpriseLeadWorkbenchOverrideIdentity: 'Agent identity',
@@ -6898,7 +7154,8 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadWorkbenchEditorExecution: 'Execution settings',
     enterpriseLeadWorkbenchEditorCapabilities: 'Capabilities',
     enterpriseLeadWorkbenchEditorAdvanced: 'Advanced settings',
-    enterpriseLeadWorkbenchEditorAdvancedDesc: 'Identity and system prompt are for fine-tuning Agent behavior when needed.',
+    enterpriseLeadWorkbenchEditorAdvancedDesc:
+      'Identity and system prompt are for fine-tuning Agent behavior when needed.',
     enterpriseLeadWorkbenchExpandAdvancedSettings: 'Expand advanced settings',
     enterpriseLeadWorkbenchCollapseAdvancedSettings: 'Collapse advanced settings',
     enterpriseLeadWorkbenchAgentChat: 'Chat',
@@ -6913,59 +7170,78 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadWorkbenchInlineEdit: 'Inline edit',
     enterpriseLeadWorkbenchEnabled: 'Enabled',
     enterpriseLeadWorkbenchModelTitle: 'Model config',
-    enterpriseLeadWorkbenchModelDesc: 'Configure the model provider information used by this workspace Agent workflow.',
+    enterpriseLeadWorkbenchModelDesc:
+      'Configure the model provider information used by this workspace Agent workflow.',
     enterpriseLeadWorkbenchUseDefaultModel: 'Use the default model from settings',
-    enterpriseLeadWorkbenchSettingsQuickDesc: 'Finish these 3 steps to start using the workspace. Advanced model, skill, and platform details stay tucked away until needed.',
+    enterpriseLeadWorkbenchSettingsQuickDesc:
+      'Finish these 3 steps to start using the workspace. Advanced model, skill, and platform details stay tucked away until needed.',
     enterpriseLeadWorkbenchQuickSetupTitle: 'Quick setup',
-    enterpriseLeadWorkbenchQuickSetupDesc: 'Complete these in order to run workspace tasks. Recommended defaults are used first, and you can tune details later.',
+    enterpriseLeadWorkbenchQuickSetupDesc:
+      'Complete these in order to run workspace tasks. Recommended defaults are used first, and you can tune details later.',
     enterpriseLeadWorkbenchQuickSetupProgress: 'complete',
     enterpriseLeadWorkbenchQuickModelTitle: 'Choose default model',
     enterpriseLeadWorkbenchQuickModelDesc: 'Workspace chat and Agents use this model first.',
     enterpriseLeadWorkbenchQuickSkillPresetTitle: 'Choose a capability pack',
-    enterpriseLeadWorkbenchQuickSkillPresetDesc: 'Skip picking every skill one by one. Choose a scenario pack and recommended skills are selected for you.',
+    enterpriseLeadWorkbenchQuickSkillPresetDesc:
+      'Skip picking every skill one by one. Choose a scenario pack and recommended skills are selected for you.',
     enterpriseLeadWorkbenchQuickResearchOutputTitle: 'Set research and output',
-    enterpriseLeadWorkbenchQuickResearchOutputDesc: 'Choose a research mode first. Without an API key, the workspace can still use pasted links and local material.',
+    enterpriseLeadWorkbenchQuickResearchOutputDesc:
+      'Choose a research mode first. Without an API key, the workspace can still use pasted links and local material.',
     enterpriseLeadWorkbenchQuickSkillsSelected: 'skills selected',
     enterpriseLeadWorkbenchQuickSkillsPending: 'Pending save',
     enterpriseLeadWorkbenchQuickResearchOptional: 'Can add later',
     enterpriseLeadWorkbenchQuickSaveDockTitle: 'Finish quick setup to start tasks',
-    enterpriseLeadWorkbenchQuickSaveDockDesc: 'Save the capability pack now; research keys can be added later.',
+    enterpriseLeadWorkbenchQuickSaveDockDesc:
+      'Save the capability pack now; research keys can be added later.',
     enterpriseLeadWorkbenchSkillPresetAcquisitionContent: 'Lead content pack',
-    enterpriseLeadWorkbenchSkillPresetAcquisitionContentDesc: 'Research, topics, sales copy, and risk review.',
+    enterpriseLeadWorkbenchSkillPresetAcquisitionContentDesc:
+      'Research, topics, sales copy, and risk review.',
     enterpriseLeadWorkbenchSkillPresetResearchAnalysis: 'Research analysis pack',
-    enterpriseLeadWorkbenchSkillPresetResearchAnalysisDesc: 'Web search, material organization, and spreadsheet analysis.',
+    enterpriseLeadWorkbenchSkillPresetResearchAnalysisDesc:
+      'Web search, material organization, and spreadsheet analysis.',
     enterpriseLeadWorkbenchSkillPresetLightweightChat: 'Light chat pack',
     enterpriseLeadWorkbenchSkillPresetLightweightChatDesc: 'Only common Q&A and material reading.',
     enterpriseLeadWorkbenchAdvancedModelTitle: 'Advanced model settings',
     enterpriseLeadWorkbenchAdvancedModelDesc: 'API key, base URL, protocol, and custom providers.',
     enterpriseLeadWorkbenchAdvancedSkillsTitle: 'Skill details',
-    enterpriseLeadWorkbenchAdvancedSkillsDesc: 'See what each capability pack includes, or switch to manual selection.',
+    enterpriseLeadWorkbenchAdvancedSkillsDesc:
+      'See what each capability pack includes, or switch to manual selection.',
     enterpriseLeadWorkbenchResearchProvidersTitle: 'External research providers',
-    enterpriseLeadWorkbenchResearchProvidersDesc: 'Add provider API keys only when you need web search or crawling.',
+    enterpriseLeadWorkbenchResearchProvidersDesc:
+      'Add provider API keys only when you need web search or crawling.',
     enterpriseLeadWorkbenchOptional: 'Optional',
     enterpriseLeadWorkbenchResearchSourcesTitle: 'Research sources',
-    enterpriseLeadWorkbenchResearchSourcesDesc: 'Xiaohongshu, Douyin, Bilibili, official accounts, and custom links.',
+    enterpriseLeadWorkbenchResearchSourcesDesc:
+      'Xiaohongshu, Douyin, Bilibili, official accounts, and custom links.',
     enterpriseLeadWorkbenchContentDeliveryTitle: 'Content delivery and risk',
-    enterpriseLeadWorkbenchContentDeliveryDesc: 'Output targets, length handling, and pre-export risk checks.',
+    enterpriseLeadWorkbenchContentDeliveryDesc:
+      'Output targets, length handling, and pre-export risk checks.',
     enterpriseLeadWorkbenchResearchModeLocalOnly: 'No external service yet',
-    enterpriseLeadWorkbenchResearchModeLocalOnlyDesc: 'Fastest start; use local material and pasted links.',
+    enterpriseLeadWorkbenchResearchModeLocalOnlyDesc:
+      'Fastest start; use local material and pasted links.',
     enterpriseLeadWorkbenchResearchModeWebSearch: 'Web search',
-    enterpriseLeadWorkbenchResearchModeWebSearchDesc: 'Enable when you need industry material, customer sites, or news signals.',
+    enterpriseLeadWorkbenchResearchModeWebSearchDesc:
+      'Enable when you need industry material, customer sites, or news signals.',
     enterpriseLeadWorkbenchResearchModeWebCrawl: 'Web crawl',
-    enterpriseLeadWorkbenchResearchModeWebCrawlDesc: 'Enable when you need landing pages, articles, or competitor pages parsed.',
+    enterpriseLeadWorkbenchResearchModeWebCrawlDesc:
+      'Enable when you need landing pages, articles, or competitor pages parsed.',
     enterpriseLeadWorkbenchResearchProviderSelect: 'Research provider',
     enterpriseLeadWorkbenchResearchProviderNone: 'Do not configure provider yet',
-    enterpriseLeadWorkbenchResearchProviderApiKeyPlaceholder: 'API key (fill after choosing a provider)',
+    enterpriseLeadWorkbenchResearchProviderApiKeyPlaceholder:
+      'API key (fill after choosing a provider)',
     enterpriseLeadWorkbenchResearchMaterialSource: 'Research material source',
     enterpriseLeadWorkbenchResearchMaterialDomesticLinks: 'Domestic platforms + pasted links',
     enterpriseLeadWorkbenchProviderConfigTitle: 'Model provider config',
-    enterpriseLeadWorkbenchProviderConfigDesc: 'Configure the provider, key, endpoint, protocol, and model IDs for this workspace.',
+    enterpriseLeadWorkbenchProviderConfigDesc:
+      'Configure the provider, key, endpoint, protocol, and model IDs for this workspace.',
     enterpriseLeadWorkbenchWorkspaceScoped: 'Workspace only',
     enterpriseLeadWorkbenchCustomModelProvider: 'Custom model provider',
     enterpriseLeadWorkbenchCustomModelProviderAdd: 'Add model provider',
     enterpriseLeadWorkbenchDefaultModelSelect: 'Workspace default model',
-    enterpriseLeadWorkbenchDefaultModelSelectDesc: 'AI chat and workspace Agents without their own model use this model first.',
-    enterpriseLeadWorkbenchDefaultModelNoOptions: 'No usable model yet. Enable a provider and fill API key, base URL, and model IDs first.',
+    enterpriseLeadWorkbenchDefaultModelSelectDesc:
+      'AI chat and workspace Agents without their own model use this model first.',
+    enterpriseLeadWorkbenchDefaultModelNoOptions:
+      'No usable model yet. Enable a provider and fill API key, base URL, and model IDs first.',
     enterpriseLeadWorkbenchDefaultModelUnavailable: 'Default model unavailable',
     enterpriseLeadAgentDefaultInputPrefix: 'Input: ',
     enterpriseLeadAgentDefaultOutputPrefix: 'Output: ',
@@ -7009,8 +7285,10 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadWorkbenchAgentProjectArchiveCapabilitySummary: 'Archive / knowledge base',
     enterpriseLeadWorkbenchSkillsTitle: 'Skill management',
     enterpriseLeadWorkbenchSkillsDesc: 'Configure which skills this workspace needs.',
-    enterpriseLeadWorkbenchSkillsRealDesc: 'Choose the real installed skills available to this workspace.',
-    enterpriseLeadWorkbenchSkillsEmpty: 'No skills are available yet. Install or sync skills first.',
+    enterpriseLeadWorkbenchSkillsRealDesc:
+      'Choose the real installed skills available to this workspace.',
+    enterpriseLeadWorkbenchSkillsEmpty:
+      'No skills are available yet. Install or sync skills first.',
     enterpriseLeadWorkbenchManageSkills: 'Manage skills',
     enterpriseLeadWorkbenchSkillDocumentParsing: 'Document parsing',
     enterpriseLeadWorkbenchSkillDocumentParsingDesc: 'Docs, images, sheets',
@@ -7022,7 +7300,8 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadWorkbenchSkillContentRewriteDesc: 'Platform copy, sales scripts',
     enterpriseLeadWorkbenchResearchTitle: 'External research management',
     enterpriseLeadWorkbenchResearchDesc: 'Configure external sources this workspace can call.',
-    enterpriseLeadWorkbenchResearchRealDesc: 'Configure Tavily and Firecrawl independently for this workspace.',
+    enterpriseLeadWorkbenchResearchRealDesc:
+      'Configure Tavily and Firecrawl independently for this workspace.',
     enterpriseLeadWorkbenchResearchApiKeyPlaceholder: 'Enter the API Key for this workspace',
     enterpriseLeadWorkbenchResearchMissingApiKey: 'Missing API key',
     enterpriseLeadWorkbenchConfigureResearch: 'Configure research',
@@ -7036,19 +7315,26 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadWorkbenchResearchHiringSignalDesc: 'Expansion, capacity signals',
     enterpriseLeadWorkbenchPlatformsTitle: 'Content platform setup',
     enterpriseLeadWorkbenchPlatformsDesc: 'Configure social operation and sales touch platforms.',
-    enterpriseLeadWorkbenchPlatformsRealDesc: 'Configure domestic content-platform research sources for this workspace.',
+    enterpriseLeadWorkbenchPlatformsRealDesc:
+      'Configure domestic content-platform research sources for this workspace.',
     enterpriseLeadWorkbenchDomesticSourcesTitle: 'Domestic content sources',
-    enterpriseLeadWorkbenchDomesticSourcesDesc: 'Configure Xiaohongshu, official account, B2B pages, and public links used for workspace research.',
+    enterpriseLeadWorkbenchDomesticSourcesDesc:
+      'Configure Xiaohongshu, official account, B2B pages, and public links used for workspace research.',
     enterpriseLeadWorkbenchContentPlatformsTitle: 'Content platform connections',
-    enterpriseLeadWorkbenchContentPlatformsDesc: 'Configure the channels this workspace can generate, export, or hand off to. Once fields are set, chat and workbench tasks can output platform-specific drafts.',
+    enterpriseLeadWorkbenchContentPlatformsDesc:
+      'Configure the channels this workspace can generate, export, or hand off to. Once fields are set, chat and workbench tasks can output platform-specific drafts.',
     enterpriseLeadWorkbenchContentPlatformXiaohongshuDraft: 'Xiaohongshu draft',
-    enterpriseLeadWorkbenchContentPlatformXiaohongshuDraftDesc: 'Generate titles, body copy, tags, and cover notes for export or draft services.',
+    enterpriseLeadWorkbenchContentPlatformXiaohongshuDraftDesc:
+      'Generate titles, body copy, tags, and cover notes for export or draft services.',
     enterpriseLeadWorkbenchContentPlatformSalesMessage: 'Sales DM / WeCom',
-    enterpriseLeadWorkbenchContentPlatformSalesMessageDesc: 'Generate follow-up messages and send drafts to WeCom bots or CRM draft boxes.',
+    enterpriseLeadWorkbenchContentPlatformSalesMessageDesc:
+      'Generate follow-up messages and send drafts to WeCom bots or CRM draft boxes.',
     enterpriseLeadWorkbenchContentPlatformWechatArticle: 'Official account draft',
-    enterpriseLeadWorkbenchContentPlatformWechatArticleDesc: 'Generate long-form posts, summaries, cover titles, and layout notes for manual review.',
+    enterpriseLeadWorkbenchContentPlatformWechatArticleDesc:
+      'Generate long-form posts, summaries, cover titles, and layout notes for manual review.',
     enterpriseLeadWorkbenchContentPlatformCustomWebhook: 'Custom content Webhook',
-    enterpriseLeadWorkbenchContentPlatformCustomWebhookDesc: 'Send lead lists, copy drafts, and risk notes to an internal content system or automation flow.',
+    enterpriseLeadWorkbenchContentPlatformCustomWebhookDesc:
+      'Send lead lists, copy drafts, and risk notes to an internal content system or automation flow.',
     enterpriseLeadWorkbenchContentPlatformMissingToken: 'Missing token',
     enterpriseLeadWorkbenchContentPlatformMissingEndpoint: 'Missing endpoint',
     enterpriseLeadWorkbenchContentPlatformMissingSecret: 'Missing secret',
@@ -7068,7 +7354,8 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadWorkbenchContentPayloadMarkdown: 'Markdown body',
     enterpriseLeadWorkbenchContentPayloadFeishuTable: 'Feishu table format',
     enterpriseLeadWorkbenchContentOutputRulesTitle: 'Output rules',
-    enterpriseLeadWorkbenchContentOutputRulesDesc: 'These rules are added to generation prompts and post-generation checks so platform content can move to the next step.',
+    enterpriseLeadWorkbenchContentOutputRulesDesc:
+      'These rules are added to generation prompts and post-generation checks so platform content can move to the next step.',
     enterpriseLeadWorkbenchContentDefaultTarget: 'Default output target',
     enterpriseLeadWorkbenchContentLengthPolicy: 'Over-limit handling',
     enterpriseLeadWorkbenchContentLengthCompress: 'Compress to platform limit',

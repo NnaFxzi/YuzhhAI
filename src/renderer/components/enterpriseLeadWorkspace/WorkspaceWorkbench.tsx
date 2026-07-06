@@ -21,10 +21,7 @@ import { enterpriseLeadWorkspaceService } from '../../services/enterpriseLeadWor
 import { i18nService } from '../../services/i18n';
 import type { RootState } from '../../store';
 import type { Model } from '../../store/slices/modelSlice';
-import {
-  resolveOpenClawModelRef,
-  toOpenClawModelRef,
-} from '../../utils/openclawModelRef';
+import { resolveOpenClawModelRef, toOpenClawModelRef } from '../../utils/openclawModelRef';
 import AgentSkillSelector from '../agent/AgentSkillSelector';
 import { AgentSkillFilter } from '../agent/agentSkillSelectorUi';
 import ModelSelector from '../ModelSelector';
@@ -60,7 +57,7 @@ export const WorkspaceAgentOperation = {
   Create: 'create',
 } as const;
 export type WorkspaceAgentOperation =
-  typeof WorkspaceAgentOperation[keyof typeof WorkspaceAgentOperation];
+  (typeof WorkspaceAgentOperation)[keyof typeof WorkspaceAgentOperation];
 
 type WorkspaceAgentOperationFeedbackStatus = Exclude<WorkspaceWorkbenchSaveState, 'idle'>;
 
@@ -140,8 +137,8 @@ const resolveWorkspaceAgentSource = (
   agentId: string,
 ): EnterpriseLeadWorkspaceAgentSource => {
   if (
-    binding.source === EnterpriseLeadWorkspaceAgentSource.SystemTemplate
-    || binding.source === EnterpriseLeadWorkspaceAgentSource.WorkspaceCreated
+    binding.source === EnterpriseLeadWorkspaceAgentSource.SystemTemplate ||
+    binding.source === EnterpriseLeadWorkspaceAgentSource.WorkspaceCreated
   ) {
     return binding.source;
   }
@@ -289,7 +286,8 @@ export const prepareWorkspaceAgentBindings = (
         ...binding,
         agentId,
         source: resolveWorkspaceAgentSource(binding, agentId),
-        ...(resolveWorkspaceAgentSource(binding, agentId) === EnterpriseLeadWorkspaceAgentSource.SystemTemplate
+        ...(resolveWorkspaceAgentSource(binding, agentId) ===
+        EnterpriseLeadWorkspaceAgentSource.SystemTemplate
           ? { templateId: binding.templateId?.trim() || agentId }
           : { templateId: undefined }),
         order: Number.isFinite(binding.order) ? binding.order : sourceIndex,
@@ -342,9 +340,11 @@ export const addSystemAgentBindingToWorkspace = (
     return preparedWorkspaceAgents;
   }
 
-  const alreadyAdded = preparedWorkspaceAgents.some(binding =>
-    binding.source === EnterpriseLeadWorkspaceAgentSource.SystemTemplate
-    && (binding.templateId ?? binding.agentId) === templateId);
+  const alreadyAdded = preparedWorkspaceAgents.some(
+    binding =>
+      binding.source === EnterpriseLeadWorkspaceAgentSource.SystemTemplate &&
+      (binding.templateId ?? binding.agentId) === templateId,
+  );
   if (alreadyAdded) {
     return preparedWorkspaceAgents;
   }
@@ -367,9 +367,7 @@ const cleanOptionalText = (value: string): string | undefined => {
 };
 
 const cleanSkillIds = (value: string[]): string[] | undefined => {
-  const skillIds = value
-    .map(skillId => skillId.trim())
-    .filter(Boolean);
+  const skillIds = value.map(skillId => skillId.trim()).filter(Boolean);
   return skillIds.length > 0 ? skillIds : undefined;
 };
 
@@ -529,10 +527,7 @@ export const WorkspaceAgentEditorDialog: React.FC<WorkspaceAgentEditorDialogProp
   const [isAdvancedSettingsOpen, setIsAdvancedSettingsOpen] = useState(false);
   const availableModels = useSelector((state: RootState) => state.model.availableModels);
   const skills = useSelector((state: RootState) => state.skill.skills);
-  const hasEnabledSkills = useMemo(
-    () => skills.some(skill => skill.enabled),
-    [skills],
-  );
+  const hasEnabledSkills = useMemo(() => skills.some(skill => skill.enabled), [skills]);
   const selectedModel = useMemo(
     () => resolveOpenClawModelRef(draft.model, availableModels),
     [availableModels, draft.model],
@@ -551,9 +546,7 @@ export const WorkspaceAgentEditorDialog: React.FC<WorkspaceAgentEditorDialogProp
     className,
   }: WorkspaceAgentEditorField): React.ReactElement => (
     <label key={field} className={className ?? ''}>
-      <span className="text-xs font-medium text-secondary">
-        {i18nService.t(labelKey)}
-      </span>
+      <span className="text-xs font-medium text-secondary">{i18nService.t(labelKey)}</span>
       {multiline ? (
         <textarea
           value={draft[field]}
@@ -594,9 +587,7 @@ export const WorkspaceAgentEditorDialog: React.FC<WorkspaceAgentEditorDialogProp
             >
               {i18nService.t(titleKey)}
             </h3>
-            <p className="mt-1 text-sm leading-6 text-secondary">
-              {i18nService.t(descriptionKey)}
-            </p>
+            <p className="mt-1 text-sm leading-6 text-secondary">{i18nService.t(descriptionKey)}</p>
           </div>
           <button
             type="button"
@@ -677,10 +668,14 @@ export const WorkspaceAgentEditorDialog: React.FC<WorkspaceAgentEditorDialogProp
                                     <button
                                       type="button"
                                       onClick={onOpenSettings}
-                                      aria-label={i18nService.t('enterpriseLeadWorkbenchOpenSkillSettingsAria')}
+                                      aria-label={i18nService.t(
+                                        'enterpriseLeadWorkbenchOpenSkillSettingsAria',
+                                      )}
                                       className="h-8 rounded-lg border border-primary/30 bg-primary/10 px-2.5 text-xs font-medium text-primary transition-colors hover:bg-primary/15"
                                     >
-                                      {i18nService.t('enterpriseLeadWorkbenchOpenSettingsForSkills')}
+                                      {i18nService.t(
+                                        'enterpriseLeadWorkbenchOpenSettingsForSkills',
+                                      )}
                                     </button>
                                   ) : null}
                                   {draft.skillIds.length > 0 ? (
@@ -719,9 +714,11 @@ export const WorkspaceAgentEditorDialog: React.FC<WorkspaceAgentEditorDialogProp
                   aria-expanded={isAdvancedSettingsOpen}
                   className="h-8 rounded-lg border border-border bg-background px-2.5 text-xs font-medium text-foreground transition-colors hover:bg-surface-raised"
                 >
-                  {i18nService.t(isAdvancedSettingsOpen
-                    ? 'enterpriseLeadWorkbenchCollapseAdvancedSettings'
-                    : 'enterpriseLeadWorkbenchExpandAdvancedSettings')}
+                  {i18nService.t(
+                    isAdvancedSettingsOpen
+                      ? 'enterpriseLeadWorkbenchCollapseAdvancedSettings'
+                      : 'enterpriseLeadWorkbenchExpandAdvancedSettings',
+                  )}
                 </button>
               </div>
               {isAdvancedSettingsOpen ? (
@@ -734,19 +731,20 @@ export const WorkspaceAgentEditorDialog: React.FC<WorkspaceAgentEditorDialogProp
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-5 py-4">
-          <p className={`text-xs leading-5 ${
-            saveState === 'error' || validationErrors.length > 0
-              ? 'text-red-600 dark:text-red-300'
-              : 'text-secondary'
-          }`}
+          <p
+            className={`text-xs leading-5 ${
+              saveState === 'error' || validationErrors.length > 0
+                ? 'text-red-600 dark:text-red-300'
+                : 'text-secondary'
+            }`}
           >
             {validationErrors.length > 0
               ? i18nService.t('enterpriseLeadWorkbenchAgentValidationFailed')
               : feedbackLabelKey
-              ? i18nService.t(feedbackLabelKey)
-              : saveState === 'error'
-              ? i18nService.t('enterpriseLeadWorkbenchSaveFailedDraftKept')
-              : i18nService.t('enterpriseLeadWorkbenchRuntimeEffectNotice')}
+                ? i18nService.t(feedbackLabelKey)
+                : saveState === 'error'
+                  ? i18nService.t('enterpriseLeadWorkbenchSaveFailedDraftKept')
+                  : i18nService.t('enterpriseLeadWorkbenchRuntimeEffectNotice')}
           </p>
           <div className="flex justify-end gap-2">
             <button
@@ -762,9 +760,7 @@ export const WorkspaceAgentEditorDialog: React.FC<WorkspaceAgentEditorDialogProp
               disabled={saveState === 'saving' || saveDisabled}
               className="h-9 rounded-lg bg-primary px-3 text-xs font-medium text-white transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-white/80 dark:disabled:bg-slate-700"
             >
-              {saveState === 'saving'
-                ? i18nService.t('saving')
-                : i18nService.t(saveLabelKey)}
+              {saveState === 'saving' ? i18nService.t('saving') : i18nService.t(saveLabelKey)}
             </button>
           </div>
         </div>
@@ -814,9 +810,9 @@ export const WorkspaceAgentActionsMenu: React.FC<WorkspaceAgentActionsMenuProps>
         onClick={onToggle}
         className="flex h-8 w-full items-center rounded-md px-2.5 text-left text-xs font-medium text-foreground transition-colors hover:bg-surface-raised"
       >
-        {i18nService.t(enabled
-          ? 'enterpriseLeadWorkbenchDisableAgent'
-          : 'enterpriseLeadWorkbenchEnableAgent')}
+        {i18nService.t(
+          enabled ? 'enterpriseLeadWorkbenchDisableAgent' : 'enterpriseLeadWorkbenchEnableAgent',
+        )}
       </button>
       <button
         type="button"
@@ -1029,10 +1025,14 @@ export const WorkspaceWorkbench: React.FC<WorkspaceWorkbenchProps> = ({
   const skills = useSelector((state: RootState) => state.skill.skills);
   const [editingAgentId, setEditingAgentId] = useState<string | null>(null);
   const [overrideDraft, setOverrideDraft] = useState(getOverrideDraft(undefined));
-  const [overrideValidationErrors, setOverrideValidationErrors] = useState<WorkspaceAgentDraftValidationError[]>([]);
+  const [overrideValidationErrors, setOverrideValidationErrors] = useState<
+    WorkspaceAgentDraftValidationError[]
+  >([]);
   const [isCreatingAgent, setIsCreatingAgent] = useState(false);
   const [createAgentDraft, setCreateAgentDraft] = useState(emptyWorkspaceAgentDraft);
-  const [createAgentValidationErrors, setCreateAgentValidationErrors] = useState<WorkspaceAgentDraftValidationError[]>([]);
+  const [createAgentValidationErrors, setCreateAgentValidationErrors] = useState<
+    WorkspaceAgentDraftValidationError[]
+  >([]);
   const [openAgentMenuId, setOpenAgentMenuId] = useState<string | null>(null);
   const [confirmingRemoveAgentId, setConfirmingRemoveAgentId] = useState<string | null>(null);
   const [agentSearchQuery, setAgentSearchQuery] = useState('');
@@ -1079,19 +1079,26 @@ export const WorkspaceWorkbench: React.FC<WorkspaceWorkbenchProps> = ({
     [legacyEnabledRoles, storedBindings],
   );
   const systemTemplateBindings = useMemo(
-    () => prepareWorkspaceAgentBindings(
-      buildDefaultWorkspaceAgentBindings(Object.values(EnterpriseLeadAgentRole)),
-    ),
+    () =>
+      prepareWorkspaceAgentBindings(
+        buildDefaultWorkspaceAgentBindings(Object.values(EnterpriseLeadAgentRole)),
+      ),
     [],
   );
-  const addedSystemTemplateIds = useMemo(() => new Set(
-    workspaceAgentBindings
-      .filter(binding => binding.source === EnterpriseLeadWorkspaceAgentSource.SystemTemplate)
-      .map(binding => binding.templateId ?? binding.agentId),
-  ), [workspaceAgentBindings]);
+  const addedSystemTemplateIds = useMemo(
+    () =>
+      new Set(
+        workspaceAgentBindings
+          .filter(binding => binding.source === EnterpriseLeadWorkspaceAgentSource.SystemTemplate)
+          .map(binding => binding.templateId ?? binding.agentId),
+      ),
+    [workspaceAgentBindings],
+  );
   const availableSystemTemplateCount = useMemo(
-    () => systemTemplateBindings.filter(binding =>
-      !addedSystemTemplateIds.has(binding.templateId ?? binding.agentId)).length,
+    () =>
+      systemTemplateBindings.filter(
+        binding => !addedSystemTemplateIds.has(binding.templateId ?? binding.agentId),
+      ).length,
     [addedSystemTemplateIds, systemTemplateBindings],
   );
   const effectiveWorkspaceAgents = useMemo(
@@ -1125,11 +1132,12 @@ export const WorkspaceWorkbench: React.FC<WorkspaceWorkbenchProps> = ({
   const contentReadiness = settingsReadiness.find(item => item.id === 'content')!;
   const editingBinding = workspaceAgentBindings.find(binding => binding.agentId === editingAgentId);
   const availableModelRefs = useMemo(
-    () => new Set(
-      availableModels
-        .filter(model => model.accessible !== false)
-        .map(model => toOpenClawModelRef(model)),
-    ),
+    () =>
+      new Set(
+        availableModels
+          .filter(model => model.accessible !== false)
+          .map(model => toOpenClawModelRef(model)),
+      ),
     [availableModels],
   );
   const enabledSkillIds = useMemo(
@@ -1244,15 +1252,11 @@ export const WorkspaceWorkbench: React.FC<WorkspaceWorkbenchProps> = ({
   const toggleWorkspaceAgent = (agentId: string): void => {
     const targetBinding = workspaceAgentBindings.find(binding => binding.agentId === agentId);
     void saveWorkspaceAgents(
-      workspaceAgentBindings.map(binding => (
-        binding.agentId === agentId
-          ? { ...binding, enabled: !binding.enabled }
-          : binding
-      )),
+      workspaceAgentBindings.map(binding =>
+        binding.agentId === agentId ? { ...binding, enabled: !binding.enabled } : binding,
+      ),
       undefined,
-      targetBinding?.enabled
-        ? WorkspaceAgentOperation.Disable
-        : WorkspaceAgentOperation.Enable,
+      targetBinding?.enabled ? WorkspaceAgentOperation.Disable : WorkspaceAgentOperation.Enable,
     );
   };
 
@@ -1286,14 +1290,14 @@ export const WorkspaceWorkbench: React.FC<WorkspaceWorkbenchProps> = ({
     setOverrideValidationErrors([]);
 
     void saveWorkspaceAgents(
-      workspaceAgentBindings.map(binding => (
+      workspaceAgentBindings.map(binding =>
         binding.agentId === editingAgentId
           ? {
-            ...binding,
-            overrides: buildWorkspaceAgentOverrides(overrideDraft),
-          }
-          : binding
-      )),
+              ...binding,
+              overrides: buildWorkspaceAgentOverrides(overrideDraft),
+            }
+          : binding,
+      ),
       () => {
         setEditingAgentId(null);
       },
@@ -1302,10 +1306,7 @@ export const WorkspaceWorkbench: React.FC<WorkspaceWorkbenchProps> = ({
   };
 
   const getSaveStatusLabel = (): string => {
-    const operationLabelKey = getWorkspaceAgentOperationFeedbackLabelKey(
-      agentOperation,
-      saveState,
-    );
+    const operationLabelKey = getWorkspaceAgentOperationFeedbackLabelKey(agentOperation, saveState);
     if (operationLabelKey) return i18nService.t(operationLabelKey);
     if (saveState === 'saving') return i18nService.t('saving');
     if (saveState === 'saved') return i18nService.t('enterpriseLeadWorkbenchSaved');
@@ -1384,20 +1385,23 @@ export const WorkspaceWorkbench: React.FC<WorkspaceWorkbenchProps> = ({
     const fallbackInitial = agent.name.trim().charAt(0).toUpperCase() || '#';
     const avatarLabel = agent.icon.length <= 2 ? agent.icon || fallbackInitial : fallbackInitial;
     const modelLabel = agent.model || i18nService.t('enterpriseLeadWorkbenchAgentDefaultModel');
-    const skillCountLabel = agent.skillIds.length > 0
-      ? i18nService.t('enterpriseLeadWorkbenchAgentSkillCount').replace(
-        '{count}',
-        String(agent.skillIds.length),
-      )
-      : i18nService.t('enterpriseLeadWorkbenchAgentInheritedSkills');
-    const source = workspaceAgentBindings.find(binding => binding.agentId === agent.id)?.source
-      ?? EnterpriseLeadWorkspaceAgentSource.WorkspaceCreated;
-    const sourceLabelKey = source === EnterpriseLeadWorkspaceAgentSource.SystemTemplate
-      ? 'enterpriseLeadWorkbenchAgentSourceSystemTemplate'
-      : 'enterpriseLeadWorkbenchAgentSourceWorkspaceCreated';
-    const sourceBadgeClassName = source === EnterpriseLeadWorkspaceAgentSource.SystemTemplate
-      ? 'bg-slate-500/10 text-slate-600 ring-1 ring-slate-500/15 dark:text-slate-300'
-      : 'bg-primary/10 text-primary ring-1 ring-primary/20';
+    const skillCountLabel =
+      agent.skillIds.length > 0
+        ? i18nService
+            .t('enterpriseLeadWorkbenchAgentSkillCount')
+            .replace('{count}', String(agent.skillIds.length))
+        : i18nService.t('enterpriseLeadWorkbenchAgentInheritedSkills');
+    const source =
+      workspaceAgentBindings.find(binding => binding.agentId === agent.id)?.source ??
+      EnterpriseLeadWorkspaceAgentSource.WorkspaceCreated;
+    const sourceLabelKey =
+      source === EnterpriseLeadWorkspaceAgentSource.SystemTemplate
+        ? 'enterpriseLeadWorkbenchAgentSourceSystemTemplate'
+        : 'enterpriseLeadWorkbenchAgentSourceWorkspaceCreated';
+    const sourceBadgeClassName =
+      source === EnterpriseLeadWorkspaceAgentSource.SystemTemplate
+        ? 'bg-slate-500/10 text-slate-600 ring-1 ring-slate-500/15 dark:text-slate-300'
+        : 'bg-primary/10 text-primary ring-1 ring-primary/20';
 
     return (
       <div
@@ -1411,16 +1415,14 @@ export const WorkspaceWorkbench: React.FC<WorkspaceWorkbenchProps> = ({
           </div>
           <div className="min-w-0">
             <div className="flex min-w-0 items-center gap-2">
-              <span className="truncate text-sm font-semibold text-foreground">
-                {agent.name}
-              </span>
-              <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${sourceBadgeClassName}`}>
+              <span className="truncate text-sm font-semibold text-foreground">{agent.name}</span>
+              <span
+                className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${sourceBadgeClassName}`}
+              >
                 {i18nService.t(sourceLabelKey)}
               </span>
             </div>
-            <p className="mt-1 truncate text-xs text-secondary">
-              {agent.id}
-            </p>
+            <p className="mt-1 truncate text-xs text-secondary">{agent.id}</p>
           </div>
         </div>
         <div role="cell" className="min-w-0">
@@ -1429,18 +1431,18 @@ export const WorkspaceWorkbench: React.FC<WorkspaceWorkbenchProps> = ({
           </p>
         </div>
         <div role="cell" className="min-w-0">
-          <p className="truncate text-sm font-medium text-foreground">
-            {modelLabel}
-          </p>
-          <p className="mt-1 truncate text-xs text-secondary">
-            {skillCountLabel}
-          </p>
+          <p className="truncate text-sm font-medium text-foreground">{modelLabel}</p>
+          <p className="mt-1 truncate text-xs text-secondary">{skillCountLabel}</p>
         </div>
         <div role="cell">
-          <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${agentStatusClassName}`}>
-            {i18nService.t(agent.enabled
-              ? 'enterpriseLeadWorkbenchAgentEnabled'
-              : 'enterpriseLeadWorkbenchAgentDisabled')}
+          <span
+            className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${agentStatusClassName}`}
+          >
+            {i18nService.t(
+              agent.enabled
+                ? 'enterpriseLeadWorkbenchAgentEnabled'
+                : 'enterpriseLeadWorkbenchAgentDisabled',
+            )}
           </span>
         </div>
         <div role="cell" className="flex items-center justify-end gap-2">
@@ -1521,10 +1523,9 @@ export const WorkspaceWorkbench: React.FC<WorkspaceWorkbenchProps> = ({
                   {i18nService.t('enterpriseLeadWorkbenchAgentManagementTitle')}
                 </h2>
                 <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary ring-1 ring-primary/20">
-                  {i18nService.t('enterpriseLeadWorkbenchWorkspaceAgentCount').replace(
-                    '{count}',
-                    String(workspaceAgentBindings.length),
-                  )}
+                  {i18nService
+                    .t('enterpriseLeadWorkbenchWorkspaceAgentCount')
+                    .replace('{count}', String(workspaceAgentBindings.length))}
                 </span>
                 {saveState === 'idle' ? null : (
                   <span
@@ -1598,7 +1599,8 @@ export const WorkspaceWorkbench: React.FC<WorkspaceWorkbenchProps> = ({
                 <select
                   value={agentStatusFilter}
                   onChange={event =>
-                    setAgentStatusFilter(event.target.value as WorkspaceAgentStatusFilter)}
+                    setAgentStatusFilter(event.target.value as WorkspaceAgentStatusFilter)
+                  }
                   className="h-9 rounded-lg border border-border bg-background px-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-primary/20"
                 >
                   <option value={WorkspaceAgentStatusFilter.All}>
@@ -1614,7 +1616,8 @@ export const WorkspaceWorkbench: React.FC<WorkspaceWorkbenchProps> = ({
                 <select
                   value={agentModelFilter}
                   onChange={event =>
-                    setAgentModelFilter(event.target.value as WorkspaceAgentModelFilter)}
+                    setAgentModelFilter(event.target.value as WorkspaceAgentModelFilter)
+                  }
                   className="h-9 rounded-lg border border-border bg-background px-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-primary/20"
                 >
                   <option value={WorkspaceAgentModelFilter.All}>
@@ -1660,7 +1663,10 @@ export const WorkspaceWorkbench: React.FC<WorkspaceWorkbenchProps> = ({
                     <div role="columnheader" className="text-xs font-semibold text-secondary">
                       {i18nService.t('enterpriseLeadWorkbenchAgentTableStatus')}
                     </div>
-                    <div role="columnheader" className="text-right text-xs font-semibold text-secondary">
+                    <div
+                      role="columnheader"
+                      className="text-right text-xs font-semibold text-secondary"
+                    >
                       {i18nService.t('enterpriseLeadWorkbenchAgentTableActions')}
                     </div>
                   </div>
@@ -1711,7 +1717,9 @@ export const WorkspaceWorkbench: React.FC<WorkspaceWorkbenchProps> = ({
                     <span className="min-w-0 truncate text-xs font-medium text-secondary">
                       {i18nService.t(item.labelKey)}
                     </span>
-                    <span className={`shrink-0 rounded-full px-2 py-1 text-xs font-medium ${statusBadgeClassNames[item.tone]}`}>
+                    <span
+                      className={`shrink-0 rounded-full px-2 py-1 text-xs font-medium ${statusBadgeClassNames[item.tone]}`}
+                    >
                       {item.value}
                     </span>
                   </div>
@@ -1729,10 +1737,9 @@ export const WorkspaceWorkbench: React.FC<WorkspaceWorkbenchProps> = ({
                     {i18nService.t('enterpriseLeadWorkbenchSystemAgentsDesc')}
                   </p>
                   <p className="mt-1 text-xs leading-5 text-secondary">
-                    {i18nService.t('enterpriseLeadWorkbenchTemplateLibrarySummary').replace(
-                      '{count}',
-                      String(availableSystemTemplateCount),
-                    )}
+                    {i18nService
+                      .t('enterpriseLeadWorkbenchTemplateLibrarySummary')
+                      .replace('{count}', String(availableSystemTemplateCount))}
                   </p>
                 </div>
                 <button
@@ -1741,9 +1748,11 @@ export const WorkspaceWorkbench: React.FC<WorkspaceWorkbenchProps> = ({
                   aria-expanded={isTemplateLibraryOpen}
                   className="h-8 rounded-lg border border-border px-2.5 text-xs font-medium text-foreground transition-colors hover:bg-surface-raised"
                 >
-                  {i18nService.t(isTemplateLibraryOpen
-                    ? 'enterpriseLeadWorkbenchCollapseTemplateLibrary'
-                    : 'enterpriseLeadWorkbenchExpandTemplateLibrary')}
+                  {i18nService.t(
+                    isTemplateLibraryOpen
+                      ? 'enterpriseLeadWorkbenchCollapseTemplateLibrary'
+                      : 'enterpriseLeadWorkbenchExpandTemplateLibrary',
+                  )}
                 </button>
               </div>
 
@@ -1754,9 +1763,8 @@ export const WorkspaceWorkbench: React.FC<WorkspaceWorkbenchProps> = ({
                     const templateId = binding.templateId ?? binding.agentId;
                     const isAdded = addedSystemTemplateIds.has(templateId);
                     const fallbackInitial = agent.name.trim().charAt(0).toUpperCase() || '#';
-                    const avatarLabel = agent.icon.length <= 2
-                      ? agent.icon || fallbackInitial
-                      : fallbackInitial;
+                    const avatarLabel =
+                      agent.icon.length <= 2 ? agent.icon || fallbackInitial : fallbackInitial;
 
                     return (
                       <div
@@ -1788,9 +1796,11 @@ export const WorkspaceWorkbench: React.FC<WorkspaceWorkbenchProps> = ({
                           className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-border px-2.5 text-xs font-medium text-foreground transition-colors hover:bg-background disabled:cursor-not-allowed disabled:opacity-55"
                         >
                           <PlusIcon className="h-3.5 w-3.5" />
-                          {i18nService.t(isAdded
-                            ? 'enterpriseLeadWorkbenchSystemAgentAlreadyAdded'
-                            : 'enterpriseLeadWorkbenchAddSystemAgent')}
+                          {i18nService.t(
+                            isAdded
+                              ? 'enterpriseLeadWorkbenchSystemAgentAlreadyAdded'
+                              : 'enterpriseLeadWorkbenchAddSystemAgent',
+                          )}
                         </button>
                       </div>
                     );
@@ -1806,9 +1816,11 @@ export const WorkspaceWorkbench: React.FC<WorkspaceWorkbenchProps> = ({
             draft={overrideDraft}
             saveState={saveState}
             validationErrors={overrideValidationErrors}
-            feedbackLabelKey={agentOperation === WorkspaceAgentOperation.SaveEdits
-              ? agentOperationFeedbackLabelKey
-              : ''}
+            feedbackLabelKey={
+              agentOperation === WorkspaceAgentOperation.SaveEdits
+                ? agentOperationFeedbackLabelKey
+                : ''
+            }
             onCancel={() => {
               setEditingAgentId(null);
               setOverrideValidationErrors([]);
@@ -1833,9 +1845,11 @@ export const WorkspaceWorkbench: React.FC<WorkspaceWorkbenchProps> = ({
             descriptionKey="enterpriseLeadWorkbenchCreateAgentDesc"
             saveLabelKey="enterpriseLeadWorkbenchCreateAndBindAgent"
             validationErrors={createAgentValidationErrors}
-            feedbackLabelKey={agentOperation === WorkspaceAgentOperation.Create
-              ? agentOperationFeedbackLabelKey
-              : ''}
+            feedbackLabelKey={
+              agentOperation === WorkspaceAgentOperation.Create
+                ? agentOperationFeedbackLabelKey
+                : ''
+            }
             onCancel={closeCreateAgentDialog}
             onOpenSettings={onOpenSettings ? openSettingsFromCreateDialog : undefined}
             onDraftChange={(field, value) => {
