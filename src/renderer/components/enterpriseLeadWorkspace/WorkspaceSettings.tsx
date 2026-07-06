@@ -33,9 +33,7 @@ import type {
   EnterpriseLeadWorkspaceContentPlatformConfig,
   EnterpriseLeadWorkspaceSettings,
 } from '../../../shared/enterpriseLeadWorkspace/types';
-import {
-  normalizeEnterpriseLeadWorkspaceSettings,
-} from '../../../shared/enterpriseLeadWorkspace/validation';
+import { normalizeEnterpriseLeadWorkspaceSettings } from '../../../shared/enterpriseLeadWorkspace/validation';
 import {
   defaultConfig,
   getProviderDisplayName,
@@ -108,7 +106,8 @@ const sourceLabelKeys: Record<DomesticResearchSourceIdValue, string> = {
   [DomesticResearchSourceId.Kuaishou]: 'agentDomesticResearchSourceKuaishou',
   [DomesticResearchSourceId.WeChatChannels]: 'agentDomesticResearchSourceWeChatChannels',
   [DomesticResearchSourceId.Bilibili]: 'agentDomesticResearchSourceBilibili',
-  [DomesticResearchSourceId.WeChatOfficialAccounts]: 'agentDomesticResearchSourceWeChatOfficialAccounts',
+  [DomesticResearchSourceId.WeChatOfficialAccounts]:
+    'agentDomesticResearchSourceWeChatOfficialAccounts',
 };
 
 const providerLabelKeys: Record<ExternalResearchProviderIdValue, string> = {
@@ -121,14 +120,14 @@ const ResearchQuickMode = {
   WebSearch: 'web_search',
   WebCrawl: 'web_crawl',
 } as const;
-type ResearchQuickMode = typeof ResearchQuickMode[keyof typeof ResearchQuickMode];
+type ResearchQuickMode = (typeof ResearchQuickMode)[keyof typeof ResearchQuickMode];
 
 const SkillPresetId = {
   AcquisitionContent: 'acquisition_content',
   ResearchAnalysis: 'research_analysis',
   LightweightChat: 'lightweight_chat',
 } as const;
-type SkillPresetId = typeof SkillPresetId[keyof typeof SkillPresetId];
+type SkillPresetId = (typeof SkillPresetId)[keyof typeof SkillPresetId];
 
 interface SkillPresetDefinition {
   id: SkillPresetId;
@@ -180,7 +179,9 @@ const contentPlatformDescKeys: Record<EnterpriseLeadContentOutputPlatformIdValue
     'enterpriseLeadWorkbenchContentPlatformCustomWebhookDesc',
 };
 
-const cloneProviders = (providers: Record<string, ProviderConfig> | undefined): Record<string, ProviderConfig> =>
+const cloneProviders = (
+  providers: Record<string, ProviderConfig> | undefined,
+): Record<string, ProviderConfig> =>
   JSON.parse(JSON.stringify(providers ?? {})) as Record<string, ProviderConfig>;
 
 const fallbackProviderConfig = (providerKey: string): ProviderConfig => ({
@@ -234,16 +235,17 @@ const decodeDefaultModelOption = (
   }
 };
 
-export const buildEnterpriseLeadWorkspaceSettingsFromCurrentConfig = (): EnterpriseLeadWorkspaceSettings => {
-  const config = configService.getConfig();
-  return normalizeEnterpriseLeadWorkspaceSettings({
-    model: {
-      defaultModel: config.model.defaultModel,
-      defaultModelProvider: config.model.defaultModelProvider ?? '',
-      providers: cloneProviders(config.providers),
-    },
-  });
-};
+export const buildEnterpriseLeadWorkspaceSettingsFromCurrentConfig =
+  (): EnterpriseLeadWorkspaceSettings => {
+    const config = configService.getConfig();
+    return normalizeEnterpriseLeadWorkspaceSettings({
+      model: {
+        defaultModel: config.model.defaultModel,
+        defaultModelProvider: config.model.defaultModelProvider ?? '',
+        providers: cloneProviders(config.providers),
+      },
+    });
+  };
 
 const ensureWorkspaceSettingsHaveProviders = (
   settings: EnterpriseLeadWorkspaceSettings,
@@ -261,24 +263,23 @@ const ensureWorkspaceSettingsHaveProviders = (
 const getFirstModelId = (provider?: ProviderConfig): string =>
   provider?.models?.find(model => model.id.trim())?.id.trim() ?? '';
 
-const getProviderKeysForDisplay = (
-  providers: Record<string, ProviderConfig>,
-): string[] => {
+const getProviderKeysForDisplay = (providers: Record<string, ProviderConfig>): string[] => {
   const language = i18nService.getLanguage();
   const visibleKeys = getVisibleProviders(language).filter(providerKey => providers[providerKey]);
   const configuredKeys = Object.keys(providers).sort();
   return Array.from(new Set([...visibleKeys, ...configuredKeys]));
 };
 
-const getInitialActiveProviderKey = (
-  settings: EnterpriseLeadWorkspaceSettings,
-): string => Object.keys(settings.model.providers).find(providerKey =>
-  settings.model.providers[providerKey].enabled)
-  ?? getProviderKeysForDisplay(settings.model.providers)[0]
-  ?? '';
+const getInitialActiveProviderKey = (settings: EnterpriseLeadWorkspaceSettings): string =>
+  Object.keys(settings.model.providers).find(
+    providerKey => settings.model.providers[providerKey].enabled,
+  ) ??
+  getProviderKeysForDisplay(settings.model.providers)[0] ??
+  '';
 
 const buildGeminiGenerateContentUrl = (baseUrl: string, modelId: string): string => {
-  const normalized = baseUrl.trim().replace(/\/+$/, '') || 'https://generativelanguage.googleapis.com/v1beta';
+  const normalized =
+    baseUrl.trim().replace(/\/+$/, '') || 'https://generativelanguage.googleapis.com/v1beta';
   return `${normalized}/models/${modelId}:generateContent`;
 };
 
@@ -300,9 +301,7 @@ const testWorkspaceModelProviderConnection = async (
   let response: Awaited<ReturnType<typeof window.electron.api.fetch>>;
 
   if (apiFormat === ApiFormat.Anthropic) {
-    const anthropicUrl = baseUrl.endsWith('/v1')
-      ? `${baseUrl}/messages`
-      : `${baseUrl}/v1/messages`;
+    const anthropicUrl = baseUrl.endsWith('/v1') ? `${baseUrl}/messages` : `${baseUrl}/v1/messages`;
     response = await window.electron.api.fetch({
       url: anthropicUrl,
       method: 'POST',
@@ -337,14 +336,14 @@ const testWorkspaceModelProviderConnection = async (
       : buildOpenAICompatibleChatCompletionsUrl(baseUrl, providerKey);
     const body: Record<string, unknown> = useResponsesApi
       ? {
-        model: modelId,
-        input: [{ role: 'user', content: [{ type: 'input_text', text: 'Hi' }] }],
-        max_output_tokens: CONNECTIVITY_TEST_TOKEN_BUDGET,
-      }
+          model: modelId,
+          input: [{ role: 'user', content: [{ type: 'input_text', text: 'Hi' }] }],
+          max_output_tokens: CONNECTIVITY_TEST_TOKEN_BUDGET,
+        }
       : {
-        model: modelId,
-        messages: [{ role: 'user', content: 'Hi' }],
-      };
+          model: modelId,
+          messages: [{ role: 'user', content: 'Hi' }],
+        };
     if (!useResponsesApi) {
       if (shouldUseMaxCompletionTokensForOpenAI(providerKey, modelId)) {
         body.max_completion_tokens = CONNECTIVITY_TEST_TOKEN_BUDGET;
@@ -371,9 +370,10 @@ const testWorkspaceModelProviderConnection = async (
   }
 
   const data = response.data ?? {};
-  const message = data.error?.message
-    || data.message
-    || `${i18nService.t('connectionFailed')}: ${response.status}`;
+  const message =
+    data.error?.message ||
+    data.message ||
+    `${i18nService.t('connectionFailed')}: ${response.status}`;
   return {
     success: false,
     message,
@@ -441,20 +441,31 @@ export const WorkspaceSettings: React.FC<WorkspaceSettingsProps> = ({
     () => ensureWorkspaceSettingsHaveProviders(workspace.settings),
     [workspace.settings],
   );
-  const [draftSettings, setDraftSettings] = useState<EnterpriseLeadWorkspaceSettings>(initialSettings);
-  const [savedSettings, setSavedSettings] = useState<EnterpriseLeadWorkspaceSettings>(initialSettings);
+  const [draftSettings, setDraftSettings] =
+    useState<EnterpriseLeadWorkspaceSettings>(initialSettings);
+  const [savedSettings, setSavedSettings] =
+    useState<EnterpriseLeadWorkspaceSettings>(initialSettings);
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
-  const [activeProviderKey, setActiveProviderKey] = useState(() => getInitialActiveProviderKey(initialSettings));
+  const [activeProviderKey, setActiveProviderKey] = useState(() =>
+    getInitialActiveProviderKey(initialSettings),
+  );
   const [shownSecrets, setShownSecrets] = useState<Record<string, boolean>>({});
   const [modelTestingProviderKey, setModelTestingProviderKey] = useState('');
-  const [modelTestResult, setModelTestResult] = useState<WorkspaceModelConnectionTestResult | null>(null);
+  const [modelTestResult, setModelTestResult] = useState<WorkspaceModelConnectionTestResult | null>(
+    null,
+  );
   const [researchTesting, setResearchTesting] = useState<Record<string, boolean>>({});
-  const [researchTestResults, setResearchTestResults] = useState<Record<string, ExternalResearchTestResult>>({});
-  const [selectedSkillPresetId, setSelectedSkillPresetId] = useState<SkillPresetId>(SkillPresetId.AcquisitionContent);
+  const [researchTestResults, setResearchTestResults] = useState<
+    Record<string, ExternalResearchTestResult>
+  >({});
+  const [selectedSkillPresetId, setSelectedSkillPresetId] = useState<SkillPresetId>(
+    SkillPresetId.AcquisitionContent,
+  );
 
   useEffect(() => {
     let cancelled = false;
-    void skillService.loadSkills()
+    void skillService
+      .loadSkills()
       .then(loadedSkills => {
         if (!cancelled) {
           dispatch(setSkills(loadedSkills));
@@ -474,14 +485,15 @@ export const WorkspaceSettings: React.FC<WorkspaceSettingsProps> = ({
     setModelTestResult(null);
     setResearchTesting({});
     setResearchTestResults({});
-    setActiveProviderKey(previous => (
+    setActiveProviderKey(previous =>
       previous && initialSettings.model.providers[previous]
         ? previous
-        : Object.keys(initialSettings.model.providers).find(providerKey =>
-          initialSettings.model.providers[providerKey].enabled)
-          ?? Object.keys(initialSettings.model.providers)[0]
-          ?? ''
-    ));
+        : (Object.keys(initialSettings.model.providers).find(
+            providerKey => initialSettings.model.providers[providerKey].enabled,
+          ) ??
+          Object.keys(initialSettings.model.providers)[0] ??
+          ''),
+    );
   }, [initialSettings, workspace.id]);
 
   const providerKeys = useMemo(
@@ -489,44 +501,47 @@ export const WorkspaceSettings: React.FC<WorkspaceSettingsProps> = ({
     [draftSettings.model.providers],
   );
   const defaultModelOptions = useMemo<WorkspaceDefaultModelOption[]>(
-    () => providerKeys.flatMap(providerKey => {
-      const provider = draftSettings.model.providers[providerKey];
-      if (!getModelProviderConnectionStatus(providerKey, provider).ready) {
-        return [];
-      }
-      return (provider.models ?? [])
-        .map(model => ({
-          modelId: model.id.trim(),
-          modelName: model.name.trim() || model.id.trim(),
-        }))
-        .filter(model => model.modelId.length > 0)
-        .map(model => ({
-          value: encodeDefaultModelOption(providerKey, model.modelId),
-          providerKey,
-          modelId: model.modelId,
-          label: `${getProviderDisplayName(providerKey, provider)} / ${model.modelName}`,
-        }));
-    }),
+    () =>
+      providerKeys.flatMap(providerKey => {
+        const provider = draftSettings.model.providers[providerKey];
+        if (!getModelProviderConnectionStatus(providerKey, provider).ready) {
+          return [];
+        }
+        return (provider.models ?? [])
+          .map(model => ({
+            modelId: model.id.trim(),
+            modelName: model.name.trim() || model.id.trim(),
+          }))
+          .filter(model => model.modelId.length > 0)
+          .map(model => ({
+            value: encodeDefaultModelOption(providerKey, model.modelId),
+            providerKey,
+            modelId: model.modelId,
+            label: `${getProviderDisplayName(providerKey, provider)} / ${model.modelName}`,
+          }));
+      }),
     [draftSettings.model.providers, providerKeys],
   );
-  const selectedDefaultModelValue = defaultModelOptions.some(option =>
-    option.providerKey === draftSettings.model.defaultModelProvider
-    && option.modelId === draftSettings.model.defaultModel)
+  const selectedDefaultModelValue = defaultModelOptions.some(
+    option =>
+      option.providerKey === draftSettings.model.defaultModelProvider &&
+      option.modelId === draftSettings.model.defaultModel,
+  )
     ? encodeDefaultModelOption(
-      draftSettings.model.defaultModelProvider,
-      draftSettings.model.defaultModel,
-    )
+        draftSettings.model.defaultModelProvider,
+        draftSettings.model.defaultModel,
+      )
     : '';
   const activeProvider = activeProviderKey
     ? draftSettings.model.providers[activeProviderKey]
     : undefined;
   const activeProviderModels = activeProvider?.models ?? [];
-  const activeProviderStatus = activeProviderKey && activeProvider
-    ? getModelProviderConnectionStatus(activeProviderKey, activeProvider)
-    : null;
-  const activeModelTestResult = modelTestResult?.providerKey === activeProviderKey
-    ? modelTestResult
-    : null;
+  const activeProviderStatus =
+    activeProviderKey && activeProvider
+      ? getModelProviderConnectionStatus(activeProviderKey, activeProvider)
+      : null;
+  const activeModelTestResult =
+    modelTestResult?.providerKey === activeProviderKey ? modelTestResult : null;
   const isTestingActiveModelProvider = modelTestingProviderKey === activeProviderKey;
   const orderedSkills = useMemo(
     () => sortSkillsForWorkspace(skills, draftSettings.skillIds),
@@ -539,19 +554,22 @@ export const WorkspaceSettings: React.FC<WorkspaceSettingsProps> = ({
   const firstBlockingIssue = blockingIssues[0] ?? null;
   const isDirty = JSON.stringify(draftSettings) !== JSON.stringify(savedSettings);
   const canSaveSettings = isDirty && saveState !== 'saving' && blockingIssues.length === 0;
-  const selectedResearchProviderId = ExternalResearchProviderIds.find(providerId =>
-    draftSettings.externalResearch.providers[providerId]?.enabled) ?? '';
+  const selectedResearchProviderId =
+    ExternalResearchProviderIds.find(
+      providerId => draftSettings.externalResearch.providers[providerId]?.enabled,
+    ) ?? '';
   const selectedResearchProvider = selectedResearchProviderId
     ? draftSettings.externalResearch.providers[selectedResearchProviderId]
     : null;
   const selectedResearchProviderTestResult = selectedResearchProviderId
     ? researchTestResults[selectedResearchProviderId]
     : undefined;
-  const selectedResearchQuickMode: ResearchQuickMode = selectedResearchProviderId === ExternalResearchProviderId.Tavily
-    ? ResearchQuickMode.WebSearch
-    : selectedResearchProviderId === ExternalResearchProviderId.Firecrawl
-      ? ResearchQuickMode.WebCrawl
-      : ResearchQuickMode.LocalOnly;
+  const selectedResearchQuickMode: ResearchQuickMode =
+    selectedResearchProviderId === ExternalResearchProviderId.Tavily
+      ? ResearchQuickMode.WebSearch
+      : selectedResearchProviderId === ExternalResearchProviderId.Firecrawl
+        ? ResearchQuickMode.WebCrawl
+        : ResearchQuickMode.LocalOnly;
   const quickSetupCompleteCount = [
     selectedDefaultModelValue.length > 0,
     draftSettings.skillIds.length > 0,
@@ -567,30 +585,36 @@ export const WorkspaceSettings: React.FC<WorkspaceSettingsProps> = ({
   const updateSettings = (
     updater: (settings: EnterpriseLeadWorkspaceSettings) => EnterpriseLeadWorkspaceSettings,
   ): void => {
-    setDraftSettings(previous => normalizeEnterpriseLeadWorkspaceSettings(updater(previous), previous));
+    setDraftSettings(previous =>
+      normalizeEnterpriseLeadWorkspaceSettings(updater(previous), previous),
+    );
     markDirty();
   };
 
   const updateProvider = (providerKey: string, patch: Partial<ProviderConfig>): void => {
-    setModelTestResult(previous => (
-      previous?.providerKey === providerKey ? null : previous
-    ));
+    setModelTestResult(previous => (previous?.providerKey === providerKey ? null : previous));
     updateSettings(previous => {
-      const currentProvider = previous.model.providers[providerKey] ?? fallbackProviderConfig(providerKey);
+      const currentProvider =
+        previous.model.providers[providerKey] ?? fallbackProviderConfig(providerKey);
       const nextProvider = {
         ...currentProvider,
         ...patch,
       };
-      const shouldUseAsDefault = nextProvider.enabled
-        && (!previous.model.defaultModelProvider || previous.model.defaultModelProvider === providerKey);
+      const shouldUseAsDefault =
+        nextProvider.enabled &&
+        (!previous.model.defaultModelProvider ||
+          previous.model.defaultModelProvider === providerKey);
       const firstModelId = getFirstModelId(nextProvider);
 
       return {
         ...previous,
         model: {
           ...previous.model,
-          defaultModelProvider: shouldUseAsDefault ? providerKey : previous.model.defaultModelProvider,
-          defaultModel: shouldUseAsDefault && firstModelId ? firstModelId : previous.model.defaultModel,
+          defaultModelProvider: shouldUseAsDefault
+            ? providerKey
+            : previous.model.defaultModelProvider,
+          defaultModel:
+            shouldUseAsDefault && firstModelId ? firstModelId : previous.model.defaultModel,
           providers: {
             ...previous.model.providers,
             [providerKey]: nextProvider,
@@ -676,9 +700,8 @@ export const WorkspaceSettings: React.FC<WorkspaceSettingsProps> = ({
     setSelectedSkillPresetId(preset.id);
     const availableSkillIds = new Set(skills.map(skill => skill.id));
     const presetSkillIds = preset.skillIds.filter(skillId => availableSkillIds.has(skillId));
-    const nextSkillIds = presetSkillIds.length > 0 || skills.length > 0
-      ? presetSkillIds
-      : preset.skillIds;
+    const nextSkillIds =
+      presetSkillIds.length > 0 || skills.length > 0 ? presetSkillIds : preset.skillIds;
     updateSettings(previous => ({
       ...previous,
       skillIds: nextSkillIds,
@@ -687,7 +710,9 @@ export const WorkspaceSettings: React.FC<WorkspaceSettingsProps> = ({
 
   const updateExternalResearchProvider = (
     providerId: ExternalResearchProviderIdValue,
-    patch: Partial<EnterpriseLeadWorkspaceSettings['externalResearch']['providers'][ExternalResearchProviderIdValue]>,
+    patch: Partial<
+      EnterpriseLeadWorkspaceSettings['externalResearch']['providers'][ExternalResearchProviderIdValue]
+    >,
   ): void => {
     setResearchTestResults(previous => {
       const next = { ...previous };
@@ -776,7 +801,9 @@ export const WorkspaceSettings: React.FC<WorkspaceSettingsProps> = ({
 
   const updateDomesticSource = (
     sourceId: DomesticResearchSourceIdValue,
-    patch: Partial<EnterpriseLeadWorkspaceSettings['domesticResearch']['sources'][DomesticResearchSourceIdValue]>,
+    patch: Partial<
+      EnterpriseLeadWorkspaceSettings['domesticResearch']['sources'][DomesticResearchSourceIdValue]
+    >,
   ): void => {
     updateSettings(previous => ({
       ...previous,
@@ -808,10 +835,7 @@ export const WorkspaceSettings: React.FC<WorkspaceSettingsProps> = ({
     updateDomesticSource(sourceId, { modes: Array.from(modes) });
   };
 
-  const updateDomesticUrls = (
-    sourceId: DomesticResearchSourceIdValue,
-    value: string,
-  ): void => {
+  const updateDomesticUrls = (sourceId: DomesticResearchSourceIdValue, value: string): void => {
     updateDomesticSource(sourceId, {
       urls: value
         .split('\n')
@@ -847,7 +871,9 @@ export const WorkspaceSettings: React.FC<WorkspaceSettingsProps> = ({
       ...previous,
       domesticResearch: {
         ...previous.domesticResearch,
-        customSources: previous.domesticResearch.customSources.filter(source => source.id !== sourceId),
+        customSources: previous.domesticResearch.customSources.filter(
+          source => source.id !== sourceId,
+        ),
       },
     }));
   };
@@ -861,7 +887,10 @@ export const WorkspaceSettings: React.FC<WorkspaceSettingsProps> = ({
       domesticResearch: {
         ...previous.domesticResearch,
         customSources: previous.domesticResearch.customSources.map(source =>
-          source.id === sourceId ? { ...source, ...patch, modes: [DomesticResearchMode.UrlImport] } : source),
+          source.id === sourceId
+            ? { ...source, ...patch, modes: [DomesticResearchMode.UrlImport] }
+            : source,
+        ),
       },
     }));
   };
@@ -928,8 +957,7 @@ export const WorkspaceSettings: React.FC<WorkspaceSettingsProps> = ({
       workspaceId: saveWorkspaceId,
       draftSettings,
       isCurrentSave: () =>
-        workspaceIdRef.current === saveWorkspaceId
-        && saveSequenceRef.current === saveSequence,
+        workspaceIdRef.current === saveWorkspaceId && saveSequenceRef.current === saveSequence,
       onSaved: updated => {
         const normalizedUpdatedSettings = ensureWorkspaceSettingsHaveProviders(updated.settings);
         setSavedSettings(normalizedUpdatedSettings);
@@ -951,10 +979,9 @@ export const WorkspaceSettings: React.FC<WorkspaceSettingsProps> = ({
     if (saveState === 'saved') return i18nService.t('enterpriseLeadWorkbenchSaved');
     if (saveState === 'error') return i18nService.t('enterpriseLeadWorkbenchSaveFailed');
     if (firstBlockingIssue) {
-      return i18nService.t('enterpriseLeadWorkbenchSaveBlocked').replace(
-        '{reason}',
-        i18nService.t(firstBlockingIssue.statusKey),
-      );
+      return i18nService
+        .t('enterpriseLeadWorkbenchSaveBlocked')
+        .replace('{reason}', i18nService.t(firstBlockingIssue.statusKey));
     }
     if (isDirty) return i18nService.t('enterpriseLeadWorkbenchUnsaved');
     return i18nService.t('enterpriseLeadWorkbenchSaved');
@@ -987,240 +1014,263 @@ export const WorkspaceSettings: React.FC<WorkspaceSettingsProps> = ({
           </button>
         </div>
 
-      <div className="mt-4 rounded-lg border border-border bg-surface px-3 py-3">
-        <label className="grid gap-1.5">
-          <span className="text-sm font-semibold text-foreground">
-            {i18nService.t('enterpriseLeadWorkbenchDefaultModelSelect')}
-          </span>
-          <select
-            value={selectedDefaultModelValue}
-            onChange={event => updateDefaultModel(event.target.value)}
-            disabled={defaultModelOptions.length === 0}
-            className="h-9 rounded-md border border-border bg-background px-2 text-sm text-foreground outline-none focus:border-primary disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            <option value="">
-              {i18nService.t(
-                defaultModelOptions.length > 0
-                  ? 'enterpriseLeadWorkbenchDefaultModelUnavailable'
-                  : 'enterpriseLeadWorkbenchDefaultModelNoOptions',
-              )}
-            </option>
-            {defaultModelOptions.map(option => (
-              <option key={option.value} value={option.value}>
-                {option.label}
+        <div className="mt-4 rounded-lg border border-border bg-surface px-3 py-3">
+          <label className="grid gap-1.5">
+            <span className="text-sm font-semibold text-foreground">
+              {i18nService.t('enterpriseLeadWorkbenchDefaultModelSelect')}
+            </span>
+            <select
+              value={selectedDefaultModelValue}
+              onChange={event => updateDefaultModel(event.target.value)}
+              disabled={defaultModelOptions.length === 0}
+              className="h-9 rounded-md border border-border bg-background px-2 text-sm text-foreground outline-none focus:border-primary disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <option value="">
+                {i18nService.t(
+                  defaultModelOptions.length > 0
+                    ? 'enterpriseLeadWorkbenchDefaultModelUnavailable'
+                    : 'enterpriseLeadWorkbenchDefaultModelNoOptions',
+                )}
               </option>
-            ))}
-          </select>
-        </label>
-        <p className="mt-2 text-xs leading-5 text-secondary">
-          {i18nService.t('enterpriseLeadWorkbenchDefaultModelSelectDesc')}
-        </p>
-      </div>
-
-      <div className="mt-3 grid gap-3 lg:grid-cols-[280px_minmax(0,1fr)]">
-        <div className="grid max-h-80 gap-1.5 overflow-y-auto pr-1">
-          {providerKeys.map(providerKey => {
-            const provider = draftSettings.model.providers[providerKey];
-            const isActive = activeProviderKey === providerKey;
-            const providerStatus = getModelProviderConnectionStatus(providerKey, provider);
-            return (
-              <button
-                key={providerKey}
-                type="button"
-                onClick={() => setActiveProviderKey(providerKey)}
-                className={`grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-lg border px-2.5 py-2 text-left transition-colors ${
-                  isActive
-                    ? 'border-primary/40 bg-primary/5'
-                    : 'border-border/70 bg-surface hover:bg-surface-raised'
-                }`}
-              >
-                <span className="min-w-0">
-                  <strong className="block truncate text-sm text-foreground">
-                    {getProviderDisplayName(providerKey, provider)}
-                  </strong>
-                  <span className="block truncate text-xs text-secondary">
-                    {provider.baseUrl || i18nService.t('enterpriseLeadWorkbenchProviderNoBaseUrl')}
-                  </span>
-                </span>
-                <span
-                  className={`rounded-full px-2 py-1 text-xs font-medium ${
-                    statusBadgeClassNames[
-                      providerStatus.tone
-                    ]
-                  }`}
-                >
-                  {i18nService.t(providerStatus.statusKey)}
-                </span>
-              </button>
-            );
-          })}
+              {defaultModelOptions.map(option => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <p className="mt-2 text-xs leading-5 text-secondary">
+            {i18nService.t('enterpriseLeadWorkbenchDefaultModelSelectDesc')}
+          </p>
         </div>
 
-        {activeProviderKey && activeProvider && (
-          <div className="rounded-lg border border-border bg-surface px-3 py-3">
-            <label className="flex items-center justify-between gap-3">
-              <span className="text-sm font-semibold text-foreground">
-                {getProviderDisplayName(activeProviderKey, activeProvider)}
-              </span>
-              <span className="inline-flex items-center gap-2 text-xs text-secondary">
-                {i18nService.t('enterpriseLeadWorkbenchEnabled')}
-                <input
-                  type="checkbox"
-                  checked={activeProvider.enabled}
-                  onChange={event => updateProvider(activeProviderKey, { enabled: event.target.checked })}
-                  className="h-4 w-4 accent-primary"
-                />
-              </span>
-            </label>
+        <div className="mt-3 grid gap-3 lg:grid-cols-[280px_minmax(0,1fr)]">
+          <div className="grid max-h-80 gap-1.5 overflow-y-auto pr-1">
+            {providerKeys.map(providerKey => {
+              const provider = draftSettings.model.providers[providerKey];
+              const isActive = activeProviderKey === providerKey;
+              const providerStatus = getModelProviderConnectionStatus(providerKey, provider);
+              return (
+                <button
+                  key={providerKey}
+                  type="button"
+                  onClick={() => setActiveProviderKey(providerKey)}
+                  className={`grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-lg border px-2.5 py-2 text-left transition-colors ${
+                    isActive
+                      ? 'border-primary/40 bg-primary/5'
+                      : 'border-border/70 bg-surface hover:bg-surface-raised'
+                  }`}
+                >
+                  <span className="min-w-0">
+                    <strong className="block truncate text-sm text-foreground">
+                      {getProviderDisplayName(providerKey, provider)}
+                    </strong>
+                    <span className="block truncate text-xs text-secondary">
+                      {provider.baseUrl ||
+                        i18nService.t('enterpriseLeadWorkbenchProviderNoBaseUrl')}
+                    </span>
+                  </span>
+                  <span
+                    className={`rounded-full px-2 py-1 text-xs font-medium ${
+                      statusBadgeClassNames[providerStatus.tone]
+                    }`}
+                  >
+                    {i18nService.t(providerStatus.statusKey)}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
 
-            <div className="mt-3 grid gap-2">
-              {isCustomProvider(activeProviderKey) ? (
+          {activeProviderKey && activeProvider && (
+            <div className="rounded-lg border border-border bg-surface px-3 py-3">
+              <label className="flex items-center justify-between gap-3">
+                <span className="text-sm font-semibold text-foreground">
+                  {getProviderDisplayName(activeProviderKey, activeProvider)}
+                </span>
+                <span className="inline-flex items-center gap-2 text-xs text-secondary">
+                  {i18nService.t('enterpriseLeadWorkbenchEnabled')}
+                  <input
+                    type="checkbox"
+                    checked={activeProvider.enabled}
+                    onChange={event =>
+                      updateProvider(activeProviderKey, { enabled: event.target.checked })
+                    }
+                    className="h-4 w-4 accent-primary"
+                  />
+                </span>
+              </label>
+
+              <div className="mt-3 grid gap-2">
+                {isCustomProvider(activeProviderKey) ? (
+                  <label className="block">
+                    <span className="text-xs font-medium text-secondary">
+                      {i18nService.t('enterpriseLeadWorkbenchProviderDisplayName')}
+                    </span>
+                    <input
+                      type="text"
+                      value={activeProvider.displayName ?? ''}
+                      onChange={event =>
+                        updateProvider(activeProviderKey, {
+                          displayName: event.target.value,
+                        })
+                      }
+                      className="mt-1 h-8 w-full rounded-md border border-border bg-background px-2 text-xs text-foreground outline-none focus:border-primary"
+                    />
+                  </label>
+                ) : null}
                 <label className="block">
                   <span className="text-xs font-medium text-secondary">
-                    {i18nService.t('enterpriseLeadWorkbenchProviderDisplayName')}
+                    {i18nService.t('enterpriseLeadWorkbenchProviderApiKey')}
+                  </span>
+                  <span className="mt-1 flex items-center gap-2">
+                    <input
+                      type={shownSecrets[activeProviderKey] ? 'text' : 'password'}
+                      value={activeProvider.apiKey}
+                      onChange={event =>
+                        updateProvider(activeProviderKey, { apiKey: event.target.value })
+                      }
+                      className="h-8 min-w-0 flex-1 rounded-md border border-border bg-background px-2 text-xs text-foreground outline-none focus:border-primary"
+                    />
+                    <button
+                      type="button"
+                      aria-label={i18nService.t('enterpriseLeadWorkbenchToggleProviderSecret')}
+                      onClick={() =>
+                        setShownSecrets(previous => ({
+                          ...previous,
+                          [activeProviderKey]: !previous[activeProviderKey],
+                        }))
+                      }
+                      className="h-8 w-8 rounded-md border border-border text-secondary hover:bg-background"
+                    >
+                      {shownSecrets[activeProviderKey] ? (
+                        <EyeSlashIcon className="mx-auto h-4 w-4" />
+                      ) : (
+                        <EyeIcon className="mx-auto h-4 w-4" />
+                      )}
+                    </button>
+                  </span>
+                </label>
+                <label className="block">
+                  <span className="text-xs font-medium text-secondary">
+                    {i18nService.t('enterpriseLeadWorkbenchProviderBaseUrl')}
                   </span>
                   <input
                     type="text"
-                    value={activeProvider.displayName ?? ''}
-                    onChange={event => updateProvider(activeProviderKey, {
-                      displayName: event.target.value,
-                    })}
+                    value={activeProvider.baseUrl}
+                    onChange={event =>
+                      updateProvider(activeProviderKey, { baseUrl: event.target.value })
+                    }
                     className="mt-1 h-8 w-full rounded-md border border-border bg-background px-2 text-xs text-foreground outline-none focus:border-primary"
                   />
                 </label>
-              ) : null}
-              <label className="block">
-                <span className="text-xs font-medium text-secondary">
-                  {i18nService.t('enterpriseLeadWorkbenchProviderApiKey')}
-                </span>
-                <span className="mt-1 flex items-center gap-2">
-                  <input
-                    type={shownSecrets[activeProviderKey] ? 'text' : 'password'}
-                    value={activeProvider.apiKey}
-                    onChange={event => updateProvider(activeProviderKey, { apiKey: event.target.value })}
-                    className="h-8 min-w-0 flex-1 rounded-md border border-border bg-background px-2 text-xs text-foreground outline-none focus:border-primary"
-                  />
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <label className="block">
+                    <span className="text-xs font-medium text-secondary">
+                      {i18nService.t('enterpriseLeadWorkbenchProviderApiFormat')}
+                    </span>
+                    <select
+                      value={activeProvider.apiFormat ?? ApiFormat.OpenAI}
+                      onChange={event =>
+                        updateProvider(activeProviderKey, {
+                          apiFormat: event.target.value as ProviderConfig['apiFormat'],
+                        })
+                      }
+                      className="mt-1 h-8 w-full rounded-md border border-border bg-background px-2 text-xs text-foreground outline-none focus:border-primary"
+                    >
+                      <option value={ApiFormat.OpenAI}>OpenAI</option>
+                      <option value={ApiFormat.Anthropic}>Anthropic</option>
+                      <option value={ApiFormat.Gemini}>Gemini</option>
+                    </select>
+                  </label>
+                  <label className="block">
+                    <span className="text-xs font-medium text-secondary">
+                      {i18nService.t('enterpriseLeadWorkbenchProviderModelIds')}
+                    </span>
+                    <select
+                      value={
+                        activeProviderModels.some(
+                          model => model.id === draftSettings.model.defaultModel,
+                        )
+                          ? encodeDefaultModelOption(
+                              activeProviderKey,
+                              draftSettings.model.defaultModel,
+                            )
+                          : ''
+                      }
+                      onChange={event => updateDefaultModel(event.target.value)}
+                      disabled={activeProviderModels.length === 0}
+                      className="mt-1 h-8 w-full rounded-md border border-border bg-background px-2 text-xs text-foreground outline-none focus:border-primary"
+                    >
+                      <option value="">
+                        {i18nService.t('enterpriseLeadWorkbenchDefaultModelUnavailable')}
+                      </option>
+                      {activeProviderModels.map(model => {
+                        const modelId = model.id.trim();
+                        if (!modelId) {
+                          return null;
+                        }
+                        return (
+                          <option
+                            key={modelId}
+                            value={encodeDefaultModelOption(activeProviderKey, modelId)}
+                          >
+                            {model.name?.trim() || modelId}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </label>
+                </div>
+                <p className="text-xs leading-5 text-secondary">
+                  {i18nService.t('enterpriseLeadWorkbenchProviderDefaultModel')}
+                  {draftSettings.model.defaultModelProvider && draftSettings.model.defaultModel
+                    ? ` ${getProviderDisplayName(draftSettings.model.defaultModelProvider, draftSettings.model.providers[draftSettings.model.defaultModelProvider])}/${draftSettings.model.defaultModel}`
+                    : ` ${i18nService.t('enterpriseLeadWorkbenchProviderNoDefaultModel')}`}
+                </p>
+                <div className="flex flex-wrap items-center gap-2">
                   <button
                     type="button"
-                    aria-label={i18nService.t('enterpriseLeadWorkbenchToggleProviderSecret')}
-                    onClick={() => setShownSecrets(previous => ({
-                      ...previous,
-                      [activeProviderKey]: !previous[activeProviderKey],
-                    }))}
-                    className="h-8 w-8 rounded-md border border-border text-secondary hover:bg-background"
+                    disabled={!activeProviderStatus?.ready || isTestingActiveModelProvider}
+                    onClick={() => void testModelProvider(activeProviderKey)}
+                    className="h-8 rounded-md border border-border px-2.5 text-xs font-medium text-foreground transition-colors hover:bg-background disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    {shownSecrets[activeProviderKey]
-                      ? <EyeSlashIcon className="mx-auto h-4 w-4" />
-                      : <EyeIcon className="mx-auto h-4 w-4" />}
+                    {i18nService.t(
+                      isTestingActiveModelProvider
+                        ? 'testing'
+                        : 'enterpriseLeadWorkbenchTestModelConnection',
+                    )}
                   </button>
-                </span>
-              </label>
-              <label className="block">
-                <span className="text-xs font-medium text-secondary">
-                  {i18nService.t('enterpriseLeadWorkbenchProviderBaseUrl')}
-                </span>
-                <input
-                  type="text"
-                  value={activeProvider.baseUrl}
-                  onChange={event => updateProvider(activeProviderKey, { baseUrl: event.target.value })}
-                  className="mt-1 h-8 w-full rounded-md border border-border bg-background px-2 text-xs text-foreground outline-none focus:border-primary"
-                />
-              </label>
-              <div className="grid gap-2 sm:grid-cols-2">
-                <label className="block">
-                  <span className="text-xs font-medium text-secondary">
-                    {i18nService.t('enterpriseLeadWorkbenchProviderApiFormat')}
-                  </span>
-                  <select
-                    value={activeProvider.apiFormat ?? ApiFormat.OpenAI}
-                    onChange={event => updateProvider(activeProviderKey, { apiFormat: event.target.value as ProviderConfig['apiFormat'] })}
-                    className="mt-1 h-8 w-full rounded-md border border-border bg-background px-2 text-xs text-foreground outline-none focus:border-primary"
+                </div>
+                {activeModelTestResult ? (
+                  <div
+                    className={`flex items-start gap-2 rounded-md border px-2.5 py-2 text-xs ${
+                      activeModelTestResult.success
+                        ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+                        : 'border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-300'
+                    }`}
                   >
-                    <option value={ApiFormat.OpenAI}>OpenAI</option>
-                    <option value={ApiFormat.Anthropic}>Anthropic</option>
-                    <option value={ApiFormat.Gemini}>Gemini</option>
-                  </select>
-                </label>
-                <label className="block">
-                  <span className="text-xs font-medium text-secondary">
-                    {i18nService.t('enterpriseLeadWorkbenchProviderModelIds')}
-                  </span>
-                  <select
-                    value={
-                      activeProviderModels.some(model => model.id === draftSettings.model.defaultModel)
-                        ? encodeDefaultModelOption(activeProviderKey, draftSettings.model.defaultModel)
-                        : ''
-                    }
-                    onChange={event => updateDefaultModel(event.target.value)}
-                    disabled={activeProviderModels.length === 0}
-                    className="mt-1 h-8 w-full rounded-md border border-border bg-background px-2 text-xs text-foreground outline-none focus:border-primary"
-                  >
-                    <option value="">
-                      {i18nService.t('enterpriseLeadWorkbenchDefaultModelUnavailable')}
-                    </option>
-                    {activeProviderModels.map(model => {
-                      const modelId = model.id.trim();
-                      if (!modelId) {
-                        return null;
-                      }
-                      return (
-                        <option
-                          key={modelId}
-                          value={encodeDefaultModelOption(activeProviderKey, modelId)}
-                        >
-                          {model.name?.trim() || modelId}
-                        </option>
-                      );
-                    })}
-                  </select>
-                </label>
-              </div>
-              <p className="text-xs leading-5 text-secondary">
-                {i18nService.t('enterpriseLeadWorkbenchProviderDefaultModel')}
-                {draftSettings.model.defaultModelProvider && draftSettings.model.defaultModel
-                  ? ` ${getProviderDisplayName(draftSettings.model.defaultModelProvider, draftSettings.model.providers[draftSettings.model.defaultModelProvider])}/${draftSettings.model.defaultModel}`
-                  : ` ${i18nService.t('enterpriseLeadWorkbenchProviderNoDefaultModel')}`}
-              </p>
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  disabled={!activeProviderStatus?.ready || isTestingActiveModelProvider}
-                  onClick={() => void testModelProvider(activeProviderKey)}
-                  className="h-8 rounded-md border border-border px-2.5 text-xs font-medium text-foreground transition-colors hover:bg-background disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {i18nService.t(
-                    isTestingActiveModelProvider
-                      ? 'testing'
-                      : 'enterpriseLeadWorkbenchTestModelConnection',
-                  )}
-                </button>
-              </div>
-              {activeModelTestResult ? (
-                <div className={`flex items-start gap-2 rounded-md border px-2.5 py-2 text-xs ${
-                  activeModelTestResult.success
-                    ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
-                    : 'border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-300'
-                }`}
-                >
-                  {activeModelTestResult.success ? (
-                    <CheckCircleIcon className="mt-0.5 h-4 w-4 shrink-0" />
-                  ) : (
-                    <ExclamationTriangleIcon className="mt-0.5 h-4 w-4 shrink-0" />
-                  )}
-                  <div className="min-w-0">
-                    <div className="font-semibold">
-                      {i18nService.t(activeModelTestResult.success ? 'connectionSuccess' : 'connectionFailed')}
-                    </div>
-                    <div className="mt-0.5 break-words leading-5">
-                      {activeModelTestResult.message}
+                    {activeModelTestResult.success ? (
+                      <CheckCircleIcon className="mt-0.5 h-4 w-4 shrink-0" />
+                    ) : (
+                      <ExclamationTriangleIcon className="mt-0.5 h-4 w-4 shrink-0" />
+                    )}
+                    <div className="min-w-0">
+                      <div className="font-semibold">
+                        {i18nService.t(
+                          activeModelTestResult.success ? 'connectionSuccess' : 'connectionFailed',
+                        )}
+                      </div>
+                      <div className="mt-0.5 break-words leading-5">
+                        {activeModelTestResult.message}
+                      </div>
                     </div>
                   </div>
-                </div>
-              ) : null}
+                ) : null}
+              </div>
             </div>
-          </div>
-        )}
-      </div>
+          )}
+        </div>
       </div>
     </details>
   );
@@ -1246,42 +1296,43 @@ export const WorkspaceSettings: React.FC<WorkspaceSettingsProps> = ({
           <div className="rounded-lg border border-dashed border-border px-3 py-4 text-sm text-secondary">
             {i18nService.t('enterpriseLeadWorkbenchSkillsEmpty')}
           </div>
-        ) : orderedSkills.map(skill => {
-          const checked = draftSettings.skillIds.includes(skill.id);
-          return (
-            <label
-              key={skill.id}
-              className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 rounded-lg border border-border/70 bg-surface px-2.5 py-2"
-            >
-              <input
-                type="checkbox"
-                checked={checked}
-                onChange={() => toggleSkill(skill.id)}
-                className="h-4 w-4 accent-primary"
-              />
-              <span className="min-w-0">
-                <strong className="block truncate text-sm text-foreground">
-                  {skill.name}
-                </strong>
-                <span className="block truncate text-xs text-secondary">
-                  {skill.description}
-                </span>
-              </span>
-              <span className={`rounded-full px-2 py-1 text-xs font-medium ${
-                statusBadgeClassNames[
-                  skill.enabled
-                    ? EnterpriseLeadWorkbenchStatusTone.Enabled
-                    : EnterpriseLeadWorkbenchStatusTone.Disabled
-                ]
-              }`}
+        ) : (
+          orderedSkills.map(skill => {
+            const checked = draftSettings.skillIds.includes(skill.id);
+            return (
+              <label
+                key={skill.id}
+                className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 rounded-lg border border-border/70 bg-surface px-2.5 py-2"
               >
-                {i18nService.t(skill.enabled
-                  ? 'enterpriseLeadWorkbenchStatusEnabled'
-                  : 'enterpriseLeadWorkbenchStatusDisabled')}
-              </span>
-            </label>
-          );
-        })}
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={() => toggleSkill(skill.id)}
+                  className="h-4 w-4 accent-primary"
+                />
+                <span className="min-w-0">
+                  <strong className="block truncate text-sm text-foreground">{skill.name}</strong>
+                  <span className="block truncate text-xs text-secondary">{skill.description}</span>
+                </span>
+                <span
+                  className={`rounded-full px-2 py-1 text-xs font-medium ${
+                    statusBadgeClassNames[
+                      skill.enabled
+                        ? EnterpriseLeadWorkbenchStatusTone.Enabled
+                        : EnterpriseLeadWorkbenchStatusTone.Disabled
+                    ]
+                  }`}
+                >
+                  {i18nService.t(
+                    skill.enabled
+                      ? 'enterpriseLeadWorkbenchStatusEnabled'
+                      : 'enterpriseLeadWorkbenchStatusDisabled',
+                  )}
+                </span>
+              </label>
+            );
+          })
+        )}
       </div>
     </details>
   );
@@ -1316,11 +1367,10 @@ export const WorkspaceSettings: React.FC<WorkspaceSettingsProps> = ({
                   <strong className="text-sm text-foreground">
                     {i18nService.t(providerLabelKeys[providerId])}
                   </strong>
-                  <span className={`rounded-full px-2 py-1 text-xs font-medium ${
-                    statusBadgeClassNames[
-                      providerStatus.tone
-                    ]
-                  }`}
+                  <span
+                    className={`rounded-full px-2 py-1 text-xs font-medium ${
+                      statusBadgeClassNames[providerStatus.tone]
+                    }`}
                   >
                     {i18nService.t(providerStatus.statusKey)}
                   </span>
@@ -1330,7 +1380,9 @@ export const WorkspaceSettings: React.FC<WorkspaceSettingsProps> = ({
                   <input
                     type="checkbox"
                     checked={provider.enabled}
-                    onChange={event => updateExternalResearchProvider(providerId, { enabled: event.target.checked })}
+                    onChange={event =>
+                      updateExternalResearchProvider(providerId, { enabled: event.target.checked })
+                    }
                     className="h-4 w-4 accent-primary"
                   />
                 </span>
@@ -1339,7 +1391,9 @@ export const WorkspaceSettings: React.FC<WorkspaceSettingsProps> = ({
                 <input
                   type={shownSecrets[providerId] ? 'text' : 'password'}
                   value={provider.apiKey}
-                  onChange={event => updateExternalResearchProvider(providerId, { apiKey: event.target.value })}
+                  onChange={event =>
+                    updateExternalResearchProvider(providerId, { apiKey: event.target.value })
+                  }
                   placeholder={i18nService.t('enterpriseLeadWorkbenchResearchApiKeyPlaceholder')}
                   className="h-8 min-w-[180px] flex-1 rounded-md border border-border bg-background px-2 text-xs text-foreground outline-none focus:border-primary"
                 />
@@ -1356,26 +1410,26 @@ export const WorkspaceSettings: React.FC<WorkspaceSettingsProps> = ({
                   )}
                 </button>
               </div>
-              {testResult ? (() => {
-                const feedback = getExternalResearchTestFeedback(testResult);
-                return (
-                  <div className={`mt-2 flex items-start gap-2 rounded-md border px-2.5 py-2 text-xs ${feedback.toneClassName}`}>
-                    {feedback.icon === 'success' ? (
-                      <CheckCircleIcon className="mt-0.5 h-4 w-4 shrink-0" />
-                    ) : (
-                      <ExclamationTriangleIcon className="mt-0.5 h-4 w-4 shrink-0" />
-                    )}
-                    <div className="min-w-0">
-                      <div className="font-semibold">
-                        {i18nService.t(feedback.labelKey)}
+              {testResult
+                ? (() => {
+                    const feedback = getExternalResearchTestFeedback(testResult);
+                    return (
+                      <div
+                        className={`mt-2 flex items-start gap-2 rounded-md border px-2.5 py-2 text-xs ${feedback.toneClassName}`}
+                      >
+                        {feedback.icon === 'success' ? (
+                          <CheckCircleIcon className="mt-0.5 h-4 w-4 shrink-0" />
+                        ) : (
+                          <ExclamationTriangleIcon className="mt-0.5 h-4 w-4 shrink-0" />
+                        )}
+                        <div className="min-w-0">
+                          <div className="font-semibold">{i18nService.t(feedback.labelKey)}</div>
+                          <div className="mt-0.5 break-words leading-5">{feedback.message}</div>
+                        </div>
                       </div>
-                      <div className="mt-0.5 break-words leading-5">
-                        {feedback.message}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })() : null}
+                    );
+                  })()
+                : null}
             </div>
           );
         })}
@@ -1418,7 +1472,9 @@ export const WorkspaceSettings: React.FC<WorkspaceSettingsProps> = ({
                   <input
                     type="checkbox"
                     checked={source.enabled}
-                    onChange={event => updateDomesticSource(sourceId, { enabled: event.target.checked })}
+                    onChange={event =>
+                      updateDomesticSource(sourceId, { enabled: event.target.checked })
+                    }
                     className="h-4 w-4 accent-primary"
                   />
                 </span>
@@ -1428,7 +1484,13 @@ export const WorkspaceSettings: React.FC<WorkspaceSettingsProps> = ({
                   <input
                     type="checkbox"
                     checked={source.modes.includes(DomesticResearchMode.Search)}
-                    onChange={event => toggleDomesticMode(sourceId, DomesticResearchMode.Search, event.target.checked)}
+                    onChange={event =>
+                      toggleDomesticMode(
+                        sourceId,
+                        DomesticResearchMode.Search,
+                        event.target.checked,
+                      )
+                    }
                     className="h-3.5 w-3.5 accent-primary"
                   />
                   {i18nService.t('agentDomesticResearchModeSearch')}
@@ -1437,7 +1499,13 @@ export const WorkspaceSettings: React.FC<WorkspaceSettingsProps> = ({
                   <input
                     type="checkbox"
                     checked={source.modes.includes(DomesticResearchMode.UrlImport)}
-                    onChange={event => toggleDomesticMode(sourceId, DomesticResearchMode.UrlImport, event.target.checked)}
+                    onChange={event =>
+                      toggleDomesticMode(
+                        sourceId,
+                        DomesticResearchMode.UrlImport,
+                        event.target.checked,
+                      )
+                    }
                     className="h-3.5 w-3.5 accent-primary"
                   />
                   {i18nService.t('agentDomesticResearchModeUrlImport')}
@@ -1454,18 +1522,25 @@ export const WorkspaceSettings: React.FC<WorkspaceSettingsProps> = ({
         })}
 
         {draftSettings.domesticResearch.customSources.map(source => (
-          <div key={source.id} className="rounded-lg border border-dashed border-border bg-surface px-3 py-3">
+          <div
+            key={source.id}
+            className="rounded-lg border border-dashed border-border bg-surface px-3 py-3"
+          >
             <div className="flex items-center gap-2">
               <input
                 value={source.name}
-                onChange={event => updateCustomDomesticSource(source.id, { name: event.target.value })}
+                onChange={event =>
+                  updateCustomDomesticSource(source.id, { name: event.target.value })
+                }
                 className="h-8 min-w-0 flex-1 rounded-md border border-border bg-background px-2 text-xs text-foreground outline-none focus:border-primary"
               />
               <label className="inline-flex shrink-0 items-center gap-1.5 text-xs text-secondary">
                 <input
                   type="checkbox"
                   checked={source.enabled}
-                  onChange={event => updateCustomDomesticSource(source.id, { enabled: event.target.checked })}
+                  onChange={event =>
+                    updateCustomDomesticSource(source.id, { enabled: event.target.checked })
+                  }
                   className="h-3.5 w-3.5 accent-primary"
                 />
                 {i18nService.t('enterpriseLeadWorkbenchEnabled')}
@@ -1481,9 +1556,14 @@ export const WorkspaceSettings: React.FC<WorkspaceSettingsProps> = ({
             </div>
             <textarea
               value={source.urls.join('\n')}
-              onChange={event => updateCustomDomesticSource(source.id, {
-                urls: event.target.value.split('\n').map(url => url.trim()).filter(Boolean),
-              })}
+              onChange={event =>
+                updateCustomDomesticSource(source.id, {
+                  urls: event.target.value
+                    .split('\n')
+                    .map(url => url.trim())
+                    .filter(Boolean),
+                })
+              }
               placeholder={i18nService.t('enterpriseLeadWorkbenchSourceUrlsPlaceholder')}
               className="mt-2 min-h-16 w-full resize-y rounded-md border border-border bg-background px-2 py-2 text-xs leading-5 text-foreground outline-none focus:border-primary"
             />
@@ -1522,9 +1602,10 @@ export const WorkspaceSettings: React.FC<WorkspaceSettingsProps> = ({
                     <strong className="truncate text-sm text-foreground">
                       {i18nService.t(contentPlatformLabelKeys[platformId])}
                     </strong>
-                    <span className={`rounded-full px-2 py-1 text-xs font-medium ${
-                      statusBadgeClassNames[platformStatus.tone]
-                    }`}
+                    <span
+                      className={`rounded-full px-2 py-1 text-xs font-medium ${
+                        statusBadgeClassNames[platformStatus.tone]
+                      }`}
                     >
                       {i18nService.t(platformStatus.statusKey)}
                     </span>
@@ -1539,84 +1620,128 @@ export const WorkspaceSettings: React.FC<WorkspaceSettingsProps> = ({
                     <input
                       type="text"
                       value={platform.appId}
-                      onChange={event => updateContentPlatform(platformId, { appId: event.target.value })}
-                      placeholder={i18nService.t('enterpriseLeadWorkbenchContentPlatformAppIdPlaceholder')}
+                      onChange={event =>
+                        updateContentPlatform(platformId, { appId: event.target.value })
+                      }
+                      placeholder={i18nService.t(
+                        'enterpriseLeadWorkbenchContentPlatformAppIdPlaceholder',
+                      )}
                       className="h-8 rounded-md border border-border bg-background px-2 text-xs text-foreground outline-none focus:border-primary"
                     />
                   ) : platformId === EnterpriseLeadContentOutputPlatformId.CustomWebhook ? (
                     <input
                       type="password"
                       value={platform.token}
-                      onChange={event => updateContentPlatform(platformId, { token: event.target.value })}
-                      placeholder={i18nService.t('enterpriseLeadWorkbenchContentPlatformTokenPlaceholder')}
+                      onChange={event =>
+                        updateContentPlatform(platformId, { token: event.target.value })
+                      }
+                      placeholder={i18nService.t(
+                        'enterpriseLeadWorkbenchContentPlatformTokenPlaceholder',
+                      )}
                       className="h-8 rounded-md border border-border bg-background px-2 text-xs text-foreground outline-none focus:border-primary"
                     />
                   ) : (
                     <input
                       type="text"
                       value={platform.account}
-                      onChange={event => updateContentPlatform(platformId, { account: event.target.value })}
-                      placeholder={i18nService.t('enterpriseLeadWorkbenchContentPlatformAccountPlaceholder')}
+                      onChange={event =>
+                        updateContentPlatform(platformId, { account: event.target.value })
+                      }
+                      placeholder={i18nService.t(
+                        'enterpriseLeadWorkbenchContentPlatformAccountPlaceholder',
+                      )}
                       className="h-8 rounded-md border border-border bg-background px-2 text-xs text-foreground outline-none focus:border-primary"
                     />
                   )}
-                  {platformId === EnterpriseLeadContentOutputPlatformId.CustomWebhook
-                    || platformId === EnterpriseLeadContentOutputPlatformId.SalesMessage ? (
-                      <input
-                        type="url"
-                        value={platform.endpoint}
-                        onChange={event => updateContentPlatform(platformId, { endpoint: event.target.value })}
-                        placeholder={i18nService.t('enterpriseLeadWorkbenchContentPlatformEndpointPlaceholder')}
-                        className="h-8 rounded-md border border-border bg-background px-2 text-xs text-foreground outline-none focus:border-primary"
-                      />
-                    ) : (
-                      <input
-                        type="password"
-                        value={platform.token}
-                        onChange={event => updateContentPlatform(platformId, { token: event.target.value })}
-                        placeholder={i18nService.t('enterpriseLeadWorkbenchContentPlatformTokenPlaceholder')}
-                        className="h-8 rounded-md border border-border bg-background px-2 text-xs text-foreground outline-none focus:border-primary"
-                      />
-                    )}
+                  {platformId === EnterpriseLeadContentOutputPlatformId.CustomWebhook ||
+                  platformId === EnterpriseLeadContentOutputPlatformId.SalesMessage ? (
+                    <input
+                      type="url"
+                      value={platform.endpoint}
+                      onChange={event =>
+                        updateContentPlatform(platformId, { endpoint: event.target.value })
+                      }
+                      placeholder={i18nService.t(
+                        'enterpriseLeadWorkbenchContentPlatformEndpointPlaceholder',
+                      )}
+                      className="h-8 rounded-md border border-border bg-background px-2 text-xs text-foreground outline-none focus:border-primary"
+                    />
+                  ) : (
+                    <input
+                      type="password"
+                      value={platform.token}
+                      onChange={event =>
+                        updateContentPlatform(platformId, { token: event.target.value })
+                      }
+                      placeholder={i18nService.t(
+                        'enterpriseLeadWorkbenchContentPlatformTokenPlaceholder',
+                      )}
+                      className="h-8 rounded-md border border-border bg-background px-2 text-xs text-foreground outline-none focus:border-primary"
+                    />
+                  )}
                   <select
                     value={
                       platformId === EnterpriseLeadContentOutputPlatformId.CustomWebhook
                         ? platform.payloadFormat
                         : platform.deliveryMode
                     }
-                    onChange={event => updateContentPlatform(
-                      platformId,
-                      platformId === EnterpriseLeadContentOutputPlatformId.CustomWebhook
-                        ? { payloadFormat: event.target.value }
-                        : { deliveryMode: event.target.value },
-                    )}
+                    onChange={event =>
+                      updateContentPlatform(
+                        platformId,
+                        platformId === EnterpriseLeadContentOutputPlatformId.CustomWebhook
+                          ? { payloadFormat: event.target.value }
+                          : { deliveryMode: event.target.value },
+                      )
+                    }
                     className="h-8 rounded-md border border-border bg-background px-2 text-xs text-foreground outline-none focus:border-primary"
                   >
                     {platformId === EnterpriseLeadContentOutputPlatformId.XiaohongshuDraft && (
                       <>
-                        <option value="draft_only">{i18nService.t('enterpriseLeadWorkbenchContentDeliveryDraftOnly')}</option>
-                        <option value="markdown_export">{i18nService.t('enterpriseLeadWorkbenchContentDeliveryMarkdown')}</option>
-                        <option value="third_party_draft">{i18nService.t('enterpriseLeadWorkbenchContentDeliveryThirdParty')}</option>
+                        <option value="draft_only">
+                          {i18nService.t('enterpriseLeadWorkbenchContentDeliveryDraftOnly')}
+                        </option>
+                        <option value="markdown_export">
+                          {i18nService.t('enterpriseLeadWorkbenchContentDeliveryMarkdown')}
+                        </option>
+                        <option value="third_party_draft">
+                          {i18nService.t('enterpriseLeadWorkbenchContentDeliveryThirdParty')}
+                        </option>
                       </>
                     )}
                     {platformId === EnterpriseLeadContentOutputPlatformId.SalesMessage && (
                       <>
-                        <option value="wecom_draft">{i18nService.t('enterpriseLeadWorkbenchContentDeliveryWecom')}</option>
-                        <option value="crm_draft">{i18nService.t('enterpriseLeadWorkbenchContentDeliveryCrm')}</option>
-                        <option value="sms_template">{i18nService.t('enterpriseLeadWorkbenchContentDeliverySms')}</option>
+                        <option value="wecom_draft">
+                          {i18nService.t('enterpriseLeadWorkbenchContentDeliveryWecom')}
+                        </option>
+                        <option value="crm_draft">
+                          {i18nService.t('enterpriseLeadWorkbenchContentDeliveryCrm')}
+                        </option>
+                        <option value="sms_template">
+                          {i18nService.t('enterpriseLeadWorkbenchContentDeliverySms')}
+                        </option>
                       </>
                     )}
                     {platformId === EnterpriseLeadContentOutputPlatformId.WechatArticle && (
                       <>
-                        <option value="wechat_draft">{i18nService.t('enterpriseLeadWorkbenchContentDeliveryWechatDraft')}</option>
-                        <option value="markdown_export">{i18nService.t('enterpriseLeadWorkbenchContentDeliveryMarkdown')}</option>
+                        <option value="wechat_draft">
+                          {i18nService.t('enterpriseLeadWorkbenchContentDeliveryWechatDraft')}
+                        </option>
+                        <option value="markdown_export">
+                          {i18nService.t('enterpriseLeadWorkbenchContentDeliveryMarkdown')}
+                        </option>
                       </>
                     )}
                     {platformId === EnterpriseLeadContentOutputPlatformId.CustomWebhook && (
                       <>
-                        <option value="json">{i18nService.t('enterpriseLeadWorkbenchContentPayloadJson')}</option>
-                        <option value="markdown">{i18nService.t('enterpriseLeadWorkbenchContentPayloadMarkdown')}</option>
-                        <option value="feishu_table">{i18nService.t('enterpriseLeadWorkbenchContentPayloadFeishuTable')}</option>
+                        <option value="json">
+                          {i18nService.t('enterpriseLeadWorkbenchContentPayloadJson')}
+                        </option>
+                        <option value="markdown">
+                          {i18nService.t('enterpriseLeadWorkbenchContentPayloadMarkdown')}
+                        </option>
+                        <option value="feishu_table">
+                          {i18nService.t('enterpriseLeadWorkbenchContentPayloadFeishuTable')}
+                        </option>
                       </>
                     )}
                   </select>
@@ -1627,7 +1752,9 @@ export const WorkspaceSettings: React.FC<WorkspaceSettingsProps> = ({
                   <input
                     type="checkbox"
                     checked={platform.enabled}
-                    onChange={event => updateContentPlatform(platformId, { enabled: event.target.checked })}
+                    onChange={event =>
+                      updateContentPlatform(platformId, { enabled: event.target.checked })
+                    }
                     className="h-4 w-4 accent-primary"
                   />
                 </label>
@@ -1651,7 +1778,9 @@ export const WorkspaceSettings: React.FC<WorkspaceSettingsProps> = ({
             </span>
             <select
               value={draftSettings.contentPlatforms.outputRules.defaultPlatformId}
-              onChange={event => updateContentOutputRules({ defaultPlatformId: event.target.value })}
+              onChange={event =>
+                updateContentOutputRules({ defaultPlatformId: event.target.value })
+              }
               className="mt-1 h-8 w-full rounded-md border border-border bg-background px-2 text-xs text-foreground outline-none focus:border-primary"
             >
               {EnterpriseLeadContentOutputPlatformIds.map(platformId => (
@@ -1696,7 +1825,9 @@ export const WorkspaceSettings: React.FC<WorkspaceSettingsProps> = ({
             <input
               type="checkbox"
               checked={draftSettings.contentPlatforms.outputRules.riskCheckBeforeExport}
-              onChange={event => updateContentOutputRules({ riskCheckBeforeExport: event.target.checked })}
+              onChange={event =>
+                updateContentOutputRules({ riskCheckBeforeExport: event.target.checked })
+              }
               className="h-4 w-4 accent-primary"
             />
             {i18nService.t('enterpriseLeadWorkbenchContentRiskCheck')}
@@ -1735,12 +1866,8 @@ export const WorkspaceSettings: React.FC<WorkspaceSettingsProps> = ({
             </p>
           </div>
           <div className="shrink-0 rounded-lg bg-primary/10 px-3 py-2 text-right text-xs font-medium text-primary ring-1 ring-primary/20">
-            <div className="text-lg font-semibold leading-5">
-              {quickSetupCompleteCount}/3
-            </div>
-            <div className="mt-1">
-              {i18nService.t('enterpriseLeadWorkbenchQuickSetupProgress')}
-            </div>
+            <div className="text-lg font-semibold leading-5">{quickSetupCompleteCount}/3</div>
+            <div className="mt-1">{i18nService.t('enterpriseLeadWorkbenchQuickSetupProgress')}</div>
           </div>
         </div>
 
@@ -1791,15 +1918,18 @@ export const WorkspaceSettings: React.FC<WorkspaceSettingsProps> = ({
                 </button>
               </div>
             </div>
-            <span className={`h-fit rounded-full px-2 py-1 text-xs font-medium ${
-              selectedDefaultModelValue
-                ? statusBadgeClassNames[EnterpriseLeadWorkbenchStatusTone.Enabled]
-                : statusBadgeClassNames[EnterpriseLeadWorkbenchStatusTone.Warning]
-            }`}
+            <span
+              className={`h-fit rounded-full px-2 py-1 text-xs font-medium ${
+                selectedDefaultModelValue
+                  ? statusBadgeClassNames[EnterpriseLeadWorkbenchStatusTone.Enabled]
+                  : statusBadgeClassNames[EnterpriseLeadWorkbenchStatusTone.Warning]
+              }`}
             >
-              {i18nService.t(selectedDefaultModelValue
-                ? 'enterpriseLeadWorkspaceSettingsReady'
-                : 'enterpriseLeadWorkspaceSettingsNeedsSetup')}
+              {i18nService.t(
+                selectedDefaultModelValue
+                  ? 'enterpriseLeadWorkspaceSettingsReady'
+                  : 'enterpriseLeadWorkspaceSettingsNeedsSetup',
+              )}
             </span>
           </section>
 
@@ -1836,11 +1966,12 @@ export const WorkspaceSettings: React.FC<WorkspaceSettingsProps> = ({
                 ))}
               </div>
             </div>
-            <span className={`h-fit rounded-full px-2 py-1 text-xs font-medium ${
-              draftSettings.skillIds.length > 0
-                ? statusBadgeClassNames[EnterpriseLeadWorkbenchStatusTone.Enabled]
-                : statusBadgeClassNames[EnterpriseLeadWorkbenchStatusTone.Warning]
-            }`}
+            <span
+              className={`h-fit rounded-full px-2 py-1 text-xs font-medium ${
+                draftSettings.skillIds.length > 0
+                  ? statusBadgeClassNames[EnterpriseLeadWorkbenchStatusTone.Enabled]
+                  : statusBadgeClassNames[EnterpriseLeadWorkbenchStatusTone.Warning]
+              }`}
             >
               {draftSettings.skillIds.length > 0
                 ? `${draftSettings.skillIds.length} ${i18nService.t('enterpriseLeadWorkbenchQuickSkillsSelected')}`
@@ -1894,7 +2025,9 @@ export const WorkspaceSettings: React.FC<WorkspaceSettingsProps> = ({
                 </button>
                 <button
                   type="button"
-                  onClick={() => updateResearchServiceProvider(ExternalResearchProviderId.Firecrawl)}
+                  onClick={() =>
+                    updateResearchServiceProvider(ExternalResearchProviderId.Firecrawl)
+                  }
                   className={`rounded-lg border px-3 py-3 text-left transition-colors ${
                     selectedResearchQuickMode === ResearchQuickMode.WebCrawl
                       ? 'border-primary/40 bg-primary/5'
@@ -1912,7 +2045,11 @@ export const WorkspaceSettings: React.FC<WorkspaceSettingsProps> = ({
               <div className="mt-3 grid gap-2 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1fr)_auto]">
                 <select
                   value={selectedResearchProviderId}
-                  onChange={event => updateResearchServiceProvider(event.target.value as ExternalResearchProviderIdValue | '')}
+                  onChange={event =>
+                    updateResearchServiceProvider(
+                      event.target.value as ExternalResearchProviderIdValue | '',
+                    )
+                  }
                   className="h-9 rounded-md border border-border bg-background px-2 text-sm text-foreground outline-none focus:border-primary"
                   aria-label={i18nService.t('enterpriseLeadWorkbenchResearchProviderSelect')}
                 >
@@ -1926,11 +2063,17 @@ export const WorkspaceSettings: React.FC<WorkspaceSettingsProps> = ({
                   ))}
                 </select>
                 <input
-                  type={selectedResearchProviderId && shownSecrets[selectedResearchProviderId] ? 'text' : 'password'}
+                  type={
+                    selectedResearchProviderId && shownSecrets[selectedResearchProviderId]
+                      ? 'text'
+                      : 'password'
+                  }
                   value={selectedResearchProvider?.apiKey ?? ''}
                   onChange={event => updateSelectedResearchApiKey(event.target.value)}
                   disabled={!selectedResearchProviderId}
-                  placeholder={i18nService.t('enterpriseLeadWorkbenchResearchProviderApiKeyPlaceholder')}
+                  placeholder={i18nService.t(
+                    'enterpriseLeadWorkbenchResearchProviderApiKeyPlaceholder',
+                  )}
                   className="h-9 rounded-md border border-border bg-background px-2 text-sm text-foreground outline-none focus:border-primary disabled:cursor-not-allowed disabled:opacity-60"
                 />
                 <button
@@ -1949,7 +2092,9 @@ export const WorkspaceSettings: React.FC<WorkspaceSettingsProps> = ({
               <div className="mt-3 grid gap-2 sm:grid-cols-2">
                 <select
                   value={draftSettings.contentPlatforms.outputRules.defaultPlatformId}
-                  onChange={event => updateContentOutputRules({ defaultPlatformId: event.target.value })}
+                  onChange={event =>
+                    updateContentOutputRules({ defaultPlatformId: event.target.value })
+                  }
                   className="h-9 rounded-md border border-border bg-background px-2 text-sm text-foreground outline-none focus:border-primary"
                   aria-label={i18nService.t('enterpriseLeadWorkbenchContentDefaultTarget')}
                 >
@@ -1970,26 +2115,28 @@ export const WorkspaceSettings: React.FC<WorkspaceSettingsProps> = ({
                   </option>
                 </select>
               </div>
-              {selectedResearchProviderTestResult ? (() => {
-                const feedback = getExternalResearchTestFeedback(selectedResearchProviderTestResult);
-                return (
-                  <div className={`mt-3 flex items-start gap-2 rounded-md border px-2.5 py-2 text-xs ${feedback.toneClassName}`}>
-                    {feedback.icon === 'success' ? (
-                      <CheckCircleIcon className="mt-0.5 h-4 w-4 shrink-0" />
-                    ) : (
-                      <ExclamationTriangleIcon className="mt-0.5 h-4 w-4 shrink-0" />
-                    )}
-                    <div className="min-w-0">
-                      <div className="font-semibold">
-                        {i18nService.t(feedback.labelKey)}
+              {selectedResearchProviderTestResult
+                ? (() => {
+                    const feedback = getExternalResearchTestFeedback(
+                      selectedResearchProviderTestResult,
+                    );
+                    return (
+                      <div
+                        className={`mt-3 flex items-start gap-2 rounded-md border px-2.5 py-2 text-xs ${feedback.toneClassName}`}
+                      >
+                        {feedback.icon === 'success' ? (
+                          <CheckCircleIcon className="mt-0.5 h-4 w-4 shrink-0" />
+                        ) : (
+                          <ExclamationTriangleIcon className="mt-0.5 h-4 w-4 shrink-0" />
+                        )}
+                        <div className="min-w-0">
+                          <div className="font-semibold">{i18nService.t(feedback.labelKey)}</div>
+                          <div className="mt-0.5 break-words leading-5">{feedback.message}</div>
+                        </div>
                       </div>
-                      <div className="mt-0.5 break-words leading-5">
-                        {feedback.message}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })() : null}
+                    );
+                  })()
+                : null}
             </div>
             <span className="h-fit rounded-full bg-amber-500/10 px-2 py-1 text-xs font-medium text-amber-700 ring-1 ring-amber-500/25 dark:text-amber-300">
               {i18nService.t('enterpriseLeadWorkbenchQuickResearchOptional')}
@@ -2020,8 +2167,8 @@ export const WorkspaceSettings: React.FC<WorkspaceSettingsProps> = ({
                   : firstBlockingIssue
                     ? 'bg-amber-500/10 text-amber-700 dark:text-amber-300'
                     : isDirty
-                    ? 'bg-amber-500/10 text-amber-700 dark:text-amber-300'
-                    : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+                      ? 'bg-amber-500/10 text-amber-700 dark:text-amber-300'
+                      : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
               }`}
             >
               {getSaveStatusLabel()}

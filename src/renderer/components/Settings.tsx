@@ -1,9 +1,31 @@
-import { ArchiveBoxIcon, ArrowPathIcon, ArrowPathRoundedSquareIcon, ChatBubbleLeftIcon, CheckCircleIcon, CpuChipIcon, CubeIcon, EnvelopeIcon, ExclamationTriangleIcon, GlobeAltIcon, InformationCircleIcon, MagnifyingGlassIcon, SunIcon, TrashIcon, WrenchScrewdriverIcon, XMarkIcon } from '@heroicons/react/24/outline';
-import React, { useCallback,useEffect, useMemo, useRef, useState } from 'react';
+import {
+  ArchiveBoxIcon,
+  ArrowPathIcon,
+  ArrowPathRoundedSquareIcon,
+  ChatBubbleLeftIcon,
+  CheckCircleIcon,
+  CpuChipIcon,
+  CubeIcon,
+  EnvelopeIcon,
+  ExclamationTriangleIcon,
+  GlobeAltIcon,
+  InformationCircleIcon,
+  MagnifyingGlassIcon,
+  SunIcon,
+  TrashIcon,
+  WrenchScrewdriverIcon,
+  XMarkIcon,
+} from '@heroicons/react/24/outline';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 
 import { AppSettingsAutoLaunchErrorCode } from '../../shared/appSettings/constants';
-import { type AppUpdateInfo,type AppUpdateRuntimeState,AppUpdateSource,AppUpdateStatus } from '../../shared/appUpdate/constants';
+import {
+  type AppUpdateInfo,
+  type AppUpdateRuntimeState,
+  AppUpdateSource,
+  AppUpdateStatus,
+} from '../../shared/appUpdate/constants';
 import {
   type BrowserWebAccessConfig,
   defaultBrowserWebAccessConfig,
@@ -11,18 +33,43 @@ import {
 } from '../../shared/browserWebAccess/constants';
 import { DataMigrationRestoreStatus } from '../../shared/dataMigration/constants';
 import { normalizeNotificationSettings } from '../../shared/notifications/constants';
-import { OpenClawEnginePhase, OpenClawGatewayRepairErrorCode } from '../../shared/openclawEngine/constants';
-import { ProviderAuthType, ProviderName, ProviderRegistry, resolveCodingPlanBaseUrl } from '../../shared/providers';
-import { type AppConfig, defaultConfig, getProviderDisplayName, getVisibleProviders, ShortcutAction, type ShortcutConfig } from '../config';
+import {
+  OpenClawEnginePhase,
+  OpenClawGatewayRepairErrorCode,
+} from '../../shared/openclawEngine/constants';
+import {
+  ProviderAuthType,
+  ProviderName,
+  ProviderRegistry,
+  resolveCodingPlanBaseUrl,
+} from '../../shared/providers';
+import {
+  type AppConfig,
+  defaultConfig,
+  getProviderDisplayName,
+  getVisibleProviders,
+  ShortcutAction,
+  type ShortcutConfig,
+} from '../config';
 import { APP_ID, EXPORT_FORMAT_TYPE, EXPORT_PASSWORD } from '../constants/app';
 import { apiService } from '../services/api';
 import { configService } from '../services/config';
 import { coworkService } from '../services/cowork';
-import { decryptSecret, decryptWithPassword, EncryptedPayload, encryptWithPassword, PasswordEncryptedPayload } from '../services/encryption';
+import {
+  decryptSecret,
+  decryptWithPassword,
+  EncryptedPayload,
+  encryptWithPassword,
+  PasswordEncryptedPayload,
+} from '../services/encryption';
 import { i18nService, LanguageType } from '../services/i18n';
 import { imService } from '../services/im';
 import { LogReporterAction, reportYdAnalyzer } from '../services/logReporter';
-import { formatShortcutForDisplay, getShortcutConflictSignature, matchesShortcut } from '../services/shortcuts';
+import {
+  formatShortcutForDisplay,
+  getShortcutConflictSignature,
+  matchesShortcut,
+} from '../services/shortcuts';
 import { themeService } from '../services/theme';
 import type { RootState } from '../store';
 import { selectCoworkConfig, selectCurrentSession } from '../store/selectors/coworkSelectors';
@@ -51,7 +98,10 @@ import MessageCopyIcon from './icons/MessageCopyIcon';
 import PlugIcon from './icons/PlugIcon';
 import PlusCircleIcon from './icons/PlusCircleIcon';
 import IMSettings from './im/IMSettings';
-import PluginsSettings, { type PluginPendingChanges, type PluginsSettingsHandle } from './plugins/PluginsSettings';
+import PluginsSettings, {
+  type PluginPendingChanges,
+  type PluginsSettingsHandle,
+} from './plugins/PluginsSettings';
 import BrowserWebAccessSettings from './settings/BrowserWebAccessSettings';
 import {
   buildOpenAICompatibleChatCompletionsUrl,
@@ -80,13 +130,26 @@ import ModelSettingsSection, { ModelEditorDialog } from './settings/ModelSetting
 import EmailSkillConfig from './skills/EmailSkillConfig';
 import ThemedSelect from './ui/ThemedSelect';
 
-type TabType = 'general' | 'appearance' | 'coworkAgentEngine' | 'model' | 'browserWebAccess' | 'coworkMemory' | 'coworkDreaming' | 'shortcuts' | 'im' | 'email' | 'plugins' | 'about';
+type TabType =
+  | 'general'
+  | 'appearance'
+  | 'coworkAgentEngine'
+  | 'model'
+  | 'browserWebAccess'
+  | 'coworkMemory'
+  | 'coworkDreaming'
+  | 'shortcuts'
+  | 'im'
+  | 'email'
+  | 'plugins'
+  | 'about';
 
-const waitForNextPaint = (): Promise<void> => new Promise(resolve => {
-  window.requestAnimationFrame(() => {
-    window.requestAnimationFrame(() => resolve());
+const waitForNextPaint = (): Promise<void> =>
+  new Promise(resolve => {
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => resolve());
+    });
   });
-});
 
 const getAutoLaunchErrorMessage = (errorCode?: string): string => {
   if (errorCode === AppSettingsAutoLaunchErrorCode.RequiresApproval) {
@@ -110,7 +173,7 @@ const formatBackupSize = (sizeBytes?: number): string => {
   return `${value.toFixed(unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
 };
 
-const normalizeProvidersForSettingsSave = (providers: ProvidersConfig): ProvidersConfig => (
+const normalizeProvidersForSettingsSave = (providers: ProvidersConfig): ProvidersConfig =>
   Object.fromEntries(
     Object.entries(providers).map(([providerKey, providerConfig]) => {
       const apiFormat = getEffectiveApiFormat(providerKey, providerConfig.apiFormat);
@@ -125,20 +188,15 @@ const normalizeProvidersForSettingsSave = (providers: ProvidersConfig): Provider
           baseUrl: resolveBaseUrl(providerKey as ProviderType, providerConfig.baseUrl, apiFormat),
         },
       ];
-    })
-  ) as ProvidersConfig
-);
+    }),
+  ) as ProvidersConfig;
 
 const resolvePrimaryProviderForSettingsSave = (
   providers: ProvidersConfig,
   activeProvider: ProviderType,
 ): ProviderConfig => {
-  const firstEnabledProvider = Object.entries(providers).find(
-    ([_, config]) => config.enabled
-  );
-  return firstEnabledProvider
-    ? firstEnabledProvider[1]
-    : providers[activeProvider];
+  const firstEnabledProvider = Object.entries(providers).find(([_, config]) => config.enabled);
+  return firstEnabledProvider ? firstEnabledProvider[1] : providers[activeProvider];
 };
 
 type ShortcutCommandDefinition = {
@@ -234,13 +292,11 @@ type CustomModelSettingsAnalyticsSummary = {
   modelCount: number;
 };
 
-const isCustomProviderKey = (providerKey: string): boolean => (
-  (CUSTOM_PROVIDER_KEYS as readonly string[]).includes(providerKey)
-);
+const isCustomProviderKey = (providerKey: string): boolean =>
+  (CUSTOM_PROVIDER_KEYS as readonly string[]).includes(providerKey);
 
-const isLocalProviderKey = (providerKey: string): boolean => (
-  providerKey === ProviderName.Ollama || providerKey === ProviderName.LmStudio
-);
+const isLocalProviderKey = (providerKey: string): boolean =>
+  providerKey === ProviderName.Ollama || providerKey === ProviderName.LmStudio;
 
 const resolveProviderAnalyticsKind = (providerKey: string): ProviderAnalyticsKind => {
   if (isCustomProviderKey(providerKey)) {
@@ -252,17 +308,16 @@ const resolveProviderAnalyticsKind = (providerKey: string): ProviderAnalyticsKin
   return 'builtin';
 };
 
-const countProviderModels = (providerConfig?: ProviderConfig): number => (
-  Array.isArray(providerConfig?.models) ? providerConfig.models.length : 0
-);
+const countProviderModels = (providerConfig?: ProviderConfig): number =>
+  Array.isArray(providerConfig?.models) ? providerConfig.models.length : 0;
 
-const getProviderAuthTypeForAnalytics = (providerConfig?: ProviderConfig): string => (
-  providerConfig?.authType || ProviderAuthType.ApiKey
-);
+const getProviderAuthTypeForAnalytics = (providerConfig?: ProviderConfig): string =>
+  providerConfig?.authType || ProviderAuthType.ApiKey;
 
-const getProviderApiFormatForAnalytics = (providerKey: string, providerConfig?: ProviderConfig): string => (
-  getEffectiveApiFormat(providerKey, providerConfig?.apiFormat)
-);
+const getProviderApiFormatForAnalytics = (
+  providerKey: string,
+  providerConfig?: ProviderConfig,
+): string => getEffectiveApiFormat(providerKey, providerConfig?.apiFormat);
 
 const buildCustomModelSettingsAnalyticsSummary = (
   previousProviders: ProvidersConfig,
@@ -290,15 +345,24 @@ const buildCustomModelSettingsAnalyticsSummary = (
       changedKeys.add('provider_enabled');
       providerChanged = true;
     }
-    if (getProviderApiFormatForAnalytics(providerKey, previousProvider) !== getProviderApiFormatForAnalytics(providerKey, nextProvider)) {
+    if (
+      getProviderApiFormatForAnalytics(providerKey, previousProvider) !==
+      getProviderApiFormatForAnalytics(providerKey, nextProvider)
+    ) {
       changedKeys.add('api_format');
       providerChanged = true;
     }
-    if (((previousProvider as ProviderConfig).codingPlanEnabled === true) !== ((nextProvider as ProviderConfig).codingPlanEnabled === true)) {
+    if (
+      ((previousProvider as ProviderConfig).codingPlanEnabled === true) !==
+      ((nextProvider as ProviderConfig).codingPlanEnabled === true)
+    ) {
       changedKeys.add('coding_plan');
       providerChanged = true;
     }
-    if (getProviderAuthTypeForAnalytics(previousProvider) !== getProviderAuthTypeForAnalytics(nextProvider)) {
+    if (
+      getProviderAuthTypeForAnalytics(previousProvider) !==
+      getProviderAuthTypeForAnalytics(nextProvider)
+    ) {
       changedKeys.add('auth_type');
       providerChanged = true;
     }
@@ -320,19 +384,30 @@ const buildCustomModelSettingsAnalyticsSummary = (
   return {
     changedKeys: Array.from(changedKeys).sort().join(','),
     changedProviderCount: changedProviders.size,
-    customProviderCount: nextProviderEntries.filter(([providerKey]) => isCustomProviderKey(providerKey)).length,
+    customProviderCount: nextProviderEntries.filter(([providerKey]) =>
+      isCustomProviderKey(providerKey),
+    ).length,
     customProviderModelCount: nextProviderEntries
       .filter(([providerKey]) => isCustomProviderKey(providerKey))
       .reduce((count, [, providerConfig]) => count + countProviderModels(providerConfig), 0),
-    enabledCustomProviderCount: nextProviderEntries
-      .filter(([providerKey, providerConfig]) => isCustomProviderKey(providerKey) && providerConfig.enabled === true)
-      .length,
-    enabledProviderCount: nextProviderEntries.filter(([, providerConfig]) => providerConfig.enabled === true).length,
-    hasCodingPlanEnabled: nextProviderEntries.some(([, providerConfig]) => (providerConfig as ProviderConfig).codingPlanEnabled === true),
-    hasLocalProviderEnabled: nextProviderEntries.some(([providerKey, providerConfig]) => (
-      isLocalProviderKey(providerKey) && providerConfig.enabled === true
-    )),
-    modelCount: nextProviderEntries.reduce((count, [, providerConfig]) => count + countProviderModels(providerConfig), 0),
+    enabledCustomProviderCount: nextProviderEntries.filter(
+      ([providerKey, providerConfig]) =>
+        isCustomProviderKey(providerKey) && providerConfig.enabled === true,
+    ).length,
+    enabledProviderCount: nextProviderEntries.filter(
+      ([, providerConfig]) => providerConfig.enabled === true,
+    ).length,
+    hasCodingPlanEnabled: nextProviderEntries.some(
+      ([, providerConfig]) => (providerConfig as ProviderConfig).codingPlanEnabled === true,
+    ),
+    hasLocalProviderEnabled: nextProviderEntries.some(
+      ([providerKey, providerConfig]) =>
+        isLocalProviderKey(providerKey) && providerConfig.enabled === true,
+    ),
+    modelCount: nextProviderEntries.reduce(
+      (count, [, providerConfig]) => count + countProviderModels(providerConfig),
+      0,
+    ),
   };
 };
 
@@ -430,9 +505,8 @@ const buildMemorySettingAnalyticsSummary = (
   };
 };
 
-const resolveDreamingFrequencyType = (frequency: string): 'preset' | 'custom' => (
-  DREAMING_FREQUENCY_PRESETS_FOR_ANALYTICS.has(frequency) ? 'preset' : 'custom'
-);
+const resolveDreamingFrequencyType = (frequency: string): 'preset' | 'custom' =>
+  DREAMING_FREQUENCY_PRESETS_FOR_ANALYTICS.has(frequency) ? 'preset' : 'custom';
 
 const buildDreamingSettingAnalyticsSummary = (
   previousConfig: {
@@ -463,9 +537,8 @@ const buildDreamingSettingAnalyticsSummary = (
   };
 };
 
-const countConfiguredShortcuts = (shortcutConfig: ShortcutConfig): number => (
-  Object.values(shortcutConfig).filter(value => String(value || '').trim().length > 0).length
-);
+const countConfiguredShortcuts = (shortcutConfig: ShortcutConfig): number =>
+  Object.values(shortcutConfig).filter(value => String(value || '').trim().length > 0).length;
 
 const buildShortcutSettingAnalyticsSummary = (
   previousShortcuts: ShortcutConfig,
@@ -478,7 +551,10 @@ const buildShortcutSettingAnalyticsSummary = (
   ]);
   let changedCount = 0;
   keys.forEach(key => {
-    if ((previousShortcuts[key as ShortcutAction] || '') !== (nextShortcuts[key as ShortcutAction] || '')) {
+    if (
+      (previousShortcuts[key as ShortcutAction] || '') !==
+      (nextShortcuts[key as ShortcutAction] || '')
+    ) {
       changedCount += 1;
     }
   });
@@ -488,14 +564,18 @@ const buildShortcutSettingAnalyticsSummary = (
   }
 
   const defaultShortcuts: ShortcutConfig = { ...defaultConfig.shortcuts! };
-  const resetToDefault = Array.from(keys).every(key => (
-    (nextShortcuts[key as ShortcutAction] || '') === (defaultShortcuts[key as ShortcutAction] || '')
-  ));
+  const resetToDefault = Array.from(keys).every(
+    key =>
+      (nextShortcuts[key as ShortcutAction] || '') ===
+      (defaultShortcuts[key as ShortcutAction] || ''),
+  );
 
   return {
     changedCount,
     configuredCount: countConfiguredShortcuts(nextShortcuts),
-    disabledCount: Array.from(keys).filter(key => !String(nextShortcuts[key as ShortcutAction] || '').trim()).length,
+    disabledCount: Array.from(keys).filter(
+      key => !String(nextShortcuts[key as ShortcutAction] || '').trim(),
+    ).length,
     resetToDefault,
   };
 };
@@ -553,14 +633,12 @@ const reportAppearanceSettingChanged = (
   });
 };
 
-const reportBrowserSettingChanged = (
-  params: {
-    blockedHostnameCount: number;
-    changedKeys: string;
-    networkMode: string;
-    previousBlockedHostnameCount?: number;
-  },
-): void => {
+const reportBrowserSettingChanged = (params: {
+  blockedHostnameCount: number;
+  changedKeys: string;
+  networkMode: string;
+  previousBlockedHostnameCount?: number;
+}): void => {
   void reportYdAnalyzer({
     action: LogReporterAction.BrowserSettingChanged,
     source: SettingsAnalyticsSource.Browser,
@@ -568,9 +646,7 @@ const reportBrowserSettingChanged = (
   });
 };
 
-const reportMemorySettingChanged = (
-  summary: MemorySettingAnalyticsSummary,
-): void => {
+const reportMemorySettingChanged = (summary: MemorySettingAnalyticsSummary): void => {
   console.debug('[Settings] reporting memory setting analytics');
   void reportYdAnalyzer({
     action: LogReporterAction.MemorySettingChanged,
@@ -592,9 +668,7 @@ const reportMemoryEntryChanged = (
   });
 };
 
-const reportDreamingSettingChanged = (
-  summary: DreamingSettingAnalyticsSummary,
-): void => {
+const reportDreamingSettingChanged = (summary: DreamingSettingAnalyticsSummary): void => {
   console.debug('[Settings] reporting dreaming setting analytics');
   void reportYdAnalyzer({
     action: LogReporterAction.DreamingSettingChanged,
@@ -603,9 +677,7 @@ const reportDreamingSettingChanged = (
   });
 };
 
-const reportPluginSettingsSaved = (
-  summary: PluginSettingsAnalyticsSummary,
-): void => {
+const reportPluginSettingsSaved = (summary: PluginSettingsAnalyticsSummary): void => {
   console.debug('[Settings] reporting plugin settings analytics');
   void reportYdAnalyzer({
     action: LogReporterAction.PluginSettingsSaved,
@@ -614,9 +686,7 @@ const reportPluginSettingsSaved = (
   });
 };
 
-const reportShortcutSettingChanged = (
-  summary: ShortcutSettingAnalyticsSummary,
-): void => {
+const reportShortcutSettingChanged = (summary: ShortcutSettingAnalyticsSummary): void => {
   console.debug('[Settings] reporting shortcut setting analytics');
   void reportYdAnalyzer({
     action: LogReporterAction.ShortcutSettingChanged,
@@ -669,9 +739,7 @@ const reportAgentEngineMaintenanceAction = (
   });
 };
 
-const reportCustomModelSettingsSaved = (
-  summary: CustomModelSettingsAnalyticsSummary,
-): void => {
+const reportCustomModelSettingsSaved = (summary: CustomModelSettingsAnalyticsSummary): void => {
   void reportYdAnalyzer({
     action: LogReporterAction.CustomModelSettingsSaved,
     source: SettingsAnalyticsSource.Model,
@@ -741,10 +809,22 @@ const SHORTCUT_COMMAND_GROUPS: Array<{
     titleKey: 'shortcutGroupCowork',
     commands: [
       { key: ShortcutAction.NewChat, labelKey: 'newChat', descriptionKey: 'shortcutDescNewChat' },
-      { key: ShortcutAction.FocusPrompt, labelKey: 'shortcutFocusPrompt', descriptionKey: 'shortcutDescFocusPrompt' },
-      { key: ShortcutAction.StopCurrentTask, labelKey: 'shortcutStopCurrentTask', descriptionKey: 'shortcutDescStopCurrentTask' },
+      {
+        key: ShortcutAction.FocusPrompt,
+        labelKey: 'shortcutFocusPrompt',
+        descriptionKey: 'shortcutDescFocusPrompt',
+      },
+      {
+        key: ShortcutAction.StopCurrentTask,
+        labelKey: 'shortcutStopCurrentTask',
+        descriptionKey: 'shortcutDescStopCurrentTask',
+      },
       { key: ShortcutAction.Search, labelKey: 'search', descriptionKey: 'shortcutDescSearch' },
-      { key: ShortcutAction.ToggleArtifacts, labelKey: 'shortcutToggleArtifacts', descriptionKey: 'shortcutDescToggleArtifacts' },
+      {
+        key: ShortcutAction.ToggleArtifacts,
+        labelKey: 'shortcutToggleArtifacts',
+        descriptionKey: 'shortcutDescToggleArtifacts',
+      },
       {
         key: ShortcutAction.SendMessage,
         labelKey: 'sendMessageShortcut',
@@ -756,26 +836,66 @@ const SHORTCUT_COMMAND_GROUPS: Array<{
   {
     titleKey: 'shortcutGroupNavigation',
     commands: [
-      { key: ShortcutAction.OpenCowork, labelKey: 'shortcutOpenCowork', descriptionKey: 'shortcutDescOpenCowork' },
-      { key: ShortcutAction.OpenScheduledTasks, labelKey: 'shortcutOpenScheduledTasks', descriptionKey: 'shortcutDescOpenScheduledTasks' },
-      { key: ShortcutAction.OpenKits, labelKey: 'shortcutOpenKits', descriptionKey: 'shortcutDescOpenKits' },
-      { key: ShortcutAction.OpenSkills, labelKey: 'shortcutOpenSkills', descriptionKey: 'shortcutDescOpenSkills' },
-      { key: ShortcutAction.OpenMcp, labelKey: 'shortcutOpenMcp', descriptionKey: 'shortcutDescOpenMcp' },
-      { key: ShortcutAction.ToggleSidebar, labelKey: 'shortcutToggleSidebar', descriptionKey: 'shortcutDescToggleSidebar' },
+      {
+        key: ShortcutAction.OpenCowork,
+        labelKey: 'shortcutOpenCowork',
+        descriptionKey: 'shortcutDescOpenCowork',
+      },
+      {
+        key: ShortcutAction.OpenScheduledTasks,
+        labelKey: 'shortcutOpenScheduledTasks',
+        descriptionKey: 'shortcutDescOpenScheduledTasks',
+      },
+      {
+        key: ShortcutAction.OpenKits,
+        labelKey: 'shortcutOpenKits',
+        descriptionKey: 'shortcutDescOpenKits',
+      },
+      {
+        key: ShortcutAction.OpenSkills,
+        labelKey: 'shortcutOpenSkills',
+        descriptionKey: 'shortcutDescOpenSkills',
+      },
+      {
+        key: ShortcutAction.OpenMcp,
+        labelKey: 'shortcutOpenMcp',
+        descriptionKey: 'shortcutDescOpenMcp',
+      },
+      {
+        key: ShortcutAction.ToggleSidebar,
+        labelKey: 'shortcutToggleSidebar',
+        descriptionKey: 'shortcutDescToggleSidebar',
+      },
     ],
   },
   {
     titleKey: 'shortcutGroupApp',
     commands: [
-      { key: ShortcutAction.Settings, labelKey: 'openSettings', descriptionKey: 'shortcutDescSettings' },
-      { key: ShortcutAction.ShowShortcuts, labelKey: 'shortcutShowShortcuts', descriptionKey: 'shortcutDescShowShortcuts' },
+      {
+        key: ShortcutAction.Settings,
+        labelKey: 'openSettings',
+        descriptionKey: 'shortcutDescSettings',
+      },
+      {
+        key: ShortcutAction.ShowShortcuts,
+        labelKey: 'shortcutShowShortcuts',
+        descriptionKey: 'shortcutDescShowShortcuts',
+      },
     ],
   },
   {
     titleKey: 'shortcutGroupAgent',
     commands: [
-      { key: ShortcutAction.PreviousAgent, labelKey: 'shortcutPreviousAgent', descriptionKey: 'shortcutDescPreviousAgent' },
-      { key: ShortcutAction.NextAgent, labelKey: 'shortcutNextAgent', descriptionKey: 'shortcutDescNextAgent' },
+      {
+        key: ShortcutAction.PreviousAgent,
+        labelKey: 'shortcutPreviousAgent',
+        descriptionKey: 'shortcutDescPreviousAgent',
+      },
+      {
+        key: ShortcutAction.NextAgent,
+        labelKey: 'shortcutNextAgent',
+        descriptionKey: 'shortcutDescNextAgent',
+      },
       {
         key: ShortcutAction.ShowCurrentAgentTasks,
         labelKey: 'shortcutShowCurrentAgentTasks',
@@ -854,7 +974,6 @@ interface SettingsProps extends SettingsOpenOptions {
   } | null;
 }
 
-
 type ProviderConnectionTestResult = {
   success: boolean;
   message: string;
@@ -930,19 +1049,29 @@ type MiniMaxOAuthPhase =
   | { kind: 'success' }
   | { kind: 'error'; message: string };
 
-async function generateMiniMaxPkce(): Promise<{ verifier: string; challenge: string; state: string }> {
+async function generateMiniMaxPkce(): Promise<{
+  verifier: string;
+  challenge: string;
+  state: string;
+}> {
   const verifierArray = new Uint8Array(32);
   crypto.getRandomValues(verifierArray);
   const verifier = btoa(String.fromCharCode(...verifierArray))
-    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=/g, '');
   const encoded = new TextEncoder().encode(verifier);
   const digest = await crypto.subtle.digest('SHA-256', encoded);
   const challenge = btoa(String.fromCharCode(...new Uint8Array(digest)))
-    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=/g, '');
   const stateArray = new Uint8Array(16);
   crypto.getRandomValues(stateArray);
   const state = btoa(String.fromCharCode(...stateArray))
-    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=/g, '');
   return { verifier, challenge, state };
 }
 
@@ -1038,9 +1167,16 @@ const formatShortcutFromEvent = (e: React.KeyboardEvent): string | null => {
   if (e.shiftKey) parts.push('Shift');
 
   const keyMap: Record<string, string> = {
-    ArrowUp: 'Up', ArrowDown: 'Down', ArrowLeft: 'Left', ArrowRight: 'Right',
-    ' ': 'Space', Escape: 'Esc', Enter: 'Enter', Backspace: 'Backspace',
-    Delete: 'Delete', Tab: 'Tab',
+    ArrowUp: 'Up',
+    ArrowDown: 'Down',
+    ArrowLeft: 'Left',
+    ArrowRight: 'Right',
+    ' ': 'Space',
+    Escape: 'Esc',
+    Enter: 'Enter',
+    Backspace: 'Backspace',
+    Delete: 'Delete',
+    Tab: 'Tab',
   };
   const key = keyMap[e.key] ?? (e.key.length === 1 ? e.key.toUpperCase() : e.key);
   parts.push(key);
@@ -1071,16 +1207,27 @@ const ShortcutRecorder: React.FC<{
     if (!recording) return;
     e.preventDefault();
     e.stopPropagation();
-    if (e.key === 'Escape') { setRecording(false); return; }
-    if (e.key === 'Delete' || e.key === 'Backspace') { onChange(''); setRecording(false); return; }
+    if (e.key === 'Escape') {
+      setRecording(false);
+      return;
+    }
+    if (e.key === 'Delete' || e.key === 'Backspace') {
+      onChange('');
+      setRecording(false);
+      return;
+    }
     const shortcut = formatShortcutFromEvent(e);
-    if (shortcut) { onChange(shortcut); setRecording(false); }
+    if (shortcut) {
+      onChange(shortcut);
+      setRecording(false);
+    }
   };
 
   useEffect(() => {
     if (!recording) return;
     const handleClickOutside = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) setRecording(false);
+      if (containerRef.current && !containerRef.current.contains(e.target as Node))
+        setRecording(false);
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
@@ -1136,7 +1283,10 @@ const ShortcutRecorder: React.FC<{
   );
 };
 
-const SendShortcutSelect: React.FC<{ value: string; onChange: (v: string) => void }> = ({ value, onChange }) => {
+const SendShortcutSelect: React.FC<{ value: string; onChange: (v: string) => void }> = ({
+  value,
+  onChange,
+}) => {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -1163,27 +1313,32 @@ const SendShortcutSelect: React.FC<{ value: string; onChange: (v: string) => voi
           onClick={() => setOpen(!open)}
           className={`w-28 rounded-lg border px-2.5 py-1 text-xs cursor-pointer select-none text-center outline-none transition-colors
             dark:bg-claude-darkSurfaceInset bg-claude-surfaceInset dark:text-claude-darkText text-claude-text
-            ${open
-              ? 'border-claude-accent ring-1 ring-claude-accent/30'
-              : 'dark:border-claude-darkBorder border-claude-border hover:border-claude-accent/50'
+            ${
+              open
+                ? 'border-claude-accent ring-1 ring-claude-accent/30'
+                : 'dark:border-claude-darkBorder border-claude-border hover:border-claude-accent/50'
             }`}
         >
           {currentLabel}
         </div>
         {open && (
           <div className="absolute right-0 mt-1 z-50 min-w-[160px] rounded-xl border dark:border-claude-darkBorder border-claude-border dark:bg-claude-darkSurfaceInset bg-claude-surfaceInset shadow-elevated py-1">
-            {SEND_SHORTCUT_OPTIONS.map((option) => {
+            {SEND_SHORTCUT_OPTIONS.map(option => {
               const label = isMacPlatform ? option.labelMac : option.label;
               const isActive = value === option.value;
               return (
                 <button
                   key={option.value}
                   type="button"
-                  onClick={() => { onChange(option.value); setOpen(false); }}
+                  onClick={() => {
+                    onChange(option.value);
+                    setOpen(false);
+                  }}
                   className={`flex items-center justify-between w-full px-3 py-1.5 text-xs transition-colors
-                    ${isActive
-                      ? 'dark:text-claude-accent text-claude-accent font-medium'
-                      : 'dark:text-claude-darkText text-claude-text'
+                    ${
+                      isActive
+                        ? 'dark:text-claude-accent text-claude-accent font-medium'
+                        : 'dark:text-claude-darkText text-claude-text'
                     } hover:bg-claude-accent/10`}
                 >
                   <span>{label}</span>
@@ -1216,11 +1371,7 @@ const SettingsSwitch: React.FC<{
     disabled={disabled}
     className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors ${
       disabled ? 'opacity-50 cursor-not-allowed' : ''
-    } ${
-      checked
-        ? 'bg-primary'
-        : 'bg-gray-300 dark:bg-gray-600'
-    }`}
+    } ${checked ? 'bg-primary' : 'bg-gray-300 dark:bg-gray-600'}`}
   >
     <span
       className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
@@ -1239,19 +1390,10 @@ const SettingsToggleRow: React.FC<{
 }> = ({ title, description, checked, disabled, onToggle }) => (
   <div>
     <div className="flex items-center justify-between gap-4">
-      <h4 className="min-w-0 flex-1 text-sm font-medium text-foreground">
-        {title}
-      </h4>
-      <SettingsSwitch
-        checked={checked}
-        label={title}
-        disabled={disabled}
-        onClick={onToggle}
-      />
+      <h4 className="min-w-0 flex-1 text-sm font-medium text-foreground">{title}</h4>
+      <SettingsSwitch checked={checked} label={title} disabled={disabled} onClick={onToggle} />
     </div>
-    <p className="mt-3 text-sm text-secondary">
-      {description}
-    </p>
+    <p className="mt-3 text-sm text-secondary">{description}</p>
   </div>
 );
 
@@ -1275,7 +1417,8 @@ const Settings: React.FC<SettingsProps> = ({
   const [useSystemProxy, setUseSystemProxy] = useState(false);
   const [sqliteAutoBackupEnabled, setSqliteAutoBackupEnabled] = useState(false);
   const [usageAnalyticsEnabled, setUsageAnalyticsEnabled] = useState(true);
-  const [taskCompletionNotificationsEnabled, setTaskCompletionNotificationsEnabled] = useState(true);
+  const [taskCompletionNotificationsEnabled, setTaskCompletionNotificationsEnabled] =
+    useState(true);
   const [browserWebAccess, setBrowserWebAccess] = useState<BrowserWebAccessConfig>(() => ({
     ...defaultBrowserWebAccessConfig,
     webFetch: { ...defaultBrowserWebAccessConfig.webFetch },
@@ -1333,12 +1476,19 @@ const Settings: React.FC<SettingsProps> = ({
   // Add state for providers configuration
   const [providers, setProviders] = useState<ProvidersConfig>(() => getDefaultProviders());
 
-
   // authType defaults to undefined on first open, which should behave as OAuth mode
   const minimaxIsOAuthMode = providers.minimax.authType !== 'apikey';
   // OpenAI defaults to API key mode unless the user explicitly opts in to OAuth
   const openaiIsOAuthMode = providers.openai.authType === 'oauth';
-  const isBaseUrlLocked = (activeProvider === 'zhipu' && providers.zhipu.codingPlanEnabled) || (activeProvider === 'qwen' && providers.qwen.codingPlanEnabled) || (activeProvider === 'volcengine' && providers.volcengine.codingPlanEnabled) || (activeProvider === 'moonshot' && providers.moonshot.codingPlanEnabled) || (activeProvider === 'qianfan' && providers.qianfan.codingPlanEnabled) || (activeProvider === 'xiaomi' && providers.xiaomi.codingPlanEnabled) || (activeProvider === 'minimax' && minimaxIsOAuthMode) || (activeProvider === 'openai' && openaiIsOAuthMode);
+  const isBaseUrlLocked =
+    (activeProvider === 'zhipu' && providers.zhipu.codingPlanEnabled) ||
+    (activeProvider === 'qwen' && providers.qwen.codingPlanEnabled) ||
+    (activeProvider === 'volcengine' && providers.volcengine.codingPlanEnabled) ||
+    (activeProvider === 'moonshot' && providers.moonshot.codingPlanEnabled) ||
+    (activeProvider === 'qianfan' && providers.qianfan.codingPlanEnabled) ||
+    (activeProvider === 'xiaomi' && providers.xiaomi.codingPlanEnabled) ||
+    (activeProvider === 'minimax' && minimaxIsOAuthMode) ||
+    (activeProvider === 'openai' && openaiIsOAuthMode);
 
   // 创建引用来确保内容区域的滚动
   const contentRef = useRef<HTMLDivElement>(null);
@@ -1348,11 +1498,15 @@ const Settings: React.FC<SettingsProps> = ({
   const updateCheckTimerRef = useRef<number | null>(null);
 
   // 快捷键设置
-  const [shortcuts, setShortcuts] = useState<ShortcutConfig>(() => ({ ...defaultConfig.shortcuts! }));
+  const [shortcuts, setShortcuts] = useState<ShortcutConfig>(() => ({
+    ...defaultConfig.shortcuts!,
+  }));
   const [shortcutSearchQuery, setShortcutSearchQuery] = useState('');
 
   // GitHub Copilot device code auth state
-  const [copilotAuthStatus, setCopilotAuthStatus] = useState<'idle' | 'requesting' | 'awaiting_user' | 'polling' | 'authenticated' | 'error'>('idle');
+  const [copilotAuthStatus, setCopilotAuthStatus] = useState<
+    'idle' | 'requesting' | 'awaiting_user' | 'polling' | 'authenticated' | 'error'
+  >('idle');
   const [copilotUserCode, setCopilotUserCode] = useState('');
   const [copilotVerificationUri, setCopilotVerificationUri] = useState('');
   const [copilotGithubUser, setCopilotGithubUser] = useState('');
@@ -1377,7 +1531,9 @@ const Settings: React.FC<SettingsProps> = ({
   const [testMode, setTestMode] = useState(false);
   const [logoClickCount, setLogoClickCount] = useState(0);
   const [testModeUnlocked, setTestModeUnlocked] = useState(false);
-  const [updateCheckStatus, setUpdateCheckStatus] = useState<'idle' | 'checking' | 'upToDate' | 'error' | 'downloading' | 'ready'>('idle');
+  const [updateCheckStatus, setUpdateCheckStatus] = useState<
+    'idle' | 'checking' | 'upToDate' | 'error' | 'downloading' | 'ready'
+  >('idle');
   const [appUpdateState, setAppUpdateState] = useState<AppUpdateRuntimeState | null>(null);
 
   useEffect(() => {
@@ -1406,7 +1562,7 @@ const Settings: React.FC<SettingsProps> = ({
 
     void syncUpdateStatus();
 
-    const unsubscribe = window.electron.appUpdate.onStateChanged((state) => {
+    const unsubscribe = window.electron.appUpdate.onStateChanged(state => {
       if (
         updateCheckTimerRef.current != null &&
         state.source === AppUpdateSource.Manual &&
@@ -1446,7 +1602,10 @@ const Settings: React.FC<SettingsProps> = ({
     if (updateCheckStatus === 'checking' || !appVersion) return;
     setUpdateCheckStatus('checking');
     try {
-      const result = await window.electron.appUpdate.checkNow({ manual: true, userId: authUser?.yid });
+      const result = await window.electron.appUpdate.checkNow({
+        manual: true,
+        userId: authUser?.yid,
+      });
       if (!result.success) {
         throw new Error(result.error || 'Update check failed');
       }
@@ -1566,7 +1725,9 @@ const Settings: React.FC<SettingsProps> = ({
         missingEntryCount: result.missingEntries?.length ?? 0,
       });
     } catch (exportError) {
-      setError(exportError instanceof Error ? exportError.message : i18nService.t('aboutExportLogsFailed'));
+      setError(
+        exportError instanceof Error ? exportError.message : i18nService.t('aboutExportLogsFailed'),
+      );
       reportAboutAction('export_logs', 'failed');
     } finally {
       setIsExportingLogs(false);
@@ -1576,39 +1737,71 @@ const Settings: React.FC<SettingsProps> = ({
   const coworkConfig = useSelector(selectCoworkConfig);
   const currentCoworkSession = useSelector(selectCurrentSession);
   const effectiveCoworkSettings = useSelector((state: RootState) => state.cowork.effectiveSettings);
-  const workspaceSettingsContext = useMemo(() => resolveWorkspaceSettingsContext({
-    sessionCwd: currentCoworkSession?.cwd,
-    globalWorkingDirectory: coworkConfig.workingDirectory,
-    globalWorkingDirectoryConfigured: coworkConfig.workingDirectoryConfigured,
-  }), [
-    currentCoworkSession?.cwd,
-    coworkConfig.workingDirectory,
-    coworkConfig.workingDirectoryConfigured,
-  ]);
-  const workspaceSettingsDisabledHintKey = workspaceSettingsContext.disabledReason
-    === WorkspaceSettingsContextDisabledReason.DefaultFallback
-    ? 'workspaceSettingsDefaultFallbackDisabledHint'
-    : 'workspaceSettingsDisabledHint';
-
-  const [coworkAgentEngine, setCoworkAgentEngine] = useState<CoworkAgentEngine>(coworkConfig.agentEngine || 'openclaw');
-  const [coworkMemoryEnabled, setCoworkMemoryEnabled] = useState<boolean>(coworkConfig.memoryEnabled ?? true);
-  const [coworkMemoryLlmJudgeEnabled, setCoworkMemoryLlmJudgeEnabled] = useState<boolean>(coworkConfig.memoryLlmJudgeEnabled ?? false);
-  const [skipMissedJobs, setSkipMissedJobs] = useState<boolean>(coworkConfig.skipMissedJobs ?? true);
-  const [embeddingEnabled, setEmbeddingEnabled] = useState<boolean>(coworkConfig.embeddingEnabled ?? false);
-  const [embeddingProvider, setEmbeddingProvider] = useState<string>(coworkConfig.embeddingProvider ?? 'openai');
-  const [embeddingModel, setEmbeddingModel] = useState<string>(coworkConfig.embeddingModel ?? '');
-  const [embeddingLocalModelPath, setEmbeddingLocalModelPath] = useState<string>(coworkConfig.embeddingLocalModelPath ?? '');
-  const [embeddingVectorWeight, setEmbeddingVectorWeight] = useState<number>(coworkConfig.embeddingVectorWeight ?? 0.7);
-  const [embeddingRemoteBaseUrl, setEmbeddingRemoteBaseUrl] = useState<string>(coworkConfig.embeddingRemoteBaseUrl ?? '');
-  const [embeddingRemoteApiKey, setEmbeddingRemoteApiKey] = useState<string>(coworkConfig.embeddingRemoteApiKey ?? '');
-  const [dreamingEnabled, setDreamingEnabled] = useState<boolean>(coworkConfig.dreamingEnabled ?? false);
-  const [dreamingFrequency, setDreamingFrequency] = useState<string>(coworkConfig.dreamingFrequency ?? '0 3 * * *');
-  const [dreamingModel, setDreamingModel] = useState<string>(coworkConfig.dreamingModel ?? '');
-  const [dreamingTimezone, setDreamingTimezone] = useState<string>(coworkConfig.dreamingTimezone ?? '');
-  const [memoryTab, setMemoryTab] = useState<'entries' | 'embedding'>('entries');
-  const [openClawSessionKeepAlive, setOpenClawSessionKeepAlive] = useState<OpenClawSessionKeepAlive>(
-    coworkConfig.openClawSessionPolicy?.keepAlive || OpenClawSessionKeepAliveValues.ThirtyDays,
+  const workspaceSettingsContext = useMemo(
+    () =>
+      resolveWorkspaceSettingsContext({
+        sessionCwd: currentCoworkSession?.cwd,
+        globalWorkingDirectory: coworkConfig.workingDirectory,
+        globalWorkingDirectoryConfigured: coworkConfig.workingDirectoryConfigured,
+      }),
+    [
+      currentCoworkSession?.cwd,
+      coworkConfig.workingDirectory,
+      coworkConfig.workingDirectoryConfigured,
+    ],
   );
+  const workspaceSettingsDisabledHintKey =
+    workspaceSettingsContext.disabledReason ===
+    WorkspaceSettingsContextDisabledReason.DefaultFallback
+      ? 'workspaceSettingsDefaultFallbackDisabledHint'
+      : 'workspaceSettingsDisabledHint';
+
+  const [coworkAgentEngine, setCoworkAgentEngine] = useState<CoworkAgentEngine>(
+    coworkConfig.agentEngine || 'openclaw',
+  );
+  const [coworkMemoryEnabled, setCoworkMemoryEnabled] = useState<boolean>(
+    coworkConfig.memoryEnabled ?? true,
+  );
+  const [coworkMemoryLlmJudgeEnabled, setCoworkMemoryLlmJudgeEnabled] = useState<boolean>(
+    coworkConfig.memoryLlmJudgeEnabled ?? false,
+  );
+  const [skipMissedJobs, setSkipMissedJobs] = useState<boolean>(
+    coworkConfig.skipMissedJobs ?? true,
+  );
+  const [embeddingEnabled, setEmbeddingEnabled] = useState<boolean>(
+    coworkConfig.embeddingEnabled ?? false,
+  );
+  const [embeddingProvider, setEmbeddingProvider] = useState<string>(
+    coworkConfig.embeddingProvider ?? 'openai',
+  );
+  const [embeddingModel, setEmbeddingModel] = useState<string>(coworkConfig.embeddingModel ?? '');
+  const [embeddingLocalModelPath, setEmbeddingLocalModelPath] = useState<string>(
+    coworkConfig.embeddingLocalModelPath ?? '',
+  );
+  const [embeddingVectorWeight, setEmbeddingVectorWeight] = useState<number>(
+    coworkConfig.embeddingVectorWeight ?? 0.7,
+  );
+  const [embeddingRemoteBaseUrl, setEmbeddingRemoteBaseUrl] = useState<string>(
+    coworkConfig.embeddingRemoteBaseUrl ?? '',
+  );
+  const [embeddingRemoteApiKey, setEmbeddingRemoteApiKey] = useState<string>(
+    coworkConfig.embeddingRemoteApiKey ?? '',
+  );
+  const [dreamingEnabled, setDreamingEnabled] = useState<boolean>(
+    coworkConfig.dreamingEnabled ?? false,
+  );
+  const [dreamingFrequency, setDreamingFrequency] = useState<string>(
+    coworkConfig.dreamingFrequency ?? '0 3 * * *',
+  );
+  const [dreamingModel, setDreamingModel] = useState<string>(coworkConfig.dreamingModel ?? '');
+  const [dreamingTimezone, setDreamingTimezone] = useState<string>(
+    coworkConfig.dreamingTimezone ?? '',
+  );
+  const [memoryTab, setMemoryTab] = useState<'entries' | 'embedding'>('entries');
+  const [openClawSessionKeepAlive, setOpenClawSessionKeepAlive] =
+    useState<OpenClawSessionKeepAlive>(
+      coworkConfig.openClawSessionPolicy?.keepAlive || OpenClawSessionKeepAliveValues.ThirtyDays,
+    );
   const [coworkMemoryEntries, setCoworkMemoryEntries] = useState<CoworkUserMemoryEntry[]>([]);
   const [coworkMemoryStats, setCoworkMemoryStats] = useState<CoworkMemoryStats | null>(null);
   const [coworkMemoryListLoading, setCoworkMemoryListLoading] = useState<boolean>(false);
@@ -1616,15 +1809,22 @@ const Settings: React.FC<SettingsProps> = ({
   const [coworkMemoryEditingId, setCoworkMemoryEditingId] = useState<string | null>(null);
   const [coworkMemoryDraftText, setCoworkMemoryDraftText] = useState<string>('');
   const [showMemoryModal, setShowMemoryModal] = useState<boolean>(false);
-  const [openClawEngineStatus, setOpenClawEngineStatus] = useState<OpenClawEngineStatus | null>(null);
+  const [openClawEngineStatus, setOpenClawEngineStatus] = useState<OpenClawEngineStatus | null>(
+    null,
+  );
   const [showOpenClawRepairConfirm, setShowOpenClawRepairConfirm] = useState<boolean>(false);
   const [isRepairingOpenClaw, setIsRepairingOpenClaw] = useState<boolean>(false);
-  const [openClawRepairResult, setOpenClawRepairResult] = useState<OpenClawGatewayRepairResult | null>(null);
+  const [openClawRepairResult, setOpenClawRepairResult] =
+    useState<OpenClawGatewayRepairResult | null>(null);
   const [openClawGatewayCopied, setOpenClawGatewayCopied] = useState<boolean>(false);
   const [isBackingUpOpenClawData, setIsBackingUpOpenClawData] = useState<boolean>(false);
   const [isRestoringOpenClawData, setIsRestoringOpenClawData] = useState<boolean>(false);
-  const [openClawDataBackupResult, setOpenClawDataBackupResult] = useState<{ path: string; sizeBytes?: number } | null>(null);
-  const [showOpenClawDataRestoreConfirm, setShowOpenClawDataRestoreConfirm] = useState<boolean>(false);
+  const [openClawDataBackupResult, setOpenClawDataBackupResult] = useState<{
+    path: string;
+    sizeBytes?: number;
+  } | null>(null);
+  const [showOpenClawDataRestoreConfirm, setShowOpenClawDataRestoreConfirm] =
+    useState<boolean>(false);
 
   useEffect(() => {
     setCoworkAgentEngine(coworkConfig.agentEngine || 'openclaw');
@@ -1642,7 +1842,9 @@ const Settings: React.FC<SettingsProps> = ({
     setDreamingFrequency(coworkConfig.dreamingFrequency ?? '0 3 * * *');
     setDreamingModel(coworkConfig.dreamingModel ?? '');
     setDreamingTimezone(coworkConfig.dreamingTimezone ?? '');
-    setOpenClawSessionKeepAlive(coworkConfig.openClawSessionPolicy?.keepAlive || OpenClawSessionKeepAliveValues.ThirtyDays);
+    setOpenClawSessionKeepAlive(
+      coworkConfig.openClawSessionPolicy?.keepAlive || OpenClawSessionKeepAliveValues.ThirtyDays,
+    );
   }, [
     coworkConfig.agentEngine,
     coworkConfig.memoryEnabled,
@@ -1662,34 +1864,44 @@ const Settings: React.FC<SettingsProps> = ({
     coworkConfig.dreamingTimezone,
   ]);
 
-  useEffect(() => () => {
-    if (emailCopiedTimerRef.current != null) {
-      window.clearTimeout(emailCopiedTimerRef.current);
-    }
-    if (openClawGatewayCopiedTimerRef.current != null) {
-      window.clearTimeout(openClawGatewayCopiedTimerRef.current);
-    }
-    if (updateCheckTimerRef.current != null) {
-      window.clearTimeout(updateCheckTimerRef.current);
-    }
-  }, []);
+  useEffect(
+    () => () => {
+      if (emailCopiedTimerRef.current != null) {
+        window.clearTimeout(emailCopiedTimerRef.current);
+      }
+      if (openClawGatewayCopiedTimerRef.current != null) {
+        window.clearTimeout(openClawGatewayCopiedTimerRef.current);
+      }
+      if (updateCheckTimerRef.current != null) {
+        window.clearTimeout(updateCheckTimerRef.current);
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
     let active = true;
-    void window.electron.openclaw.dataMigration.getLastRestoreResult().then((response) => {
-      if (!active || !response.success || !response.result) return;
-      if (response.result.status === DataMigrationRestoreStatus.Success) {
-        setNoticeMessage(i18nService.t('openClawDataMigrationSuccess'));
-        return;
-      }
-      const message = response.result.error
-        ? `${i18nService.t('openClawDataMigrationFailed')}: ${response.result.error}`
-        : i18nService.t('openClawDataMigrationFailed');
-      setError(message);
-    }).catch((loadError) => {
-      if (!active) return;
-      setError(loadError instanceof Error ? loadError.message : i18nService.t('openClawDataMigrationFailed'));
-    });
+    void window.electron.openclaw.dataMigration
+      .getLastRestoreResult()
+      .then(response => {
+        if (!active || !response.success || !response.result) return;
+        if (response.result.status === DataMigrationRestoreStatus.Success) {
+          setNoticeMessage(i18nService.t('openClawDataMigrationSuccess'));
+          return;
+        }
+        const message = response.result.error
+          ? `${i18nService.t('openClawDataMigrationFailed')}: ${response.result.error}`
+          : i18nService.t('openClawDataMigrationFailed');
+        setError(message);
+      })
+      .catch(loadError => {
+        if (!active) return;
+        setError(
+          loadError instanceof Error
+            ? loadError.message
+            : i18nService.t('openClawDataMigrationFailed'),
+        );
+      });
     return () => {
       active = false;
     };
@@ -1697,11 +1909,11 @@ const Settings: React.FC<SettingsProps> = ({
 
   useEffect(() => {
     let active = true;
-    void coworkService.getOpenClawEngineStatus().then((status) => {
+    void coworkService.getOpenClawEngineStatus().then(status => {
       if (!active || !status) return;
       setOpenClawEngineStatus(status);
     });
-    const unsubscribe = coworkService.onOpenClawEngineStatus((status) => {
+    const unsubscribe = coworkService.onOpenClawEngineStatus(status => {
       if (!active) return;
       setOpenClawEngineStatus(status);
     });
@@ -1724,7 +1936,8 @@ const Settings: React.FC<SettingsProps> = ({
       setSqliteAutoBackupEnabled(config.sqliteAutoBackupEnabled === true);
       setUsageAnalyticsEnabled(config.usageAnalyticsEnabled !== false);
       setTaskCompletionNotificationsEnabled(
-        normalizeNotificationSettings(config.notificationSettings).taskCompletionNotificationsEnabled,
+        normalizeNotificationSettings(config.notificationSettings)
+          .taskCompletionNotificationsEnabled,
       );
       setBrowserWebAccess(normalizeBrowserWebAccessConfig(config.browserWebAccess));
       const savedTestMode = config.app?.testMode ?? false;
@@ -1732,19 +1945,25 @@ const Settings: React.FC<SettingsProps> = ({
       if (savedTestMode) setTestModeUnlocked(true);
 
       // Load auto-launch setting
-      window.electron.autoLaunch.get().then(({ enabled }) => {
-        console.log(`[Renderer][Settings] loaded auto-launch setting: enabled=${enabled}`);
-        setAutoLaunchState(enabled);
-      }).catch(err => {
-        console.error('Failed to load auto-launch setting:', err);
-      });
+      window.electron.autoLaunch
+        .get()
+        .then(({ enabled }) => {
+          console.log(`[Renderer][Settings] loaded auto-launch setting: enabled=${enabled}`);
+          setAutoLaunchState(enabled);
+        })
+        .catch(err => {
+          console.error('Failed to load auto-launch setting:', err);
+        });
 
       // Load prevent-sleep setting
-      window.electron.preventSleep.get().then(({ enabled }) => {
-        setPreventSleepState(enabled);
-      }).catch(err => {
-        console.error('Failed to load prevent-sleep setting:', err);
-      });
+      window.electron.preventSleep
+        .get()
+        .then(({ enabled }) => {
+          setPreventSleepState(enabled);
+        })
+        .catch(err => {
+          console.error('Failed to load prevent-sleep setting:', err);
+        });
 
       // Set up providers based on saved config
       if (config.api) {
@@ -1759,8 +1978,8 @@ const Settings: React.FC<SettingsProps> = ({
               ...prev.openai,
               enabled: true,
               apiKey: config.api.key,
-              baseUrl: config.api.baseUrl
-            }
+              baseUrl: config.api.baseUrl,
+            },
           }));
         } else if (normalizedApiBaseUrl.includes('deepseek')) {
           setActiveProvider('deepseek');
@@ -1770,10 +1989,13 @@ const Settings: React.FC<SettingsProps> = ({
               ...prev.deepseek,
               enabled: true,
               apiKey: config.api.key,
-              baseUrl: config.api.baseUrl
-            }
+              baseUrl: config.api.baseUrl,
+            },
           }));
-        } else if (normalizedApiBaseUrl.includes('moonshot.ai') || normalizedApiBaseUrl.includes('moonshot.cn')) {
+        } else if (
+          normalizedApiBaseUrl.includes('moonshot.ai') ||
+          normalizedApiBaseUrl.includes('moonshot.cn')
+        ) {
           setActiveProvider('moonshot');
           setProviders(prev => ({
             ...prev,
@@ -1781,8 +2003,8 @@ const Settings: React.FC<SettingsProps> = ({
               ...prev.moonshot,
               enabled: true,
               apiKey: config.api.key,
-              baseUrl: config.api.baseUrl
-            }
+              baseUrl: config.api.baseUrl,
+            },
           }));
         } else if (normalizedApiBaseUrl.includes('bigmodel.cn')) {
           setActiveProvider('zhipu');
@@ -1792,8 +2014,8 @@ const Settings: React.FC<SettingsProps> = ({
               ...prev.zhipu,
               enabled: true,
               apiKey: config.api.key,
-              baseUrl: config.api.baseUrl
-            }
+              baseUrl: config.api.baseUrl,
+            },
           }));
         } else if (normalizedApiBaseUrl.includes('minimax')) {
           setActiveProvider('minimax');
@@ -1803,8 +2025,8 @@ const Settings: React.FC<SettingsProps> = ({
               ...prev.minimax,
               enabled: true,
               apiKey: config.api.key,
-              baseUrl: config.api.baseUrl
-            }
+              baseUrl: config.api.baseUrl,
+            },
           }));
         } else if (normalizedApiBaseUrl.includes('openapi.youdao.com')) {
           setActiveProvider('youdaozhiyun');
@@ -1814,8 +2036,8 @@ const Settings: React.FC<SettingsProps> = ({
               ...prev.youdaozhiyun,
               enabled: true,
               apiKey: config.api.key,
-              baseUrl: config.api.baseUrl
-            }
+              baseUrl: config.api.baseUrl,
+            },
           }));
         } else if (normalizedApiBaseUrl.includes('dashscope')) {
           setActiveProvider('qwen');
@@ -1825,8 +2047,8 @@ const Settings: React.FC<SettingsProps> = ({
               ...prev.qwen,
               enabled: true,
               apiKey: config.api.key,
-              baseUrl: config.api.baseUrl
-            }
+              baseUrl: config.api.baseUrl,
+            },
           }));
         } else if (normalizedApiBaseUrl.includes('stepfun')) {
           setActiveProvider('stepfun');
@@ -1836,8 +2058,8 @@ const Settings: React.FC<SettingsProps> = ({
               ...prev.stepfun,
               enabled: true,
               apiKey: config.api.key,
-              baseUrl: config.api.baseUrl
-            }
+              baseUrl: config.api.baseUrl,
+            },
           }));
         } else if (normalizedApiBaseUrl.includes('openrouter.ai')) {
           setActiveProvider('openrouter');
@@ -1847,8 +2069,8 @@ const Settings: React.FC<SettingsProps> = ({
               ...prev.openrouter,
               enabled: true,
               apiKey: config.api.key,
-              baseUrl: config.api.baseUrl
-            }
+              baseUrl: config.api.baseUrl,
+            },
           }));
         } else if (normalizedApiBaseUrl.includes('googleapis')) {
           setActiveProvider('gemini');
@@ -1858,8 +2080,8 @@ const Settings: React.FC<SettingsProps> = ({
               ...prev.gemini,
               enabled: true,
               apiKey: config.api.key,
-              baseUrl: config.api.baseUrl
-            }
+              baseUrl: config.api.baseUrl,
+            },
           }));
         } else if (normalizedApiBaseUrl.includes('anthropic')) {
           setActiveProvider('anthropic');
@@ -1869,10 +2091,13 @@ const Settings: React.FC<SettingsProps> = ({
               ...prev.anthropic,
               enabled: true,
               apiKey: config.api.key,
-              baseUrl: config.api.baseUrl
-            }
+              baseUrl: config.api.baseUrl,
+            },
           }));
-        } else if (normalizedApiBaseUrl.includes('ollama') || normalizedApiBaseUrl.includes('11434')) {
+        } else if (
+          normalizedApiBaseUrl.includes('ollama') ||
+          normalizedApiBaseUrl.includes('11434')
+        ) {
           setActiveProvider('ollama');
           setProviders(prev => ({
             ...prev,
@@ -1880,10 +2105,13 @@ const Settings: React.FC<SettingsProps> = ({
               ...prev.ollama,
               enabled: true,
               apiKey: config.api.key,
-              baseUrl: config.api.baseUrl
-            }
+              baseUrl: config.api.baseUrl,
+            },
           }));
-        } else if (normalizedApiBaseUrl.includes('lm-studio') || normalizedApiBaseUrl.includes(':1234')) {
+        } else if (
+          normalizedApiBaseUrl.includes('lm-studio') ||
+          normalizedApiBaseUrl.includes(':1234')
+        ) {
           setActiveProvider('lm-studio');
           setProviders(prev => ({
             ...prev,
@@ -1891,8 +2119,8 @@ const Settings: React.FC<SettingsProps> = ({
               ...prev['lm-studio'],
               enabled: true,
               apiKey: config.api.key,
-              baseUrl: config.api.baseUrl
-            }
+              baseUrl: config.api.baseUrl,
+            },
           }));
         }
       }
@@ -1902,13 +2130,15 @@ const Settings: React.FC<SettingsProps> = ({
       if (config.providers) {
         setProviders(prev => {
           const merged = {
-            ...prev,  // 保留默认的 providers（包括新添加的 anthropic）
-            ...config.providers,  // 覆盖已保存的配置
+            ...prev, // 保留默认的 providers（包括新添加的 anthropic）
+            ...config.providers, // 覆盖已保存的配置
           };
 
           // After merging, find the first enabled provider to set as activeProvider
           // This ensures we don't use stale activeProvider from old config.api.baseUrl
-          const firstEnabledProvider = providerKeys.find(providerKey => merged[providerKey]?.enabled);
+          const firstEnabledProvider = providerKeys.find(
+            providerKey => merged[providerKey]?.enabled,
+          );
           if (firstEnabledProvider) {
             setActiveProvider(firstEnabledProvider);
           }
@@ -1936,14 +2166,17 @@ const Settings: React.FC<SettingsProps> = ({
                 providerKey,
                 {
                   ...providerConfig,
-                  apiFormat: getEffectiveApiFormat(providerKey, (providerConfig as ProviderConfig).apiFormat),
+                  apiFormat: getEffectiveApiFormat(
+                    providerKey,
+                    (providerConfig as ProviderConfig).apiFormat,
+                  ),
                   ...(providerKey === ProviderName.Copilot && providerConfig.apiKey?.trim()
                     ? { authType: ProviderAuthType.OAuth, apiKey: '' }
                     : {}),
                   models,
                 },
               ];
-            })
+            }),
           ) as ProvidersConfig;
         });
       }
@@ -2143,9 +2376,10 @@ const Settings: React.FC<SettingsProps> = ({
         const def = ProviderRegistry.get(provider);
         if (def?.codingPlanSupported) {
           const enabled = value === 'true';
-          const nextModels = enabled && def.codingPlanModels
-            ? def.codingPlanModels.map(m => ({ ...m }))
-            : def.defaultModels.map(m => ({ ...m }));
+          const nextModels =
+            enabled && def.codingPlanModels
+              ? def.codingPlanModels.map(m => ({ ...m }))
+              : def.defaultModels.map(m => ({ ...m }));
           return {
             ...prev,
             [provider]: {
@@ -2172,7 +2406,8 @@ const Settings: React.FC<SettingsProps> = ({
     setMinimaxOAuthPhase({ kind: 'requesting_code' });
 
     const codeEndpoint = region === 'cn' ? MINIMAX_CODE_ENDPOINT_CN : MINIMAX_CODE_ENDPOINT_GLOBAL;
-    const tokenEndpoint = region === 'cn' ? MINIMAX_TOKEN_ENDPOINT_CN : MINIMAX_TOKEN_ENDPOINT_GLOBAL;
+    const tokenEndpoint =
+      region === 'cn' ? MINIMAX_TOKEN_ENDPOINT_CN : MINIMAX_TOKEN_ENDPOINT_GLOBAL;
     const defaultBaseUrl = region === 'cn' ? MINIMAX_BASE_URL_CN : MINIMAX_BASE_URL_GLOBAL;
 
     try {
@@ -2192,7 +2427,7 @@ const Settings: React.FC<SettingsProps> = ({
         method: 'POST',
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
-          'Accept': 'application/json',
+          Accept: 'application/json',
         },
         body: codeBody,
       });
@@ -2211,7 +2446,9 @@ const Settings: React.FC<SettingsProps> = ({
       };
 
       if (!codePayload.user_code || !codePayload.verification_uri) {
-        throw new Error(codePayload.error ?? 'MiniMax OAuth returned incomplete authorization payload');
+        throw new Error(
+          codePayload.error ?? 'MiniMax OAuth returned incomplete authorization payload',
+        );
       }
 
       if (codePayload.state !== state) {
@@ -2220,7 +2457,9 @@ const Settings: React.FC<SettingsProps> = ({
 
       try {
         await window.electron.shell.openExternal(codePayload.verification_uri);
-      } catch { /* ignore: user can open manually */ }
+      } catch {
+        /* ignore: user can open manually */
+      }
 
       setMinimaxOAuthPhase({
         kind: 'pending',
@@ -2229,7 +2468,7 @@ const Settings: React.FC<SettingsProps> = ({
       });
 
       let pollIntervalMs = codePayload.interval ?? 2000;
-      const expireTimeMs = codePayload.expired_in ?? (Date.now() + 5 * 60 * 1000);
+      const expireTimeMs = codePayload.expired_in ?? Date.now() + 5 * 60 * 1000;
 
       while (Date.now() < expireTimeMs) {
         if (minimaxOAuthCancelRef.current) {
@@ -2256,7 +2495,7 @@ const Settings: React.FC<SettingsProps> = ({
           method: 'POST',
           headers: {
             'Content-Type': 'application/x-www-form-urlencoded',
-            'Accept': 'application/json',
+            Accept: 'application/json',
           },
           body: tokenBody,
         });
@@ -2345,25 +2584,30 @@ const Settings: React.FC<SettingsProps> = ({
   useEffect(() => {
     let cancelled = false;
     if (activeProvider !== 'openai') return;
-    void window.electron.openaiCodexOAuth.status().then((status) => {
-      if (cancelled) return;
-      if (status.loggedIn) {
-        setOpenaiOAuthStatus({ loggedIn: true, email: status.email ?? undefined });
-      } else {
-        setOpenaiOAuthStatus({ loggedIn: false });
-        setProviders(prev => {
-          if (prev.openai.authType !== 'oauth') return prev;
-          return { ...prev, openai: { ...prev.openai, authType: 'apikey' } };
-        });
-      }
-    }).catch(() => {
-      if (!cancelled) setOpenaiOAuthStatus({ loggedIn: false });
-    });
-    return () => { cancelled = true; };
+    void window.electron.openaiCodexOAuth
+      .status()
+      .then(status => {
+        if (cancelled) return;
+        if (status.loggedIn) {
+          setOpenaiOAuthStatus({ loggedIn: true, email: status.email ?? undefined });
+        } else {
+          setOpenaiOAuthStatus({ loggedIn: false });
+          setProviders(prev => {
+            if (prev.openai.authType !== 'oauth') return prev;
+            return { ...prev, openai: { ...prev.openai, authType: 'apikey' } };
+          });
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setOpenaiOAuthStatus({ loggedIn: false });
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [activeProvider]);
 
   const persistOpenAIProvidersConfigInBackground = useCallback((nextProviders: ProvidersConfig) => {
-    void configService.updateConfig({ providers: nextProviders }).catch((saveError) => {
+    void configService.updateConfig({ providers: nextProviders }).catch(saveError => {
       console.error('[Settings] failed to save OpenAI OAuth provider state:', saveError);
       setError(i18nService.t('failedToSaveSettings'));
     });
@@ -2428,24 +2672,30 @@ const Settings: React.FC<SettingsProps> = ({
     }
   };
 
-  const hasCoworkConfigChanges = coworkAgentEngine !== coworkConfig.agentEngine
-    || coworkMemoryEnabled !== coworkConfig.memoryEnabled
-    || coworkMemoryLlmJudgeEnabled !== coworkConfig.memoryLlmJudgeEnabled
-    || skipMissedJobs !== (coworkConfig.skipMissedJobs ?? true)
-    || openClawSessionKeepAlive !== (coworkConfig.openClawSessionPolicy?.keepAlive || OpenClawSessionKeepAliveValues.ThirtyDays)
-    || embeddingEnabled !== (coworkConfig.embeddingEnabled ?? false)
-    || embeddingProvider !== (coworkConfig.embeddingProvider ?? 'openai')
-    || embeddingModel !== (coworkConfig.embeddingModel ?? '')
-    || embeddingLocalModelPath !== (coworkConfig.embeddingLocalModelPath ?? '')
-    || embeddingVectorWeight !== (coworkConfig.embeddingVectorWeight ?? 0.7)
-    || embeddingRemoteBaseUrl !== (coworkConfig.embeddingRemoteBaseUrl ?? '')
-    || embeddingRemoteApiKey !== (coworkConfig.embeddingRemoteApiKey ?? '')
-    || dreamingEnabled !== (coworkConfig.dreamingEnabled ?? false)
-    || dreamingFrequency !== (coworkConfig.dreamingFrequency ?? '0 3 * * *');
+  const hasCoworkConfigChanges =
+    coworkAgentEngine !== coworkConfig.agentEngine ||
+    coworkMemoryEnabled !== coworkConfig.memoryEnabled ||
+    coworkMemoryLlmJudgeEnabled !== coworkConfig.memoryLlmJudgeEnabled ||
+    skipMissedJobs !== (coworkConfig.skipMissedJobs ?? true) ||
+    openClawSessionKeepAlive !==
+      (coworkConfig.openClawSessionPolicy?.keepAlive ||
+        OpenClawSessionKeepAliveValues.ThirtyDays) ||
+    embeddingEnabled !== (coworkConfig.embeddingEnabled ?? false) ||
+    embeddingProvider !== (coworkConfig.embeddingProvider ?? 'openai') ||
+    embeddingModel !== (coworkConfig.embeddingModel ?? '') ||
+    embeddingLocalModelPath !== (coworkConfig.embeddingLocalModelPath ?? '') ||
+    embeddingVectorWeight !== (coworkConfig.embeddingVectorWeight ?? 0.7) ||
+    embeddingRemoteBaseUrl !== (coworkConfig.embeddingRemoteBaseUrl ?? '') ||
+    embeddingRemoteApiKey !== (coworkConfig.embeddingRemoteApiKey ?? '') ||
+    dreamingEnabled !== (coworkConfig.dreamingEnabled ?? false) ||
+    dreamingFrequency !== (coworkConfig.dreamingFrequency ?? '0 3 * * *');
   const isOpenClawAgentEngine = coworkAgentEngine === 'openclaw';
 
   const openClawProgressPercent = useMemo(() => {
-    if (typeof openClawEngineStatus?.progressPercent !== 'number' || !Number.isFinite(openClawEngineStatus.progressPercent)) {
+    if (
+      typeof openClawEngineStatus?.progressPercent !== 'number' ||
+      !Number.isFinite(openClawEngineStatus.progressPercent)
+    ) {
       return null;
     }
     return Math.max(0, Math.min(100, Math.round(openClawEngineStatus.progressPercent)));
@@ -2474,10 +2724,12 @@ const Settings: React.FC<SettingsProps> = ({
         progressClassName: 'bg-primary',
         spinIcon: false,
         inProgress: false,
-        badgeLabelKey: phase === OpenClawEnginePhase.Running
-          ? 'openClawStatusBadgeRunning'
-          : 'openClawStatusBadgeReady',
-        badgeClassName: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
+        badgeLabelKey:
+          phase === OpenClawEnginePhase.Running
+            ? 'openClawStatusBadgeRunning'
+            : 'openClawStatusBadgeReady',
+        badgeClassName:
+          'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
         badgeDotClassName: 'bg-emerald-500',
       };
     }
@@ -2489,9 +2741,10 @@ const Settings: React.FC<SettingsProps> = ({
         progressClassName: 'bg-primary',
         spinIcon: true,
         inProgress: true,
-        badgeLabelKey: phase === OpenClawEnginePhase.Installing
-          ? 'openClawStatusBadgeInstalling'
-          : 'openClawStatusBadgeStarting',
+        badgeLabelKey:
+          phase === OpenClawEnginePhase.Installing
+            ? 'openClawStatusBadgeInstalling'
+            : 'openClawStatusBadgeStarting',
         badgeClassName: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
         badgeDotClassName: 'bg-amber-500',
       };
@@ -2589,9 +2842,14 @@ const Settings: React.FC<SettingsProps> = ({
     } catch (repairError) {
       setOpenClawRepairResult({
         success: false,
-        error: repairError instanceof Error ? repairError.message : i18nService.t('openClawRepairFailed'),
+        error:
+          repairError instanceof Error
+            ? repairError.message
+            : i18nService.t('openClawRepairFailed'),
       });
-      reportAgentEngineMaintenanceAction('repair_gateway_state', 'failed', { errorCode: 'unknown' });
+      reportAgentEngineMaintenanceAction('repair_gateway_state', 'failed', {
+        errorCode: 'unknown',
+      });
     } finally {
       setIsRepairingOpenClaw(false);
     }
@@ -2606,7 +2864,9 @@ const Settings: React.FC<SettingsProps> = ({
         setError(result?.error || i18nService.t('showInFolderFailed'));
       }
     } catch (revealError) {
-      setError(revealError instanceof Error ? revealError.message : i18nService.t('showInFolderFailed'));
+      setError(
+        revealError instanceof Error ? revealError.message : i18nService.t('showInFolderFailed'),
+      );
     }
   }, [openClawRepairResult?.backupPath]);
 
@@ -2619,13 +2879,18 @@ const Settings: React.FC<SettingsProps> = ({
         setError(result?.error || i18nService.t('showInFolderFailed'));
       }
     } catch (revealError) {
-      setError(revealError instanceof Error ? revealError.message : i18nService.t('showInFolderFailed'));
+      setError(
+        revealError instanceof Error ? revealError.message : i18nService.t('showInFolderFailed'),
+      );
     }
   }, [openClawDataBackupResult?.path]);
 
   const persistModelSettingsBeforeDataBackup = useCallback(async () => {
     const normalizedProviders = normalizeProvidersForSettingsSave(providers);
-    const primaryProvider = resolvePrimaryProviderForSettingsSave(normalizedProviders, activeProvider);
+    const primaryProvider = resolvePrimaryProviderForSettingsSave(
+      normalizedProviders,
+      activeProvider,
+    );
     await configService.updateConfig({
       api: {
         key: primaryProvider.apiKey,
@@ -2661,7 +2926,11 @@ const Settings: React.FC<SettingsProps> = ({
         sizeBytes: result.sizeBytes,
       });
     } catch (backupError) {
-      setError(backupError instanceof Error ? backupError.message : i18nService.t('openClawDataBackupFailed'));
+      setError(
+        backupError instanceof Error
+          ? backupError.message
+          : i18nService.t('openClawDataBackupFailed'),
+      );
       reportAgentEngineMaintenanceAction('backup_data', 'failed', { errorCode: 'unknown' });
     } finally {
       setIsBackingUpOpenClawData(false);
@@ -2694,7 +2963,11 @@ const Settings: React.FC<SettingsProps> = ({
         reportAgentEngineMaintenanceAction('restore_data', 'success');
       }
     } catch (restoreError) {
-      setError(restoreError instanceof Error ? restoreError.message : i18nService.t('openClawDataMigrationFailed'));
+      setError(
+        restoreError instanceof Error
+          ? restoreError.message
+          : i18nService.t('openClawDataMigrationFailed'),
+      );
       reportAgentEngineMaintenanceAction('restore_data', 'failed', { errorCode: 'unknown' });
     } finally {
       if (!keepLoadingUntilRestart) {
@@ -2721,9 +2994,7 @@ const Settings: React.FC<SettingsProps> = ({
     } finally {
       setCoworkMemoryListLoading(false);
     }
-  }, [
-    coworkMemoryQuery,
-  ]);
+  }, [coworkMemoryQuery]);
 
   useEffect(() => {
     if (activeTab !== 'coworkMemory') return;
@@ -2762,7 +3033,11 @@ const Settings: React.FC<SettingsProps> = ({
           : coworkMemoryStats?.total,
       );
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : i18nService.t('coworkMemoryCrudSaveFailed'));
+      setError(
+        saveError instanceof Error
+          ? saveError.message
+          : i18nService.t('coworkMemoryCrudSaveFailed'),
+      );
     } finally {
       setCoworkMemoryListLoading(false);
     }
@@ -2787,7 +3062,11 @@ const Settings: React.FC<SettingsProps> = ({
         Math.max(0, (coworkMemoryStats?.total ?? coworkMemoryEntries.length) - 1),
       );
     } catch (deleteError) {
-      setError(deleteError instanceof Error ? deleteError.message : i18nService.t('coworkMemoryCrudDeleteFailed'));
+      setError(
+        deleteError instanceof Error
+          ? deleteError.message
+          : i18nService.t('coworkMemoryCrudDeleteFailed'),
+      );
     } finally {
       setCoworkMemoryListLoading(false);
     }
@@ -2819,8 +3098,8 @@ const Settings: React.FC<SettingsProps> = ({
       ...prev,
       [provider]: {
         ...prev[provider],
-        enabled: !prev[provider].enabled
-      }
+        enabled: !prev[provider].enabled,
+      },
     }));
   };
 
@@ -2859,7 +3138,11 @@ const Settings: React.FC<SettingsProps> = ({
 
       // Step 2: Poll for token
       setCopilotAuthStatus('polling');
-      const result = await window.electron.githubCopilot.pollForToken(deviceCode, interval, expiresIn);
+      const result = await window.electron.githubCopilot.pollForToken(
+        deviceCode,
+        interval,
+        expiresIn,
+      );
 
       if (result.success && result.token) {
         setCopilotGithubUser(result.githubUser || '');
@@ -2928,7 +3211,10 @@ const Settings: React.FC<SettingsProps> = ({
 
     try {
       const normalizedProviders = normalizeProvidersForSettingsSave(providers);
-      const primaryProvider = resolvePrimaryProviderForSettingsSave(normalizedProviders, activeProvider);
+      const primaryProvider = resolvePrimaryProviderForSettingsSave(
+        normalizedProviders,
+        activeProvider,
+      );
       const normalizedBrowserWebAccess = normalizeBrowserWebAccessConfig({
         ...browserWebAccess,
         browserEnabled: true,
@@ -2944,7 +3230,9 @@ const Settings: React.FC<SettingsProps> = ({
         webFetch: defaultBrowserWebAccessConfig.webFetch,
       });
       const previousConfig = configService.getConfig();
-      const previousBrowserWebAccess = normalizeBrowserWebAccessConfig(previousConfig.browserWebAccess);
+      const previousBrowserWebAccess = normalizeBrowserWebAccessConfig(
+        previousConfig.browserWebAccess,
+      );
       const previousShortcuts: ShortcutConfig = {
         ...defaultConfig.shortcuts!,
         ...(previousConfig.shortcuts || {}),
@@ -2954,8 +3242,8 @@ const Settings: React.FC<SettingsProps> = ({
         : normalizedProviders;
       const previousSkipMissedJobs = coworkConfig.skipMissedJobs ?? true;
       const previousAgentEngine = coworkConfig.agentEngine || 'openclaw';
-      const previousOpenClawSessionKeepAlive = coworkConfig.openClawSessionPolicy?.keepAlive
-        || OpenClawSessionKeepAliveValues.ThirtyDays;
+      const previousOpenClawSessionKeepAlive =
+        coworkConfig.openClawSessionPolicy?.keepAlive || OpenClawSessionKeepAliveValues.ThirtyDays;
       const previousMemorySettings = {
         embeddingEnabled: coworkConfig.embeddingEnabled ?? false,
         embeddingModel: coworkConfig.embeddingModel ?? '',
@@ -3022,14 +3310,20 @@ const Settings: React.FC<SettingsProps> = ({
       let apiKeyToUse = primaryProvider.apiKey;
       let baseUrlToUse = primaryProvider.baseUrl;
 
-
       apiService.setConfig({
         apiKey: apiKeyToUse,
         baseUrl: baseUrlToUse,
       });
 
       // 更新 Redux store 中的可用模型列表
-      const allModels: { id: string; name: string; provider?: string; providerKey?: string; openClawProviderId?: string; supportsImage?: boolean }[] = [];
+      const allModels: {
+        id: string;
+        name: string;
+        provider?: string;
+        providerKey?: string;
+        openClawProviderId?: string;
+        supportsImage?: boolean;
+      }[] = [];
       Object.entries(normalizedProviders).forEach(([providerName, config]) => {
         if (config.enabled && config.models) {
           const openClawProviderId = getOpenClawProviderIdForConfig(providerName, config);
@@ -3099,7 +3393,11 @@ const Settings: React.FC<SettingsProps> = ({
           reportGeneralSettingChanged('language', language, previousConfig.language);
         }
         if ((previousConfig.useSystemProxy ?? false) !== useSystemProxy) {
-          reportGeneralSettingChanged('useSystemProxy', useSystemProxy, previousConfig.useSystemProxy ?? false);
+          reportGeneralSettingChanged(
+            'useSystemProxy',
+            useSystemProxy,
+            previousConfig.useSystemProxy ?? false,
+          );
         }
         if ((previousConfig.sqliteAutoBackupEnabled === true) !== sqliteAutoBackupEnabled) {
           reportGeneralSettingChanged(
@@ -3162,7 +3460,8 @@ const Settings: React.FC<SettingsProps> = ({
         if (shortcutSettingsSummary) {
           reportShortcutSettingChanged(shortcutSettingsSummary);
         }
-        const pluginSettingsSummary = buildPluginSettingsAnalyticsSummary(savedPluginPendingChanges);
+        const pluginSettingsSummary =
+          buildPluginSettingsAnalyticsSummary(savedPluginPendingChanges);
         if (pluginSettingsSummary) {
           reportPluginSettingsSaved(pluginSettingsSummary);
         }
@@ -3204,13 +3503,19 @@ const Settings: React.FC<SettingsProps> = ({
     setActiveTab(tab);
   }, []);
 
-  const handleTabChange = useCallback((tab: TabType) => {
-    if (isBackingUpOpenClawData || isRestoringOpenClawData) return;
-    if (activeTab === 'plugins' && pluginsSettingsRef.current?.guardLeave(() => doTabChange(tab))) {
-      return;
-    }
-    doTabChange(tab);
-  }, [activeTab, doTabChange, isBackingUpOpenClawData, isRestoringOpenClawData]);
+  const handleTabChange = useCallback(
+    (tab: TabType) => {
+      if (isBackingUpOpenClawData || isRestoringOpenClawData) return;
+      if (
+        activeTab === 'plugins' &&
+        pluginsSettingsRef.current?.guardLeave(() => doTabChange(tab))
+      ) {
+        return;
+      }
+      doTabChange(tab);
+    },
+    [activeTab, doTabChange, isBackingUpOpenClawData, isRestoringOpenClawData],
+  );
 
   // Guarded close: check plugin dirty state before closing
   const guardedClose = useCallback(() => {
@@ -3230,31 +3535,36 @@ const Settings: React.FC<SettingsProps> = ({
     const query = shortcutSearchQuery.trim().toLowerCase();
     if (!query) return SHORTCUT_COMMAND_GROUPS;
 
-    return SHORTCUT_COMMAND_GROUPS
-      .map(group => ({
-        ...group,
-        commands: group.commands.filter(command => {
-          const haystack = [
-            getShortcutCommandText(command, 'labelKey'),
-            getShortcutCommandText(command, 'descriptionKey'),
-            shortcuts[command.key] ?? '',
-            formatShortcutForDisplay(shortcuts[command.key], { isMac: isMacPlatform }),
-          ].join(' ').toLowerCase();
-          return haystack.includes(query);
-        }),
-      }))
-      .filter(group => group.commands.length > 0);
+    return SHORTCUT_COMMAND_GROUPS.map(group => ({
+      ...group,
+      commands: group.commands.filter(command => {
+        const haystack = [
+          getShortcutCommandText(command, 'labelKey'),
+          getShortcutCommandText(command, 'descriptionKey'),
+          shortcuts[command.key] ?? '',
+          formatShortcutForDisplay(shortcuts[command.key], { isMac: isMacPlatform }),
+        ]
+          .join(' ')
+          .toLowerCase();
+        return haystack.includes(query);
+      }),
+    })).filter(group => group.commands.length > 0);
   }, [shortcutSearchQuery, shortcuts]);
 
   // 快捷键更新处理
   const handleShortcutChange = (key: ShortcutAction, value: string) => {
     const normalizedValue = value.trim();
     // Check for conflicts with other shortcuts
-    const normalizedSignature = getShortcutConflictSignature(normalizedValue, { isMac: isMacPlatform });
+    const normalizedSignature = getShortcutConflictSignature(normalizedValue, {
+      isMac: isMacPlatform,
+    });
     const conflictKey = normalizedSignature
-      ? Object.values(ShortcutAction).find((action) => {
+      ? Object.values(ShortcutAction).find(action => {
           if (action === key) return false;
-          return getShortcutConflictSignature(shortcuts[action], { isMac: isMacPlatform }) === normalizedSignature;
+          return (
+            getShortcutConflictSignature(shortcuts[action], { isMac: isMacPlatform }) ===
+            normalizedSignature
+          );
         })
       : undefined;
     if (conflictKey) {
@@ -3266,13 +3576,13 @@ const Settings: React.FC<SettingsProps> = ({
         i18nService
           .t('shortcutConflict')
           .replace('{0}', formatShortcutForDisplay(normalizedValue, { isMac: isMacPlatform }))
-          .replace('{1}', conflictLabel)
+          .replace('{1}', conflictLabel),
       );
       return;
     }
     setShortcuts(prev => ({
       ...prev,
-      [key]: normalizedValue
+      [key]: normalizedValue,
     }));
   };
 
@@ -3299,7 +3609,14 @@ const Settings: React.FC<SettingsProps> = ({
     setModelFormError(null);
   };
 
-  const handleEditModel = (modelId: string, modelName: string, supportsImage?: boolean, supportsThinking?: boolean, contextWindow?: number, customParams?: Record<string, unknown>) => {
+  const handleEditModel = (
+    modelId: string,
+    modelName: string,
+    supportsImage?: boolean,
+    supportsThinking?: boolean,
+    contextWindow?: number,
+    customParams?: Record<string, unknown>,
+  ) => {
     setIsAddingModel(false);
     setIsEditingModel(true);
     setEditingModelId(modelId);
@@ -3319,16 +3636,14 @@ const Settings: React.FC<SettingsProps> = ({
   const handleDeleteModel = (modelId: string) => {
     if (!providers[activeProvider].models) return;
 
-    const updatedModels = providers[activeProvider].models.filter(
-      model => model.id !== modelId
-    );
+    const updatedModels = providers[activeProvider].models.filter(model => model.id !== modelId);
 
     setProviders(prev => ({
       ...prev,
       [activeProvider]: {
         ...prev[activeProvider],
-        models: updatedModels
-      }
+        models: updatedModels,
+      },
     }));
   };
 
@@ -3338,7 +3653,13 @@ const Settings: React.FC<SettingsProps> = ({
     if (activeProvider === 'ollama' || activeProvider === 'lm-studio') {
       // For Ollama/LM Studio, only the model name (stored as modelId) is required
       if (!modelId) {
-        setModelFormError(i18nService.t(activeProvider === 'lm-studio' ? 'lmStudioModelNameRequired' : 'ollamaModelNameRequired'));
+        setModelFormError(
+          i18nService.t(
+            activeProvider === 'lm-studio'
+              ? 'lmStudioModelNameRequired'
+              : 'ollamaModelNameRequired',
+          ),
+        );
         return;
       }
     } else {
@@ -3350,13 +3671,16 @@ const Settings: React.FC<SettingsProps> = ({
     }
 
     // For Ollama, auto-fill display name from modelId if not provided
-    const modelName = activeProvider === 'ollama' || activeProvider === 'lm-studio'
-      ? (newModelName.trim() && newModelName.trim() !== modelId ? newModelName.trim() : modelId)
-      : newModelName.trim();
+    const modelName =
+      activeProvider === 'ollama' || activeProvider === 'lm-studio'
+        ? newModelName.trim() && newModelName.trim() !== modelId
+          ? newModelName.trim()
+          : modelId
+        : newModelName.trim();
 
     const currentModels = providers[activeProvider].models ?? [];
     const duplicateModel = currentModels.find(
-      model => model.id === modelId && (!isEditingModel || model.id !== editingModelId)
+      model => model.id === modelId && (!isEditingModel || model.id !== editingModelId),
     );
     if (duplicateModel) {
       setModelFormError(i18nService.t('modelIdExists'));
@@ -3369,7 +3693,11 @@ const Settings: React.FC<SettingsProps> = ({
     if (trimmedParams) {
       try {
         parsedCustomParams = JSON.parse(trimmedParams);
-        if (typeof parsedCustomParams !== 'object' || parsedCustomParams === null || Array.isArray(parsedCustomParams)) {
+        if (
+          typeof parsedCustomParams !== 'object' ||
+          parsedCustomParams === null ||
+          Array.isArray(parsedCustomParams)
+        ) {
           setModelFormError(i18nService.t('customParamsInvalidJson'));
           return;
         }
@@ -3391,22 +3719,25 @@ const Settings: React.FC<SettingsProps> = ({
         activeProvider,
         modelId,
         newModelSupportsThinking,
-      ) ? { supportsThinking: true } : {}),
+      )
+        ? { supportsThinking: true }
+        : {}),
       ...(newModelContextWindow !== undefined ? { contextWindow: newModelContextWindow } : {}),
       ...(parsedCustomParams && Object.keys(parsedCustomParams).length > 0
         ? { customParams: parsedCustomParams }
         : {}),
     };
-    const updatedModels = isEditingModel && editingModelId
-      ? currentModels.map(model => (model.id === editingModelId ? nextModel : model))
-      : [...currentModels, nextModel];
+    const updatedModels =
+      isEditingModel && editingModelId
+        ? currentModels.map(model => (model.id === editingModelId ? nextModel : model))
+        : [...currentModels, nextModel];
 
     setProviders(prev => ({
       ...prev,
       [activeProvider]: {
         ...prev[activeProvider],
-        models: updatedModels
-      }
+        models: updatedModels,
+      },
     }));
 
     setIsAddingModel(false);
@@ -3447,7 +3778,7 @@ const Settings: React.FC<SettingsProps> = ({
 
   const showTestResultModal = (
     result: Omit<ProviderConnectionTestResult, 'provider'>,
-    provider: ProviderType
+    provider: ProviderType,
   ) => {
     setTestResult({
       ...result,
@@ -3467,12 +3798,14 @@ const Settings: React.FC<SettingsProps> = ({
 
     const hasValidAuth = providerConfig.apiKey;
 
-
     if (providerRequiresApiKey(testingProvider) && !hasValidAuth) {
       reportCustomModelConnectionTested(testingProvider, testingApiFormat, 'failed', {
         failureReason: 'missing_api_key',
       });
-      showTestResultModal({ success: false, message: i18nService.t('apiKeyRequired') }, testingProvider);
+      showTestResultModal(
+        { success: false, message: i18nService.t('apiKeyRequired') },
+        testingProvider,
+      );
       setIsTesting(false);
       return;
     }
@@ -3483,7 +3816,10 @@ const Settings: React.FC<SettingsProps> = ({
       reportCustomModelConnectionTested(testingProvider, testingApiFormat, 'failed', {
         failureReason: 'missing_model',
       });
-      showTestResultModal({ success: false, message: i18nService.t('noModelsConfigured') }, testingProvider);
+      showTestResultModal(
+        { success: false, message: i18nService.t('noModelsConfigured') },
+        testingProvider,
+      );
       setIsTesting(false);
       return;
     }
@@ -3493,12 +3829,24 @@ const Settings: React.FC<SettingsProps> = ({
     try {
       let response: Awaited<ReturnType<typeof window.electron.api.fetch>>;
       // Apply Coding Plan endpoint switch
-      let effectiveBaseUrl = resolveBaseUrl(testingProvider, providerConfig.baseUrl, testingApiFormat);
+      let effectiveBaseUrl = resolveBaseUrl(
+        testingProvider,
+        providerConfig.baseUrl,
+        testingApiFormat,
+      );
       let effectiveApiFormat = testingApiFormat;
 
       // Handle Coding Plan endpoint switch for supported providers
-      if ((providerConfig as { codingPlanEnabled?: boolean }).codingPlanEnabled && (effectiveApiFormat === 'anthropic' || effectiveApiFormat === 'openai')) {
-        const resolved = resolveCodingPlanBaseUrl(testingProvider, true, effectiveApiFormat, effectiveBaseUrl);
+      if (
+        (providerConfig as { codingPlanEnabled?: boolean }).codingPlanEnabled &&
+        (effectiveApiFormat === 'anthropic' || effectiveApiFormat === 'openai')
+      ) {
+        const resolved = resolveCodingPlanBaseUrl(
+          testingProvider,
+          true,
+          effectiveApiFormat,
+          effectiveBaseUrl,
+        );
         effectiveBaseUrl = resolved.baseUrl;
         effectiveApiFormat = resolved.effectiveFormat;
       }
@@ -3514,10 +3862,13 @@ const Settings: React.FC<SettingsProps> = ({
           reportCustomModelConnectionTested(testingProvider, effectiveApiFormat, 'failed', {
             failureReason: 'unknown',
           });
-          showTestResultModal({
-            success: false,
-            message: result.error || i18nService.t('apiKeyRequired'),
-          }, testingProvider);
+          showTestResultModal(
+            {
+              success: false,
+              message: result.error || i18nService.t('apiKeyRequired'),
+            },
+            testingProvider,
+          );
           return;
         }
         effectiveApiKey = result.token;
@@ -3596,7 +3947,10 @@ const Settings: React.FC<SettingsProps> = ({
               model: firstModel.id,
               messages: [{ role: 'user', content: 'Hi' }],
             };
-        if (!useResponsesApi && shouldUseMaxCompletionTokensForOpenAI(testingProvider, firstModel.id)) {
+        if (
+          !useResponsesApi &&
+          shouldUseMaxCompletionTokensForOpenAI(testingProvider, firstModel.id)
+        ) {
           openAIRequestBody.max_completion_tokens = CONNECTIVITY_TEST_TOKEN_BUDGET;
         } else {
           if (!useResponsesApi) {
@@ -3614,15 +3968,27 @@ const Settings: React.FC<SettingsProps> = ({
       if (response.ok) {
         enableProvider(testingProvider);
         reportCustomModelConnectionTested(testingProvider, effectiveApiFormat, 'success');
-        showTestResultModal({ success: true, message: i18nService.t('connectionSuccess') }, testingProvider);
+        showTestResultModal(
+          { success: true, message: i18nService.t('connectionSuccess') },
+          testingProvider,
+        );
       } else {
         const data = response.data || {};
         // 提取错误信息
-        const errorMessage = data.error?.message || data.message || `${i18nService.t('connectionFailed')}: ${response.status}`;
-        if (typeof errorMessage === 'string' && errorMessage.toLowerCase().includes('model output limit was reached')) {
+        const errorMessage =
+          data.error?.message ||
+          data.message ||
+          `${i18nService.t('connectionFailed')}: ${response.status}`;
+        if (
+          typeof errorMessage === 'string' &&
+          errorMessage.toLowerCase().includes('model output limit was reached')
+        ) {
           enableProvider(testingProvider);
           reportCustomModelConnectionTested(testingProvider, effectiveApiFormat, 'success');
-          showTestResultModal({ success: true, message: i18nService.t('connectionSuccess') }, testingProvider);
+          showTestResultModal(
+            { success: true, message: i18nService.t('connectionSuccess') },
+            testingProvider,
+          );
           return;
         }
         reportCustomModelConnectionTested(testingProvider, effectiveApiFormat, 'failed', {
@@ -3635,10 +4001,13 @@ const Settings: React.FC<SettingsProps> = ({
       reportCustomModelConnectionTested(testingProvider, testingApiFormat, 'failed', {
         failureReason: 'network_error',
       });
-      showTestResultModal({
-        success: false,
-        message: err instanceof Error ? err.message : i18nService.t('connectionFailed'),
-      }, testingProvider);
+      showTestResultModal(
+        {
+          success: false,
+          message: err instanceof Error ? err.message : i18nService.t('connectionFailed'),
+        },
+        testingProvider,
+      );
     } finally {
       setIsTesting(false);
     }
@@ -3660,7 +4029,7 @@ const Settings: React.FC<SettingsProps> = ({
             models: normalizeModels(providerKey, providerConfig.models),
           },
         ] as const;
-      })
+      }),
     );
 
     return {
@@ -3735,7 +4104,9 @@ const Settings: React.FC<SettingsProps> = ({
       }
 
       if (!payload || payload.type !== EXPORT_FORMAT_TYPE || !payload.providers) {
-        console.warn(`[Settings] import failed: invalid format, type=${payload?.type}, hasProviders=${!!payload?.providers}`);
+        console.warn(
+          `[Settings] import failed: invalid format, type=${payload?.type}, hasProviders=${!!payload?.providers}`,
+        );
         setError(i18nService.t('invalidProvidersFile'));
         return;
       }
@@ -3786,9 +4157,15 @@ const Settings: React.FC<SettingsProps> = ({
             hadDecryptFailure = true;
             console.warn(`[Settings] v1 import: failed to decrypt key for ${providerKey}`, error);
           }
-        } else if (typeof providerData.apiKeyEncrypted === 'string' && typeof providerData.apiKeyIv === 'string') {
+        } else if (
+          typeof providerData.apiKeyEncrypted === 'string' &&
+          typeof providerData.apiKeyIv === 'string'
+        ) {
           try {
-            apiKey = await decryptSecret({ encrypted: providerData.apiKeyEncrypted, iv: providerData.apiKeyIv });
+            apiKey = await decryptSecret({
+              encrypted: providerData.apiKeyEncrypted,
+              iv: providerData.apiKeyIv,
+            });
             console.log(`[Settings] v1 import: decrypted key for ${providerKey}`);
           } catch (error) {
             hadDecryptFailure = true;
@@ -3800,17 +4177,31 @@ const Settings: React.FC<SettingsProps> = ({
         const existing = providers[providerKey];
 
         providerUpdates[providerKey] = {
-          enabled: typeof providerData.enabled === 'boolean' ? providerData.enabled : existing?.enabled ?? false,
+          enabled:
+            typeof providerData.enabled === 'boolean'
+              ? providerData.enabled
+              : (existing?.enabled ?? false),
           apiKey: apiKey ?? existing?.apiKey ?? '',
-          baseUrl: typeof providerData.baseUrl === 'string' ? providerData.baseUrl : existing?.baseUrl ?? '',
-          apiFormat: getEffectiveApiFormat(providerKey, providerData.apiFormat ?? existing?.apiFormat),
-          codingPlanEnabled: typeof providerData.codingPlanEnabled === 'boolean' ? providerData.codingPlanEnabled : (existing as ProviderConfig)?.codingPlanEnabled,
+          baseUrl:
+            typeof providerData.baseUrl === 'string'
+              ? providerData.baseUrl
+              : (existing?.baseUrl ?? ''),
+          apiFormat: getEffectiveApiFormat(
+            providerKey,
+            providerData.apiFormat ?? existing?.apiFormat,
+          ),
+          codingPlanEnabled:
+            typeof providerData.codingPlanEnabled === 'boolean'
+              ? providerData.codingPlanEnabled
+              : (existing as ProviderConfig)?.codingPlanEnabled,
           models: models ?? existing?.models,
         };
       }
 
       if (Object.keys(providerUpdates).length === 0) {
-        console.warn(`[Settings] v1 import failed: no matching providers found, file keys: ${fileKeys.join(', ')}`);
+        console.warn(
+          `[Settings] v1 import failed: no matching providers found, file keys: ${fileKeys.join(', ')}`,
+        );
         setError(i18nService.t('invalidProvidersFile'));
         return;
       }
@@ -3827,14 +4218,17 @@ const Settings: React.FC<SettingsProps> = ({
       });
       setIsTestResultModalOpen(false);
       setTestResult(null);
-      console.log(`[Settings] v1 import complete: updated ${Object.keys(providerUpdates).length} providers`);
+      console.log(
+        `[Settings] v1 import complete: updated ${Object.keys(providerUpdates).length} providers`,
+      );
       if (hadDecryptFailure) {
         setNoticeMessage(i18nService.t('decryptProvidersPartial'));
       }
     } catch (err) {
       console.error('[Settings] v1 import failed:', err);
-      const isDecryptError = err instanceof Error
-        && (err.message === 'Invalid encrypted payload' || err.name === 'OperationError');
+      const isDecryptError =
+        err instanceof Error &&
+        (err.message === 'Invalid encrypted payload' || err.name === 'OperationError');
       const message = isDecryptError
         ? i18nService.t('decryptProvidersFailed')
         : i18nService.t('importProvidersFailed');
@@ -3884,29 +4278,45 @@ const Settings: React.FC<SettingsProps> = ({
         const existing = providers[providerKey];
 
         providerUpdates[providerKey] = {
-          enabled: typeof providerData.enabled === 'boolean' ? providerData.enabled : existing?.enabled ?? false,
+          enabled:
+            typeof providerData.enabled === 'boolean'
+              ? providerData.enabled
+              : (existing?.enabled ?? false),
           apiKey: apiKey ?? existing?.apiKey ?? '',
-          baseUrl: typeof providerData.baseUrl === 'string' ? providerData.baseUrl : existing?.baseUrl ?? '',
-          apiFormat: getEffectiveApiFormat(providerKey, providerData.apiFormat ?? existing?.apiFormat),
-          codingPlanEnabled: typeof providerData.codingPlanEnabled === 'boolean' ? providerData.codingPlanEnabled : (existing as ProviderConfig)?.codingPlanEnabled,
+          baseUrl:
+            typeof providerData.baseUrl === 'string'
+              ? providerData.baseUrl
+              : (existing?.baseUrl ?? ''),
+          apiFormat: getEffectiveApiFormat(
+            providerKey,
+            providerData.apiFormat ?? existing?.apiFormat,
+          ),
+          codingPlanEnabled:
+            typeof providerData.codingPlanEnabled === 'boolean'
+              ? providerData.codingPlanEnabled
+              : (existing as ProviderConfig)?.codingPlanEnabled,
           models: models ?? existing?.models,
         };
       }
 
       if (Object.keys(providerUpdates).length === 0) {
-        console.warn(`[Settings] v2 import failed: no matching providers found, file keys: ${fileKeys.join(', ')}`);
+        console.warn(
+          `[Settings] v2 import failed: no matching providers found, file keys: ${fileKeys.join(', ')}`,
+        );
         setError(i18nService.t('invalidProvidersFile'));
         return;
       }
 
       // Check if any key was successfully decrypted
       const anyKeyDecrypted = Object.entries(providerUpdates).some(
-        ([key, update]) => update?.apiKey && update.apiKey !== providers[key]?.apiKey
+        ([key, update]) => update?.apiKey && update.apiKey !== providers[key]?.apiKey,
       );
 
       if (!anyKeyDecrypted && hadDecryptFailure) {
         // All decryptions failed - likely wrong password
-        console.warn('[Settings] v2 import failed: all key decryptions failed, likely wrong password');
+        console.warn(
+          '[Settings] v2 import failed: all key decryptions failed, likely wrong password',
+        );
         setError(i18nService.t('decryptProvidersFailed'));
         return;
       }
@@ -3923,14 +4333,17 @@ const Settings: React.FC<SettingsProps> = ({
       });
       setIsTestResultModalOpen(false);
       setTestResult(null);
-      console.log(`[Settings] v2 import complete: updated ${Object.keys(providerUpdates).length} providers`);
+      console.log(
+        `[Settings] v2 import complete: updated ${Object.keys(providerUpdates).length} providers`,
+      );
       if (hadDecryptFailure) {
         setNoticeMessage(i18nService.t('decryptProvidersPartial'));
       }
     } catch (err) {
       console.error('[Settings] v2 import failed:', err);
-      const isDecryptError = err instanceof Error
-        && (err.message === 'Invalid encrypted payload' || err.name === 'OperationError');
+      const isDecryptError =
+        err instanceof Error &&
+        (err.message === 'Invalid encrypted payload' || err.name === 'OperationError');
       const message = isDecryptError
         ? i18nService.t('decryptProvidersFailed')
         : i18nService.t('importProvidersFailed');
@@ -3943,18 +4356,84 @@ const Settings: React.FC<SettingsProps> = ({
   // 渲染标签页
   const sidebarTabs: { key: TabType; label: string; icon: React.ReactNode }[] = (() => {
     const allTabs = [
-      { key: 'general' as TabType,        label: i18nService.t('general'),        icon: <SettingsSlidersIcon className="h-5 w-5" /> },
-      { key: 'appearance' as TabType,     label: i18nService.t('appearance'),     icon: <SunIcon className="h-5 w-5" /> },
-      { key: 'coworkAgentEngine' as TabType, label: i18nService.t('coworkAgentEngine'), icon: <CpuChipIcon className="h-5 w-5" /> },
-      { key: 'model' as TabType,          label: i18nService.t('settingsCustomModel'), icon: <CubeIcon className="h-5 w-5" /> },
-      { key: 'im' as TabType,             label: i18nService.t('imBot'),          icon: <ChatBubbleLeftIcon className="h-5 w-5" /> },
-      { key: 'browserWebAccess' as TabType, label: i18nService.t('browserWebAccessTab'), icon: <GlobeAltIcon className="h-5 w-5" /> },
-      { key: 'email' as TabType,          label: i18nService.t('emailTab'),       icon: <EnvelopeIcon className="h-5 w-5" /> },
-      { key: 'coworkMemory' as TabType,   label: i18nService.t('coworkMemoryTitle'), icon: <BrainIcon className="h-5 w-5" /> },
-      { key: 'coworkDreaming' as TabType, label: i18nService.t('coworkMemoryTabDreaming'), icon: <DreamingTabIcon className="h-5 w-5" /> },
-      { key: 'plugins' as TabType,        label: i18nService.t('pluginsTab'),     icon: <PlugIcon className="h-5 w-5" /> },
-      { key: 'shortcuts' as TabType,      label: i18nService.t('shortcuts'),      icon: <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="h-5 w-5"><rect x="2" y="4" width="20" height="14" rx="2" /><line x1="6" y1="8" x2="8" y2="8" /><line x1="10" y1="8" x2="12" y2="8" /><line x1="14" y1="8" x2="16" y2="8" /><line x1="6" y1="12" x2="8" y2="12" /><line x1="10" y1="12" x2="14" y2="12" /><line x1="16" y1="12" x2="18" y2="12" /><line x1="8" y1="15.5" x2="16" y2="15.5" /></svg> },
-      { key: 'about' as TabType,          label: i18nService.t('about'),          icon: <InformationCircleIcon className="h-5 w-5" /> },
+      {
+        key: 'general' as TabType,
+        label: i18nService.t('general'),
+        icon: <SettingsSlidersIcon className="h-5 w-5" />,
+      },
+      {
+        key: 'appearance' as TabType,
+        label: i18nService.t('appearance'),
+        icon: <SunIcon className="h-5 w-5" />,
+      },
+      {
+        key: 'coworkAgentEngine' as TabType,
+        label: i18nService.t('coworkAgentEngine'),
+        icon: <CpuChipIcon className="h-5 w-5" />,
+      },
+      {
+        key: 'model' as TabType,
+        label: i18nService.t('settingsCustomModel'),
+        icon: <CubeIcon className="h-5 w-5" />,
+      },
+      {
+        key: 'im' as TabType,
+        label: i18nService.t('imBot'),
+        icon: <ChatBubbleLeftIcon className="h-5 w-5" />,
+      },
+      {
+        key: 'browserWebAccess' as TabType,
+        label: i18nService.t('browserWebAccessTab'),
+        icon: <GlobeAltIcon className="h-5 w-5" />,
+      },
+      {
+        key: 'email' as TabType,
+        label: i18nService.t('emailTab'),
+        icon: <EnvelopeIcon className="h-5 w-5" />,
+      },
+      {
+        key: 'coworkMemory' as TabType,
+        label: i18nService.t('coworkMemoryTitle'),
+        icon: <BrainIcon className="h-5 w-5" />,
+      },
+      {
+        key: 'coworkDreaming' as TabType,
+        label: i18nService.t('coworkMemoryTabDreaming'),
+        icon: <DreamingTabIcon className="h-5 w-5" />,
+      },
+      {
+        key: 'plugins' as TabType,
+        label: i18nService.t('pluginsTab'),
+        icon: <PlugIcon className="h-5 w-5" />,
+      },
+      {
+        key: 'shortcuts' as TabType,
+        label: i18nService.t('shortcuts'),
+        icon: (
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 24 24"
+            strokeWidth={1.5}
+            stroke="currentColor"
+            className="h-5 w-5"
+          >
+            <rect x="2" y="4" width="20" height="14" rx="2" />
+            <line x1="6" y1="8" x2="8" y2="8" />
+            <line x1="10" y1="8" x2="12" y2="8" />
+            <line x1="14" y1="8" x2="16" y2="8" />
+            <line x1="6" y1="12" x2="8" y2="12" />
+            <line x1="10" y1="12" x2="14" y2="12" />
+            <line x1="16" y1="12" x2="18" y2="12" />
+            <line x1="8" y1="15.5" x2="16" y2="15.5" />
+          </svg>
+        ),
+      },
+      {
+        key: 'about' as TabType,
+        label: i18nService.t('about'),
+        icon: <InformationCircleIcon className="h-5 w-5" />,
+      },
     ];
     // Filter out tabs hidden by enterprise config
     // Filter out tabs with 'hide' action in enterprise config
@@ -3974,7 +4453,7 @@ const Settings: React.FC<SettingsProps> = ({
     const handleSettingsTabShortcut = (event: KeyboardEvent) => {
       if (event.repeat || isShortcutInputActive() || isTextEditingActive()) return;
 
-      const command = SETTINGS_TAB_SHORTCUT_COMMANDS.find((candidate) => {
+      const command = SETTINGS_TAB_SHORTCUT_COMMANDS.find(candidate => {
         return matchesShortcut(event, shortcuts[candidate.key]);
       });
       if (!command) return;
@@ -3998,7 +4477,7 @@ const Settings: React.FC<SettingsProps> = ({
         </h4>
 
         <div className="grid grid-cols-3 gap-3 mb-4">
-          {(['light', 'dark', 'system'] as const).map((mode) => {
+          {(['light', 'dark', 'system'] as const).map(mode => {
             const isSelected = theme === mode;
             return (
               <button
@@ -4015,7 +4494,11 @@ const Settings: React.FC<SettingsProps> = ({
                   backgroundColor: isSelected ? 'var(--lobster-primary-muted)' : undefined,
                 }}
               >
-                <svg viewBox="0 0 120 80" className="w-full h-auto rounded-md mb-2 overflow-hidden" xmlns="http://www.w3.org/2000/svg">
+                <svg
+                  viewBox="0 0 120 80"
+                  className="w-full h-auto rounded-md mb-2 overflow-hidden"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
                   {mode === 'light' && (
                     <>
                       <rect width="120" height="80" fill="#F8F9FB" />
@@ -4096,7 +4579,12 @@ const Settings: React.FC<SettingsProps> = ({
                     </>
                   )}
                 </svg>
-                <span className="text-xs font-medium" style={{ color: isSelected ? 'var(--lobster-primary)' : 'var(--lobster-text-primary)' }}>
+                <span
+                  className="text-xs font-medium"
+                  style={{
+                    color: isSelected ? 'var(--lobster-primary)' : 'var(--lobster-text-primary)',
+                  }}
+                >
                   {i18nService.t(mode)}
                 </span>
               </button>
@@ -4104,13 +4592,20 @@ const Settings: React.FC<SettingsProps> = ({
           })}
         </div>
 
-        <h4 className="text-sm font-medium mb-3 mt-5" style={{ color: 'var(--lobster-text-primary)' }}>
+        <h4
+          className="text-sm font-medium mb-3 mt-5"
+          style={{ color: 'var(--lobster-text-primary)' }}
+        >
           {i18nService.t('themeColor')}
         </h4>
         {(() => {
           const allThemes = themeService.getAllThemes();
-          const classicThemes = allThemes.filter(t => t.meta.id === 'classic-light' || t.meta.id === 'classic-dark');
-          const otherThemes = allThemes.filter(t => t.meta.id !== 'classic-light' && t.meta.id !== 'classic-dark');
+          const classicThemes = allThemes.filter(
+            t => t.meta.id === 'classic-light' || t.meta.id === 'classic-dark',
+          );
+          const otherThemes = allThemes.filter(
+            t => t.meta.id !== 'classic-light' && t.meta.id !== 'classic-dark',
+          );
           const renderTile = (t: import('../theme').ThemeDefinition) => {
             const isSelected = themeId === t.meta.id;
             const [bg, c1, c2, c3] = t.meta.preview;
@@ -4129,14 +4624,23 @@ const Settings: React.FC<SettingsProps> = ({
                   backgroundColor: isSelected ? 'var(--lobster-primary-muted)' : undefined,
                 }}
               >
-                <svg viewBox="0 0 80 48" className="w-full h-auto rounded-md mb-1.5 overflow-hidden" xmlns="http://www.w3.org/2000/svg">
+                <svg
+                  viewBox="0 0 80 48"
+                  className="w-full h-auto rounded-md mb-1.5 overflow-hidden"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
                   <rect width="80" height="48" fill={bg} />
                   <rect x="4" y="6" width="20" height="36" rx="3" fill={c1} opacity="0.7" />
                   <rect x="28" y="6" width="48" height="36" rx="3" fill={c2} opacity="0.5" />
                   <circle cx="52" cy="24" r="8" fill={c3} opacity="0.8" />
                   <rect x="32" y="34" width="40" height="4" rx="2" fill={c1} opacity="0.6" />
                 </svg>
-                <span className="text-[10px] font-medium truncate w-full text-center" style={{ color: isSelected ? 'var(--lobster-primary)' : 'var(--lobster-text-primary)' }}>
+                <span
+                  className="text-[10px] font-medium truncate w-full text-center"
+                  style={{
+                    color: isSelected ? 'var(--lobster-primary)' : 'var(--lobster-text-primary)',
+                  }}
+                >
                   {i18nService.t('theme-name-' + t.meta.id) || t.meta.name}
                 </span>
               </button>
@@ -4144,12 +4648,8 @@ const Settings: React.FC<SettingsProps> = ({
           };
           return (
             <>
-              <div className="grid grid-cols-2 gap-3 mb-3">
-                {classicThemes.map(renderTile)}
-              </div>
-              <div className="grid grid-cols-4 gap-3">
-                {otherThemes.map(renderTile)}
-              </div>
+              <div className="grid grid-cols-2 gap-3 mb-3">{classicThemes.map(renderTile)}</div>
+              <div className="grid grid-cols-4 gap-3">{otherThemes.map(renderTile)}</div>
             </>
           );
         })()}
@@ -4164,27 +4664,25 @@ const Settings: React.FC<SettingsProps> = ({
   );
 
   const renderTabContent = () => {
-    switch(activeTab) {
+    switch (activeTab) {
       case 'general':
         return (
           <div className="space-y-8">
             {/* Language Section */}
             <div className="flex items-center justify-between">
-              <h4 className="text-sm font-medium text-foreground">
-                {i18nService.t('language')}
-              </h4>
+              <h4 className="text-sm font-medium text-foreground">{i18nService.t('language')}</h4>
               <div className="w-[140px] shrink-0">
                 <ThemedSelect
                   id="language"
                   value={language}
-                  onChange={(value) => {
+                  onChange={value => {
                     const nextLanguage = value as LanguageType;
                     setLanguage(nextLanguage);
                     i18nService.setLanguage(nextLanguage, { persist: false });
                   }}
                   options={[
                     { value: 'zh', label: i18nService.t('chinese') },
-                    { value: 'en', label: i18nService.t('english') }
+                    { value: 'en', label: i18nService.t('english') },
                   ]}
                 />
               </div>
@@ -4200,7 +4698,9 @@ const Settings: React.FC<SettingsProps> = ({
                 const next = !autoLaunch;
                 setIsUpdatingAutoLaunch(true);
                 try {
-                  console.log(`[Renderer][Settings] updating auto-launch setting: requested=${next}`);
+                  console.log(
+                    `[Renderer][Settings] updating auto-launch setting: requested=${next}`,
+                  );
                   const result = await window.electron.autoLaunch.set(next);
                   console.log(
                     `[Renderer][Settings] auto-launch update result: success=${result.success}, enabled=${result.enabled ?? 'unknown'}, error=${result.error ?? 'none'}`,
@@ -4257,7 +4757,7 @@ const Settings: React.FC<SettingsProps> = ({
               description={i18nService.t('useSystemProxyDescription')}
               checked={useSystemProxy}
               onToggle={() => {
-                setUseSystemProxy((prev) => !prev);
+                setUseSystemProxy(prev => !prev);
               }}
             />
 
@@ -4266,7 +4766,7 @@ const Settings: React.FC<SettingsProps> = ({
               description={i18nService.t('sqliteAutoBackupEnabledDescription')}
               checked={sqliteAutoBackupEnabled}
               onToggle={() => {
-                setSqliteAutoBackupEnabled((prev) => !prev);
+                setSqliteAutoBackupEnabled(prev => !prev);
               }}
             />
 
@@ -4275,7 +4775,7 @@ const Settings: React.FC<SettingsProps> = ({
               description={i18nService.t('taskCompletionNotificationsDescription')}
               checked={taskCompletionNotificationsEnabled}
               onToggle={() => {
-                setTaskCompletionNotificationsEnabled((prev) => !prev);
+                setTaskCompletionNotificationsEnabled(prev => !prev);
               }}
             />
 
@@ -4284,7 +4784,7 @@ const Settings: React.FC<SettingsProps> = ({
               description={i18nService.t('skipMissedJobsDescription')}
               checked={skipMissedJobs}
               onToggle={() => {
-                setSkipMissedJobs((prev) => !prev);
+                setSkipMissedJobs(prev => !prev);
               }}
             />
 
@@ -4293,10 +4793,9 @@ const Settings: React.FC<SettingsProps> = ({
               description={i18nService.t('usageAnalyticsEnabledDescription')}
               checked={usageAnalyticsEnabled}
               onToggle={() => {
-                setUsageAnalyticsEnabled((prev) => !prev);
+                setUsageAnalyticsEnabled(prev => !prev);
               }}
             />
-
           </div>
         );
 
@@ -4325,16 +4824,24 @@ const Settings: React.FC<SettingsProps> = ({
 
                   <div className="rounded-xl border border-border bg-surface p-4">
                     <div className="flex items-start gap-3.5">
-                      <span className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${openClawStatusTone.iconClassName}`}>
-                        <OpenClawStatusIcon className={`h-5 w-5 ${openClawStatusTone.spinIcon ? 'animate-spin' : ''}`} />
+                      <span
+                        className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${openClawStatusTone.iconClassName}`}
+                      >
+                        <OpenClawStatusIcon
+                          className={`h-5 w-5 ${openClawStatusTone.spinIcon ? 'animate-spin' : ''}`}
+                        />
                       </span>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center justify-between gap-3">
                           <div className="min-w-0 text-sm font-medium leading-5 text-foreground">
                             {resolveOpenClawStatusText(openClawEngineStatus)}
                           </div>
-                          <span className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${openClawStatusTone.badgeClassName}`}>
-                            <span className={`h-1.5 w-1.5 rounded-full ${openClawStatusTone.badgeDotClassName} ${openClawStatusTone.inProgress ? 'animate-pulse' : ''}`} />
+                          <span
+                            className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${openClawStatusTone.badgeClassName}`}
+                          >
+                            <span
+                              className={`h-1.5 w-1.5 rounded-full ${openClawStatusTone.badgeDotClassName} ${openClawStatusTone.inProgress ? 'animate-pulse' : ''}`}
+                            />
                             {i18nService.t(openClawStatusTone.badgeLabelKey)}
                           </span>
                         </div>
@@ -4353,13 +4860,23 @@ const Settings: React.FC<SettingsProps> = ({
                             <button
                               type="button"
                               onClick={handleCopyOpenClawGatewayUrl}
-                              title={openClawGatewayCopied ? i18nService.t('copied') : i18nService.t('copyToClipboard')}
-                              aria-label={openClawGatewayCopied ? i18nService.t('copied') : i18nService.t('copyToClipboard')}
+                              title={
+                                openClawGatewayCopied
+                                  ? i18nService.t('copied')
+                                  : i18nService.t('copyToClipboard')
+                              }
+                              aria-label={
+                                openClawGatewayCopied
+                                  ? i18nService.t('copied')
+                                  : i18nService.t('copyToClipboard')
+                              }
                               className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-secondary transition-colors hover:bg-background hover:text-primary focus:outline-none focus:ring-2 focus:ring-primary/25"
                             >
-                              {openClawGatewayCopied
-                                ? <CheckCircleIcon className="h-4 w-4 text-primary" />
-                                : <MessageCopyIcon className="h-4 w-4" />}
+                              {openClawGatewayCopied ? (
+                                <CheckCircleIcon className="h-4 w-4 text-primary" />
+                              ) : (
+                                <MessageCopyIcon className="h-4 w-4" />
+                              )}
                             </button>
                           </div>
                         ) : (
@@ -4371,8 +4888,12 @@ const Settings: React.FC<SettingsProps> = ({
                         {openClawStatusTone.inProgress && openClawProgressPercent !== null && (
                           <div className="mt-3 space-y-1.5">
                             <div className="flex items-center justify-between text-xs">
-                              <span className="text-secondary">{i18nService.t('openClawStartupProgressLabel')}</span>
-                              <span className="font-medium tabular-nums text-foreground">{openClawProgressPercent}%</span>
+                              <span className="text-secondary">
+                                {i18nService.t('openClawStartupProgressLabel')}
+                              </span>
+                              <span className="font-medium tabular-nums text-foreground">
+                                {openClawProgressPercent}%
+                              </span>
                             </div>
                             <div className="h-1.5 overflow-hidden rounded-full bg-surface-raised">
                               <div
@@ -4433,13 +4954,16 @@ const Settings: React.FC<SettingsProps> = ({
                           </div>
                           {formatBackupSize(openClawDataBackupResult.sizeBytes) && (
                             <div className="text-xs text-secondary">
-                              {i18nService.t('openClawDataBackupSize')}: {formatBackupSize(openClawDataBackupResult.sizeBytes)}
+                              {i18nService.t('openClawDataBackupSize')}:{' '}
+                              {formatBackupSize(openClawDataBackupResult.sizeBytes)}
                             </div>
                           )}
                         </div>
                         <button
                           type="button"
-                          onClick={() => { void handleRevealOpenClawDataBackup(); }}
+                          onClick={() => {
+                            void handleRevealOpenClawDataBackup();
+                          }}
                           className="inline-flex h-8 shrink-0 items-center justify-center rounded-lg border border-border bg-surface px-3 text-xs font-medium text-foreground transition-colors hover:bg-surface-raised active:scale-[0.98]"
                         >
                           {i18nService.t('showInFolder')}
@@ -4463,7 +4987,9 @@ const Settings: React.FC<SettingsProps> = ({
                       </div>
                       <button
                         type="button"
-                        onClick={() => { void handleOpenClawDataBackup(); }}
+                        onClick={() => {
+                          void handleOpenClawDataBackup();
+                        }}
                         disabled={isBackingUpOpenClawData || isRestoringOpenClawData}
                         className="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 self-start rounded-lg border border-border bg-surface px-3 text-xs font-medium text-foreground transition-colors hover:bg-surface-raised disabled:cursor-not-allowed disabled:opacity-60 active:scale-[0.98] sm:self-auto"
                       >
@@ -4508,9 +5034,12 @@ const Settings: React.FC<SettingsProps> = ({
                 </section>
 
                 {openClawRepairResult && (
-                  <div className={`rounded-lg border px-3 py-3 text-sm ${openClawRepairResult.success
-                    ? 'border-green-200 bg-green-50 text-green-700 dark:border-green-900/60 dark:bg-green-950/30 dark:text-green-300'
-                    : 'border-red-300 bg-red-50 text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300'}`}
+                  <div
+                    className={`rounded-lg border px-3 py-3 text-sm ${
+                      openClawRepairResult.success
+                        ? 'border-green-200 bg-green-50 text-green-700 dark:border-green-900/60 dark:bg-green-950/30 dark:text-green-300'
+                        : 'border-red-300 bg-red-50 text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300'
+                    }`}
                   >
                     <div className="font-medium">
                       {resolveOpenClawRepairMessage(openClawRepairResult)}
@@ -4519,11 +5048,15 @@ const Settings: React.FC<SettingsProps> = ({
                       <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                         <div className="min-w-0 text-xs opacity-90">
                           <span>{i18nService.t('openClawRepairBackupPath')}: </span>
-                          <span className="font-mono break-all">{openClawRepairResult.backupPath}</span>
+                          <span className="font-mono break-all">
+                            {openClawRepairResult.backupPath}
+                          </span>
                         </div>
                         <button
                           type="button"
-                          onClick={() => { void handleRevealOpenClawRepairBackup(); }}
+                          onClick={() => {
+                            void handleRevealOpenClawRepairBackup();
+                          }}
                           className="inline-flex shrink-0 items-center justify-center rounded-lg border border-current/30 px-2.5 py-1 text-xs font-medium transition-colors hover:bg-current/10"
                         >
                           {i18nService.t('showInFolder')}
@@ -4534,7 +5067,9 @@ const Settings: React.FC<SettingsProps> = ({
                       <div className="mt-3">
                         <button
                           type="button"
-                          onClick={() => { void coworkService.restartOpenClawGateway(); }}
+                          onClick={() => {
+                            void coworkService.restartOpenClawGateway();
+                          }}
                           className="inline-flex items-center justify-center rounded-lg border border-current/30 px-2.5 py-1 text-xs font-medium transition-colors hover:bg-current/10"
                         >
                           {i18nService.t('coworkOpenClawRestartGateway')}
@@ -4561,7 +5096,7 @@ const Settings: React.FC<SettingsProps> = ({
               role="tablist"
               aria-label={i18nService.t('coworkMemoryTitle')}
             >
-              {memoryTabs.map((tab) => (
+              {memoryTabs.map(tab => (
                 <button
                   type="button"
                   key={tab.key}
@@ -4609,7 +5144,7 @@ const Settings: React.FC<SettingsProps> = ({
                   <input
                     type="text"
                     value={coworkMemoryQuery}
-                    onChange={(event) => setCoworkMemoryQuery(event.target.value)}
+                    onChange={event => setCoworkMemoryQuery(event.target.value)}
                     placeholder={i18nService.t('coworkMemorySearchPlaceholder')}
                     className="w-full rounded-lg border px-3 py-2 text-sm border-border bg-surface"
                   />
@@ -4625,8 +5160,11 @@ const Settings: React.FC<SettingsProps> = ({
                       </div>
                     ) : (
                       <div className="divide-y divide-border">
-                        {coworkMemoryEntries.map((entry) => (
-                          <div key={entry.id} className="px-3 py-3 text-xs hover:bg-surface-raised transition-colors">
+                        {coworkMemoryEntries.map(entry => (
+                          <div
+                            key={entry.id}
+                            className="px-3 py-3 text-xs hover:bg-surface-raised transition-colors"
+                          >
                             <div className="flex items-start justify-between gap-3">
                               <div className="flex-1 min-w-0">
                                 <div className="font-medium text-foreground break-words">
@@ -4643,7 +5181,9 @@ const Settings: React.FC<SettingsProps> = ({
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={() => { void handleDeleteCoworkMemoryEntry(entry); }}
+                                  onClick={() => {
+                                    void handleDeleteCoworkMemoryEntry(entry);
+                                  }}
                                   className="rounded border px-2 py-1 text-red-500 border-border hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-60 transition-colors"
                                   disabled={coworkMemoryListLoading}
                                 >
@@ -4675,7 +5215,6 @@ const Settings: React.FC<SettingsProps> = ({
                   onEmbeddingRemoteApiKeyChange={setEmbeddingRemoteApiKey}
                 />
               )}
-
             </div>
           </div>
         );
@@ -4695,12 +5234,7 @@ const Settings: React.FC<SettingsProps> = ({
         );
 
       case 'browserWebAccess':
-        return (
-          <BrowserWebAccessSettings
-            value={browserWebAccess}
-            onChange={setBrowserWebAccess}
-          />
-        );
+        return <BrowserWebAccessSettings value={browserWebAccess} onChange={setBrowserWebAccess} />;
 
       case 'model':
         return (
@@ -4767,72 +5301,74 @@ const Settings: React.FC<SettingsProps> = ({
               <MagnifyingGlassIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-secondary" />
               <input
                 value={shortcutSearchQuery}
-                onChange={(event) => setShortcutSearchQuery(event.target.value)}
+                onChange={event => setShortcutSearchQuery(event.target.value)}
                 placeholder={i18nService.t('shortcutSearchPlaceholder')}
                 className="h-9 w-full rounded-xl border border-border bg-surface pl-9 pr-3 text-xs text-foreground outline-none transition-colors placeholder:text-secondary/70 focus:border-primary focus:ring-1 focus:ring-primary/25"
               />
             </div>
-            <p className="text-xs leading-5 text-secondary">
-              {i18nService.t('shortcutScopeHint')}
-            </p>
+            <p className="text-xs leading-5 text-secondary">{i18nService.t('shortcutScopeHint')}</p>
             <div className="overflow-hidden rounded-xl border border-border bg-surface">
-              {filteredShortcutGroups.length > 0 ? filteredShortcutGroups.map((group, groupIndex) => (
-                <div key={group.titleKey}>
-                  <div className={`border-border-subtle bg-surface-raised/60 px-4 py-2 text-xs font-medium uppercase tracking-wide text-secondary ${
-                    groupIndex === 0 ? '' : 'border-t'
-                  }`}>
-                    {i18nService.t(group.titleKey)}
+              {filteredShortcutGroups.length > 0 ? (
+                filteredShortcutGroups.map((group, groupIndex) => (
+                  <div key={group.titleKey}>
+                    <div
+                      className={`border-border-subtle bg-surface-raised/60 px-4 py-2 text-xs font-medium uppercase tracking-wide text-secondary ${
+                        groupIndex === 0 ? '' : 'border-t'
+                      }`}
+                    >
+                      {i18nService.t(group.titleKey)}
+                    </div>
+                    {group.commands.map((command, commandIndex) => {
+                      const value = shortcuts[command.key] ?? '';
+                      const commandLabel = getShortcutCommandText(command, 'labelKey');
+                      return (
+                        <div
+                          key={command.key}
+                          className={`group grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-2.5 ${
+                            commandIndex === 0 ? '' : 'border-t border-border-subtle'
+                          }`}
+                        >
+                          <div className="min-w-0">
+                            <div className="truncate text-xs font-medium text-foreground">
+                              {commandLabel}
+                            </div>
+                            <div className="mt-0.5 line-clamp-2 text-xs text-secondary">
+                              {getShortcutCommandText(command, 'descriptionKey')}
+                            </div>
+                          </div>
+                          <div className="flex items-center justify-end gap-2">
+                            {command.inputType === 'send' ? (
+                              <SendShortcutSelect
+                                value={value}
+                                onChange={nextValue => handleShortcutChange(command.key, nextValue)}
+                              />
+                            ) : (
+                              <ShortcutRecorder
+                                value={value}
+                                label={commandLabel}
+                                onChange={nextValue => handleShortcutChange(command.key, nextValue)}
+                              />
+                            )}
+                            {value ? (
+                              <button
+                                type="button"
+                                onClick={() => handleShortcutChange(command.key, '')}
+                                title={i18nService.t('shortcutClear')}
+                                aria-label={i18nService.t('shortcutClear')}
+                                className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-secondary transition-colors hover:bg-surface-raised hover:text-foreground"
+                              >
+                                <TrashIcon className="h-3.5 w-3.5" />
+                              </button>
+                            ) : (
+                              <span className="h-6 w-6 shrink-0" aria-hidden="true" />
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
-                  {group.commands.map((command, commandIndex) => {
-                    const value = shortcuts[command.key] ?? '';
-                    const commandLabel = getShortcutCommandText(command, 'labelKey');
-                    return (
-                      <div
-                        key={command.key}
-                        className={`group grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-2.5 ${
-                          commandIndex === 0 ? '' : 'border-t border-border-subtle'
-                        }`}
-                      >
-                        <div className="min-w-0">
-                          <div className="truncate text-xs font-medium text-foreground">
-                            {commandLabel}
-                          </div>
-                          <div className="mt-0.5 line-clamp-2 text-xs text-secondary">
-                            {getShortcutCommandText(command, 'descriptionKey')}
-                          </div>
-                        </div>
-                        <div className="flex items-center justify-end gap-2">
-                          {command.inputType === 'send' ? (
-                            <SendShortcutSelect
-                              value={value}
-                              onChange={(nextValue) => handleShortcutChange(command.key, nextValue)}
-                            />
-                          ) : (
-                            <ShortcutRecorder
-                              value={value}
-                              label={commandLabel}
-                              onChange={(nextValue) => handleShortcutChange(command.key, nextValue)}
-                            />
-                          )}
-                          {value ? (
-                            <button
-                              type="button"
-                              onClick={() => handleShortcutChange(command.key, '')}
-                              title={i18nService.t('shortcutClear')}
-                              aria-label={i18nService.t('shortcutClear')}
-                              className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-secondary transition-colors hover:bg-surface-raised hover:text-foreground"
-                            >
-                              <TrashIcon className="h-3.5 w-3.5" />
-                            </button>
-                          ) : (
-                            <span className="h-6 w-6 shrink-0" aria-hidden="true" />
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )) : (
+                ))
+              ) : (
                 <div className="px-4 py-8 text-center text-sm text-secondary">
                   {i18nService.t('shortcutNoResults')}
                 </div>
@@ -4854,11 +5390,7 @@ const Settings: React.FC<SettingsProps> = ({
         return <IMSettings />;
 
       case 'plugins':
-        return (
-          <PluginsSettings
-            handleRef={pluginsSettingsRef}
-          />
-        );
+        return <PluginsSettings handleRef={pluginsSettingsRef} />;
 
       case 'about':
         return (
@@ -4868,7 +5400,7 @@ const Settings: React.FC<SettingsProps> = ({
               src="logo.png"
               alt={i18nService.t('cowork')}
               className="w-16 h-16 mb-3 cursor-pointer select-none"
-              onClick={(e) => {
+              onClick={e => {
                 if (!e.altKey || !e.shiftKey) return;
 
                 const next = logoClickCount + 1;
@@ -4884,35 +5416,41 @@ const Settings: React.FC<SettingsProps> = ({
             {/* Info Card */}
             <div className="w-full mt-8 rounded-xl border border-border overflow-hidden">
               <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-3 border-b border-border">
-                <span className="shrink-0 text-sm text-foreground">{i18nService.t('aboutVersion')}</span>
+                <span className="shrink-0 text-sm text-foreground">
+                  {i18nService.t('aboutVersion')}
+                </span>
                 <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
                   <span className="text-sm text-secondary">{appVersion}</span>
                   {!enterpriseConfig?.disableUpdate && (
-                  <button
-                    type="button"
-                    disabled={updateCheckStatus === 'checking' || updateCheckStatus === 'downloading'}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      void handleCheckUpdate();
-                    }}
-                    className="text-xs px-2 py-0.5 rounded-md border border-border text-secondary hover:text-primary dark:hover:text-primary hover:border-primary dark:hover:border-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {updateButtonLabel}
-                  </button>
+                    <button
+                      type="button"
+                      disabled={
+                        updateCheckStatus === 'checking' || updateCheckStatus === 'downloading'
+                      }
+                      onClick={e => {
+                        e.stopPropagation();
+                        void handleCheckUpdate();
+                      }}
+                      className="text-xs px-2 py-0.5 rounded-md border border-border text-secondary hover:text-primary dark:hover:text-primary hover:border-primary dark:hover:border-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {updateButtonLabel}
+                    </button>
                   )}
                   {enterpriseConfig?.disableUpdate && (
-                  <span className="text-xs text-claude-textSecondary dark:text-claude-darkTextSecondary">
-                    {i18nService.t('settings.enterprise.managed')}
-                  </span>
+                    <span className="text-xs text-claude-textSecondary dark:text-claude-darkTextSecondary">
+                      {i18nService.t('settings.enterprise.managed')}
+                    </span>
                   )}
                 </div>
               </div>
               <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-3 border-b border-border">
-                <span className="shrink-0 text-sm text-foreground">{i18nService.t('aboutContactEmail')}</span>
+                <span className="shrink-0 text-sm text-foreground">
+                  {i18nService.t('aboutContactEmail')}
+                </span>
                 <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
                   <button
                     type="button"
-                    onClick={(e) => {
+                    onClick={e => {
                       e.stopPropagation();
                       void handleCopyContactEmail();
                     }}
@@ -4929,10 +5467,12 @@ const Settings: React.FC<SettingsProps> = ({
                 </div>
               </div>
               <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-3 border-b border-border">
-                <span className="shrink-0 text-sm text-foreground">{i18nService.t('aboutUserCommunity')}</span>
+                <span className="shrink-0 text-sm text-foreground">
+                  {i18nService.t('aboutUserCommunity')}
+                </span>
                 <button
                   type="button"
-                  onClick={(e) => {
+                  onClick={e => {
                     e.stopPropagation();
                     handleOpenUserCommunity();
                   }}
@@ -4941,11 +5481,15 @@ const Settings: React.FC<SettingsProps> = ({
                   {ABOUT_USER_COMMUNITY_URL}
                 </button>
               </div>
-              <div className={`flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-3${testModeUnlocked ? ' border-b border-border' : ''}`}>
-                <span className="shrink-0 text-sm text-foreground">{i18nService.t('aboutUserManual')}</span>
+              <div
+                className={`flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-3${testModeUnlocked ? ' border-b border-border' : ''}`}
+              >
+                <span className="shrink-0 text-sm text-foreground">
+                  {i18nService.t('aboutUserManual')}
+                </span>
                 <button
                   type="button"
-                  onClick={(e) => {
+                  onClick={e => {
                     e.stopPropagation();
                     handleOpenUserManual();
                   }}
@@ -4956,12 +5500,14 @@ const Settings: React.FC<SettingsProps> = ({
               </div>
               {testModeUnlocked && (
                 <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-3">
-                  <span className="shrink-0 text-sm text-foreground">{i18nService.t('testMode')}</span>
+                  <span className="shrink-0 text-sm text-foreground">
+                    {i18nService.t('testMode')}
+                  </span>
                   <button
                     type="button"
                     role="switch"
                     aria-checked={testMode}
-                    onClick={() => setTestMode((prev) => !prev)}
+                    onClick={() => setTestMode(prev => !prev)}
                     className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors ${
                       testMode ? 'bg-primary' : 'bg-gray-300 dark:bg-gray-600'
                     }`}
@@ -4981,7 +5527,7 @@ const Settings: React.FC<SettingsProps> = ({
               <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-2 text-sm text-secondary">
                 <button
                   type="button"
-                  onClick={(e) => {
+                  onClick={e => {
                     e.stopPropagation();
                     handleOpenServiceTerms();
                   }}
@@ -4992,7 +5538,7 @@ const Settings: React.FC<SettingsProps> = ({
                 <span className="text-xs opacity-40">|</span>
                 <button
                   type="button"
-                  onClick={(e) => {
+                  onClick={e => {
                     e.stopPropagation();
                     handleOpenPrivacyPolicy();
                   }}
@@ -5003,7 +5549,7 @@ const Settings: React.FC<SettingsProps> = ({
                 <span className="text-xs opacity-40">|</span>
                 <button
                   type="button"
-                  onClick={(e) => {
+                  onClick={e => {
                     e.stopPropagation();
                     handleOpenOpenSourceLicenses();
                   }}
@@ -5014,14 +5560,16 @@ const Settings: React.FC<SettingsProps> = ({
                 <span className="text-xs opacity-40">|</span>
                 <button
                   type="button"
-                  onClick={(e) => {
+                  onClick={e => {
                     e.stopPropagation();
                     void handleExportLogs();
                   }}
                   disabled={isExportingLogs}
                   className="bg-transparent border-none appearance-none px-1.5 py-0.5 -mx-1.5 -my-0.5 rounded-md cursor-pointer hover:text-primary dark:hover:text-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {isExportingLogs ? i18nService.t('aboutExportingLogs') : i18nService.t('aboutExportLogs')}
+                  {isExportingLogs
+                    ? i18nService.t('aboutExportingLogs')
+                    : i18nService.t('aboutExportLogs')}
                 </button>
               </div>
 
@@ -5029,7 +5577,8 @@ const Settings: React.FC<SettingsProps> = ({
                 {i18nService.t('copyrightHolder')}
               </p>
               <p className="mt-1 text-center text-xs text-secondary">
-                Copyright &copy; {new Date().getFullYear()} 宇智汇和（东莞）科技有限公司. All Rights Reserved.
+                Copyright &copy; {new Date().getFullYear()} 宇智汇和（东莞）科技有限公司. All Rights
+                Reserved.
               </p>
             </div>
           </div>
@@ -5056,7 +5605,7 @@ const Settings: React.FC<SettingsProps> = ({
             <h2 className="text-lg font-semibold text-foreground">{i18nService.t('settings')}</h2>
           </div>
           <nav className="flex flex-col gap-0.5 px-3 pb-4">
-            {sidebarTabs.map((tab) => (
+            {sidebarTabs.map(tab => (
               <button
                 key={tab.key}
                 onClick={() => handleTabChange(tab.key)}
@@ -5077,7 +5626,9 @@ const Settings: React.FC<SettingsProps> = ({
         <div className="relative flex-1 flex flex-col min-w-0 overflow-hidden bg-background rounded-r-2xl">
           {/* Content header */}
           <div className="flex justify-between items-center gap-3 px-6 pt-5 pb-3 shrink-0">
-            <h3 className="min-w-0 truncate text-lg font-semibold text-foreground">{activeTabLabel}</h3>
+            <h3 className="min-w-0 truncate text-lg font-semibold text-foreground">
+              {activeTabLabel}
+            </h3>
             <button
               onClick={guardedClose}
               className="text-secondary hover:text-foreground p-1.5 hover:bg-surface-raised rounded-lg transition-colors"
@@ -5088,19 +5639,13 @@ const Settings: React.FC<SettingsProps> = ({
 
           {noticeMessage && (
             <div className="px-6">
-              <ErrorMessage
-                message={noticeMessage}
-                onClose={() => setNoticeMessage(null)}
-              />
+              <ErrorMessage message={noticeMessage} onClose={() => setNoticeMessage(null)} />
             </div>
           )}
 
           {error && (
             <div className="px-6">
-              <ErrorMessage
-                message={error}
-                onClose={() => setError(null)}
-              />
+              <ErrorMessage message={error} onClose={() => setError(null)} />
             </div>
           )}
 
@@ -5132,7 +5677,6 @@ const Settings: React.FC<SettingsProps> = ({
               </button>
             </div>
           </form>
-
         </div>
 
         <ModelEditorDialog
@@ -5158,195 +5702,213 @@ const Settings: React.FC<SettingsProps> = ({
           handleModelDialogKeyDown={handleModelDialogKeyDown}
         />
 
-          {showOpenClawRepairConfirm && (
+        {showOpenClawRepairConfirm && (
+          <div
+            className="absolute inset-0 z-30 flex items-center justify-center bg-black/35 px-4 rounded-2xl"
+            onClick={() => {
+              if (!isRepairingOpenClaw) setShowOpenClawRepairConfirm(false);
+            }}
+          >
             <div
-              className="absolute inset-0 z-30 flex items-center justify-center bg-black/35 px-4 rounded-2xl"
-              onClick={() => {
-                if (!isRepairingOpenClaw) setShowOpenClawRepairConfirm(false);
-              }}
+              className="bg-surface border-border border rounded-2xl shadow-xl w-full max-w-md"
+              onClick={e => e.stopPropagation()}
             >
-              <div
-                className="bg-surface border-border border rounded-2xl shadow-xl w-full max-w-md"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <div className="px-5 pt-5 pb-4 border-b border-border">
-                  <div className="flex items-center gap-3">
-                    <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-muted text-primary">
-                      <WrenchScrewdriverIcon className="h-5 w-5" />
-                    </span>
-                    <h3 className="text-base font-semibold text-foreground">
-                      {i18nService.t('openClawRepairConfirmTitle')}
-                    </h3>
-                  </div>
-                </div>
-
-                <div className="space-y-3 px-5 py-4 text-sm text-secondary">
-                  <p>{i18nService.t('openClawRepairConfirmDesc')}</p>
-                  <p>{i18nService.t('openClawRepairConfirmSafeDesc')}</p>
-                </div>
-
-                <div className="flex justify-end space-x-2 px-5 pb-5">
-                  <button
-                    type="button"
-                    onClick={() => setShowOpenClawRepairConfirm(false)}
-                    disabled={isRepairingOpenClaw}
-                    className="px-3 py-1.5 text-sm text-foreground hover:bg-surface-raised rounded-xl border border-border disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
-                  >
-                    {i18nService.t('cancel')}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { void handleConfirmOpenClawRepair(); }}
-                    disabled={isRepairingOpenClaw}
-                    className="inline-flex items-center justify-center gap-2 px-3 py-1.5 text-sm text-white bg-primary hover:bg-primary-hover rounded-xl disabled:opacity-60 disabled:cursor-not-allowed transition-colors active:scale-[0.98]"
-                  >
-                    <WrenchScrewdriverIcon className="h-4 w-4" />
-                    {isRepairingOpenClaw
-                      ? i18nService.t('openClawRepairRunning')
-                      : i18nService.t('openClawRepairConfirmAction')}
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {showOpenClawDataRestoreConfirm && (
-            <div
-              className="absolute inset-0 z-30 flex items-center justify-center bg-black/35 px-4 rounded-2xl"
-              onClick={() => {
-                if (!isRestoringOpenClawData) setShowOpenClawDataRestoreConfirm(false);
-              }}
-            >
-              <div
-                className="bg-surface border-border border rounded-2xl shadow-xl w-full max-w-md"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <div className="px-5 pt-5 pb-4 border-b border-border">
-                  <div className="flex items-center gap-3">
-                    <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-muted text-primary">
-                      <ArrowPathRoundedSquareIcon className="h-5 w-5" />
-                    </span>
-                    <h3 className="text-base font-semibold text-foreground">
-                      {i18nService.t('openClawDataMigrationConfirmTitle')}
-                    </h3>
-                  </div>
-                </div>
-
-                <div className="space-y-3 px-5 py-4 text-sm text-secondary">
-                  <p>{i18nService.t('openClawDataMigrationConfirmDesc')}</p>
-                  <p>{i18nService.t('openClawDataMigrationConfirmSafeDesc')}</p>
-                </div>
-
-                <div className="flex justify-end space-x-2 px-5 pb-5">
-                  <button
-                    type="button"
-                    onClick={() => setShowOpenClawDataRestoreConfirm(false)}
-                    disabled={isRestoringOpenClawData}
-                    className="px-3 py-1.5 text-sm text-foreground hover:bg-surface-raised rounded-xl border border-border disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
-                  >
-                    {i18nService.t('cancel')}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { void handleConfirmOpenClawDataRestore(); }}
-                    disabled={isRestoringOpenClawData}
-                    className="inline-flex items-center justify-center gap-2 px-3 py-1.5 text-sm text-white bg-primary hover:bg-primary-hover rounded-xl disabled:opacity-60 disabled:cursor-not-allowed transition-colors active:scale-[0.98]"
-                  >
-                    {isRestoringOpenClawData
-                      ? <ArrowPathIcon className="h-4 w-4 animate-spin" />
-                      : <ArrowPathRoundedSquareIcon className="h-4 w-4" />}
-                    {isRestoringOpenClawData
-                      ? i18nService.t('openClawDataMigrationRunning')
-                      : i18nService.t('openClawDataMigrationConfirmAction')}
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {(isBackingUpOpenClawData || isRestoringOpenClawData) && (
-            <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/45 px-4">
-              <div className="w-full max-w-md rounded-2xl border border-border bg-surface px-5 py-5 text-center shadow-xl">
-                <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-full bg-primary-muted text-primary">
-                  <ArrowPathIcon className="h-5 w-5 animate-spin" />
-                </div>
-                <h3 className="mt-4 text-base font-semibold text-foreground">
-                  {i18nService.t(isBackingUpOpenClawData
-                    ? 'openClawDataBackupBlockingTitle'
-                    : 'openClawDataMigrationBlockingTitle')}
-                </h3>
-                <p className="mt-2 text-sm leading-6 text-secondary">
-                  {i18nService.t(isBackingUpOpenClawData
-                    ? 'openClawDataBackupBlockingDesc'
-                    : 'openClawDataMigrationBlockingDesc')}
-                </p>
-                <div className="mt-4 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-left text-xs leading-5 text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200">
-                  <ExclamationTriangleIcon className="mt-0.5 h-4 w-4 shrink-0" />
-                  <span>
-                    {i18nService.t(isBackingUpOpenClawData
-                      ? 'openClawDataBackupBlockingWarning'
-                      : 'openClawDataMigrationBlockingWarning')}
+              <div className="px-5 pt-5 pb-4 border-b border-border">
+                <div className="flex items-center gap-3">
+                  <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-muted text-primary">
+                    <WrenchScrewdriverIcon className="h-5 w-5" />
                   </span>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Memory Modal */}
-          {showMemoryModal && (
-            <div
-              className="absolute inset-0 z-20 flex items-center justify-center bg-black/35 px-4 rounded-2xl"
-              onClick={resetCoworkMemoryEditor}
-            >
-              <div
-                className="bg-surface border-border border rounded-2xl shadow-xl w-full max-w-md"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <div className="px-5 pt-5 pb-4 border-b border-border">
                   <h3 className="text-base font-semibold text-foreground">
-                    {coworkMemoryEditingId ? i18nService.t('coworkMemoryCrudUpdate') : i18nService.t('coworkMemoryCrudCreate')}
+                    {i18nService.t('openClawRepairConfirmTitle')}
                   </h3>
                 </div>
+              </div>
 
-                <div className="px-5 py-4 space-y-4">
-                  {coworkMemoryEditingId && (
-                    <div className="rounded-lg border px-2 py-1 text-xs border-border text-secondary">
-                      {i18nService.t('coworkMemoryEditingTag')}
-                    </div>
-                  )}
-                  <label className="block text-xs font-medium text-secondary mb-1">
-                    {i18nService.t('coworkMemoryCrudContentLabel')}<span className="text-red-500 dark:text-red-400 ml-0.5">*</span>
-                  </label>
-                  <textarea
-                    value={coworkMemoryDraftText}
-                    onChange={(event) => setCoworkMemoryDraftText(event.target.value)}
-                    placeholder={i18nService.t('coworkMemoryCrudTextPlaceholder')}
-                    autoFocus
-                    className="min-h-[200px] w-full rounded-lg border px-3 py-2 text-sm border-border bg-surface text-foreground focus:border-primary focus:ring-1 focus:ring-primary/30"
-                  />
-                </div>
+              <div className="space-y-3 px-5 py-4 text-sm text-secondary">
+                <p>{i18nService.t('openClawRepairConfirmDesc')}</p>
+                <p>{i18nService.t('openClawRepairConfirmSafeDesc')}</p>
+              </div>
 
-                <div className="flex justify-end space-x-2 px-5 pb-5">
-                  <button
-                    type="button"
-                    onClick={resetCoworkMemoryEditor}
-                    className="px-3 py-1.5 text-sm text-foreground hover:bg-surface-raised rounded-xl border border-border transition-colors"
-                  >
-                    {i18nService.t('cancel')}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { void handleSaveCoworkMemoryEntry(); }}
-                    disabled={!coworkMemoryDraftText.trim() || coworkMemoryListLoading}
-                    className="px-3 py-1.5 text-sm text-white bg-primary hover:bg-primary-hover rounded-xl disabled:opacity-60 disabled:cursor-not-allowed transition-colors active:scale-[0.98]"
-                  >
-                    {coworkMemoryEditingId ? i18nService.t('save') : i18nService.t('coworkMemoryCrudCreate')}
-                  </button>
-                </div>
+              <div className="flex justify-end space-x-2 px-5 pb-5">
+                <button
+                  type="button"
+                  onClick={() => setShowOpenClawRepairConfirm(false)}
+                  disabled={isRepairingOpenClaw}
+                  className="px-3 py-1.5 text-sm text-foreground hover:bg-surface-raised rounded-xl border border-border disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+                >
+                  {i18nService.t('cancel')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    void handleConfirmOpenClawRepair();
+                  }}
+                  disabled={isRepairingOpenClaw}
+                  className="inline-flex items-center justify-center gap-2 px-3 py-1.5 text-sm text-white bg-primary hover:bg-primary-hover rounded-xl disabled:opacity-60 disabled:cursor-not-allowed transition-colors active:scale-[0.98]"
+                >
+                  <WrenchScrewdriverIcon className="h-4 w-4" />
+                  {isRepairingOpenClaw
+                    ? i18nService.t('openClawRepairRunning')
+                    : i18nService.t('openClawRepairConfirmAction')}
+                </button>
               </div>
             </div>
-          )}
+          </div>
+        )}
 
+        {showOpenClawDataRestoreConfirm && (
+          <div
+            className="absolute inset-0 z-30 flex items-center justify-center bg-black/35 px-4 rounded-2xl"
+            onClick={() => {
+              if (!isRestoringOpenClawData) setShowOpenClawDataRestoreConfirm(false);
+            }}
+          >
+            <div
+              className="bg-surface border-border border rounded-2xl shadow-xl w-full max-w-md"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="px-5 pt-5 pb-4 border-b border-border">
+                <div className="flex items-center gap-3">
+                  <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-muted text-primary">
+                    <ArrowPathRoundedSquareIcon className="h-5 w-5" />
+                  </span>
+                  <h3 className="text-base font-semibold text-foreground">
+                    {i18nService.t('openClawDataMigrationConfirmTitle')}
+                  </h3>
+                </div>
+              </div>
+
+              <div className="space-y-3 px-5 py-4 text-sm text-secondary">
+                <p>{i18nService.t('openClawDataMigrationConfirmDesc')}</p>
+                <p>{i18nService.t('openClawDataMigrationConfirmSafeDesc')}</p>
+              </div>
+
+              <div className="flex justify-end space-x-2 px-5 pb-5">
+                <button
+                  type="button"
+                  onClick={() => setShowOpenClawDataRestoreConfirm(false)}
+                  disabled={isRestoringOpenClawData}
+                  className="px-3 py-1.5 text-sm text-foreground hover:bg-surface-raised rounded-xl border border-border disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+                >
+                  {i18nService.t('cancel')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    void handleConfirmOpenClawDataRestore();
+                  }}
+                  disabled={isRestoringOpenClawData}
+                  className="inline-flex items-center justify-center gap-2 px-3 py-1.5 text-sm text-white bg-primary hover:bg-primary-hover rounded-xl disabled:opacity-60 disabled:cursor-not-allowed transition-colors active:scale-[0.98]"
+                >
+                  {isRestoringOpenClawData ? (
+                    <ArrowPathIcon className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <ArrowPathRoundedSquareIcon className="h-4 w-4" />
+                  )}
+                  {isRestoringOpenClawData
+                    ? i18nService.t('openClawDataMigrationRunning')
+                    : i18nService.t('openClawDataMigrationConfirmAction')}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {(isBackingUpOpenClawData || isRestoringOpenClawData) && (
+          <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/45 px-4">
+            <div className="w-full max-w-md rounded-2xl border border-border bg-surface px-5 py-5 text-center shadow-xl">
+              <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-full bg-primary-muted text-primary">
+                <ArrowPathIcon className="h-5 w-5 animate-spin" />
+              </div>
+              <h3 className="mt-4 text-base font-semibold text-foreground">
+                {i18nService.t(
+                  isBackingUpOpenClawData
+                    ? 'openClawDataBackupBlockingTitle'
+                    : 'openClawDataMigrationBlockingTitle',
+                )}
+              </h3>
+              <p className="mt-2 text-sm leading-6 text-secondary">
+                {i18nService.t(
+                  isBackingUpOpenClawData
+                    ? 'openClawDataBackupBlockingDesc'
+                    : 'openClawDataMigrationBlockingDesc',
+                )}
+              </p>
+              <div className="mt-4 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-left text-xs leading-5 text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200">
+                <ExclamationTriangleIcon className="mt-0.5 h-4 w-4 shrink-0" />
+                <span>
+                  {i18nService.t(
+                    isBackingUpOpenClawData
+                      ? 'openClawDataBackupBlockingWarning'
+                      : 'openClawDataMigrationBlockingWarning',
+                  )}
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Memory Modal */}
+        {showMemoryModal && (
+          <div
+            className="absolute inset-0 z-20 flex items-center justify-center bg-black/35 px-4 rounded-2xl"
+            onClick={resetCoworkMemoryEditor}
+          >
+            <div
+              className="bg-surface border-border border rounded-2xl shadow-xl w-full max-w-md"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="px-5 pt-5 pb-4 border-b border-border">
+                <h3 className="text-base font-semibold text-foreground">
+                  {coworkMemoryEditingId
+                    ? i18nService.t('coworkMemoryCrudUpdate')
+                    : i18nService.t('coworkMemoryCrudCreate')}
+                </h3>
+              </div>
+
+              <div className="px-5 py-4 space-y-4">
+                {coworkMemoryEditingId && (
+                  <div className="rounded-lg border px-2 py-1 text-xs border-border text-secondary">
+                    {i18nService.t('coworkMemoryEditingTag')}
+                  </div>
+                )}
+                <label className="block text-xs font-medium text-secondary mb-1">
+                  {i18nService.t('coworkMemoryCrudContentLabel')}
+                  <span className="text-red-500 dark:text-red-400 ml-0.5">*</span>
+                </label>
+                <textarea
+                  value={coworkMemoryDraftText}
+                  onChange={event => setCoworkMemoryDraftText(event.target.value)}
+                  placeholder={i18nService.t('coworkMemoryCrudTextPlaceholder')}
+                  autoFocus
+                  className="min-h-[200px] w-full rounded-lg border px-3 py-2 text-sm border-border bg-surface text-foreground focus:border-primary focus:ring-1 focus:ring-primary/30"
+                />
+              </div>
+
+              <div className="flex justify-end space-x-2 px-5 pb-5">
+                <button
+                  type="button"
+                  onClick={resetCoworkMemoryEditor}
+                  className="px-3 py-1.5 text-sm text-foreground hover:bg-surface-raised rounded-xl border border-border transition-colors"
+                >
+                  {i18nService.t('cancel')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    void handleSaveCoworkMemoryEntry();
+                  }}
+                  disabled={!coworkMemoryDraftText.trim() || coworkMemoryListLoading}
+                  className="px-3 py-1.5 text-sm text-white bg-primary hover:bg-primary-hover rounded-xl disabled:opacity-60 disabled:cursor-not-allowed transition-colors active:scale-[0.98]"
+                >
+                  {coworkMemoryEditingId
+                    ? i18nService.t('save')
+                    : i18nService.t('coworkMemoryCrudCreate')}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </Modal>
   );

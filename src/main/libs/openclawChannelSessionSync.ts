@@ -357,7 +357,9 @@ export class OpenClawChannelSessionSync {
   private readonly imStore: IMStore;
   private readonly getDefaultCwd: (agentId?: string) => string;
   private readonly resolveRuntimeAgentId: (agentId?: string) => string;
-  private readonly getRuntimeAgentSessionDefaults: (agentId?: string) => RuntimeAgentSessionDefaults;
+  private readonly getRuntimeAgentSessionDefaults: (
+    agentId?: string,
+  ) => RuntimeAgentSessionDefaults;
   private readonly resolveJobName: ((jobId: string) => string | null) | null;
 
   /** In-memory cache: openclawSessionKey → local sessionId. */
@@ -377,15 +379,19 @@ export class OpenClawChannelSessionSync {
     this.coworkStore = deps.coworkStore;
     this.imStore = deps.imStore;
     this.getDefaultCwd = deps.getDefaultCwd;
-    this.resolveRuntimeAgentId = deps.resolveRuntimeAgentId ?? ((agentId?: string) => agentId?.trim() || DEFAULT_MANAGED_AGENT_ID);
-    this.getRuntimeAgentSessionDefaults = deps.getRuntimeAgentSessionDefaults ?? ((agentId?: string) => {
-      const resolvedAgentId = this.resolveAgentIdForRuntime(agentId);
-      return {
-        agentId: resolvedAgentId,
-        activeSkillIds: [],
-        modelOverride: '',
-      };
-    });
+    this.resolveRuntimeAgentId =
+      deps.resolveRuntimeAgentId ??
+      ((agentId?: string) => agentId?.trim() || DEFAULT_MANAGED_AGENT_ID);
+    this.getRuntimeAgentSessionDefaults =
+      deps.getRuntimeAgentSessionDefaults ??
+      ((agentId?: string) => {
+        const resolvedAgentId = this.resolveAgentIdForRuntime(agentId);
+        return {
+          agentId: resolvedAgentId,
+          activeSkillIds: [],
+          modelOverride: '',
+        };
+      });
     this.resolveJobName = deps.resolveJobName ?? null;
   }
 
@@ -401,74 +407,6 @@ export class OpenClawChannelSessionSync {
       activeSkillIds: Array.isArray(defaults.activeSkillIds) ? defaults.activeSkillIds : [],
       modelOverride: defaults.modelOverride?.trim() || '',
     };
-  }
-
-  private createSessionWithAgentDefaults(title: string, cwd: string, defaults: RuntimeAgentSessionDefaults): CoworkSession {
-    if (defaults.modelOverride) {
-      return this.coworkStore.createSession(
-        title,
-        cwd,
-        '',
-        'local',
-        defaults.activeSkillIds,
-        defaults.agentId,
-        defaults.modelOverride,
-      );
-    }
-
-    return this.coworkStore.createSession(
-      title,
-      cwd,
-      '',
-      'local',
-      defaults.activeSkillIds,
-      defaults.agentId,
-    );
-  }
-
-  private updateLocalSessionCwdIfNeeded(session: CoworkSession, agentId: string): void {
-    const resolvedCwd = this.getDefaultCwd(agentId).trim();
-    if (!resolvedCwd || session.cwd === resolvedCwd) {
-      return;
-    }
-
-    const updateSession = (this.coworkStore as { updateSession?: CoworkStore['updateSession'] }).updateSession;
-    if (!updateSession) {
-      return;
-    }
-
-    updateSession.call(this.coworkStore, session.id, { cwd: resolvedCwd }, { touchUpdatedAt: false });
-    console.debug(
-      `[ChannelSessionSync] corrected local session ${session.id} cwd for agent ${agentId} to ${resolvedCwd}`,
-    );
-  }
-
-  /**
-   * Check if a gateway session key belongs to the agent currently bound to its platform.
-   * When users switch agent bindings, the gateway retains old sessions under the previous
-   * agentId. This method filters them out so only the current agent's sessions are processed.
-   */
-  isCurrentBindingKey(sessionKey: string): boolean {
-    const parsed = parseChannelSessionKey(sessionKey);
-    if (!parsed) return true; // Not a channel key — let other logic handle it
-    const keyAgentId = extractAgentIdFromKey(sessionKey);
-    if (!keyAgentId) return true; // Legacy key without agentId — allow
-    const imSettings = this.imStore.getIMSettings();
-    const accountId = extractAccountIdFromKey(sessionKey);
-    const currentAgentId = resolveAgentBinding(
-      imSettings.platformAgentBindings,
-      parsed.platform,
-      accountId,
-    );
-    return keyAgentId === this.resolveAgentIdForRuntime(currentAgentId);
-  }
-
-  /**
-   * Whether the session was created due to an agent binding change.
-   * Such sessions should skip full history sync — only future messages matter.
-   */
-  isAgentChangedSession(sessionId: string): boolean {
-    return this.agentChangedSessionIds.has(sessionId);
   }
 
   /**
@@ -542,11 +480,7 @@ export class OpenClawChannelSessionSync {
           const titlePrefix = getChannelTitlePrefix(parsed.platform);
           const title = `${titlePrefix} ${buildChannelDisplayName(parsed.conversationId)}`;
           const cwd = this.getDefaultCwd(runtimeAgentId);
-          const newSession = this.createSessionWithAgentDefaults(
-            title,
-            cwd,
-            runtimeAgentDefaults,
-          );
+          const newSession = this.createSessionWithAgentDefaults(title, cwd, runtimeAgentDefaults);
           console.log('[ChannelSessionSync] created new session for agent change:', newSession.id);
           this.imStore.updateSessionMappingTarget(
             parsed.conversationId,
@@ -568,7 +502,11 @@ export class OpenClawChannelSessionSync {
         );
         this.syncedSessionKeys.set(sessionKey, existingMapping.coworkSessionId);
         if (existingMapping.openClawSessionKey !== sessionKey) {
-          this.imStore.updateSessionOpenClawSessionKey(parsed.conversationId, parsed.platform, sessionKey);
+          this.imStore.updateSessionOpenClawSessionKey(
+            parsed.conversationId,
+            parsed.platform,
+            sessionKey,
+          );
         }
         this.imStore.updateSessionLastActive(parsed.conversationId, parsed.platform);
         return existingMapping.coworkSessionId;
@@ -604,7 +542,13 @@ export class OpenClawChannelSessionSync {
     );
 
     // 6. Persist mapping
-    this.imStore.createSessionMapping(parsed.conversationId, parsed.platform, session.id, agentId, sessionKey);
+    this.imStore.createSessionMapping(
+      parsed.conversationId,
+      parsed.platform,
+      session.id,
+      agentId,
+      sessionKey,
+    );
     console.log(
       '[ChannelSessionSync] persisted mapping: conversationId=',
       parsed.conversationId,
@@ -628,8 +572,9 @@ export class OpenClawChannelSessionSync {
 
     // Check in-memory cache
     const cronKey = parseCronSessionKey(sessionKey);
-    const cached = this.syncedSessionKeys.get(cronKey?.cacheKey ?? sessionKey)
-      ?? this.syncedSessionKeys.get(sessionKey);
+    const cached =
+      this.syncedSessionKeys.get(cronKey?.cacheKey ?? sessionKey) ??
+      this.syncedSessionKeys.get(sessionKey);
     if (cached) {
       this.syncedSessionKeys.set(sessionKey, cached);
       return cached;
@@ -652,7 +597,11 @@ export class OpenClawChannelSessionSync {
         this.updateLocalSessionCwdIfNeeded(session, existingMapping.agentId);
         this.syncedSessionKeys.set(sessionKey, existingMapping.coworkSessionId);
         if (existingMapping.openClawSessionKey !== sessionKey) {
-          this.imStore.updateSessionOpenClawSessionKey(parsed.conversationId, parsed.platform, sessionKey);
+          this.imStore.updateSessionOpenClawSessionKey(
+            parsed.conversationId,
+            parsed.platform,
+            sessionKey,
+          );
         }
         return existingMapping.coworkSessionId;
       }
@@ -661,6 +610,107 @@ export class OpenClawChannelSessionSync {
     }
 
     return null;
+  }
+
+  /**
+   * Check if a gateway session key belongs to the agent currently bound to its platform.
+   * When users switch agent bindings, the gateway retains old sessions under the previous
+   * agentId. This method filters them out so only the current agent's sessions are processed.
+   */
+  isCurrentBindingKey(sessionKey: string): boolean {
+    const parsed = parseChannelSessionKey(sessionKey);
+    if (!parsed) return true; // Not a channel key — let other logic handle it
+    const keyAgentId = extractAgentIdFromKey(sessionKey);
+    if (!keyAgentId) return true; // Legacy key without agentId — allow
+    const imSettings = this.imStore.getIMSettings();
+    const accountId = extractAccountIdFromKey(sessionKey);
+    const currentAgentId = resolveAgentBinding(
+      imSettings.platformAgentBindings,
+      parsed.platform,
+      accountId,
+    );
+    return keyAgentId === this.resolveAgentIdForRuntime(currentAgentId);
+  }
+
+  /**
+   * Whether the session was created due to an agent binding change.
+   * Such sessions should skip full history sync — only future messages matter.
+   */
+  isAgentChangedSession(sessionId: string): boolean {
+    return this.agentChangedSessionIds.has(sessionId);
+  }
+
+  /**
+   * Resolve or create a local Cowork session for an OpenClaw cron-isolated session key.
+   * Supported formats:
+   *   - "cron:{jobId}"
+   *   - "agent:{agentId}:cron:{jobId}"
+   *   - "agent:{agentId}:cron:{jobId}:run:{runId}"
+   * Each cron job gets one persistent local session that is reused across runs,
+   * keeping the full run history in a single conversation.
+   */
+  resolveOrCreateCronSession(sessionKey: string): string | null {
+    const cronKey = parseCronSessionKey(sessionKey);
+    if (!cronKey) return null;
+
+    const cached =
+      this.syncedSessionKeys.get(cronKey.cacheKey) ?? this.syncedSessionKeys.get(sessionKey);
+    if (cached) {
+      this.syncedSessionKeys.set(sessionKey, cached);
+      return cached;
+    }
+
+    const jobId = cronKey.jobId;
+    // Prefer the human-readable job name for the session title; fall back to a short UUID prefix.
+    const jobName = this.resolveJobName?.(jobId) ?? null;
+    const cronLabel = t('cronSessionPrefix');
+    const title = jobName
+      ? `[${cronLabel}] ${jobName}`
+      : `[${cronLabel}] ${jobId.length > 8 ? jobId.slice(0, 8) : jobId}`;
+    const runtimeAgentDefaults = this.resolveAgentSessionDefaults(cronKey.agentId || 'main');
+    const agentId = runtimeAgentDefaults.agentId;
+    const cwd = this.getDefaultCwd(agentId);
+    console.log(
+      '[ChannelSessionSync] creating cron session: key=',
+      sessionKey,
+      'title=',
+      title,
+      'cwd=',
+      cwd,
+    );
+    const session = this.createSessionWithAgentDefaults(title, cwd, runtimeAgentDefaults);
+    console.log('[ChannelSessionSync] created cron session:', session.id);
+
+    this.syncedSessionKeys.set(cronKey.cacheKey, session.id);
+    this.syncedSessionKeys.set(sessionKey, session.id);
+    return session.id;
+  }
+
+  private createSessionWithAgentDefaults(
+    title: string,
+    cwd: string,
+    defaults: RuntimeAgentSessionDefaults,
+  ): CoworkSession {
+    if (defaults.modelOverride) {
+      return this.coworkStore.createSession(
+        title,
+        cwd,
+        '',
+        'local',
+        defaults.activeSkillIds,
+        defaults.agentId,
+        defaults.modelOverride,
+      );
+    }
+
+    return this.coworkStore.createSession(
+      title,
+      cwd,
+      '',
+      'local',
+      defaults.activeSkillIds,
+      defaults.agentId,
+    );
   }
 
   getOpenClawSessionKeyForCoworkSession(sessionId: string): {
@@ -713,50 +763,27 @@ export class OpenClawChannelSessionSync {
     return session.id;
   }
 
-  /**
-   * Resolve or create a local Cowork session for an OpenClaw cron-isolated session key.
-   * Supported formats:
-   *   - "cron:{jobId}"
-   *   - "agent:{agentId}:cron:{jobId}"
-   *   - "agent:{agentId}:cron:{jobId}:run:{runId}"
-   * Each cron job gets one persistent local session that is reused across runs,
-   * keeping the full run history in a single conversation.
-   */
-  resolveOrCreateCronSession(sessionKey: string): string | null {
-    const cronKey = parseCronSessionKey(sessionKey);
-    if (!cronKey) return null;
-
-    const cached = this.syncedSessionKeys.get(cronKey.cacheKey)
-      ?? this.syncedSessionKeys.get(sessionKey);
-    if (cached) {
-      this.syncedSessionKeys.set(sessionKey, cached);
-      return cached;
+  private updateLocalSessionCwdIfNeeded(session: CoworkSession, agentId: string): void {
+    const resolvedCwd = this.getDefaultCwd(agentId).trim();
+    if (!resolvedCwd || session.cwd === resolvedCwd) {
+      return;
     }
 
-    const jobId = cronKey.jobId;
-    // Prefer the human-readable job name for the session title; fall back to a short UUID prefix.
-    const jobName = this.resolveJobName?.(jobId) ?? null;
-    const cronLabel = t('cronSessionPrefix');
-    const title = jobName
-      ? `[${cronLabel}] ${jobName}`
-      : `[${cronLabel}] ${jobId.length > 8 ? jobId.slice(0, 8) : jobId}`;
-    const runtimeAgentDefaults = this.resolveAgentSessionDefaults(cronKey.agentId || 'main');
-    const agentId = runtimeAgentDefaults.agentId;
-    const cwd = this.getDefaultCwd(agentId);
-    console.log(
-      '[ChannelSessionSync] creating cron session: key=',
-      sessionKey,
-      'title=',
-      title,
-      'cwd=',
-      cwd,
-    );
-    const session = this.createSessionWithAgentDefaults(title, cwd, runtimeAgentDefaults);
-    console.log('[ChannelSessionSync] created cron session:', session.id);
+    const updateSession = (this.coworkStore as { updateSession?: CoworkStore['updateSession'] })
+      .updateSession;
+    if (!updateSession) {
+      return;
+    }
 
-    this.syncedSessionKeys.set(cronKey.cacheKey, session.id);
-    this.syncedSessionKeys.set(sessionKey, session.id);
-    return session.id;
+    updateSession.call(
+      this.coworkStore,
+      session.id,
+      { cwd: resolvedCwd },
+      { touchUpdatedAt: false },
+    );
+    console.debug(
+      `[ChannelSessionSync] corrected local session ${session.id} cwd for agent ${agentId} to ${resolvedCwd}`,
+    );
   }
   clearCache(): void {
     this.syncedSessionKeys.clear();

@@ -52,9 +52,8 @@ export const EnterpriseLeadWorkspaceView: React.FC<EnterpriseLeadWorkspaceViewPr
   const [workspaces, setWorkspaces] = useState<EnterpriseLeadWorkspace[]>([]);
   const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(null);
   const [activeWorkspace, setActiveWorkspace] = useState<EnterpriseLeadWorkspace | null>(null);
-  const [activeInternalPage, setActiveInternalPage] = useState<EnterpriseLeadWorkspaceInternalPageType>(
-    getDefaultWorkspaceInternalPage(),
-  );
+  const [activeInternalPage, setActiveInternalPage] =
+    useState<EnterpriseLeadWorkspaceInternalPageType>(getDefaultWorkspaceInternalPage());
   const [chatSessions, setChatSessions] = useState<EnterpriseLeadWorkspaceChatSessionSummary[]>([]);
   const [activeChatSessionId, setActiveChatSessionId] = useState<string | null>(null);
   const [isLoadingWorkspaces, setIsLoadingWorkspaces] = useState(true);
@@ -166,7 +165,8 @@ export const EnterpriseLeadWorkspaceView: React.FC<EnterpriseLeadWorkspaceViewPr
     setIsLoadingWorkspace(true);
     setWorkspaceError('');
 
-    enterpriseLeadWorkspaceService.getWorkspace(activeWorkspaceId)
+    enterpriseLeadWorkspaceService
+      .getWorkspace(activeWorkspaceId)
       .then(workspace => {
         if (isCancelled) {
           return;
@@ -242,27 +242,30 @@ export const EnterpriseLeadWorkspaceView: React.FC<EnterpriseLeadWorkspaceViewPr
     void refreshWorkspaces();
   };
 
-  const handleDeleteWorkspace = useCallback(async (workspaceId: string): Promise<boolean> => {
-    const deleted = await enterpriseLeadWorkspaceService.deleteWorkspace(workspaceId);
+  const handleDeleteWorkspace = useCallback(
+    async (workspaceId: string): Promise<boolean> => {
+      const deleted = await enterpriseLeadWorkspaceService.deleteWorkspace(workspaceId);
 
-    if (!deleted) {
-      return false;
-    }
+      if (!deleted) {
+        return false;
+      }
 
-    setWorkspaces(previous => previous.filter(item => item.id !== workspaceId));
+      setWorkspaces(previous => previous.filter(item => item.id !== workspaceId));
 
-    if (activeWorkspaceId === workspaceId) {
-      navigationRevisionRef.current += 1;
-      setActiveWorkspaceId(null);
-      setActiveWorkspace(null);
-      setChatSessions([]);
-      setActiveChatSessionId(null);
-      setActiveInternalPage(getDefaultWorkspaceInternalPage());
-      setScreen(EnterpriseLeadWorkspaceScreen.Entry);
-    }
+      if (activeWorkspaceId === workspaceId) {
+        navigationRevisionRef.current += 1;
+        setActiveWorkspaceId(null);
+        setActiveWorkspace(null);
+        setChatSessions([]);
+        setActiveChatSessionId(null);
+        setActiveInternalPage(getDefaultWorkspaceInternalPage());
+        setScreen(EnterpriseLeadWorkspaceScreen.Entry);
+      }
 
-    return true;
-  }, [activeWorkspaceId]);
+      return true;
+    },
+    [activeWorkspaceId],
+  );
 
   const handleExitWorkspace = (): void => {
     navigationRevisionRef.current += 1;
@@ -287,25 +290,28 @@ export const EnterpriseLeadWorkspaceView: React.FC<EnterpriseLeadWorkspaceViewPr
     setActiveInternalPage(EnterpriseLeadWorkspaceInternalPage.AiChat);
   };
 
-  const handleChatSessionDelete = useCallback(async (sessionId: string): Promise<boolean> => {
-    if (!activeWorkspaceId) {
-      return false;
-    }
+  const handleChatSessionDelete = useCallback(
+    async (sessionId: string): Promise<boolean> => {
+      if (!activeWorkspaceId) {
+        return false;
+      }
 
-    const deleted = await enterpriseLeadWorkspaceService.deleteChatSession(
-      activeWorkspaceId,
-      sessionId,
-    );
-    if (!deleted) {
-      return false;
-    }
+      const deleted = await enterpriseLeadWorkspaceService.deleteChatSession(
+        activeWorkspaceId,
+        sessionId,
+      );
+      if (!deleted) {
+        return false;
+      }
 
-    setChatSessions(previous => previous.filter(session => session.id !== sessionId));
-    if (activeChatSessionId === sessionId) {
-      setActiveChatSessionId(null);
-    }
-    return true;
-  }, [activeChatSessionId, activeWorkspaceId]);
+      setChatSessions(previous => previous.filter(session => session.id !== sessionId));
+      if (activeChatSessionId === sessionId) {
+        setActiveChatSessionId(null);
+      }
+      return true;
+    },
+    [activeChatSessionId, activeWorkspaceId],
+  );
 
   const handleChatSessionsUpdated = (): void => {
     if (activeWorkspaceId) {
@@ -315,21 +321,24 @@ export const EnterpriseLeadWorkspaceView: React.FC<EnterpriseLeadWorkspaceViewPr
 
   const handleWorkspaceUpdated = (workspace: EnterpriseLeadWorkspace): void => {
     setActiveWorkspace(workspace);
-    setWorkspaces(previous => sortWorkspacesByRecentUpdate(
-      previous.map(item => (item.id === workspace.id ? workspace : item)),
-    ));
+    setWorkspaces(previous =>
+      sortWorkspacesByRecentUpdate(
+        previous.map(item => (item.id === workspace.id ? workspace : item)),
+      ),
+    );
   };
 
-  const renderPreparingPanel = (
-    page: EnterpriseLeadWorkspaceInternalPageType,
-  ): React.ReactNode => {
+  const renderPreparingPanel = (page: EnterpriseLeadWorkspaceInternalPageType): React.ReactNode => {
     const pageLabels = {
       [EnterpriseLeadWorkspaceInternalPage.Workbench]: 'enterpriseLeadWorkbenchNavWorkbench',
       [EnterpriseLeadWorkspaceInternalPage.AiChat]: 'enterpriseLeadWorkbenchNavAiChat',
       [EnterpriseLeadWorkspaceInternalPage.Search]: 'enterpriseLeadWorkbenchNavSearch',
-      [EnterpriseLeadWorkspaceInternalPage.KnowledgeBase]: 'enterpriseLeadWorkbenchNavKnowledgeBase',
-      [EnterpriseLeadWorkspaceInternalPage.CreationRecords]: 'enterpriseLeadWorkbenchNavCreationRecords',
-      [EnterpriseLeadWorkspaceInternalPage.AgentManagement]: 'enterpriseLeadWorkbenchNavAgentManagement',
+      [EnterpriseLeadWorkspaceInternalPage.KnowledgeBase]:
+        'enterpriseLeadWorkbenchNavKnowledgeBase',
+      [EnterpriseLeadWorkspaceInternalPage.CreationRecords]:
+        'enterpriseLeadWorkbenchNavCreationRecords',
+      [EnterpriseLeadWorkspaceInternalPage.AgentManagement]:
+        'enterpriseLeadWorkbenchNavAgentManagement',
       [EnterpriseLeadWorkspaceInternalPage.Settings]: 'enterpriseLeadWorkbenchNavSettings',
     } satisfies Record<EnterpriseLeadWorkspaceInternalPageType, string>;
 
@@ -355,12 +364,7 @@ export const EnterpriseLeadWorkspaceView: React.FC<EnterpriseLeadWorkspaceViewPr
     workspace: EnterpriseLeadWorkspace,
   ): React.ReactNode => {
     if (page === EnterpriseLeadWorkspaceInternalPage.Workbench) {
-      return (
-        <WorkspaceStart
-          workspace={workspace}
-          onOpenPage={handleInternalPageChange}
-        />
-      );
+      return <WorkspaceStart workspace={workspace} onOpenPage={handleInternalPageChange} />;
     }
 
     if (page === EnterpriseLeadWorkspaceInternalPage.AgentManagement) {
@@ -375,19 +379,13 @@ export const EnterpriseLeadWorkspaceView: React.FC<EnterpriseLeadWorkspaceViewPr
 
     if (page === EnterpriseLeadWorkspaceInternalPage.Settings) {
       return (
-        <WorkspaceSettings
-          workspace={workspace}
-          onWorkspaceUpdated={handleWorkspaceUpdated}
-        />
+        <WorkspaceSettings workspace={workspace} onWorkspaceUpdated={handleWorkspaceUpdated} />
       );
     }
 
     if (page === EnterpriseLeadWorkspaceInternalPage.KnowledgeBase) {
       return (
-        <WorkspaceKnowledgeBase
-          workspace={workspace}
-          onWorkspaceUpdated={handleWorkspaceUpdated}
-        />
+        <WorkspaceKnowledgeBase workspace={workspace} onWorkspaceUpdated={handleWorkspaceUpdated} />
       );
     }
 
@@ -417,18 +415,14 @@ export const EnterpriseLeadWorkspaceView: React.FC<EnterpriseLeadWorkspaceViewPr
 
   const renderContent = (): React.ReactNode => {
     if (screen === EnterpriseLeadWorkspaceScreen.Create) {
-      return (
-        <WorkspaceCreate
-          onCreated={handleCreated}
-          onCancel={handleCancelCreate}
-        />
-      );
+      return <WorkspaceCreate onCreated={handleCreated} onCancel={handleCancelCreate} />;
     }
 
     if (screen === EnterpriseLeadWorkspaceScreen.Workspace && activeWorkspaceId) {
-      const workspace = activeWorkspace?.id === activeWorkspaceId
-        ? activeWorkspace
-        : workspaces.find(item => item.id === activeWorkspaceId) ?? null;
+      const workspace =
+        activeWorkspace?.id === activeWorkspaceId
+          ? activeWorkspace
+          : (workspaces.find(item => item.id === activeWorkspaceId) ?? null);
 
       return (
         <div className="flex h-full min-h-0 flex-1 flex-col bg-background">
@@ -486,19 +480,19 @@ export const EnterpriseLeadWorkspaceView: React.FC<EnterpriseLeadWorkspaceViewPr
     return (
       <div className="relative flex h-full min-h-0 flex-1 flex-col bg-background">
         <WindowTitleBar />
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          {renderContent()}
-        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto">{renderContent()}</div>
       </div>
     );
   }
 
-  const headerWorkspace = activeWorkspace?.id === activeWorkspaceId
-    ? activeWorkspace
-    : workspaces.find(item => item.id === activeWorkspaceId) ?? null;
-  const headerTitle = screen === EnterpriseLeadWorkspaceScreen.Workspace && headerWorkspace?.name
-    ? headerWorkspace.name
-    : i18nService.t('enterpriseLeadNavLabel');
+  const headerWorkspace =
+    activeWorkspace?.id === activeWorkspaceId
+      ? activeWorkspace
+      : (workspaces.find(item => item.id === activeWorkspaceId) ?? null);
+  const headerTitle =
+    screen === EnterpriseLeadWorkspaceScreen.Workspace && headerWorkspace?.name
+      ? headerWorkspace.name
+      : i18nService.t('enterpriseLeadNavLabel');
 
   return (
     <div className="flex h-full flex-1 flex-col bg-background">
@@ -527,17 +521,13 @@ export const EnterpriseLeadWorkspaceView: React.FC<EnterpriseLeadWorkspaceViewPr
               <ArrowLeftIcon className="h-4 w-4" />
             </button>
           )}
-          <h1 className="truncate text-lg font-semibold text-foreground">
-            {headerTitle}
-          </h1>
+          <h1 className="truncate text-lg font-semibold text-foreground">{headerTitle}</h1>
         </div>
         <WindowTitleBar inline />
       </div>
       <div
         className={`min-h-0 flex-1 ${
-          screen === EnterpriseLeadWorkspaceScreen.Workspace
-            ? 'overflow-hidden'
-            : 'overflow-y-auto'
+          screen === EnterpriseLeadWorkspaceScreen.Workspace ? 'overflow-hidden' : 'overflow-y-auto'
         }`}
       >
         {renderContent()}

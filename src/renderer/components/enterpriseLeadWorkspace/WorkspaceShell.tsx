@@ -62,16 +62,16 @@ const formatChatSessionAge = (updatedAt: string): string => {
   }
 
   const dayCount = Math.max(1, Math.floor(elapsedMs / 86_400_000));
-  return i18nService.t('enterpriseLeadWorkspaceSidebarDaysAgo').replace('{count}', String(dayCount));
+  return i18nService
+    .t('enterpriseLeadWorkspaceSidebarDaysAgo')
+    .replace('{count}', String(dayCount));
 };
 
-const formatWorkspaceShellMessage = (
-  key: string,
-  values: Record<string, string>,
-): string => Object.entries(values).reduce(
-  (message, [name, value]) => message.replace(`{${name}}`, value),
-  i18nService.t(key),
-);
+const formatWorkspaceShellMessage = (key: string, values: Record<string, string>): string =>
+  Object.entries(values).reduce(
+    (message, [name, value]) => message.replace(`{${name}}`, value),
+    i18nService.t(key),
+  );
 
 export const WorkspaceShell: React.FC<WorkspaceShellProps> = ({
   activePage,
@@ -130,7 +130,10 @@ export const WorkspaceShell: React.FC<WorkspaceShellProps> = ({
         style={{ width: sidebarWidth }}
         data-workspace-shell-sidebar-mode={sidebarMode}
       >
-        <nav className="flex shrink-0 flex-col gap-1 pb-4" aria-label={i18nService.t('enterpriseLeadNavLabel')}>
+        <nav
+          className="flex shrink-0 flex-col gap-1 pb-4"
+          aria-label={i18nService.t('enterpriseLeadNavLabel')}
+        >
           {pages.map(page => {
             const Icon = navIconById[page.icon];
             const isActive = page.id === activePage;
@@ -148,9 +151,7 @@ export const WorkspaceShell: React.FC<WorkspaceShellProps> = ({
                 aria-current={isActive ? 'page' : undefined}
               >
                 <Icon className="h-4 w-4 shrink-0" />
-                <span className="min-w-0 truncate">
-                  {i18nService.t(page.labelKey)}
-                </span>
+                <span className="min-w-0 truncate">{i18nService.t(page.labelKey)}</span>
               </button>
             );
           })}
@@ -164,7 +165,8 @@ export const WorkspaceShell: React.FC<WorkspaceShellProps> = ({
               {chatSessions.map(session => {
                 const isActive = session.id === activeChatSessionId;
                 const sessionAge = formatChatSessionAge(session.updatedAt);
-                const sessionTitle = session.title || i18nService.t('enterpriseLeadAiChatUntitledSession');
+                const sessionTitle =
+                  session.title || i18nService.t('enterpriseLeadAiChatUntitledSession');
                 const deleteLabel = formatWorkspaceShellMessage(
                   'enterpriseLeadWorkspaceDeleteConversationAria',
                   { title: sessionTitle },
@@ -185,13 +187,9 @@ export const WorkspaceShell: React.FC<WorkspaceShellProps> = ({
                       className="flex h-full min-w-0 flex-1 items-center justify-between gap-2 rounded-md px-2 text-left text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
                       aria-current={isActive ? 'page' : undefined}
                     >
-                      <span className="min-w-0 truncate font-medium">
-                        {sessionTitle}
-                      </span>
+                      <span className="min-w-0 truncate font-medium">{sessionTitle}</span>
                       {sessionAge ? (
-                        <span className="shrink-0 text-xs text-tertiary">
-                          {sessionAge}
-                        </span>
+                        <span className="shrink-0 text-xs text-tertiary">{sessionAge}</span>
                       ) : null}
                     </button>
                     {onChatSessionDelete && (
@@ -231,9 +229,7 @@ export const WorkspaceShell: React.FC<WorkspaceShellProps> = ({
           </div>
         )}
       </aside>
-      <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
-        {children}
-      </main>
+      <main className="flex min-w-0 flex-1 flex-col overflow-hidden">{children}</main>
       {pendingDeleteSession && (
         <div
           className="fixed inset-0 z-[60] flex items-center justify-center bg-black/20 px-4"
@@ -256,13 +252,11 @@ export const WorkspaceShell: React.FC<WorkspaceShellProps> = ({
                   id={CHAT_SESSION_DELETE_TITLE_ID}
                   className="text-base font-semibold text-foreground"
                 >
-                  {formatWorkspaceShellMessage(
-                    'enterpriseLeadWorkspaceDeleteConversationTitle',
-                    {
-                      title: pendingDeleteSession.title
-                        || i18nService.t('enterpriseLeadAiChatUntitledSession'),
-                    },
-                  )}
+                  {formatWorkspaceShellMessage('enterpriseLeadWorkspaceDeleteConversationTitle', {
+                    title:
+                      pendingDeleteSession.title ||
+                      i18nService.t('enterpriseLeadAiChatUntitledSession'),
+                  })}
                 </h3>
                 <p
                   id={CHAT_SESSION_DELETE_DESCRIPTION_ID}

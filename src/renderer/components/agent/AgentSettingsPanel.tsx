@@ -25,9 +25,23 @@ import { LogReporterAction, reportYdAnalyzer } from '../../services/logReporter'
 import { RootState } from '../../store';
 import type { Model } from '../../store/slices/modelSlice';
 import type { Agent } from '../../types/agent';
-import type { DingTalkInstanceConfig, DiscordInstanceConfig, FeishuInstanceConfig, IMGatewayConfig, NimInstanceConfig, PopoInstanceConfig, QQInstanceConfig, TelegramInstanceConfig, WecomInstanceConfig } from '../../types/im';
+import type {
+  DingTalkInstanceConfig,
+  DiscordInstanceConfig,
+  FeishuInstanceConfig,
+  IMGatewayConfig,
+  NimInstanceConfig,
+  PopoInstanceConfig,
+  QQInstanceConfig,
+  TelegramInstanceConfig,
+  WecomInstanceConfig,
+} from '../../types/im';
 import type { Skill } from '../../types/skill';
-import { getAgentDisplayName, getAgentDisplayNameById, isDefaultAgentId } from '../../utils/agentDisplay';
+import {
+  getAgentDisplayName,
+  getAgentDisplayNameById,
+  isDefaultAgentId,
+} from '../../utils/agentDisplay';
 import { resolveOpenClawModelRef, toOpenClawModelRef } from '../../utils/openclawModelRef';
 import { getVisibleIMPlatforms } from '../../utils/regionFilter';
 import Modal from '../common/Modal';
@@ -36,10 +50,7 @@ import AgentAvatarPicker from './AgentAvatarPicker';
 import AgentConfirmDialog from './AgentConfirmDialog';
 import AgentDetailToolbar from './AgentDetailToolbar';
 import AgentDomesticResearchSourcesPanel from './AgentDomesticResearchSourcesPanel';
-import {
-  DEFAULT_USER_INFO_TEMPLATE,
-  getEditableUserInfo,
-} from './agentEditText';
+import { DEFAULT_USER_INFO_TEMPLATE, getEditableUserInfo } from './agentEditText';
 import AgentExternalResearchPanel from './AgentExternalResearchPanel';
 import {
   AgentSettingsSaveStep,
@@ -52,10 +63,28 @@ import {
 import AgentSkillSelector from './AgentSkillSelector';
 import { AgentConfirmDialogVariant, AgentDetailTab } from './constants';
 
-type MultiInstancePlatform = 'dingtalk' | 'feishu' | 'qq' | 'wecom' | 'nim' | 'telegram' | 'discord' | 'popo';
-type MultiInstanceConfig = DingTalkInstanceConfig | FeishuInstanceConfig | QQInstanceConfig | WecomInstanceConfig | NimInstanceConfig | TelegramInstanceConfig | DiscordInstanceConfig | PopoInstanceConfig;
+type MultiInstancePlatform =
+  'dingtalk' | 'feishu' | 'qq' | 'wecom' | 'nim' | 'telegram' | 'discord' | 'popo';
+type MultiInstanceConfig =
+  | DingTalkInstanceConfig
+  | FeishuInstanceConfig
+  | QQInstanceConfig
+  | WecomInstanceConfig
+  | NimInstanceConfig
+  | TelegramInstanceConfig
+  | DiscordInstanceConfig
+  | PopoInstanceConfig;
 
-const MULTI_INSTANCE_PLATFORMS: MultiInstancePlatform[] = ['dingtalk', 'feishu', 'qq', 'wecom', 'nim', 'telegram', 'discord', 'popo'];
+const MULTI_INSTANCE_PLATFORMS: MultiInstancePlatform[] = [
+  'dingtalk',
+  'feishu',
+  'qq',
+  'wecom',
+  'nim',
+  'telegram',
+  'discord',
+  'popo',
+];
 
 const isMultiInstancePlatform = (platform: Platform): platform is MultiInstancePlatform =>
   MULTI_INSTANCE_PLATFORMS.includes(platform as MultiInstancePlatform);
@@ -74,9 +103,7 @@ type AgentSettingsActionType =
 const AGENT_SETTINGS_ANALYTICS_SOURCE = 'agent_settings_panel';
 
 const serializeAnalyticsList = (values: string[]): string | undefined => {
-  const normalizedValues = values
-    .map(value => value.trim())
-    .filter(Boolean);
+  const normalizedValues = values.map(value => value.trim()).filter(Boolean);
   return normalizedValues.length > 0 ? normalizedValues.join(',') : undefined;
 };
 
@@ -90,7 +117,9 @@ const getModelAnalyticsSource = (model: Model | null): 'package' | 'custom' | un
 
 const getModelSelectorGroup = (model: Model | null): 'server' | 'user' | undefined => {
   if (!model) return undefined;
-  return model.isServerModel || model.providerKey === ProviderName.LobsteraiServer ? 'server' : 'user';
+  return model.isServerModel || model.providerKey === ProviderName.LobsteraiServer
+    ? 'server'
+    : 'user';
 };
 
 interface AgentSettingsPanelProps {
@@ -122,11 +151,13 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
   const [externalResearchConfig, setExternalResearchConfig] = useState<ExternalResearchEditConfig>(
     buildDefaultExternalResearchEditConfig(AgentExternalResearchMode.Inherit),
   );
-  const [externalResearchDefaults, setExternalResearchDefaults] = useState<MaskedExternalResearchConfig | null>(null);
+  const [externalResearchDefaults, setExternalResearchDefaults] =
+    useState<MaskedExternalResearchConfig | null>(null);
   const [domesticResearchConfig, setDomesticResearchConfig] = useState<DomesticResearchConfig>(
     buildDefaultDomesticResearchConfig(),
   );
-  const [domesticResearchStatuses, setDomesticResearchStatuses] = useState<DomesticResearchStatusMap | null>(null);
+  const [domesticResearchStatuses, setDomesticResearchStatuses] =
+    useState<DomesticResearchStatusMap | null>(null);
   const openedAgentIdRef = useRef<string | null>(null);
   const initialExternalResearchRef = useRef('');
   const initialDomesticResearchRef = useRef('');
@@ -136,7 +167,7 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
   const [boundKeys, setBoundKeys] = useState<Set<string>>(new Set());
   const [initialBoundKeys, setInitialBoundKeys] = useState<Set<string>>(new Set());
   const isMainAgent = isDefaultAgentId(agentId);
-  const selectedAgentSummary = agents.find((item) => item.id === agentId);
+  const selectedAgentSummary = agents.find(item => item.id === agentId);
   const isSystemAgent =
     isMainAgent ||
     agent?.isDefault === true ||
@@ -169,7 +200,10 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
     if (icon !== init.icon) changedFields.push('icon');
     if ((model ? toOpenClawModelRef(model) : '') !== init.model) changedFields.push('model');
     if (workingDirectory !== init.workingDirectory) changedFields.push('workingDirectory');
-    if (skillIds.length !== init.skillIds.length || skillIds.some((id, i) => id !== init.skillIds[i])) {
+    if (
+      skillIds.length !== init.skillIds.length ||
+      skillIds.some((id, i) => id !== init.skillIds[i])
+    ) {
       changedFields.push('skillIds');
     }
     if (enabled !== init.enabled) changedFields.push('enabled');
@@ -179,7 +213,10 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
     if (JSON.stringify(domesticResearchConfig) !== initialDomesticResearchRef.current) {
       changedFields.push('domesticResearch');
     }
-    if (boundKeys.size !== initialBoundKeys.size || [...boundKeys].some((k) => !initialBoundKeys.has(k))) {
+    if (
+      boundKeys.size !== initialBoundKeys.size ||
+      [...boundKeys].some(k => !initialBoundKeys.has(k))
+    ) {
       changedFields.push('imBindings');
     }
     return changedFields;
@@ -200,15 +237,17 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
     workingDirectory,
   ]);
 
-  const getSelectedSkills = useCallback((): Skill[] => (
-    skillIds
-      .map(skillId => skills.find(skill => skill.id === skillId))
-      .filter((skill): skill is Skill => Boolean(skill))
-  ), [skillIds, skills]);
+  const getSelectedSkills = useCallback(
+    (): Skill[] =>
+      skillIds
+        .map(skillId => skills.find(skill => skill.id === skillId))
+        .filter((skill): skill is Skill => Boolean(skill)),
+    [skillIds, skills],
+  );
 
   const getImPlatformsForAnalytics = useCallback((): string[] => {
     const platforms = new Set<string>();
-    boundKeys.forEach((key) => {
+    boundKeys.forEach(key => {
       const platform = key.split(':')[0]?.trim();
       if (platform) {
         platforms.add(platform);
@@ -217,62 +256,69 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
     return Array.from(platforms).sort();
   }, [boundKeys]);
 
-  const reportAgentSettingsAction = useCallback((
-    actionType: AgentSettingsActionType,
-    options: {
-      activeTab?: AgentDetailTab;
-      changedFields?: string[];
-      includeConfigDetails?: boolean;
-      isDirty?: boolean;
-      result?: 'success' | 'failed';
-      targetTab?: AgentDetailTab;
-    } = {},
-  ): void => {
-    const changedFields = options.changedFields ?? [];
-    const selectedSkills = options.includeConfigDetails ? getSelectedSkills() : [];
-    const imPlatforms = options.includeConfigDetails ? getImPlatformsForAnalytics() : [];
-    console.debug(`[AgentSettingsPanel] reporting analytics action ${actionType}`);
-    void reportYdAnalyzer({
-      action: LogReporterAction.AgentSettingsAction,
-      source: AGENT_SETTINGS_ANALYTICS_SOURCE,
-      actionType,
-      agentType: isDefaultAgentId(agentId) ? 'main' : 'custom',
-      activeTab: options.activeTab ?? activeTab,
-      targetTab: options.targetTab,
-      isDirty: options.isDirty,
-      changedFieldCount: changedFields.length,
-      changedFields: changedFields.length > 0 ? changedFields.join(',') : undefined,
-      skillCount: skillIds.length,
-      imBindingCount: boundKeys.size,
-      hasModel: Boolean(model),
-      hasWorkingDirectory: workingDirectory.trim().length > 0,
-      result: options.result,
-      modelId: options.includeConfigDetails ? model?.id : undefined,
-      modelName: options.includeConfigDetails ? model?.name : undefined,
-      modelSource: options.includeConfigDetails ? getModelAnalyticsSource(model) : undefined,
-      providerKey: options.includeConfigDetails ? model?.providerKey : undefined,
-      provider: options.includeConfigDetails ? model?.provider : undefined,
-      selectorGroup: options.includeConfigDetails ? getModelSelectorGroup(model) : undefined,
-      skillIds: options.includeConfigDetails ? serializeAnalyticsList(selectedSkills.map(skill => skill.id)) : undefined,
-      skillNames: options.includeConfigDetails ? serializeAnalyticsList(selectedSkills.map(skill => skill.name)) : undefined,
-      builtInSkillCount: options.includeConfigDetails
-        ? selectedSkills.filter(skill => skill.isBuiltIn).length
-        : undefined,
-      customSkillCount: options.includeConfigDetails
-        ? selectedSkills.filter(skill => !skill.isBuiltIn).length
-        : undefined,
-      imPlatforms: options.includeConfigDetails ? serializeAnalyticsList(imPlatforms) : undefined,
-    });
-  }, [
-    activeTab,
-    agentId,
-    boundKeys.size,
-    getImPlatformsForAnalytics,
-    getSelectedSkills,
-    model,
-    skillIds.length,
-    workingDirectory,
-  ]);
+  const reportAgentSettingsAction = useCallback(
+    (
+      actionType: AgentSettingsActionType,
+      options: {
+        activeTab?: AgentDetailTab;
+        changedFields?: string[];
+        includeConfigDetails?: boolean;
+        isDirty?: boolean;
+        result?: 'success' | 'failed';
+        targetTab?: AgentDetailTab;
+      } = {},
+    ): void => {
+      const changedFields = options.changedFields ?? [];
+      const selectedSkills = options.includeConfigDetails ? getSelectedSkills() : [];
+      const imPlatforms = options.includeConfigDetails ? getImPlatformsForAnalytics() : [];
+      console.debug(`[AgentSettingsPanel] reporting analytics action ${actionType}`);
+      void reportYdAnalyzer({
+        action: LogReporterAction.AgentSettingsAction,
+        source: AGENT_SETTINGS_ANALYTICS_SOURCE,
+        actionType,
+        agentType: isDefaultAgentId(agentId) ? 'main' : 'custom',
+        activeTab: options.activeTab ?? activeTab,
+        targetTab: options.targetTab,
+        isDirty: options.isDirty,
+        changedFieldCount: changedFields.length,
+        changedFields: changedFields.length > 0 ? changedFields.join(',') : undefined,
+        skillCount: skillIds.length,
+        imBindingCount: boundKeys.size,
+        hasModel: Boolean(model),
+        hasWorkingDirectory: workingDirectory.trim().length > 0,
+        result: options.result,
+        modelId: options.includeConfigDetails ? model?.id : undefined,
+        modelName: options.includeConfigDetails ? model?.name : undefined,
+        modelSource: options.includeConfigDetails ? getModelAnalyticsSource(model) : undefined,
+        providerKey: options.includeConfigDetails ? model?.providerKey : undefined,
+        provider: options.includeConfigDetails ? model?.provider : undefined,
+        selectorGroup: options.includeConfigDetails ? getModelSelectorGroup(model) : undefined,
+        skillIds: options.includeConfigDetails
+          ? serializeAnalyticsList(selectedSkills.map(skill => skill.id))
+          : undefined,
+        skillNames: options.includeConfigDetails
+          ? serializeAnalyticsList(selectedSkills.map(skill => skill.name))
+          : undefined,
+        builtInSkillCount: options.includeConfigDetails
+          ? selectedSkills.filter(skill => skill.isBuiltIn).length
+          : undefined,
+        customSkillCount: options.includeConfigDetails
+          ? selectedSkills.filter(skill => !skill.isBuiltIn).length
+          : undefined,
+        imPlatforms: options.includeConfigDetails ? serializeAnalyticsList(imPlatforms) : undefined,
+      });
+    },
+    [
+      activeTab,
+      agentId,
+      boundKeys.size,
+      getImPlatformsForAnalytics,
+      getSelectedSkills,
+      model,
+      skillIds.length,
+      workingDirectory,
+    ],
+  );
 
   useEffect(() => {
     if (!agentId) return;
@@ -282,7 +328,9 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
     setShowUnsavedConfirm(false);
     setNameTouched(false);
     setAgent(null);
-    const fallbackExternalResearch = buildDefaultExternalResearchEditConfig(AgentExternalResearchMode.Inherit);
+    const fallbackExternalResearch = buildDefaultExternalResearchEditConfig(
+      AgentExternalResearchMode.Inherit,
+    );
     const fallbackDomesticResearch = buildDefaultDomesticResearchConfig();
     setExternalResearchDefaults(null);
     setExternalResearchConfig(fallbackExternalResearch);
@@ -316,7 +364,8 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
       setIdentity(nextIdentity);
       setUserInfo(nextUserInfo);
       setIcon(a.icon);
-      const resolvedModel = resolveOpenClawModelRef(a.model, availableModels) ?? defaultSelectedModel ?? null;
+      const resolvedModel =
+        resolveOpenClawModelRef(a.model, availableModels) ?? defaultSelectedModel ?? null;
       const resolvedModelRef = resolvedModel ? toOpenClawModelRef(resolvedModel) : '';
       setModel(resolvedModel);
       setWorkingDirectory(a.workingDirectory ?? '');
@@ -332,7 +381,8 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
       initialExternalResearchRef.current = JSON.stringify(nextExternalResearch);
       const domesticResearchSettings = await agentService.getDomesticResearchSettings(agentId);
       if (cancelled) return;
-      const nextDomesticResearch = domesticResearchSettings?.settings ?? buildDefaultDomesticResearchConfig();
+      const nextDomesticResearch =
+        domesticResearchSettings?.settings ?? buildDefaultDomesticResearchConfig();
       setDomesticResearchStatuses(domesticResearchSettings?.statuses ?? null);
       setDomesticResearchConfig(nextDomesticResearch);
       initialDomesticResearchRef.current = JSON.stringify(nextDomesticResearch);
@@ -351,7 +401,7 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
     })();
 
     // Load IM config and status for bindings
-    imService.loadConfig().then((cfg) => {
+    imService.loadConfig().then(cfg => {
       if (cfg && !cancelled) {
         setImConfig(cfg);
         const bindings = cfg.settings?.platformAgentBindings || {};
@@ -433,9 +483,8 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
   const handleSave = async () => {
     if (!name.trim()) return;
     const changedFields = getChangedFields();
-    const runtimeImpactMessage = buildAgentSettingsRuntimeImpactMessage(
-      changedFields,
-      key => i18nService.t(key),
+    const runtimeImpactMessage = buildAgentSettingsRuntimeImpactMessage(changedFields, key =>
+      i18nService.t(key),
     );
     reportAgentSettingsAction('save_submit', {
       changedFields,
@@ -449,7 +498,7 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
       step: AgentSettingsSaveStep,
       status: AgentSettingsSaveStepResult['status'],
     ) => {
-      if (saveStepResults.some((result) => result.step === step && result.status === status)) {
+      if (saveStepResults.some(result => result.step === step && result.status === status)) {
         return;
       }
       saveStepResults.push({ step, status });
@@ -461,22 +510,27 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
         isDirty: changedFields.length > 0,
         result: 'failed',
       });
-      window.dispatchEvent(new CustomEvent('app:showToast', {
-        detail: buildAgentSettingsSaveFailureMessage(saveStepResults, key => i18nService.t(key)),
-      }));
+      window.dispatchEvent(
+        new CustomEvent('app:showToast', {
+          detail: buildAgentSettingsSaveFailureMessage(saveStepResults, key => i18nService.t(key)),
+        }),
+      );
     };
     try {
-      const updateRequest = buildAgentSettingsUpdateRequest({
-        name: name.trim(),
-        description: description.trim(),
-        systemPrompt: systemPrompt.trim(),
-        identity: identity.trim(),
-        model: model ? toOpenClawModelRef(model) : '',
-        workingDirectory: workingDirectory.trim(),
-        icon: icon.trim(),
-        skillIds,
-        enabled,
-      }, isSystemAgent);
+      const updateRequest = buildAgentSettingsUpdateRequest(
+        {
+          name: name.trim(),
+          description: description.trim(),
+          systemPrompt: systemPrompt.trim(),
+          identity: identity.trim(),
+          model: model ? toOpenClawModelRef(model) : '',
+          workingDirectory: workingDirectory.trim(),
+          icon: icon.trim(),
+          skillIds,
+          enabled,
+        },
+        isSystemAgent,
+      );
       activeSaveStep = AgentSettingsSaveStep.Agent;
       const result = await agentService.updateAgent(agentId, updateRequest);
       if (!result) {
@@ -492,7 +546,10 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
           reportSaveFailure();
           return;
         }
-        const researchSaved = await agentService.saveExternalResearchSettings(agentId, externalResearchConfig);
+        const researchSaved = await agentService.saveExternalResearchSettings(
+          agentId,
+          externalResearchConfig,
+        );
         if (!researchSaved) {
           recordSaveStep(AgentSettingsSaveStep.ExternalResearch, 'failed');
           reportSaveFailure();
@@ -502,7 +559,10 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
       }
       if (changedFields.includes('domesticResearch')) {
         activeSaveStep = AgentSettingsSaveStep.DomesticResearch;
-        const domesticSaved = await agentService.saveDomesticResearchSettings(agentId, domesticResearchConfig);
+        const domesticSaved = await agentService.saveDomesticResearchSettings(
+          agentId,
+          domesticResearchConfig,
+        );
         if (!domesticSaved) {
           recordSaveStep(AgentSettingsSaveStep.DomesticResearch, 'failed');
           reportSaveFailure();
@@ -523,7 +583,7 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
       if (bootstrapWrites.length > 0) {
         activeSaveStep = AgentSettingsSaveStep.Bootstrap;
         const bootstrapSaved = await Promise.all(bootstrapWrites);
-        if (bootstrapSaved.some((saved) => !saved)) {
+        if (bootstrapSaved.some(saved => !saved)) {
           recordSaveStep(AgentSettingsSaveStep.Bootstrap, 'failed');
           reportSaveFailure();
           return;
@@ -533,7 +593,7 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
       // Persist IM bindings if changed
       const bindingsChanged =
         boundKeys.size !== initialBoundKeys.size ||
-        [...boundKeys].some((k) => !initialBoundKeys.has(k));
+        [...boundKeys].some(k => !initialBoundKeys.has(k));
       if (bindingsChanged && imConfig) {
         activeSaveStep = AgentSettingsSaveStep.ImBindings;
         const currentBindings = { ...(imConfig.settings?.platformAgentBindings || {}) };
@@ -567,9 +627,11 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
         result: 'success',
       });
       if (runtimeImpactMessage) {
-        window.dispatchEvent(new CustomEvent('app:showToast', {
-          detail: `${i18nService.t('agentSaveSuccess')}${i18nService.t('agentSaveFeedbackSeparator')}${runtimeImpactMessage}`,
-        }));
+        window.dispatchEvent(
+          new CustomEvent('app:showToast', {
+            detail: `${i18nService.t('agentSaveSuccess')}${i18nService.t('agentSaveFeedbackSeparator')}${runtimeImpactMessage}`,
+          }),
+        );
       }
       onClose();
     } catch {
@@ -626,18 +688,16 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
     return getAgentDisplayNameById(aid, agents);
   };
 
-  const nameInputValue = isMainAgent && !nameTouched
-    ? getAgentDisplayName({ id: agentId, name })
-    : name;
+  const nameInputValue =
+    isMainAgent && !nameTouched ? getAgentDisplayName({ id: agentId, name }) : name;
   const enabledToggleLabel = isSystemAgent
     ? i18nService.t('systemAgentEnabledLabel')
     : i18nService.t('agentEnabledLabel');
   const enabledToggleHint = isSystemAgent
     ? i18nService.t('systemAgentEnabledHint')
     : i18nService.t('agentEnabledHint');
-  const runtimeImpactMessage = buildAgentSettingsRuntimeImpactMessage(
-    getChangedFields(),
-    key => i18nService.t(key),
+  const runtimeImpactMessage = buildAgentSettingsRuntimeImpactMessage(getChangedFields(), key =>
+    i18nService.t(key),
   );
 
   const tabs: { key: AgentDetailTab; label: string }[] = [
@@ -664,11 +724,7 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
     <div className="flex h-full min-h-0 flex-col gap-2">
       {(hint || action) && (
         <div className="flex shrink-0 items-center justify-between gap-3">
-          {hint && (
-            <p className="text-xs leading-5 text-secondary">
-              {hint}
-            </p>
-          )}
+          {hint && <p className="text-xs leading-5 text-secondary">{hint}</p>}
           {action && !readOnly && (
             <button
               type="button"
@@ -682,7 +738,7 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
       )}
       <textarea
         value={value}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={e => onChange(e.target.value)}
         readOnly={readOnly}
         placeholder={placeholder}
         aria-label={ariaLabel}
@@ -721,14 +777,17 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
         >
           <div className="flex items-center gap-3">
             <div className="flex h-8 w-8 items-center justify-center">
-              <img src={logo} alt={i18nService.t(platform)} className="w-6 h-6 object-contain rounded" />
+              <img
+                src={logo}
+                alt={i18nService.t(platform)}
+                className="w-6 h-6 object-contain rounded"
+              />
             </div>
             <div>
-              <div className="text-sm font-medium text-foreground">
-                {i18nService.t(platform)}
-              </div>
+              <div className="text-sm font-medium text-foreground">{i18nService.t(platform)}</div>
               <div className="text-xs text-secondary/50">
-                {i18nService.t('agentIMNotConfiguredHint') || 'Please configure in Settings > IM Bots first'}
+                {i18nService.t('agentIMNotConfiguredHint') ||
+                  'Please configure in Settings > IM Bots first'}
               </div>
             </div>
           </div>
@@ -744,20 +803,29 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
         {/* Platform header */}
         <div className="flex items-center gap-3 px-3 py-2.5 bg-surface-raised">
           <div className="flex h-8 w-8 items-center justify-center">
-            <img src={logo} alt={i18nService.t(platform)} className="w-6 h-6 object-contain rounded" />
+            <img
+              src={logo}
+              alt={i18nService.t(platform)}
+              className="w-6 h-6 object-contain rounded"
+            />
           </div>
-          <span className="text-sm font-semibold text-foreground">
-            {i18nService.t(platform)}
-          </span>
+          <span className="text-sm font-semibold text-foreground">{i18nService.t(platform)}</span>
         </div>
         {/* Instance list */}
         {enabledInstances.map((inst: MultiInstanceConfig, idx: number) => {
           const bindingKey = `${platform}:${inst.instanceId}`;
           const otherAgentId = bindings[bindingKey];
           const claimingForMain = isMainAgent && boundKeys.has(bindingKey);
-          const boundToOther = Boolean(otherAgentId && otherAgentId !== agentId && !claimingForMain && !boundKeys.has(bindingKey));
+          const boundToOther = Boolean(
+            otherAgentId &&
+            otherAgentId !== agentId &&
+            !claimingForMain &&
+            !boundKeys.has(bindingKey),
+          );
           const canToggle = !isMainAgent || boundToOther || claimingForMain;
-          const isBound = isMainAgent ? claimingForMain || !boundToOther : boundKeys.has(bindingKey);
+          const isBound = isMainAgent
+            ? claimingForMain || !boundToOther
+            : boundKeys.has(bindingKey);
           const otherAgentName = boundToOther ? getAgentName(otherAgentId ?? '') : null;
 
           return (
@@ -770,12 +838,13 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
             >
               <div className="flex items-center gap-2">
                 <span className="w-1.5 h-1.5 rounded-full bg-green-500 flex-shrink-0" />
-                <span className="text-sm text-foreground">
-                  {inst.instanceName}
-                </span>
+                <span className="text-sm text-foreground">{inst.instanceName}</span>
                 {boundToOther && otherAgentName && (
                   <span className="text-xs text-amber-600 dark:text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded">
-                    {(i18nService.t('agentIMBoundToOther') || '→ {agent}').replace('{agent}', otherAgentName)}
+                    {(i18nService.t('agentIMBoundToOther') || '→ {agent}').replace(
+                      '{agent}',
+                      otherAgentName,
+                    )}
                   </span>
                 )}
               </div>
@@ -793,40 +862,50 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
     const bindings = imConfig?.settings?.platformAgentBindings || {};
     const otherAgentId = bindings[platform];
     const claimingForMain = isMainAgent && boundKeys.has(platform);
-    const boundToOther = Boolean(configured && otherAgentId && otherAgentId !== agentId && !claimingForMain && !boundKeys.has(platform));
+    const boundToOther = Boolean(
+      configured &&
+      otherAgentId &&
+      otherAgentId !== agentId &&
+      !claimingForMain &&
+      !boundKeys.has(platform),
+    );
     const canToggle = configured && (!isMainAgent || boundToOther || claimingForMain);
-    const isBound = isMainAgent ? configured && (claimingForMain || !boundToOther) : boundKeys.has(platform);
+    const isBound = isMainAgent
+      ? configured && (claimingForMain || !boundToOther)
+      : boundKeys.has(platform);
     const otherAgentName = boundToOther ? getAgentName(otherAgentId ?? '') : null;
 
     return (
       <div
         key={platform}
         className={`flex items-center justify-between px-3 py-2.5 rounded-lg transition-colors ${
-          !configured
-            ? 'opacity-50'
-            : canToggle
-                ? 'hover:bg-surface-raised cursor-pointer'
-                : ''
+          !configured ? 'opacity-50' : canToggle ? 'hover:bg-surface-raised cursor-pointer' : ''
         }`}
         onClick={() => canToggle && handleToggleIMBinding(platform)}
       >
         <div className="flex items-center gap-3">
           <div className="flex h-8 w-8 items-center justify-center">
-            <img src={logo} alt={i18nService.t(platform)} className="w-6 h-6 object-contain rounded" />
+            <img
+              src={logo}
+              alt={i18nService.t(platform)}
+              className="w-6 h-6 object-contain rounded"
+            />
           </div>
           <div>
-            <div className="text-sm font-medium text-foreground">
-              {i18nService.t(platform)}
-            </div>
+            <div className="text-sm font-medium text-foreground">{i18nService.t(platform)}</div>
             {!configured && (
               <div className="text-xs text-secondary/50">
-                {i18nService.t('agentIMNotConfiguredHint') || 'Please configure in Settings > IM Bots first'}
+                {i18nService.t('agentIMNotConfiguredHint') ||
+                  'Please configure in Settings > IM Bots first'}
               </div>
             )}
           </div>
           {boundToOther && otherAgentName && (
             <span className="text-xs text-amber-600 dark:text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded">
-              {(i18nService.t('agentIMBoundToOther') || '→ {agent}').replace('{agent}', otherAgentName)}
+              {(i18nService.t('agentIMBoundToOther') || '→ {agent}').replace(
+                '{agent}',
+                otherAgentName,
+              )}
             </span>
           )}
         </div>
@@ -858,7 +937,7 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
                 type="text"
                 value={nameInputValue}
                 readOnly={isSystemAgent}
-                onChange={(e) => {
+                onChange={e => {
                   if (isSystemAgent) return;
                   setNameTouched(true);
                   setName(e.target.value);
@@ -873,7 +952,7 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
                 type="text"
                 value={description}
                 readOnly={isSystemAgent}
-                onChange={(e) => setDescription(e.target.value)}
+                onChange={e => setDescription(e.target.value)}
                 placeholder={i18nService.t('agentDescriptionPlaceholder')}
                 aria-label={i18nService.t('agentDescription')}
                 className={`mt-0.5 w-full bg-transparent text-sm leading-5 text-secondary placeholder:text-secondary/50 focus:outline-none ${
@@ -887,22 +966,24 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
               )}
             </div>
           </div>
-          <button type="button" onClick={handleClose} className="mt-1 p-2 rounded-lg hover:bg-surface-raised transition-colors">
+          <button
+            type="button"
+            onClick={handleClose}
+            className="mt-1 p-2 rounded-lg hover:bg-surface-raised transition-colors"
+          >
             <XMarkIcon className="h-5 w-5 text-secondary" />
           </button>
         </div>
 
         {/* Tab bar */}
         <div className="flex shrink-0 border-b border-border px-7">
-          {tabs.map((tab) => (
+          {tabs.map(tab => (
             <button
               key={tab.key}
               type="button"
               onClick={() => handleTabChange(tab.key)}
               className={`px-4 py-2.5 text-sm font-medium transition-colors relative ${
-                activeTab === tab.key
-                  ? 'text-foreground'
-                  : 'text-secondary hover:text-foreground'
+                activeTab === tab.key ? 'text-foreground' : 'text-secondary hover:text-foreground'
               }`}
             >
               {tab.label}
@@ -915,37 +996,40 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
 
         {/* Tab content */}
         <div className="px-7 py-7 overflow-hidden flex-1 min-h-0">
-          {activeTab === AgentDetailTab.Prompt && renderTextEditor(
-            systemPrompt,
-            setSystemPrompt,
-            i18nService.t('coworkBootstrapPlaceholder'),
-            i18nService.t('coworkBootstrapSoulTitle'),
-            i18nService.t('coworkBootstrapSoulHint'),
-            undefined,
-            isSystemAgent,
-          )}
+          {activeTab === AgentDetailTab.Prompt &&
+            renderTextEditor(
+              systemPrompt,
+              setSystemPrompt,
+              i18nService.t('coworkBootstrapPlaceholder'),
+              i18nService.t('coworkBootstrapSoulTitle'),
+              i18nService.t('coworkBootstrapSoulHint'),
+              undefined,
+              isSystemAgent,
+            )}
 
-          {activeTab === AgentDetailTab.Identity && renderTextEditor(
-            identity,
-            setIdentity,
-            i18nService.t('coworkBootstrapPlaceholder'),
-            i18nService.t('coworkBootstrapIdentityTitle'),
-            i18nService.t('coworkBootstrapIdentityHint'),
-            undefined,
-            isSystemAgent,
-          )}
+          {activeTab === AgentDetailTab.Identity &&
+            renderTextEditor(
+              identity,
+              setIdentity,
+              i18nService.t('coworkBootstrapPlaceholder'),
+              i18nService.t('coworkBootstrapIdentityTitle'),
+              i18nService.t('coworkBootstrapIdentityHint'),
+              undefined,
+              isSystemAgent,
+            )}
 
-          {activeTab === AgentDetailTab.User && renderTextEditor(
-            userInfo,
-            setUserInfo,
-            i18nService.t('coworkBootstrapPlaceholder'),
-            i18nService.t('coworkBootstrapUserTitle'),
-            i18nService.t('coworkBootstrapUserHint'),
-            {
-              label: i18nService.t('coworkBootstrapUserEmptyAction'),
-              onClick: () => setUserInfo(DEFAULT_USER_INFO_TEMPLATE),
-            },
-          )}
+          {activeTab === AgentDetailTab.User &&
+            renderTextEditor(
+              userInfo,
+              setUserInfo,
+              i18nService.t('coworkBootstrapPlaceholder'),
+              i18nService.t('coworkBootstrapUserTitle'),
+              i18nService.t('coworkBootstrapUserHint'),
+              {
+                label: i18nService.t('coworkBootstrapUserEmptyAction'),
+                onClick: () => setUserInfo(DEFAULT_USER_INFO_TEMPLATE),
+              },
+            )}
 
           {activeTab === AgentDetailTab.Skills && (
             <AgentSkillSelector
@@ -976,8 +1060,12 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
             <div className="h-full overflow-y-auto">
               <div className="space-y-1">
                 {PlatformRegistry.platforms
-                  .filter((platform) => (getVisibleIMPlatforms(i18nService.getLanguage()) as readonly string[]).includes(platform))
-                  .map((platform) => {
+                  .filter(platform =>
+                    (
+                      getVisibleIMPlatforms(i18nService.getLanguage()) as readonly string[]
+                    ).includes(platform),
+                  )
+                  .map(platform => {
                     if (isMultiInstancePlatform(platform)) {
                       return renderMultiInstancePlatform(platform);
                     }
@@ -1005,7 +1093,7 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
             {!isMainAgent && (
               <button
                 type="button"
-                onClick={() => setEnabled((current) => !current)}
+                onClick={() => setEnabled(current => !current)}
                 aria-pressed={enabled}
                 className="flex min-w-[180px] max-w-full items-center justify-between gap-3 rounded-lg border border-border bg-surface px-3 py-2 text-left transition-colors hover:bg-surface-raised"
               >

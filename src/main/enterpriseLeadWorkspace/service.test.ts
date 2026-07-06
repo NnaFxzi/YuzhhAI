@@ -79,13 +79,15 @@ const createResearchClient = (
   ...overrides,
 });
 
-const createService = (overrides: Partial<{
-  store: EnterpriseLeadWorkspaceStore;
-  modelClient: FakeModelClient;
-  agentProvider: EnterpriseLeadWorkspaceAgentProvider;
-  researchClient: EnterpriseLeadWorkspaceResearchClient;
-  researchTimeoutMs: number;
-}> = {}): {
+const createService = (
+  overrides: Partial<{
+    store: EnterpriseLeadWorkspaceStore;
+    modelClient: FakeModelClient;
+    agentProvider: EnterpriseLeadWorkspaceAgentProvider;
+    researchClient: EnterpriseLeadWorkspaceResearchClient;
+    researchTimeoutMs: number;
+  }> = {},
+): {
   agentProvider: EnterpriseLeadWorkspaceAgentProvider;
   db: Database.Database;
   modelClient: FakeModelClient;
@@ -108,7 +110,9 @@ const createService = (overrides: Partial<{
       modelClient,
       agentProvider,
       researchClient,
-      ...(overrides.researchTimeoutMs === undefined ? {} : { researchTimeoutMs: overrides.researchTimeoutMs }),
+      ...(overrides.researchTimeoutMs === undefined
+        ? {}
+        : { researchTimeoutMs: overrides.researchTimeoutMs }),
     }),
     store,
   };
@@ -168,22 +172,20 @@ const draftPayloadWithWorkspaceModelConfig = (): EnterpriseLeadWorkspaceDraft =>
   };
 };
 
-const markRunReadyToArchive = (
-  store: EnterpriseLeadWorkspaceStore,
-  runId: string,
-): void => {
+const markRunReadyToArchive = (store: EnterpriseLeadWorkspaceStore, runId: string): void => {
   const tasks = store.listTasks(runId);
   tasks.forEach(task => {
     store.updateTaskResult(task.id, {
       role: task.role,
       status: EnterpriseLeadTaskStatus.Completed,
       summary: `${task.role} 已完成。`,
-      outputs: task.role === EnterpriseLeadAgentRole.RiskReview
-        ? {
-            riskLevel: EnterpriseLeadRiskLevel.Low,
-            canArchive: true,
-          }
-        : {},
+      outputs:
+        task.role === EnterpriseLeadAgentRole.RiskReview
+          ? {
+              riskLevel: EnterpriseLeadRiskLevel.Low,
+              canArchive: true,
+            }
+          : {},
       missingInfo: [],
       todos: [],
       risks: [],
@@ -211,7 +213,8 @@ describe('EnterpriseLeadWorkspaceService', () => {
     db = setup.db;
     setup.modelClient.enqueue(draftPayload());
 
-    const draft = await setup.service.extractDraftFromConversation('我们做重型纸箱，主要服务机械设备厂。');
+    const draft =
+      await setup.service.extractDraftFromConversation('我们做重型纸箱，主要服务机械设备厂。');
 
     expect(draft.name).toBe('华南重包获客工作台');
     expect(draft.type).toBe('enterprise_lead');
@@ -241,14 +244,16 @@ describe('EnterpriseLeadWorkspaceService', () => {
       'user',
       'assistant',
     ]);
-    expect(setup.service.listChatSessions(workspace.id)).toEqual([{
-      id: firstResponse.session!.id,
-      workspaceId: workspace.id,
-      title: '安装 oh-my-claudecode skill',
-      createdAt: firstResponse.session!.createdAt,
-      updatedAt: firstResponse.session!.updatedAt,
-      messageCount: 2,
-    }]);
+    expect(setup.service.listChatSessions(workspace.id)).toEqual([
+      {
+        id: firstResponse.session!.id,
+        workspaceId: workspace.id,
+        title: '安装 oh-my-claudecode skill',
+        createdAt: firstResponse.session!.createdAt,
+        updatedAt: firstResponse.session!.updatedAt,
+        messageCount: 2,
+      },
+    ]);
 
     setup.modelClient.enqueue({ kind: 'none' });
     setup.modelClient.enqueue('继续使用 GitHub 插件。');
@@ -265,7 +270,9 @@ describe('EnterpriseLeadWorkspaceService', () => {
       '使用 GitHub 插件',
       '继续使用 GitHub 插件。',
     ]);
-    expect(setup.service.getChatSession(workspace.id, firstResponse.session!.id)?.messageCount).toBe(4);
+    expect(
+      setup.service.getChatSession(workspace.id, firstResponse.session!.id)?.messageCount,
+    ).toBe(4);
   });
 
   test('creates a new chat session with the user message before the assistant response completes', async () => {
@@ -286,12 +293,11 @@ describe('EnterpriseLeadWorkspaceService', () => {
       title: '帮我判断这批客户谁更值得优先跟进',
       messageCount: 1,
     });
-    expect(setup.service.getChatSession(
-      workspace.id,
-      sessionsDuringPlanning[0].id,
-    )?.messages.map(message => message.content)).toEqual([
-      '帮我判断这批客户谁更值得优先跟进',
-    ]);
+    expect(
+      setup.service
+        .getChatSession(workspace.id, sessionsDuringPlanning[0].id)
+        ?.messages.map(message => message.content),
+    ).toEqual(['帮我判断这批客户谁更值得优先跟进']);
 
     setup.modelClient.enqueue('商机雷达 Agent 回答。');
     pendingPlanning.resolve({ researchIntent: { kind: 'none' } });
@@ -312,9 +318,13 @@ describe('EnterpriseLeadWorkspaceService', () => {
         text: 'ignored',
       },
     ]);
-    expect(workspace.enabledAgentRoles).toEqual(ENTERPRISE_LEAD_AGENT_WORKFLOW.map(agent => agent.role));
+    expect(workspace.enabledAgentRoles).toEqual(
+      ENTERPRISE_LEAD_AGENT_WORKFLOW.map(agent => agent.role),
+    );
     expect(snapshot.currentRun?.userGoal).toBe('找到本周可跟进的机械厂线索');
-    expect(snapshot.tasks.map(task => task.role)).toEqual(ENTERPRISE_LEAD_AGENT_WORKFLOW.map(agent => agent.role));
+    expect(snapshot.tasks.map(task => task.role)).toEqual(
+      ENTERPRISE_LEAD_AGENT_WORKFLOW.map(agent => agent.role),
+    );
   });
 
   test('creates runs from enabled workspace-owned Agents with immutable Agent snapshots', () => {
@@ -363,7 +373,10 @@ describe('EnterpriseLeadWorkspaceService', () => {
 
     expect(snapshot.currentRun?.currentRole).toBe('agent-content');
     expect(snapshot.tasks.map(task => task.role)).toEqual(['agent-content', 'agent-risk']);
-    expect(snapshot.tasks.map(task => task.workspaceAgentId)).toEqual(['agent-content', 'agent-risk']);
+    expect(snapshot.tasks.map(task => task.workspaceAgentId)).toEqual([
+      'agent-content',
+      'agent-risk',
+    ]);
     expect(snapshot.tasks[0].agentSnapshot).toMatchObject({
       agentId: 'agent-content',
       name: 'Workspace content Agent',
@@ -411,7 +424,9 @@ describe('EnterpriseLeadWorkspaceService', () => {
         },
       },
     ]);
-    expect(setup.store.getWorkspace(workspace.id)?.workspaceAgents).toEqual(workspace.workspaceAgents);
+    expect(setup.store.getWorkspace(workspace.id)?.workspaceAgents).toEqual(
+      workspace.workspaceAgents,
+    );
   });
 
   test('createWorkspace initializes default workspace-owned execution Agents', () => {
@@ -424,9 +439,11 @@ describe('EnterpriseLeadWorkspaceService', () => {
       ENTERPRISE_LEAD_AGENT_WORKFLOW.map(agent => agent.role),
     );
     expect(workspace.workspaceAgents.every(agent => agent.enabled)).toBe(true);
-    expect(workspace.workspaceAgents.find(
-      agent => agent.agentId === EnterpriseLeadAgentRole.ProductUnderstanding,
-    )).toMatchObject({
+    expect(
+      workspace.workspaceAgents.find(
+        agent => agent.agentId === EnterpriseLeadAgentRole.ProductUnderstanding,
+      ),
+    ).toMatchObject({
       agentId: EnterpriseLeadAgentRole.ProductUnderstanding,
       order: 1,
       overrides: {
@@ -469,7 +486,9 @@ describe('EnterpriseLeadWorkspaceService', () => {
       model: 'gpt-4.1',
       skillIds: [],
     });
-    expect(snapshot.tasks[0].agentSnapshot?.systemPrompt).toContain('输出：内容草稿、高风险表达、下游上下文');
+    expect(snapshot.tasks[0].agentSnapshot?.systemPrompt).toContain(
+      '输出：内容草稿、高风险表达、下游上下文',
+    );
   });
 
   test('workspace-created bindings do not inherit matching global Agent templates', () => {
@@ -526,18 +545,18 @@ describe('EnterpriseLeadWorkspaceService', () => {
 
     const updated = setup.service.updateWorkspaceAgents(
       workspace.id,
-      workspace.workspaceAgents.map(agent => (
+      workspace.workspaceAgents.map(agent =>
         agent.agentId === EnterpriseLeadAgentRole.ProductUnderstanding
           ? {
-            ...agent,
-            overrides: {
-              ...agent.overrides,
-              name: '产品诊断 Agent',
-              systemPrompt: '输出前必须指出产品资料缺口。',
-            },
-          }
-          : agent
-      )),
+              ...agent,
+              overrides: {
+                ...agent.overrides,
+                name: '产品诊断 Agent',
+                systemPrompt: '输出前必须指出产品资料缺口。',
+              },
+            }
+          : agent,
+      ),
     );
     const snapshot = setup.service.createRun(updated.id, '重新整理产品画像');
     const productTask = snapshot.tasks.find(
@@ -642,8 +661,9 @@ describe('EnterpriseLeadWorkspaceService', () => {
         },
       ],
     });
-    expect(setup.store.getWorkspace(workspace.id)?.workspaceAgents[0].overrides.name)
-      .toBe('Workspace-only name');
+    expect(setup.store.getWorkspace(workspace.id)?.workspaceAgents[0].overrides.name).toBe(
+      'Workspace-only name',
+    );
   });
 
   test('creates a run only for enabled workspace-owned Agents', async () => {
@@ -652,11 +672,11 @@ describe('EnterpriseLeadWorkspaceService', () => {
     const workspace = setup.service.createWorkspace(draftPayload());
     setup.service.updateWorkspaceAgents(
       workspace.id,
-      workspace.workspaceAgents
-        .filter(agent => [
-          EnterpriseLeadAgentRole.ContentPlanning,
-          EnterpriseLeadAgentRole.RiskReview,
-        ].includes(agent.agentId as EnterpriseLeadAgentRole)),
+      workspace.workspaceAgents.filter(agent =>
+        [EnterpriseLeadAgentRole.ContentPlanning, EnterpriseLeadAgentRole.RiskReview].includes(
+          agent.agentId as EnterpriseLeadAgentRole,
+        ),
+      ),
     );
 
     const snapshot = setup.service.createRun(workspace.id, '输出小红书草稿并做风险检查');
@@ -867,9 +887,9 @@ describe('EnterpriseLeadWorkspaceService', () => {
       message: '根据默认平台写一版触达内容',
     });
 
-    const intentPrompt = setup.modelClient.prompts.find(prompt =>
-      prompt.prompt.includes('研究意图判断助手'),
-    )?.prompt ?? '';
+    const intentPrompt =
+      setup.modelClient.prompts.find(prompt => prompt.prompt.includes('研究意图判断助手'))
+        ?.prompt ?? '';
     const finalPrompt = setup.modelClient.prompts.at(-1)?.prompt ?? '';
     expect(intentPrompt).toContain('"defaultPlatformId": "xiaohongshu_draft"');
     expect(finalPrompt).toContain('"defaultPlatformId": "xiaohongshu_draft"');
@@ -878,11 +898,11 @@ describe('EnterpriseLeadWorkspaceService', () => {
     setup.modelClient.prompts
       .map(prompt => prompt.prompt)
       .forEach(prompt => {
-      expect(prompt).not.toContain('xhs-secret-token');
-      expect(prompt).not.toContain('https://draft.example.com/xhs');
-      expect(prompt).not.toContain('"token"');
-      expect(prompt).not.toContain('"endpoint"');
-    });
+        expect(prompt).not.toContain('xhs-secret-token');
+        expect(prompt).not.toContain('https://draft.example.com/xhs');
+        expect(prompt).not.toContain('"token"');
+        expect(prompt).not.toContain('"endpoint"');
+      });
   });
 
   test('chat answers with workspace profile and effective workspace Agent override in prompts', async () => {
@@ -946,8 +966,12 @@ describe('EnterpriseLeadWorkspaceService', () => {
     expect(setup.modelClient.prompts[1].prompt).toContain('Workspace content Agent');
     expect(setup.modelClient.prompts[1].prompt).toContain('[LobsterAI reply contract]');
     expect(setup.modelClient.prompts[1].prompt).toContain('用中文自然回答');
-    expect(setup.modelClient.prompts[1].prompt).toContain('不得编造客户、联系人、认证、价格、交付、产能、案例或成本降低等事实');
-    expect(setup.modelClient.prompts[1].prompt).toContain('明确区分工作空间已有资料、研究结果、建议和推测');
+    expect(setup.modelClient.prompts[1].prompt).toContain(
+      '不得编造客户、联系人、认证、价格、交付、产能、案例或成本降低等事实',
+    );
+    expect(setup.modelClient.prompts[1].prompt).toContain(
+      '明确区分工作空间已有资料、研究结果、建议和推测',
+    );
     expect(setup.modelClient.prompts[1].model).toBe('gpt-4.1');
   });
 
@@ -1012,13 +1036,7 @@ describe('EnterpriseLeadWorkspaceService', () => {
       agentId: EnterpriseLeadAgentRole.RiskReview,
       agentName: '风控审核 Agent',
     },
-  ].forEach(({
-    message,
-    agentId,
-    agentName,
-    expectedRoutingAgentNames,
-    expectedRouteReason,
-  }) => {
+  ].forEach(({ message, agentId, agentName, expectedRoutingAgentNames, expectedRouteReason }) => {
     test(`chat auto mode falls back to ${agentName} when the planning response omits targetAgentId`, async () => {
       const setup = createService();
       db = setup.db;
@@ -1072,9 +1090,7 @@ describe('EnterpriseLeadWorkspaceService', () => {
           expect(setup.modelClient.prompts.at(-1)?.prompt).toContain(name);
         });
       } else {
-        expect(setup.modelClient.prompts[1].prompt).toContain(
-          `你是当前工作空间中的 ${agentName}`,
-        );
+        expect(setup.modelClient.prompts[1].prompt).toContain(`你是当前工作空间中的 ${agentName}`);
       }
     });
   });
@@ -1111,7 +1127,9 @@ describe('EnterpriseLeadWorkspaceService', () => {
     expect(setup.modelClient.prompts[1].prompt).toContain('工作区可用线索');
     expect(setup.modelClient.prompts[1].prompt).toContain('制造业客户名单.csv');
     expect(setup.modelClient.prompts[1].prompt).toContain('杭州长江自动化设备有限公司');
-    expect(setup.modelClient.prompts[1].prompt).toContain('请直接基于这些线索评分、排序和给出跟进建议');
+    expect(setup.modelClient.prompts[1].prompt).toContain(
+      '请直接基于这些线索评分、排序和给出跟进建议',
+    );
   });
 
   test('chat customer priority request gives a short input prompt when workspace has no leads', async () => {
@@ -1193,11 +1211,17 @@ describe('EnterpriseLeadWorkspaceService', () => {
     expect(setup.modelClient.prompts).toHaveLength(5);
     expect(setup.modelClient.prompts[1].prompt).toContain('当前执行 Agent：内容策划 Agent');
     expect(setup.modelClient.prompts[2].prompt).toContain('当前执行 Agent：销售交接 Agent');
-    expect(setup.modelClient.prompts[2].prompt).toContain('内容策划 Agent：先生成机械设备厂老板私信草稿。');
+    expect(setup.modelClient.prompts[2].prompt).toContain(
+      '内容策划 Agent：先生成机械设备厂老板私信草稿。',
+    );
     expect(setup.modelClient.prompts[3].prompt).toContain('当前执行 Agent：风控审核 Agent');
-    expect(setup.modelClient.prompts[3].prompt).toContain('销售交接 Agent：补充开场、跟进节奏和异议处理。');
+    expect(setup.modelClient.prompts[3].prompt).toContain(
+      '销售交接 Agent：补充开场、跟进节奏和异议处理。',
+    );
     expect(setup.modelClient.prompts[4].prompt).toContain('多 Agent 中间结果');
-    expect(setup.modelClient.prompts[4].prompt).toContain('风控审核 Agent：删除绝对化承诺并保留审批提醒。');
+    expect(setup.modelClient.prompts[4].prompt).toContain(
+      '风控审核 Agent：删除绝对化承诺并保留审批提醒。',
+    );
   });
 
   test('chat risk review asks for copy when no review text is provided', async () => {
@@ -1323,11 +1347,13 @@ describe('EnterpriseLeadWorkspaceService', () => {
       setup.modelClient.enqueue('调研超时后仍然基于工作台资料回答。');
 
       let response: Awaited<ReturnType<EnterpriseLeadWorkspaceService['chat']>> | undefined;
-      void setup.service.chat(workspace.id, {
-        message: '查一下机械设备厂线索',
-      }).then(result => {
-        response = result;
-      });
+      void setup.service
+        .chat(workspace.id, {
+          message: '查一下机械设备厂线索',
+        })
+        .then(result => {
+          response = result;
+        });
 
       await vi.advanceTimersByTimeAsync(6);
       await Promise.resolve();
@@ -1399,14 +1425,17 @@ describe('EnterpriseLeadWorkspaceService', () => {
     };
     const researchClient = createResearchClient({
       tavilySearch: vi.fn(async (_apiKey: string, query: string) => ({
-        results: [{
-          title: '杭州长江自动化设备有限公司采购信号',
-          url: 'https://example.com/hangzhou-changjiang',
-          content: `杭州长江自动化设备有限公司正在采购自动化设备支架，${query} 的公开线索`,
-        }, {
-          title: '自动化设备厂客户类型线索',
-          content: '自动化设备厂通常关注非标支架、钣金外壳和设备机箱。',
-        }],
+        results: [
+          {
+            title: '杭州长江自动化设备有限公司采购信号',
+            url: 'https://example.com/hangzhou-changjiang',
+            content: `杭州长江自动化设备有限公司正在采购自动化设备支架，${query} 的公开线索`,
+          },
+          {
+            title: '自动化设备厂客户类型线索',
+            content: '自动化设备厂通常关注非标支架、钣金外壳和设备机箱。',
+          },
+        ],
       })),
     });
     const setup = createService({ researchClient });
@@ -1461,7 +1490,9 @@ describe('EnterpriseLeadWorkspaceService', () => {
     expect(setup.modelClient.prompts[1].prompt).toContain('杭州长江自动化设备有限公司采购信号');
     expect(setup.modelClient.prompts[1].prompt).toContain('leadCandidates');
     expect(setup.modelClient.prompts[1].prompt).toContain('不得输出“模拟客户”');
-    expect(setup.modelClient.prompts[1].prompt).toContain('只能基于工作区可用线索或研究结果中的真实公司');
+    expect(setup.modelClient.prompts[1].prompt).toContain(
+      '只能基于工作区可用线索或研究结果中的真实公司',
+    );
     expect(setup.modelClient.prompts[1].prompt).toContain('未拿到具体公司名单');
   });
 
@@ -1477,13 +1508,16 @@ describe('EnterpriseLeadWorkspaceService', () => {
     const researchClient = createResearchClient({
       firecrawlSearch: vi.fn(async () => ({
         success: true,
-        data: [{
-          title: '自动化设备厂客户类型线索',
-          markdown: '自动化设备厂通常关注非标支架、钣金外壳和设备机箱，但没有具体公司名称。',
-        }, {
-          title: '工程配套客户方向',
-          markdown: '工程配套项目可能采购固定板、安装底座和承重连接件。',
-        }],
+        data: [
+          {
+            title: '自动化设备厂客户类型线索',
+            markdown: '自动化设备厂通常关注非标支架、钣金外壳和设备机箱，但没有具体公司名称。',
+          },
+          {
+            title: '工程配套客户方向',
+            markdown: '工程配套项目可能采购固定板、安装底座和承重连接件。',
+          },
+        ],
       })),
     });
     const setup = createService({ researchClient });
@@ -1525,10 +1559,12 @@ describe('EnterpriseLeadWorkspaceService', () => {
     const researchClient = createResearchClient({
       firecrawlSearch: vi.fn(async () => ({
         success: true,
-        data: [{
-          title: '机械设备厂客户画像',
-          markdown: '机械设备厂、外贸公司和工程承包商是适合开发的客户类型，但没有具体公司名称。',
-        }],
+        data: [
+          {
+            title: '机械设备厂客户画像',
+            markdown: '机械设备厂、外贸公司和工程承包商是适合开发的客户类型，但没有具体公司名称。',
+          },
+        ],
       })),
     });
     const setup = createService({ researchClient });
@@ -1672,9 +1708,15 @@ describe('EnterpriseLeadWorkspaceService', () => {
       },
     });
     expect(researchClient.firecrawlScrape).toHaveBeenCalledTimes(1);
-    expect(researchClient.firecrawlScrape).toHaveBeenCalledWith('fc-workspace', 'https://example.com/a');
+    expect(researchClient.firecrawlScrape).toHaveBeenCalledWith(
+      'fc-workspace',
+      'https://example.com/a',
+    );
     expect(researchClient.tavilyExtract).not.toHaveBeenCalled();
-    expect(researchClient.firecrawlScrape).not.toHaveBeenCalledWith('fc-workspace', 'ftp://example.com/bad');
+    expect(researchClient.firecrawlScrape).not.toHaveBeenCalledWith(
+      'fc-workspace',
+      'ftp://example.com/bad',
+    );
   });
 
   test('chat ignores target Agent ids that are not bound to the workspace', async () => {
@@ -1755,10 +1797,12 @@ describe('EnterpriseLeadWorkspaceService', () => {
     });
 
     const finalPrompt = setup.modelClient.prompts[1].prompt;
-    expect(response.message.research?.payload).toEqual(expect.objectContaining({
-      answer: '公开资料摘要',
-      apiKey: 'FAKE_PROVIDER_SECRET',
-    }));
+    expect(response.message.research?.payload).toEqual(
+      expect.objectContaining({
+        answer: '公开资料摘要',
+        apiKey: 'FAKE_PROVIDER_SECRET',
+      }),
+    );
     expect(finalPrompt).toContain('tavily search completed for: 重型纸箱 采购');
     expect(finalPrompt).toContain('公开网页摘要');
     expect(finalPrompt).not.toContain('FAKE_PROVIDER_SECRET');
@@ -1938,7 +1982,10 @@ describe('EnterpriseLeadWorkspaceService', () => {
       },
     });
 
-    const pendingVersion = await setup.service.createPendingVersionFromChat(task.id, '语气更稳一点');
+    const pendingVersion = await setup.service.createPendingVersionFromChat(
+      task.id,
+      '语气更稳一点',
+    );
     const appliedSnapshot = setup.service.applyPendingVersion(pendingVersion.id);
 
     expect(pendingVersion.status).toBe('pending');
@@ -1960,9 +2007,15 @@ describe('EnterpriseLeadWorkspaceService', () => {
     db = setup.db;
     const workspace = setup.service.createWorkspace(draftPayload());
     const snapshot = setup.service.createRun(workspace.id, '完成从内容到销售交接');
-    const contentTask = snapshot.tasks.find(item => item.role === EnterpriseLeadAgentRole.ContentPlanning);
-    const socialTask = snapshot.tasks.find(item => item.role === EnterpriseLeadAgentRole.SocialOperation);
-    const salesTask = snapshot.tasks.find(item => item.role === EnterpriseLeadAgentRole.SalesHandoff);
+    const contentTask = snapshot.tasks.find(
+      item => item.role === EnterpriseLeadAgentRole.ContentPlanning,
+    );
+    const socialTask = snapshot.tasks.find(
+      item => item.role === EnterpriseLeadAgentRole.SocialOperation,
+    );
+    const salesTask = snapshot.tasks.find(
+      item => item.role === EnterpriseLeadAgentRole.SalesHandoff,
+    );
     if (!contentTask || !socialTask || !salesTask) {
       throw new Error('Expected downstream tasks');
     }
@@ -1999,7 +2052,10 @@ describe('EnterpriseLeadWorkspaceService', () => {
       handoffContext: {},
     });
 
-    const pendingVersion = await setup.service.createPendingVersionFromChat(contentTask.id, '换一个角度');
+    const pendingVersion = await setup.service.createPendingVersionFromChat(
+      contentTask.id,
+      '换一个角度',
+    );
     const appliedSnapshot = setup.service.applyPendingVersion(pendingVersion.id);
 
     expect(appliedSnapshot.tasks.find(item => item.id === contentTask.id)).toMatchObject({
@@ -2120,12 +2176,12 @@ describe('EnterpriseLeadWorkspaceService', () => {
     const firstSnapshot = setup.service.createRun(firstWorkspace.id, '整理第一组线索');
     const secondSnapshot = setup.service.createRun(secondWorkspace.id, '整理第二组线索');
 
-    expect(() => setup.service.getSnapshot(firstWorkspace.id, secondSnapshot.currentRun?.id)).toThrow(
-      'Enterprise lead run does not belong to workspace',
-    );
-    expect(() => setup.service.getSnapshot(secondWorkspace.id, firstSnapshot.currentRun?.id)).toThrow(
-      'Enterprise lead run does not belong to workspace',
-    );
+    expect(() =>
+      setup.service.getSnapshot(firstWorkspace.id, secondSnapshot.currentRun?.id),
+    ).toThrow('Enterprise lead run does not belong to workspace');
+    expect(() =>
+      setup.service.getSnapshot(secondWorkspace.id, firstSnapshot.currentRun?.id),
+    ).toThrow('Enterprise lead run does not belong to workspace');
   });
 
   test('rerunTask updates the Agent and marks downstream completed tasks stale', async () => {
@@ -2134,8 +2190,12 @@ describe('EnterpriseLeadWorkspaceService', () => {
     const workspace = setup.service.createWorkspace(draftPayload());
     const snapshot = setup.service.createRun(workspace.id, '重新生成内容草稿');
     const task = snapshot.tasks.find(item => item.role === EnterpriseLeadAgentRole.ContentPlanning);
-    const socialTask = snapshot.tasks.find(item => item.role === EnterpriseLeadAgentRole.SocialOperation);
-    const salesTask = snapshot.tasks.find(item => item.role === EnterpriseLeadAgentRole.SalesHandoff);
+    const socialTask = snapshot.tasks.find(
+      item => item.role === EnterpriseLeadAgentRole.SocialOperation,
+    );
+    const salesTask = snapshot.tasks.find(
+      item => item.role === EnterpriseLeadAgentRole.SalesHandoff,
+    );
     if (!task || !socialTask || !salesTask) {
       throw new Error('Expected content planning task and downstream tasks');
     }
@@ -2192,10 +2252,18 @@ describe('EnterpriseLeadWorkspaceService', () => {
     db = setup.db;
     const workspace = setup.service.createWorkspace(draftPayload());
     const snapshot = setup.service.createRun(workspace.id, '交给总控整理获客计划');
-    const controllerTask = snapshot.tasks.find(item => item.role === EnterpriseLeadAgentRole.Controller);
-    const productTask = snapshot.tasks.find(item => item.role === EnterpriseLeadAgentRole.ProductUnderstanding);
-    const radarTask = snapshot.tasks.find(item => item.role === EnterpriseLeadAgentRole.OpportunityRadar);
-    const contentTask = snapshot.tasks.find(item => item.role === EnterpriseLeadAgentRole.ContentPlanning);
+    const controllerTask = snapshot.tasks.find(
+      item => item.role === EnterpriseLeadAgentRole.Controller,
+    );
+    const productTask = snapshot.tasks.find(
+      item => item.role === EnterpriseLeadAgentRole.ProductUnderstanding,
+    );
+    const radarTask = snapshot.tasks.find(
+      item => item.role === EnterpriseLeadAgentRole.OpportunityRadar,
+    );
+    const contentTask = snapshot.tasks.find(
+      item => item.role === EnterpriseLeadAgentRole.ContentPlanning,
+    );
     if (!snapshot.currentRun || !controllerTask || !productTask || !radarTask || !contentTask) {
       throw new Error('Expected current run and workflow tasks');
     }
@@ -2278,11 +2346,13 @@ describe('EnterpriseLeadWorkspaceService', () => {
 
     const archivedSnapshot = setup.service.archiveRun(firstWorkspace.id, firstRunId);
 
-    expect(archivedSnapshot.currentRun).toEqual(expect.objectContaining({
-      id: firstRunId,
-      status: EnterpriseLeadRunStatus.Archived,
-      archiveStatus: 'archived',
-    }));
+    expect(archivedSnapshot.currentRun).toEqual(
+      expect.objectContaining({
+        id: firstRunId,
+        status: EnterpriseLeadRunStatus.Archived,
+        archiveStatus: 'archived',
+      }),
+    );
     expect(archivedSnapshot.archives).toEqual([
       expect.objectContaining({
         runId: firstRunId,
@@ -2491,7 +2561,8 @@ describe('EnterpriseLeadWorkspaceService', () => {
     const workspace = setup.service.createWorkspace(draftPayload());
     const snapshot = setup.service.createRun(workspace.id, '归档后拒绝改写');
     const task = snapshot.tasks.find(item => item.role === EnterpriseLeadAgentRole.ContentPlanning);
-    if (!task || !snapshot.currentRun) throw new Error('Expected content planning task and current run');
+    if (!task || !snapshot.currentRun)
+      throw new Error('Expected content planning task and current run');
     markRunReadyToArchive(setup.store, snapshot.currentRun.id);
     setup.modelClient.enqueue({
       role: EnterpriseLeadAgentRole.ContentPlanning,
@@ -2505,15 +2576,19 @@ describe('EnterpriseLeadWorkspaceService', () => {
       risks: [],
       handoffContext: {},
     });
-    const pendingVersion = await setup.service.createPendingVersionFromChat(task.id, '归档前先生成一版');
+    const pendingVersion = await setup.service.createPendingVersionFromChat(
+      task.id,
+      '归档前先生成一版',
+    );
 
     setup.service.archiveRun(workspace.id, snapshot.currentRun.id);
 
     await expect(setup.service.rerunTask(task.id)).rejects.toThrow(
       'Enterprise lead run is archived',
     );
-    await expect(setup.service.createPendingVersionFromChat(task.id, '归档后继续改'))
-      .rejects.toThrow('Enterprise lead run is archived');
+    await expect(
+      setup.service.createPendingVersionFromChat(task.id, '归档后继续改'),
+    ).rejects.toThrow('Enterprise lead run is archived');
     expect(() => setup.service.applyPendingVersion(pendingVersion.id)).toThrow(
       'Enterprise lead run is archived',
     );
@@ -2525,7 +2600,8 @@ describe('EnterpriseLeadWorkspaceService', () => {
     const workspace = setup.service.createWorkspace(draftPayload());
     const snapshot = setup.service.createRun(workspace.id, '归档竞态测试');
     const task = snapshot.tasks.find(item => item.role === EnterpriseLeadAgentRole.ContentPlanning);
-    if (!task || !snapshot.currentRun) throw new Error('Expected content planning task and current run');
+    if (!task || !snapshot.currentRun)
+      throw new Error('Expected content planning task and current run');
     markRunReadyToArchive(setup.store, snapshot.currentRun.id);
     const pendingGeneration = setup.modelClient.enqueuePending();
 
@@ -2559,11 +2635,15 @@ describe('EnterpriseLeadWorkspaceService', () => {
     const workspace = setup.service.createWorkspace(draftPayload());
     const snapshot = setup.service.createRun(workspace.id, '归档竞态测试');
     const task = snapshot.tasks.find(item => item.role === EnterpriseLeadAgentRole.ContentPlanning);
-    if (!task || !snapshot.currentRun) throw new Error('Expected content planning task and current run');
+    if (!task || !snapshot.currentRun)
+      throw new Error('Expected content planning task and current run');
     markRunReadyToArchive(setup.store, snapshot.currentRun.id);
     const pendingGeneration = setup.modelClient.enqueuePending();
 
-    const pendingVersionPromise = setup.service.createPendingVersionFromChat(task.id, '生成待确认版本');
+    const pendingVersionPromise = setup.service.createPendingVersionFromChat(
+      task.id,
+      '生成待确认版本',
+    );
     expect(setup.modelClient.prompts).toHaveLength(1);
     setup.service.archiveRun(workspace.id, snapshot.currentRun.id);
     pendingGeneration.resolve({

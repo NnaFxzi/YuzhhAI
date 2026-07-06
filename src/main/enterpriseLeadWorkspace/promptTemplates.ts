@@ -82,10 +82,11 @@ interface WorkspaceChatAgentStepPromptInput extends WorkspaceChatPromptBaseInput
 
 const stringify = (value: unknown): string => JSON.stringify(value, null, 2);
 
-const buildEnterpriseLeadReplyContract = (): string => buildAiDialogueReplyContract({
-  surface: AiDialogueReplySurface.EnterpriseLead,
-  language: AiDialogueReplyLanguage.Zh,
-});
+const buildEnterpriseLeadReplyContract = (): string =>
+  buildAiDialogueReplyContract({
+    surface: AiDialogueReplySurface.EnterpriseLead,
+    language: AiDialogueReplyLanguage.Zh,
+  });
 
 const emptyWorkspaceLeadContext = (): WorkspaceChatLeadContext => ({
   status: 'empty',
@@ -168,7 +169,9 @@ const toPromptExternalResearchSettings = (workspace: EnterpriseLeadWorkspace) =>
   ),
 });
 
-const getAgentTaskPromptMetadata = (task: EnterpriseLeadAgentTask): {
+const getAgentTaskPromptMetadata = (
+  task: EnterpriseLeadAgentTask,
+): {
   title: string;
   description: string;
   inputSummary: string;
@@ -288,18 +291,20 @@ const buildChatSafetySection = (): string =>
     .join('\n');
 
 const buildUpstreamSection = (upstreamTasks: EnterpriseLeadAgentTask[]): string =>
-  stringify(upstreamTasks.map(task => ({
-    role: task.role,
-    agentName: task.agentSnapshot?.name,
-    workspaceAgentId: task.workspaceAgentId,
-    status: task.status,
-    summary: task.summary,
-    outputPayload: task.outputPayload,
-    missingInfo: task.missingInfo,
-    todos: task.todos,
-    risks: task.risks,
-    handoffContext: task.handoffContext,
-  })));
+  stringify(
+    upstreamTasks.map(task => ({
+      role: task.role,
+      agentName: task.agentSnapshot?.name,
+      workspaceAgentId: task.workspaceAgentId,
+      status: task.status,
+      summary: task.summary,
+      outputPayload: task.outputPayload,
+      missingInfo: task.missingInfo,
+      todos: task.todos,
+      risks: task.risks,
+      handoffContext: task.handoffContext,
+    })),
+  );
 
 export function buildWorkspaceExtractionPrompt({
   sourceText,
@@ -432,7 +437,8 @@ export function buildWorkspaceChatResearchIntentPrompt({
     '判断是否需要只读研究能力来回答用户。外部动作只允许搜索、读取、摘录、总结或起草，不得发布、评论、私信、发送邮件或修改外部系统。',
     '只输出 JSON，schema 如下：',
     stringify({
-      targetAgentId: '自动模式下选择的当前工作空间 Agent id；没有明确匹配时为空字符串。手动指定目标 Agent 时必须回填该 id。',
+      targetAgentId:
+        '自动模式下选择的当前工作空间 Agent id；没有明确匹配时为空字符串。手动指定目标 Agent 时必须回填该 id。',
       researchIntent: {
         kind: 'none | search | extract | domestic_search | domestic_status',
         query: 'search/extract/domestic_search 可选查询词，最多 500 字',
@@ -556,7 +562,9 @@ export function buildWorkspaceChatAgentStepPrompt({
     '',
     '用户本轮消息：',
     userMessage,
-  ].filter(line => line !== '').join('\n');
+  ]
+    .filter(line => line !== '')
+    .join('\n');
 }
 
 export function buildWorkspaceChatResponsePrompt({

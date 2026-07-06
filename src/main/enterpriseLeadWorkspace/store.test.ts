@@ -154,14 +154,16 @@ describe('EnterpriseLeadWorkspaceStore', () => {
       },
     });
 
-    expect(store.listChatSessions(workspace.id)).toEqual([{
-      id: session.id,
-      workspaceId: workspace.id,
-      title: '安装 oh-my-claudecode skill',
-      createdAt: session.createdAt,
-      updatedAt: '2026-07-04T08:01:00.000Z',
-      messageCount: 2,
-    }]);
+    expect(store.listChatSessions(workspace.id)).toEqual([
+      {
+        id: session.id,
+        workspaceId: workspace.id,
+        title: '安装 oh-my-claudecode skill',
+        createdAt: session.createdAt,
+        updatedAt: '2026-07-04T08:01:00.000Z',
+        messageCount: 2,
+      },
+    ]);
     expect(store.listChatSessions(otherWorkspace.id)).toEqual([]);
     expect(store.getChatSession(workspace.id, session.id)?.messages).toMatchObject([
       {
@@ -580,8 +582,9 @@ describe('EnterpriseLeadWorkspaceStore', () => {
         },
       },
     ]);
-    expect(testStore.getWorkspace(workspace.id)?.workspaceAgents[0].overrides.name)
-      .toBe('Workspace-only name');
+    expect(testStore.getWorkspace(workspace.id)?.workspaceAgents[0].overrides.name).toBe(
+      'Workspace-only name',
+    );
   });
 
   test('creates a run with fixed agent tasks in supplied role order and waiting status', () => {
@@ -671,10 +674,7 @@ describe('EnterpriseLeadWorkspaceStore', () => {
     const tasks = store.listTasks(run.id);
 
     expect(run.currentRole).toBe('workspace-agent-alpha');
-    expect(tasks.map(task => task.role)).toEqual([
-      'workspace-agent-alpha',
-      'workspace-agent-beta',
-    ]);
+    expect(tasks.map(task => task.role)).toEqual(['workspace-agent-alpha', 'workspace-agent-beta']);
     expect(tasks.map(task => task.workspaceAgentId)).toEqual([
       'workspace-agent-alpha',
       'workspace-agent-beta',
@@ -799,12 +799,14 @@ describe('EnterpriseLeadWorkspaceStore', () => {
 
     const archivedRun = store.archiveRun(workspace.id, run.id);
 
-    expect(archivedRun).toEqual(expect.objectContaining({
-      id: run.id,
-      workspaceId: workspace.id,
-      status: EnterpriseLeadRunStatus.Archived,
-      archiveStatus: 'archived',
-    }));
+    expect(archivedRun).toEqual(
+      expect.objectContaining({
+        id: run.id,
+        workspaceId: workspace.id,
+        status: EnterpriseLeadRunStatus.Archived,
+        archiveStatus: 'archived',
+      }),
+    );
     expect(archivedRun.completedAt).toBeTruthy();
     expect(store.getRun(run.id)).toEqual(archivedRun);
   });
@@ -1047,8 +1049,9 @@ describe('EnterpriseLeadWorkspaceStore', () => {
       ],
     });
     const [contentTask] = store.listTasks(run.id);
-    db?.prepare('UPDATE enterprise_lead_agent_tasks SET rowid = rowid + 100 WHERE id = ?')
-      .run(contentTask.id);
+    db?.prepare('UPDATE enterprise_lead_agent_tasks SET rowid = rowid + 100 WHERE id = ?').run(
+      contentTask.id,
+    );
 
     expect(store.listTasks(run.id).map(task => task.role)).toEqual([
       EnterpriseLeadAgentRole.ContentPlanning,
@@ -1076,8 +1079,9 @@ describe('EnterpriseLeadWorkspaceStore', () => {
       ],
     });
     const [contentTask, socialTask, salesTask] = store.listTasks(run.id);
-    db?.prepare('UPDATE enterprise_lead_agent_tasks SET rowid = rowid + 100 WHERE id = ?')
-      .run(contentTask.id);
+    db?.prepare('UPDATE enterprise_lead_agent_tasks SET rowid = rowid + 100 WHERE id = ?').run(
+      contentTask.id,
+    );
     store.updateTaskResult(socialTask.id, {
       role: EnterpriseLeadAgentRole.SocialOperation,
       status: EnterpriseLeadTaskStatus.Completed,
@@ -1147,8 +1151,9 @@ describe('EnterpriseLeadWorkspaceStore', () => {
 
     store.applyPendingVersion(pendingVersion.id);
 
-    expect(() => store.applyPendingVersion(pendingVersion.id))
-      .toThrow('Enterprise lead pending version is not pending');
+    expect(() => store.applyPendingVersion(pendingVersion.id)).toThrow(
+      'Enterprise lead pending version is not pending',
+    );
   });
 
   test('falls back when persisted workspace profile JSON is malformed', () => {
@@ -1160,8 +1165,10 @@ describe('EnterpriseLeadWorkspaceStore', () => {
       extractionSources: [],
       enabledAgentRoles: [],
     });
-    db?.prepare('UPDATE enterprise_lead_workspaces SET profile = ? WHERE id = ?')
-      .run('{"broken":', workspace.id);
+    db?.prepare('UPDATE enterprise_lead_workspaces SET profile = ? WHERE id = ?').run(
+      '{"broken":',
+      workspace.id,
+    );
 
     expect(store.getWorkspace(workspace.id)?.profile).toEqual({
       companySummary: '',
@@ -1225,7 +1232,8 @@ describe('EnterpriseLeadWorkspaceStore', () => {
       );
     `);
     const now = '2026-07-04T00:00:00.000Z';
-    db.prepare(`
+    db.prepare(
+      `
       INSERT INTO enterprise_lead_workspaces (
         id,
         name,
@@ -1239,7 +1247,8 @@ describe('EnterpriseLeadWorkspaceStore', () => {
         updated_at
       )
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
+    `,
+    ).run(
       'workspace-legacy',
       '旧版获客工作台',
       EnterpriseLeadWorkspaceType.EnterpriseLead,
@@ -1251,7 +1260,8 @@ describe('EnterpriseLeadWorkspaceStore', () => {
       now,
       now,
     );
-    db.prepare(`
+    db.prepare(
+      `
       INSERT INTO enterprise_lead_runs (
         id,
         workspace_id,
@@ -1265,7 +1275,8 @@ describe('EnterpriseLeadWorkspaceStore', () => {
         completed_at
       )
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
+    `,
+    ).run(
       'run-legacy',
       'workspace-legacy',
       '迁移旧版任务顺序',
@@ -1308,7 +1319,11 @@ describe('EnterpriseLeadWorkspaceStore', () => {
         'run-legacy',
         role,
         hasExistingOutput ? EnterpriseLeadTaskStatus.Completed : EnterpriseLeadTaskStatus.Waiting,
-        JSON.stringify({ workspaceId: 'workspace-legacy', workspaceProfile: profile, userGoal: '迁移旧版任务顺序' }),
+        JSON.stringify({
+          workspaceId: 'workspace-legacy',
+          workspaceProfile: profile,
+          userGoal: '迁移旧版任务顺序',
+        }),
         JSON.stringify(hasExistingOutput ? { plan: '旧版社媒计划' } : {}),
         hasExistingOutput ? '旧版社媒计划。' : '',
         JSON.stringify([]),
@@ -1384,7 +1399,8 @@ describe('EnterpriseLeadWorkspaceStore', () => {
       );
     `);
     const now = '2026-07-04T00:00:00.000Z';
-    db.prepare(`
+    db.prepare(
+      `
       INSERT INTO enterprise_lead_workspaces (
         id,
         name,
@@ -1398,7 +1414,8 @@ describe('EnterpriseLeadWorkspaceStore', () => {
         updated_at
       )
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
+    `,
+    ).run(
       'workspace-legacy-runs',
       '旧版获客工作台',
       EnterpriseLeadWorkspaceType.EnterpriseLead,
@@ -1410,7 +1427,8 @@ describe('EnterpriseLeadWorkspaceStore', () => {
       now,
       now,
     );
-    db.prepare(`
+    db.prepare(
+      `
       INSERT INTO enterprise_lead_runs (
         id,
         workspace_id,
@@ -1422,7 +1440,8 @@ describe('EnterpriseLeadWorkspaceStore', () => {
         updated_at
       )
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
+    `,
+    ).run(
       'run-legacy',
       'workspace-legacy-runs',
       '旧版运行',
@@ -1435,11 +1454,13 @@ describe('EnterpriseLeadWorkspaceStore', () => {
 
     store = new EnterpriseLeadWorkspaceStore(db);
 
-    expect(store.getRun('run-legacy')).toEqual(expect.objectContaining({
-      id: 'run-legacy',
-      archiveStatus: 'not_archived',
-      completedAt: null,
-    }));
+    expect(store.getRun('run-legacy')).toEqual(
+      expect.objectContaining({
+        id: 'run-legacy',
+        archiveStatus: 'not_archived',
+        completedAt: null,
+      }),
+    );
 
     const createdRun = store.createRun({
       workspaceId: 'workspace-legacy-runs',
@@ -1448,11 +1469,13 @@ describe('EnterpriseLeadWorkspaceStore', () => {
     });
     const archivedRun = store.archiveRun('workspace-legacy-runs', createdRun.id);
 
-    expect(archivedRun).toEqual(expect.objectContaining({
-      id: createdRun.id,
-      status: EnterpriseLeadRunStatus.Archived,
-      archiveStatus: 'archived',
-    }));
+    expect(archivedRun).toEqual(
+      expect.objectContaining({
+        id: createdRun.id,
+        status: EnterpriseLeadRunStatus.Archived,
+        archiveStatus: 'archived',
+      }),
+    );
     expect(archivedRun.completedAt).toBeTruthy();
   });
 });

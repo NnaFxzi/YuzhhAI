@@ -1,11 +1,7 @@
-import {
-  ChatBubbleLeftRightIcon,
-} from '@heroicons/react/24/outline';
+import { ChatBubbleLeftRightIcon } from '@heroicons/react/24/outline';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 
-import {
-  EnterpriseLeadRunStatus,
-} from '../../../shared/enterpriseLeadWorkspace/constants';
+import { EnterpriseLeadRunStatus } from '../../../shared/enterpriseLeadWorkspace/constants';
 import type {
   EnterpriseLeadWorkspace,
   EnterpriseLeadWorkspaceRunSummary,
@@ -84,7 +80,7 @@ export const getInitialCreationRecordId = (
 };
 
 const getConversationLabel = (message: CreationRecordConversationMessage): string =>
-  message.labelKey ? i18nService.t(message.labelKey) : message.labelText ?? '';
+  message.labelKey ? i18nService.t(message.labelKey) : (message.labelText ?? '');
 
 const RunSummaryButton: React.FC<{
   summary: CreationRecordSummary;
@@ -107,7 +103,9 @@ const RunSummaryButton: React.FC<{
       <p className="line-clamp-2 min-w-0 text-sm font-semibold leading-5 text-foreground">
         {summary.goal || i18nService.t('enterpriseLeadCreationUntitledGoal')}
       </p>
-      <span className={`shrink-0 rounded-md px-2 py-0.5 text-xs font-medium ${getRunStatusClassName(summary.status)}`}>
+      <span
+        className={`shrink-0 rounded-md px-2 py-0.5 text-xs font-medium ${getRunStatusClassName(summary.status)}`}
+      >
         {getRunStatusLabel(summary.status)}
       </span>
     </div>
@@ -121,10 +119,13 @@ const ConversationMessageRow: React.FC<{
   message: CreationRecordConversationMessage;
 }> = ({ message }) => {
   const isUser = message.role === CreationRecordConversationRole.User;
-  const label = getConversationLabel(message)
-    || i18nService.t(isUser
-      ? 'enterpriseLeadCreationConversationUser'
-      : 'enterpriseLeadCreationConversationController');
+  const label =
+    getConversationLabel(message) ||
+    i18nService.t(
+      isUser
+        ? 'enterpriseLeadCreationConversationUser'
+        : 'enterpriseLeadCreationConversationController',
+    );
 
   return (
     <article className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
@@ -135,14 +136,20 @@ const ConversationMessageRow: React.FC<{
             : 'border border-border bg-surface text-foreground'
         }`}
       >
-        <div className={`text-[11px] font-medium ${isUser ? 'text-primary-foreground/80' : 'text-tertiary'}`}>
+        <div
+          className={`text-[11px] font-medium ${isUser ? 'text-primary-foreground/80' : 'text-tertiary'}`}
+        >
           {label}
         </div>
-        <p className={`mt-1 break-words whitespace-pre-wrap text-sm leading-6 ${isUser ? 'text-primary-foreground' : 'text-foreground'}`}>
+        <p
+          className={`mt-1 break-words whitespace-pre-wrap text-sm leading-6 ${isUser ? 'text-primary-foreground' : 'text-foreground'}`}
+        >
           {message.content || i18nService.t('enterpriseLeadCreationNoTaskSummary')}
         </p>
         {message.createdAt ? (
-          <div className={`mt-1 text-[11px] ${isUser ? 'text-primary-foreground/70' : 'text-tertiary'}`}>
+          <div
+            className={`mt-1 text-[11px] ${isUser ? 'text-primary-foreground/70' : 'text-tertiary'}`}
+          >
             {formatRecordDate(message.createdAt)}
           </div>
         ) : null}
@@ -175,7 +182,8 @@ export const WorkspaceCreationRecords: React.FC<WorkspaceCreationRecordsProps> =
     setDetailError('');
     setIsLoadingList(true);
 
-    enterpriseLeadWorkspaceService.listRuns(workspace.id)
+    enterpriseLeadWorkspaceService
+      .listRuns(workspace.id)
       .then(nextSummaries => {
         if (listRequestRef.current !== requestId) {
           return;
@@ -212,7 +220,8 @@ export const WorkspaceCreationRecords: React.FC<WorkspaceCreationRecordsProps> =
     setDetailError('');
     setIsLoadingDetail(true);
 
-    enterpriseLeadWorkspaceService.getRun(workspace.id, selectedRunId)
+    enterpriseLeadWorkspaceService
+      .getRun(workspace.id, selectedRunId)
       .then(nextSnapshot => {
         if (detailRequestRef.current !== requestId) {
           return;
@@ -244,7 +253,7 @@ export const WorkspaceCreationRecords: React.FC<WorkspaceCreationRecordsProps> =
   );
   const selectedSummary = summaries.find(summary => summary.runId === selectedRunId) ?? null;
   const conversationMessages = useMemo(
-    () => snapshot ? buildCreationRecordConversationMessages(snapshot) : [],
+    () => (snapshot ? buildCreationRecordConversationMessages(snapshot) : []),
     [snapshot],
   );
 
@@ -255,9 +264,7 @@ export const WorkspaceCreationRecords: React.FC<WorkspaceCreationRecordsProps> =
           <p className="text-sm font-semibold text-foreground">
             {i18nService.t('enterpriseLeadCreationConversationTitle')}
           </p>
-          <p className="mt-1 truncate text-xs text-tertiary">
-            {workspace.name}
-          </p>
+          <p className="mt-1 truncate text-xs text-tertiary">{workspace.name}</p>
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-4">
@@ -327,7 +334,9 @@ export const WorkspaceCreationRecords: React.FC<WorkspaceCreationRecordsProps> =
                     {formatRecordDate(selectedSummary.createdAt)}
                   </p>
                 </div>
-                <span className={`shrink-0 rounded-md px-2.5 py-1 text-xs font-medium ${getRunStatusClassName(selectedSummary.status)}`}>
+                <span
+                  className={`shrink-0 rounded-md px-2.5 py-1 text-xs font-medium ${getRunStatusClassName(selectedSummary.status)}`}
+                >
                   {getRunStatusLabel(selectedSummary.status)}
                 </span>
               </div>

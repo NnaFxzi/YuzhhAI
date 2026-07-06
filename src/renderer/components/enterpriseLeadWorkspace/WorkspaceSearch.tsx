@@ -21,8 +21,7 @@ export interface WorkspaceSearchResult {
   targetChatSessionId?: string;
 }
 
-const normalizeSearchText = (value: string): string =>
-  value.trim().toLocaleLowerCase();
+const normalizeSearchText = (value: string): string => value.trim().toLocaleLowerCase();
 
 const matchesQuery = (query: string, values: string[]): boolean => {
   if (!query) {
@@ -67,7 +66,7 @@ const appendChatSessionResults = (
   query: string,
   chatSessions: EnterpriseLeadWorkspaceChatSessionSummary[],
 ): void => {
-  chatSessions.forEach((session) => {
+  chatSessions.forEach(session => {
     const title = session.title.trim() || i18nService.t('enterpriseLeadAiChatUntitledSession');
     if (!matchesQuery(query, [title])) {
       return;
@@ -104,37 +103,26 @@ export const buildWorkspaceSearchResults = (
       id: 'workspace-profile',
       areaLabelKey: 'enterpriseLeadWorkspaceSearchAreaWorkspace',
       title: workspace.name,
-      description: profile.companySummary || i18nService.t('enterpriseLeadWorkspaceSearchWorkspaceFallback'),
+      description:
+        profile.companySummary || i18nService.t('enterpriseLeadWorkspaceSearchWorkspaceFallback'),
     });
   }
 
-  appendTextResults(
-    results,
-    query,
-    'enterpriseLeadWorkspaceSearchAreaKnowledge',
-    'product',
-    [
-      ...profile.productList,
-      ...profile.productCapabilities,
-      ...profile.targetCustomers,
-      ...profile.applicationScenarios,
-      ...profile.sellingPoints,
-      ...profile.channelPreferences,
-    ],
-  );
+  appendTextResults(results, query, 'enterpriseLeadWorkspaceSearchAreaKnowledge', 'product', [
+    ...profile.productList,
+    ...profile.productCapabilities,
+    ...profile.targetCustomers,
+    ...profile.applicationScenarios,
+    ...profile.sellingPoints,
+    ...profile.channelPreferences,
+  ]);
 
-  appendTextResults(
-    results,
-    query,
-    'enterpriseLeadWorkspaceSearchAreaRules',
-    'rule',
-    [
-      ...profile.prohibitedClaims,
-      ...profile.contactRules,
-      ...profile.missingInfo,
-      ...workspace.riskRules,
-    ],
-  );
+  appendTextResults(results, query, 'enterpriseLeadWorkspaceSearchAreaRules', 'rule', [
+    ...profile.prohibitedClaims,
+    ...profile.contactRules,
+    ...profile.missingInfo,
+    ...workspace.riskRules,
+  ]);
 
   workspace.extractionSources.forEach((source, index) => {
     const description = compactText([source.text, source.filePath, source.kind]);
@@ -218,9 +206,7 @@ export const WorkspaceSearch: React.FC<WorkspaceSearchProps> = ({
 
         <div className="mt-4 flex items-center justify-between gap-3 text-xs text-secondary">
           <span>{resultCountText}</span>
-          <span className="truncate">
-            {i18nService.t('enterpriseLeadWorkspaceSearchScope')}
-          </span>
+          <span className="truncate">{i18nService.t('enterpriseLeadWorkspaceSearchScope')}</span>
         </div>
 
         {results.length > 0 ? (
@@ -253,9 +239,7 @@ export const WorkspaceSearch: React.FC<WorkspaceSearchProps> = ({
                       {content}
                     </button>
                   ) : (
-                    <div className="px-4 py-3">
-                      {content}
-                    </div>
+                    <div className="px-4 py-3">{content}</div>
                   )}
                 </li>
               );
