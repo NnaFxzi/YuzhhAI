@@ -180,6 +180,18 @@ const App: React.FC = () => {
         await waitWithTimeout(configService.init(), initTimeoutMs, 'configService.init');
         mark('configService.init done');
 
+        mark('coworkService.loadConfig begin');
+        try {
+          await waitWithTimeout(
+            coworkService.loadConfig(),
+            initTimeoutMs,
+            'coworkService.loadConfig',
+          );
+        } catch (error) {
+          console.warn('[App] initializeApp: coworkService.loadConfig failed:', error);
+        }
+        mark('coworkService.loadConfig done');
+
         const entConfig = await window.electron.enterprise.getConfig();
         setEnterpriseConfig(entConfig);
         mark('enterprise.getConfig done');
@@ -1030,9 +1042,7 @@ const App: React.FC = () => {
 
   return (
     <div className="h-screen overflow-hidden flex flex-col bg-surface-raised">
-      {toastMessage && (
-        <Toast message={toastMessage} onClose={() => setToastMessage(null)} />
-      )}
+      {toastMessage && <Toast message={toastMessage} onClose={() => setToastMessage(null)} />}
       <div className="flex flex-1 min-h-0 overflow-hidden">
         {shouldShowGlobalSidebar && (
           <Sidebar
@@ -1052,7 +1062,9 @@ const App: React.FC = () => {
             hideLogin={enterpriseConfig?.ui?.login === 'hide'}
           />
         )}
-        <div className={`flex-1 min-w-0 transition-[padding] duration-200 ease-out ${contentHasSidebarInset ? 'pl-1.5' : ''}`}>
+        <div
+          className={`flex-1 min-w-0 transition-[padding] duration-200 ease-out ${contentHasSidebarInset ? 'pl-1.5' : ''}`}
+        >
           <div className="relative h-full min-h-0 rounded-xl border border-border bg-background overflow-hidden">
             {mainView === 'cowork' && <EngineStartupOverlay />}
             {mainView === 'skills' ? (
@@ -1078,6 +1090,7 @@ const App: React.FC = () => {
                 onToggleSidebar={handleToggleSidebar}
                 onShellModeChange={setEnterpriseLeadWorkspaceShellMode}
                 updateBadge={viewSidebarCollapsed ? updateBadge : null}
+                onRequestAppSettings={() => handleShowSettings()}
               />
             ) : mainView === 'kits' ? (
               <KitsView
@@ -1096,7 +1109,9 @@ const App: React.FC = () => {
               />
             ) : (
               <CoworkView
-                onRequestAppSettings={privacyAgreed === true && !showWelcome ? handleShowSettings : undefined}
+                onRequestAppSettings={
+                  privacyAgreed === true && !showWelcome ? handleShowSettings : undefined
+                }
                 onShowSkills={handleShowSkills}
                 onShowKits={handleShowKits}
                 isSidebarCollapsed={viewSidebarCollapsed}
@@ -1124,7 +1139,10 @@ const App: React.FC = () => {
         <AppUpdateModal
           updateState={appUpdateState}
           onCancel={() => {
-            if (appUpdateState.status !== AppUpdateStatus.Downloading && appUpdateState.status !== AppUpdateStatus.Installing) {
+            if (
+              appUpdateState.status !== AppUpdateStatus.Downloading &&
+              appUpdateState.status !== AppUpdateStatus.Installing
+            ) {
               setShowUpdateModal(false);
             }
           }}
@@ -1135,10 +1153,7 @@ const App: React.FC = () => {
       )}
       {permissionModal}
       {privacyAgreed === false && (
-        <PrivacyDialog
-          onAccept={handlePrivacyAccept}
-          onReject={handlePrivacyReject}
-        />
+        <PrivacyDialog onAccept={handlePrivacyAccept} onReject={handlePrivacyReject} />
       )}
       {showWelcome && (
         <WelcomeDialog
@@ -1151,4 +1166,4 @@ const App: React.FC = () => {
   );
 };
 
-export default App; 
+export default App;

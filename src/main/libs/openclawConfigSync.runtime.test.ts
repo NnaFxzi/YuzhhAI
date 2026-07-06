@@ -437,6 +437,117 @@ describe('OpenClawConfigSync runtime config output', () => {
     expect(mainEntry.cwd).toBe(path.resolve(mainAgentWorkingDirectory));
   });
 
+  test('uses effective settings for default cwd and sandbox mode when provided', async () => {
+    const { SettingScope } = await import('../../shared/cowork/layeredSettings');
+    const legacyWorkingDirectory = path.join(tmpDir, 'legacy-working-directory');
+    const effectiveWorkingDirectory = path.join(tmpDir, 'workspace-effective-directory');
+
+    const sync = await createSync({
+      getCoworkConfig: () => ({
+        workingDirectory: legacyWorkingDirectory,
+        systemPrompt: '',
+        executionMode: 'local',
+        agentEngine: 'openclaw',
+        memoryEnabled: false,
+        memoryImplicitUpdateEnabled: false,
+        memoryLlmJudgeEnabled: false,
+        memoryGuardLevel: 'balanced',
+        memoryUserMemoriesMaxItems: 100,
+        skipMissedJobs: false,
+      }),
+      getEffectiveSettings: () => ({
+        values: {
+          workingDirectory: effectiveWorkingDirectory,
+          executionMode: 'sandbox',
+          memoryEnabled: true,
+          embeddingEnabled: false,
+          dreamingEnabled: false,
+          skillIds: [],
+          defaultModel: '',
+        },
+        sources: {
+          workingDirectory: SettingScope.Workspace,
+          executionMode: SettingScope.Workspace,
+          memoryEnabled: SettingScope.Global,
+          embeddingEnabled: SettingScope.Global,
+          dreamingEnabled: SettingScope.Global,
+          skillIds: SettingScope.Default,
+          defaultModel: SettingScope.Default,
+        },
+      }),
+      isEnterprise: () => true,
+      getAgents: () => [],
+    });
+
+    const result = sync.sync('effective-settings-cwd-sandbox');
+    expect(result.ok).toBe(true);
+
+    const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+
+    expect(config.agents.defaults.cwd).toBe(path.resolve(effectiveWorkingDirectory));
+    expect(config.agents.defaults.sandbox.mode).toBe('all');
+  });
+
+  test('uses effective default model and skill ids for the main OpenClaw agent', async () => {
+    const { SettingScope } = await import('../../shared/cowork/layeredSettings');
+    mockRuntimeState.rawApiConfig = {
+      config: {
+        baseURL: 'https://api.openai.com/v1',
+        apiKey: 'sk-openai',
+        model: 'gpt-4.1',
+        apiType: 'openai',
+      },
+      providerMetadata: {
+        providerName: 'openai',
+        codingPlanEnabled: false,
+      },
+    };
+    mockRuntimeState.enabledProviders = [
+      {
+        providerName: 'openai',
+        baseURL: 'https://api.openai.com/v1',
+        apiKey: 'sk-openai',
+        apiType: 'openai',
+        codingPlanEnabled: false,
+        models: [{ id: 'gpt-4.1' }, { id: 'gpt-5.1' }],
+      },
+    ];
+
+    const sync = await createSync({
+      getEffectiveSettings: () => ({
+        values: {
+          workingDirectory: tmpDir,
+          executionMode: 'local',
+          memoryEnabled: true,
+          embeddingEnabled: false,
+          dreamingEnabled: false,
+          skillIds: ['workspace-skill'],
+          defaultModel: 'gpt-5.1',
+        },
+        sources: {
+          workingDirectory: SettingScope.Global,
+          executionMode: SettingScope.Global,
+          memoryEnabled: SettingScope.Global,
+          embeddingEnabled: SettingScope.Global,
+          dreamingEnabled: SettingScope.Global,
+          skillIds: SettingScope.Workspace,
+          defaultModel: SettingScope.Workspace,
+        },
+      }),
+      getAgents: () => [],
+    });
+
+    const result = sync.sync('effective-settings-model-skills');
+    expect(result.ok).toBe(true);
+
+    const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    const mainEntry = config.agents.list.find((entry: { id?: string }) => entry.id === 'main');
+
+    expect(config.agents.defaults.model.primary).toBe('openai/gpt-5.1');
+    expect(mainEntry.model.primary).toBe('openai/gpt-5.1');
+    expect(mainEntry.skills).toEqual(['workspace-skill']);
+  });
+
   test('writes current provider config and updates managed session store policies', async () => {
     const { ProviderName } = await import('../../shared/providers');
     mockRuntimeState.rawApiConfig = {

@@ -136,6 +136,21 @@ export class SqliteStore {
     `);
 
     this.db.exec(`
+      CREATE TABLE IF NOT EXISTS cowork_workspace_settings (
+        workspace_id TEXT NOT NULL,
+        key TEXT NOT NULL,
+        value TEXT NOT NULL,
+        updated_at INTEGER NOT NULL,
+        PRIMARY KEY (workspace_id, key)
+      );
+    `);
+
+    this.db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_cowork_workspace_settings_workspace_id
+      ON cowork_workspace_settings(workspace_id);
+    `);
+
+    this.db.exec(`
       CREATE TABLE IF NOT EXISTS user_memories (
         id TEXT PRIMARY KEY,
         text TEXT NOT NULL,

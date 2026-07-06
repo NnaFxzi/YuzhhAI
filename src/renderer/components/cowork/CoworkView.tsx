@@ -583,7 +583,9 @@ const CoworkView: React.FC<CoworkViewProps> = ({ onRequestAppSettings, onShowSki
 
   // Handle prompt selection from QuickAction
   const handleQuickActionPromptSelect = (prompt: LocalizedPrompt, actionOverride = selectedAction) => {
-    const nextPrompt = buildWorkflowPrompt(prompt);
+    const nextPrompt = buildWorkflowPrompt(prompt, {
+      language: i18nService.getLanguage(),
+    });
     if (actionOverride) {
       const targetSkill = skills.find(skill => skill.id === actionOverride.skillMapping);
       console.debug(`[CoworkView] reporting prompt template analytics: template_prompt_click ${actionOverride.id}/${prompt.id}`);

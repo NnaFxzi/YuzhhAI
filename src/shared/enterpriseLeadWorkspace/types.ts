@@ -12,6 +12,7 @@ import type {
   EnterpriseLeadRunStatus,
   EnterpriseLeadTaskStatus,
   EnterpriseLeadTodoKind,
+  EnterpriseLeadWorkspaceAgentSource,
   EnterpriseLeadWorkspaceType,
 } from './constants';
 
@@ -47,6 +48,8 @@ export interface EnterpriseLeadWorkspaceAgentOverrides {
 
 export interface EnterpriseLeadWorkspaceAgentBinding {
   agentId: string;
+  source?: EnterpriseLeadWorkspaceAgentSource;
+  templateId?: string;
   enabled: boolean;
   order: number;
   name?: string;
@@ -168,11 +171,43 @@ export interface EnterpriseLeadWorkspaceChatMessage {
   role: 'user' | 'assistant';
   content: string;
   createdAt: string;
+  agent?: EnterpriseLeadWorkspaceChatAgentAttribution;
+  routing?: EnterpriseLeadWorkspaceChatRouting;
   research?: EnterpriseLeadWorkspaceChatResearchResult;
+}
+
+export interface EnterpriseLeadWorkspaceChatAgentAttribution {
+  id: string;
+  name: string;
+}
+
+export interface EnterpriseLeadWorkspaceChatRouting {
+  reason: string;
+  agents: EnterpriseLeadWorkspaceChatAgentAttribution[];
+  steps?: EnterpriseLeadWorkspaceChatRouteStep[];
+}
+
+export interface EnterpriseLeadWorkspaceChatRouteStep {
+  agent: EnterpriseLeadWorkspaceChatAgentAttribution;
+  content: string;
+}
+
+export interface EnterpriseLeadWorkspaceChatSessionSummary {
+  id: string;
+  workspaceId: string;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+  messageCount: number;
+}
+
+export interface EnterpriseLeadWorkspaceChatSession extends EnterpriseLeadWorkspaceChatSessionSummary {
+  messages: EnterpriseLeadWorkspaceChatMessage[];
 }
 
 export interface EnterpriseLeadWorkspaceChatRequest {
   message: string;
+  sessionId?: string;
   targetAgentId?: string;
   recentMessages?: EnterpriseLeadWorkspaceChatMessage[];
 }
@@ -189,11 +224,24 @@ export interface EnterpriseLeadWorkspaceChatResearchResult {
   status: 'skipped' | 'completed' | 'failed';
   provider?: 'tavily' | 'firecrawl' | 'domestic';
   summary: string;
+  leadCandidates?: EnterpriseLeadWorkspaceChatLeadCandidate[];
   payload?: unknown;
+}
+
+export interface EnterpriseLeadWorkspaceChatLeadCandidate {
+  kind: 'company' | 'category';
+  name: string;
+  evidence: string;
+  sourceTitle?: string;
+  sourceUrl?: string;
+  demandSignal?: string;
+  matchReason?: string;
+  confidence: 'low' | 'medium' | 'high';
 }
 
 export interface EnterpriseLeadWorkspaceChatResponse {
   message: EnterpriseLeadWorkspaceChatMessage;
+  session?: EnterpriseLeadWorkspaceChatSession;
 }
 
 export interface EnterpriseLeadRun {

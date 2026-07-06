@@ -245,6 +245,29 @@ export interface CreationRecordSummary {
   meta: CreationRecordMetric[];
 }
 
+export const CreationRecordConversationRole = {
+  User: 'user',
+  Assistant: 'assistant',
+} as const;
+export type CreationRecordConversationRole =
+  (typeof CreationRecordConversationRole)[keyof typeof CreationRecordConversationRole];
+
+export interface CreationRecordConversationDetail {
+  key: string;
+  value: string;
+}
+
+export interface CreationRecordConversationMessage {
+  id: string;
+  role: CreationRecordConversationRole;
+  labelKey?: string;
+  labelText?: string;
+  content: string;
+  createdAt: string;
+  status: EnterpriseLeadTaskStatusType | string;
+  details: CreationRecordConversationDetail[];
+}
+
 export interface WorkspaceEntryAction {
   id: EnterpriseLeadEntryAction;
   titleKey: string;
@@ -677,11 +700,6 @@ const WORKBENCH_SIDEBAR_ITEMS: WorkbenchSidebarItem[] = [
     id: EnterpriseLeadWorkbenchNavItem.KnowledgeBase,
     icon: EnterpriseLeadWorkbenchNavIcon.Knowledge,
     labelKey: 'enterpriseLeadWorkbenchNavKnowledgeBase',
-  },
-  {
-    id: EnterpriseLeadWorkbenchNavItem.CreationRecords,
-    icon: EnterpriseLeadWorkbenchNavIcon.Records,
-    labelKey: 'enterpriseLeadWorkbenchNavCreationRecords',
   },
   {
     id: EnterpriseLeadWorkbenchNavItem.AgentManagement,
@@ -1213,6 +1231,100 @@ export const getCreationRecordSummary = (
     },
   ],
 });
+
+const stringifyConversationDetailValue = (value: unknown): string => {
+  if (typeof value === 'string') {
+    return value;
+  }
+
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return String(value);
+  }
+
+  if (value === null || value === undefined) {
+    return '';
+  }
+
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+};
+
+const getTaskConversationLabel = (
+  task: EnterpriseLeadAgentTask,
+): Pick<CreationRecordConversationMessage, 'labelKey' | 'labelText'> => {
+  const snapshotName = cleanText(task.agentSnapshot?.name ?? '');
+  if (snapshotName) {
+    return { labelText: snapshotName };
+  }
+
+  const taskDisplay = getEnterpriseLeadTaskDisplay(task);
+  return {
+    labelKey: taskDisplay.titleKey,
+    labelText: taskDisplay.titleText,
+  };
+};
+
+export const buildCreationRecordConversationMessages = (
+  snapshot: EnterpriseLeadWorkspaceSnapshot,
+): CreationRecordConversationMessage[] => {
+  const run = snapshot.currentRun;
+  if (!run) {
+    return [];
+  }
+
+  const messages: CreationRecordConversationMessage[] = [
+    {
+      id: `run:${run.id}:goal`,
+      role: CreationRecordConversationRole.User,
+      labelKey: 'enterpriseLeadCreationConversationUser',
+      content: cleanText(run.userGoal),
+      createdAt: run.createdAt,
+      status: run.status,
+      details: [],
+    },
+  ];
+
+  const controllerSummary = cleanText(run.controllerSummary);
+  if (controllerSummary) {
+    messages.push({
+      id: `run:${run.id}:controller`,
+      role: CreationRecordConversationRole.Assistant,
+      labelKey: 'enterpriseLeadCreationConversationController',
+      content: controllerSummary,
+      createdAt: run.updatedAt,
+      status: run.status,
+      details: [],
+    });
+  }
+
+  sortByRecentTimestamp(snapshot.tasks)
+    .reverse()
+    .forEach(task => {
+      const details = Object.entries(task.outputPayload ?? {})
+        .map(([key, value]) => ({
+          key,
+          value: stringifyConversationDetailValue(value),
+        }))
+        .filter(detail => detail.value.length > 0);
+      const content =
+        cleanText(task.summary) || cleanText(task.error) || cleanText(task.missingInfo.join('\n'));
+
+      messages.push({
+        id: `${task.id}:reply`,
+        role: CreationRecordConversationRole.Assistant,
+        ...getTaskConversationLabel(task),
+        content,
+        createdAt: task.updatedAt,
+        status: task.status,
+        details,
+      });
+    });
+
+  return messages;
+};
 
 export const getAgentRoleLabel = (
   role: EnterpriseLeadAgentRoleType,

@@ -1,9 +1,10 @@
 const { spawn } = require('child_process');
-const { createServer } = require('vite');
 const electron = require('electron');
 const path = require('path');
 
 async function startApp() {
+  const { createServer } = await import('vite');
+
   // 启动 Vite 开发服务器
   const server = await createServer();
   await server.listen();
@@ -39,7 +40,7 @@ async function startApp() {
   });
 }
 
-startApp().catch((err) => {
+startApp().catch(err => {
   console.error('Error starting app:', err);
   process.exit(1);
-}); 
+});

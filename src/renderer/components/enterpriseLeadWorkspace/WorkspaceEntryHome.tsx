@@ -1,6 +1,7 @@
 import {
   ArrowRightIcon,
   ClockIcon,
+  Cog6ToothIcon,
   EllipsisHorizontalIcon,
   ExclamationTriangleIcon,
   FolderOpenIcon,
@@ -31,6 +32,7 @@ interface WorkspaceEntryHomeProps {
   onHistoryOpen: () => void;
   onOpen: (workspaceId: string) => void;
   onDeleteWorkspace: (workspaceId: string) => Promise<boolean>;
+  onRequestAppSettings?: () => void;
 }
 
 const HISTORY_MODAL_TITLE_ID = 'enterprise-lead-history-title';
@@ -332,6 +334,7 @@ export const WorkspaceEntryHome: React.FC<WorkspaceEntryHomeProps> = ({
   onHistoryOpen,
   onOpen,
   onDeleteWorkspace,
+  onRequestAppSettings,
 }) => {
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [activeActionsWorkspaceId, setActiveActionsWorkspaceId] = useState<string | null>(null);
@@ -342,10 +345,7 @@ export const WorkspaceEntryHome: React.FC<WorkspaceEntryHomeProps> = ({
   const historyDialogRef = useRef<HTMLDivElement>(null);
   const historyTriggerRef = useRef<HTMLButtonElement>(null);
   const actions = getEntryHomeActions();
-  const sortedWorkspaces = useMemo(
-    () => sortWorkspacesByRecentUpdate(workspaces),
-    [workspaces],
-  );
+  const sortedWorkspaces = useMemo(() => sortWorkspacesByRecentUpdate(workspaces), [workspaces]);
   const historyState = getHistoryModalState({
     isLoading: isLoadingWorkspaces,
     error: workspaceListError,
@@ -419,9 +419,7 @@ export const WorkspaceEntryHome: React.FC<WorkspaceEntryHomeProps> = ({
     }
 
     const openDialogElement = historyDialogRef.current;
-    const openFocusableElements = openDialogElement
-      ? getFocusableElements(openDialogElement)
-      : [];
+    const openFocusableElements = openDialogElement ? getFocusableElements(openDialogElement) : [];
 
     if (openFocusableElements.length > 0) {
       openFocusableElements[0].focus();
@@ -528,11 +526,7 @@ export const WorkspaceEntryHome: React.FC<WorkspaceEntryHomeProps> = ({
           aria-label={i18nService.t('enterpriseLeadEntryBrandName')}
         >
           <span className="grid h-11 w-11 place-items-center overflow-hidden rounded-lg bg-white shadow-[0_8px_24px_rgba(32,41,56,0.07)]">
-            <img
-              src={entryBrandLogoSrc}
-              alt=""
-              className="h-full w-full object-cover"
-            />
+            <img src={entryBrandLogoSrc} alt="" className="h-full w-full object-cover" />
           </span>
           <span className="text-[30px] font-[820] leading-tight">
             {i18nService.t('enterpriseLeadEntryBrandName')}
@@ -566,9 +560,7 @@ export const WorkspaceEntryHome: React.FC<WorkspaceEntryHomeProps> = ({
                 <button
                   key={action.id}
                   ref={
-                    action.id === EnterpriseLeadEntryAction.History
-                      ? historyTriggerRef
-                      : undefined
+                    action.id === EnterpriseLeadEntryAction.History ? historyTriggerRef : undefined
                   }
                   type="button"
                   onClick={() => handleAction(action.id)}
@@ -618,6 +610,18 @@ export const WorkspaceEntryHome: React.FC<WorkspaceEntryHomeProps> = ({
         </section>
       </main>
 
+      {onRequestAppSettings && (
+        <button
+          type="button"
+          onClick={onRequestAppSettings}
+          className="fixed bottom-6 right-6 z-20 inline-flex h-11 w-11 items-center justify-center rounded-full border border-[#dbe4ef] bg-white text-[#2f75ee] shadow-[0_14px_34px_rgba(32,41,56,0.16)] transition duration-150 hover:-translate-y-0.5 hover:border-[#3b82f6]/40 hover:bg-[#f8fbff] hover:text-[#1d4ed8] focus:outline-none focus:ring-2 focus:ring-primary/30"
+          aria-label={i18nService.t('openSettings')}
+          title={i18nService.t('openSettings')}
+        >
+          <Cog6ToothIcon className="h-5 w-5" />
+        </button>
+      )}
+
       <Modal
         isOpen={isHistoryOpen}
         onClose={closeHistoryModal}
@@ -635,16 +639,10 @@ export const WorkspaceEntryHome: React.FC<WorkspaceEntryHomeProps> = ({
         >
           <div className="mb-4 flex items-start justify-between gap-4">
             <div>
-              <h2
-                id={HISTORY_MODAL_TITLE_ID}
-                className="text-base font-semibold text-foreground"
-              >
+              <h2 id={HISTORY_MODAL_TITLE_ID} className="text-base font-semibold text-foreground">
                 {i18nService.t('enterpriseLeadHistoryModalTitle')}
               </h2>
-              <p
-                id={HISTORY_MODAL_DESCRIPTION_ID}
-                className="mt-1 text-sm text-secondary"
-              >
+              <p id={HISTORY_MODAL_DESCRIPTION_ID} className="mt-1 text-sm text-secondary">
                 {i18nService.t('enterpriseLeadHistoryModalDesc')}
               </p>
             </div>

@@ -7,6 +7,11 @@ import type {
   CoworkImageAttachmentPayload,
   CoworkImageAttachmentPreview,
 } from '../../shared/cowork/imageAttachments';
+import type {
+  LayeredCoworkSettingsResolution,
+  LayeredCoworkSettingsUpdate,
+  LayeredCoworkSettingsValues,
+} from '../../shared/cowork/layeredSettings';
 import type { CoworkSelectedTextSnippet } from '../../shared/cowork/selectedText';
 import type {
   KitReference,
@@ -165,6 +170,7 @@ export interface CoworkSession {
 // Cowork configuration
 export interface CoworkConfig {
   workingDirectory: string;
+  workingDirectoryConfigured?: boolean;
   systemPrompt: string;
   executionMode: CoworkExecutionMode;
   agentEngine: CoworkAgentEngine;
@@ -211,6 +217,15 @@ export type CoworkConfigUpdate = Partial<Pick<
   | 'dreamingModel'
   | 'dreamingTimezone'
 >>;
+
+export type CoworkWorkspaceSettings = Partial<LayeredCoworkSettingsValues>;
+export type CoworkWorkspaceSettingsUpdate = LayeredCoworkSettingsUpdate;
+export type CoworkEffectiveSettings = LayeredCoworkSettingsResolution;
+export interface CoworkEffectiveSettingsInput {
+  workspaceId?: string;
+  agentId?: string;
+  sessionId?: string;
+}
 
 export interface CoworkApiConfig {
   apiKey: string;

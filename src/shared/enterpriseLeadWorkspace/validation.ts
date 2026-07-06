@@ -25,6 +25,7 @@ import {
   EnterpriseLeadSkillCapabilityIds,
   EnterpriseLeadTaskStatus,
   EnterpriseLeadTodoKind,
+  EnterpriseLeadWorkspaceAgentSource,
   EnterpriseLeadWorkspaceType,
 } from './constants';
 import type {
@@ -156,6 +157,25 @@ const normalizeWorkspaceAgentOverrides = (
   return overrides;
 };
 
+const isEnterpriseLeadAgentRole = (value: string): value is EnterpriseLeadAgentRole =>
+  Object.values(EnterpriseLeadAgentRole).includes(value as EnterpriseLeadAgentRole);
+
+const normalizeWorkspaceAgentSource = (
+  value: unknown,
+  agentId: string,
+): EnterpriseLeadWorkspaceAgentSource => {
+  if (
+    value === EnterpriseLeadWorkspaceAgentSource.SystemTemplate ||
+    value === EnterpriseLeadWorkspaceAgentSource.WorkspaceCreated
+  ) {
+    return value;
+  }
+
+  return isEnterpriseLeadAgentRole(agentId)
+    ? EnterpriseLeadWorkspaceAgentSource.SystemTemplate
+    : EnterpriseLeadWorkspaceAgentSource.WorkspaceCreated;
+};
+
 export function normalizeEnterpriseLeadRunAgentSnapshot(
   value: unknown,
 ): EnterpriseLeadWorkspaceRunAgentSnapshot | null {
@@ -185,34 +205,37 @@ export function normalizeEnterpriseLeadWorkspaceAgents(
     index: number;
   }>();
 
-  value
-    .map((item, index) => {
-      const record = readRecord(item);
-      const agentId = cleanText(record.agentId);
-      if (!agentId) return null;
-      const order = typeof record.order === 'number' && Number.isFinite(record.order)
+  value.forEach((item, index) => {
+    const record = readRecord(item);
+    const agentId = cleanText(record.agentId);
+    if (!agentId) return;
+    const order =
+      typeof record.order === 'number' && Number.isFinite(record.order)
         ? Math.max(0, Math.floor(record.order))
         : index;
 
-      return {
-        binding: {
-          agentId,
-          enabled: record.enabled !== false,
-          order,
-          overrides: normalizeWorkspaceAgentOverrides(record.overrides, record),
-        },
-        index,
-      };
-    })
-    .filter((item): item is { binding: EnterpriseLeadWorkspaceAgentBinding; index: number } => Boolean(item))
-    .forEach(item => {
-      bindingsByAgentId.set(item.binding.agentId, item);
+    bindingsByAgentId.set(agentId, {
+      binding: {
+        agentId,
+        source: normalizeWorkspaceAgentSource(record.source, agentId),
+        enabled: record.enabled !== false,
+        order,
+        overrides: normalizeWorkspaceAgentOverrides(record.overrides, record),
+      },
+      index,
     });
+  });
 
   return Array.from(bindingsByAgentId.values())
     .sort((left, right) => left.binding.order - right.binding.order || left.index - right.index)
     .map((item, order) => ({
       ...item.binding,
+      ...(item.binding.source === EnterpriseLeadWorkspaceAgentSource.SystemTemplate
+        ? {
+            templateId:
+              cleanOptionalText(readRecord(value[item.index]).templateId) ?? item.binding.agentId,
+          }
+        : {}),
       order,
     }));
 }

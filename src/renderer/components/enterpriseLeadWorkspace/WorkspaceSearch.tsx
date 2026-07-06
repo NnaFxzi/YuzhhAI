@@ -1,11 +1,16 @@
 import { MagnifyingGlassIcon } from '@heroicons/react/24/outline';
 import React, { useMemo, useState } from 'react';
 
-import type { EnterpriseLeadWorkspace } from '../../../shared/enterpriseLeadWorkspace/types';
+import type {
+  EnterpriseLeadWorkspace,
+  EnterpriseLeadWorkspaceChatSessionSummary,
+} from '../../../shared/enterpriseLeadWorkspace/types';
 import { i18nService } from '../../services/i18n';
 
 interface WorkspaceSearchProps {
   workspace: EnterpriseLeadWorkspace;
+  chatSessions?: EnterpriseLeadWorkspaceChatSessionSummary[];
+  onChatSessionSelect?: (sessionId: string) => void;
 }
 
 export interface WorkspaceSearchResult {
@@ -13,6 +18,7 @@ export interface WorkspaceSearchResult {
   areaLabelKey: string;
   title: string;
   description: string;
+  targetChatSessionId?: string;
 }
 
 const normalizeSearchText = (value: string): string =>
@@ -56,13 +62,42 @@ const appendTextResults = (
     });
 };
 
+const appendChatSessionResults = (
+  results: WorkspaceSearchResult[],
+  query: string,
+  chatSessions: EnterpriseLeadWorkspaceChatSessionSummary[],
+): void => {
+  chatSessions.forEach((session) => {
+    const title = session.title.trim() || i18nService.t('enterpriseLeadAiChatUntitledSession');
+    if (!matchesQuery(query, [title])) {
+      return;
+    }
+
+    results.push({
+      id: `chat-${session.id}`,
+      areaLabelKey: 'enterpriseLeadWorkspaceSearchAreaConversations',
+      title,
+      description: i18nService
+        .t('enterpriseLeadWorkspaceSearchConversationDescription')
+        .replace('{count}', String(session.messageCount)),
+      targetChatSessionId: session.id,
+    });
+  });
+};
+
 export const buildWorkspaceSearchResults = (
   workspace: EnterpriseLeadWorkspace,
   rawQuery: string,
+  chatSessions: EnterpriseLeadWorkspaceChatSessionSummary[] = [],
 ): WorkspaceSearchResult[] => {
   const query = normalizeSearchText(rawQuery);
   const results: WorkspaceSearchResult[] = [];
   const { profile } = workspace;
+  appendChatSessionResults(results, query, chatSessions);
+
+  if (!query && chatSessions.length > 0) {
+    return results;
+  }
 
   if (matchesQuery(query, [workspace.name, profile.companySummary])) {
     results.push({
@@ -143,11 +178,15 @@ export const buildWorkspaceSearchResults = (
   return results;
 };
 
-export const WorkspaceSearch: React.FC<WorkspaceSearchProps> = ({ workspace }) => {
+export const WorkspaceSearch: React.FC<WorkspaceSearchProps> = ({
+  workspace,
+  chatSessions = [],
+  onChatSessionSelect,
+}) => {
   const [query, setQuery] = useState('');
   const results = useMemo(
-    () => buildWorkspaceSearchResults(workspace, query),
-    [query, workspace],
+    () => buildWorkspaceSearchResults(workspace, query, chatSessions),
+    [chatSessions, query, workspace],
   );
   const resultCountText = i18nService
     .t('enterpriseLeadWorkspaceSearchResultCount')
@@ -186,21 +225,41 @@ export const WorkspaceSearch: React.FC<WorkspaceSearchProps> = ({ workspace }) =
 
         {results.length > 0 ? (
           <ul className="mt-4 divide-y divide-border rounded-lg border border-border bg-surface">
-            {results.map(result => (
-              <li key={result.id} className="px-4 py-3">
-                <div className="flex min-w-0 flex-wrap items-center gap-2">
-                  <span className="rounded-md bg-surface-raised px-2 py-0.5 text-[11px] font-medium text-secondary">
-                    {i18nService.t(result.areaLabelKey)}
-                  </span>
-                  <h2 className="min-w-0 flex-1 truncate text-sm font-semibold text-foreground">
-                    {result.title}
-                  </h2>
-                </div>
-                <p className="mt-1 line-clamp-2 text-sm leading-6 text-secondary">
-                  {result.description}
-                </p>
-              </li>
-            ))}
+            {results.map(result => {
+              const content = (
+                <>
+                  <div className="flex min-w-0 flex-wrap items-center gap-2">
+                    <span className="rounded-md bg-surface-raised px-2 py-0.5 text-[11px] font-medium text-secondary">
+                      {i18nService.t(result.areaLabelKey)}
+                    </span>
+                    <h2 className="min-w-0 flex-1 truncate text-sm font-semibold text-foreground">
+                      {result.title}
+                    </h2>
+                  </div>
+                  <p className="mt-1 line-clamp-2 text-sm leading-6 text-secondary">
+                    {result.description}
+                  </p>
+                </>
+              );
+
+              return (
+                <li key={result.id}>
+                  {result.targetChatSessionId ? (
+                    <button
+                      type="button"
+                      className="block w-full px-4 py-3 text-left transition-colors hover:bg-surface-raised"
+                      onClick={() => onChatSessionSelect?.(result.targetChatSessionId!)}
+                    >
+                      {content}
+                    </button>
+                  ) : (
+                    <div className="px-4 py-3">
+                      {content}
+                    </div>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         ) : (
           <div className="mt-4 rounded-lg border border-dashed border-border bg-surface px-4 py-8 text-center text-sm text-secondary">

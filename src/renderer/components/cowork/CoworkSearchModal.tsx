@@ -14,6 +14,71 @@ import Modal from '../common/Modal';
 const SEARCH_SESSION_LIMIT = 100;
 const SEARCH_DEBOUNCE_MS = 180;
 const TASK_SEARCH_ANALYTICS_SOURCE = 'home_task_search';
+const SEARCH_RESULTS_LIST_ID = 'cowork-search-results';
+
+type CoworkSearchSectionLabelKey = 'searchRecentTasks' | 'searchResultsWithCount';
+
+interface CoworkSearchSectionLabel {
+  key: CoworkSearchSectionLabelKey;
+  replacements: Record<string, string>;
+}
+
+export const getCoworkSearchSectionLabel = (options: {
+  hasQuery: boolean;
+  resultCount: number;
+}): CoworkSearchSectionLabel => {
+  if (!options.hasQuery) {
+    return {
+      key: 'searchRecentTasks',
+      replacements: {},
+    };
+  }
+
+  return {
+    key: 'searchResultsWithCount',
+    replacements: { count: String(options.resultCount) },
+  };
+};
+
+export const getCoworkSearchEmptyStateKey = (options: {
+  hasQuery: boolean;
+}): 'searchNoRecentTasks' | 'searchNoResults' =>
+  options.hasQuery ? 'searchNoResults' : 'searchNoRecentTasks';
+
+export const getNextCoworkSearchSelectionIndex = (options: {
+  currentIndex: number;
+  resultCount: number;
+  key: string;
+}): number => {
+  const { currentIndex, resultCount, key } = options;
+  if (resultCount <= 0) return -1;
+
+  if (key === 'ArrowDown') {
+    return currentIndex < 0 ? 0 : (currentIndex + 1) % resultCount;
+  }
+
+  if (key === 'ArrowUp') {
+    return currentIndex <= 0 ? resultCount - 1 : currentIndex - 1;
+  }
+
+  if (key === 'Home') {
+    return 0;
+  }
+
+  if (key === 'End') {
+    return resultCount - 1;
+  }
+
+  return currentIndex;
+};
+
+const formatSearchLabel = (label: CoworkSearchSectionLabel): string => {
+  let text = i18nService.t(label.key);
+  Object.entries(label.replacements).forEach(([key, value]) => {
+    text = text.replace(`{${key}}`, value);
+  });
+  return text;
+};
 
 const getSessionAgentId = (session: CoworkSessionSummary) => {
   return session.agentId?.trim() || AgentId.Main;
@@ -82,11 +147,15 @@ const CoworkSearchModal: React.FC<CoworkSearchModalProps> = ({
   const [searchSessions, setSearchSessions] = useState<CoworkSessionSummary[]>(sessions);
   const [recentSessions, setRecentSessions] = useState<CoworkSessionSummary[]>(sessions);
   const [isLoading, setIsLoading] = useState(false);
+  const [searchError, setSearchError] = useState('');
+  const [selectedIndex, setSelectedIndex] = useState(-1);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const resultButtonRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const requestIdRef = useRef(0);
   const reportedOpenRef = useRef(false);
   const reportedEmptyResultKeyRef = useRef<string | null>(null);
 
+  const hasQuery = searchQuery.trim().length > 0;
   const displayedSessions = useMemo(() => {
     const trimmedQuery = searchQuery.trim().toLowerCase();
     if (!trimmedQuery) return recentSessions;
@@ -112,6 +181,16 @@ const CoworkSearchModal: React.FC<CoworkSearchModalProps> = ({
     return names;
   }, [agents, displayedSessions]);
 
+  const sectionLabel = getCoworkSearchSectionLabel({
+    hasQuery,
+    resultCount: displayedSessions.length,
+  });
+  const emptyStateKey = getCoworkSearchEmptyStateKey({ hasQuery });
+  const selectedSession = selectedIndex >= 0 ? displayedSessions[selectedIndex] : undefined;
+  const selectedResultId = selectedSession
+    ? `cowork-search-result-${selectedSession.id}`
+    : undefined;
+
   useEffect(() => {
     if (isOpen) {
       if (!reportedOpenRef.current) {
@@ -130,6 +209,8 @@ const CoworkSearchModal: React.FC<CoworkSearchModalProps> = ({
     setSearchQuery('');
     setDebouncedSearchQuery('');
     setSearchResultQuery('');
+    setSearchError('');
+    setSelectedIndex(-1);
     reportedOpenRef.current = false;
     reportedEmptyResultKeyRef.current = null;
   }, [isOpen, sessions.length]);
@@ -139,6 +220,8 @@ const CoworkSearchModal: React.FC<CoworkSearchModalProps> = ({
       setSearchSessions(sessions);
       setRecentSessions(sessions);
       setSearchResultQuery('');
+      setSearchError('');
+      setSelectedIndex(-1);
     }
   }, [isOpen, sessions]);
 
@@ -156,6 +239,7 @@ const CoworkSearchModal: React.FC<CoworkSearchModalProps> = ({
     requestIdRef.current = requestId;
     const query = debouncedSearchQuery.trim();
     setIsLoading(true);
+    setSearchError('');
     void coworkService.listSessionsForSearch(SEARCH_SESSION_LIMIT, 0, query)
       .then((result) => {
         if (requestId !== requestIdRef.current) return;
@@ -163,10 +247,12 @@ const CoworkSearchModal: React.FC<CoworkSearchModalProps> = ({
           console.warn('[CoworkSearch] failed to load task search results:', result.error);
           setSearchSessions([]);
           setSearchResultQuery(query);
+          setSearchError(result.error || 'Failed to search sessions');
           return;
         }
         setSearchSessions(result.sessions);
         setSearchResultQuery(query);
+        setSearchError('');
         if (!query) {
           setRecentSessions(result.sessions);
         }
@@ -177,6 +263,16 @@ const CoworkSearchModal: React.FC<CoworkSearchModalProps> = ({
         }
       });
   }, [debouncedSearchQuery, isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setSelectedIndex(displayedSessions.length > 0 ? 0 : -1);
+  }, [displayedSessions.length, isOpen, searchQuery, searchResultQuery]);
+
+  useEffect(() => {
+    if (!isOpen || selectedIndex < 0) return;
+    resultButtonRefs.current[selectedIndex]?.scrollIntoView({ block: 'nearest' });
+  }, [isOpen, selectedIndex]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -213,8 +309,34 @@ const CoworkSearchModal: React.FC<CoworkSearchModalProps> = ({
     onClose();
   };
 
+  const handleInputKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (
+      event.key === 'ArrowDown' ||
+      event.key === 'ArrowUp' ||
+      event.key === 'Home' ||
+      event.key === 'End'
+    ) {
+      event.preventDefault();
+      setSelectedIndex(currentIndex =>
+        getNextCoworkSearchSelectionIndex({
+          currentIndex,
+          resultCount: displayedSessions.length,
+          key: event.key,
+        }),
+      );
+      return;
+    }
+
+    if (event.key === 'Enter') {
+      const session = displayedSessions[selectedIndex];
+      if (!session) return;
+      event.preventDefault();
+      void handleSelectSession(session);
+    }
+  };
+
   useEffect(() => {
-    if (!isOpen || isLoading || displayedSessions.length > 0) return;
+    if (!isOpen || isLoading || searchError || displayedSessions.length > 0) return;
     const emptyResultKey = `${searchQuery.trim().length > 0 ? 'query' : 'recent'}:${searchResultQuery}`;
     if (reportedEmptyResultKeyRef.current === emptyResultKey) return;
     reportedEmptyResultKeyRef.current = emptyResultKey;
@@ -222,7 +344,7 @@ const CoworkSearchModal: React.FC<CoworkSearchModalProps> = ({
       hasQuery: searchQuery.trim().length > 0,
       resultCount: 0,
     });
-  }, [displayedSessions.length, isLoading, isOpen, searchQuery, searchResultQuery]);
+  }, [displayedSessions.length, isLoading, isOpen, searchError, searchQuery, searchResultQuery]);
 
   if (!isOpen) return null;
 
@@ -232,11 +354,7 @@ const CoworkSearchModal: React.FC<CoworkSearchModalProps> = ({
       overlayClassName="fixed inset-0 z-50 flex items-start justify-center bg-black/10 px-6 pt-[18vh] backdrop-blur-[1px] dark:bg-black/30"
       className="modal-content w-full max-w-[520px] overflow-hidden rounded-[18px] border border-border bg-white shadow-modal dark:bg-surface"
     >
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label={i18nService.t('search')}
-      >
+      <div role="dialog" aria-modal="true" aria-label={i18nService.t('search')}>
         <div className="flex items-center justify-between gap-3 px-4 pb-2 pt-4">
           <div className="min-w-0 text-base font-semibold text-foreground">
             {i18nService.t('search')}
@@ -254,37 +372,61 @@ const CoworkSearchModal: React.FC<CoworkSearchModalProps> = ({
         <div className="px-4 pb-3">
           <input
             ref={searchInputRef}
+            type="search"
             value={searchQuery}
-            onChange={(event) => setSearchQuery(event.target.value)}
+            onChange={event => setSearchQuery(event.target.value)}
+            onKeyDown={handleInputKeyDown}
             placeholder={i18nService.t('searchConversations')}
             aria-label={i18nService.t('search')}
+            aria-controls={SEARCH_RESULTS_LIST_ID}
+            aria-activedescendant={selectedResultId}
             className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[13px] text-foreground placeholder-secondary outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
           />
         </div>
         <div className="px-2 pb-2">
           <div className="px-2 pb-1 text-[12px] text-secondary">
-            {i18nService.t('searchRecentTasks')}
+            {formatSearchLabel(sectionLabel)}
           </div>
-          <div className="max-h-[320px] overflow-y-auto">
+          <div
+            id={SEARCH_RESULTS_LIST_ID}
+            role="listbox"
+            aria-label={formatSearchLabel(sectionLabel)}
+            className="max-h-[320px] overflow-y-auto"
+          >
             {displayedSessions.length === 0 ? (
               <div className="py-10 text-center text-sm text-secondary">
-                {isLoading ? i18nService.t('loading') : i18nService.t('searchNoResults')}
+                {isLoading
+                  ? i18nService.t('loading')
+                  : searchError
+                    ? i18nService.t('searchLoadFailed')
+                    : i18nService.t(emptyStateKey)}
               </div>
             ) : (
-              displayedSessions.map((session) => {
-                const agentName = agentNameBySessionId.get(session.id) ?? getSessionAgentId(session);
-                const isSelected = session.id === currentSessionId;
+              displayedSessions.map((session, index) => {
+                const agentName =
+                  agentNameBySessionId.get(session.id) ?? getSessionAgentId(session);
+                const isCurrentSession = session.id === currentSessionId;
+                const isKeyboardSelected = index === selectedIndex;
                 const isRunning = session.status === CoworkSessionStatusValue.Running;
                 return (
                   <button
                     key={session.id}
+                    id={`cowork-search-result-${session.id}`}
+                    ref={element => {
+                      resultButtonRefs.current[index] = element;
+                    }}
                     type="button"
+                    role="option"
+                    aria-selected={isKeyboardSelected}
                     onClick={() => void handleSelectSession(session)}
+                    onMouseEnter={() => setSelectedIndex(index)}
                     className={`group flex h-8 w-full items-center gap-2 rounded-lg px-2 text-left text-[13px] transition-colors ${
-                      isSelected
-                        ? 'bg-black/[0.06] text-foreground dark:bg-white/[0.07]'
-                        : 'text-secondary hover:bg-black/[0.04] hover:text-foreground dark:hover:bg-white/[0.06]'
-                      }`}
+                      isKeyboardSelected
+                        ? 'bg-primary/10 text-foreground'
+                        : isCurrentSession
+                          ? 'bg-black/[0.06] text-foreground dark:bg-white/[0.07]'
+                          : 'text-secondary hover:bg-black/[0.04] hover:text-foreground dark:hover:bg-white/[0.06]'
+                    }`}
                   >
                     {isRunning && (
                       <span
@@ -292,7 +434,11 @@ const CoworkSearchModal: React.FC<CoworkSearchModalProps> = ({
                         title={i18nService.t('myAgentSidebarRunning')}
                         aria-label={i18nService.t('myAgentSidebarRunning')}
                       >
-                        <svg className="h-3 w-3 animate-spin text-primary" viewBox="0 0 24 24" fill="none">
+                        <svg
+                          className="h-3 w-3 animate-spin text-primary"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                        >
                           <circle
                             className="opacity-25"
                             cx="12"
@@ -309,9 +455,7 @@ const CoworkSearchModal: React.FC<CoworkSearchModalProps> = ({
                         </svg>
                       </span>
                     )}
-                    <span className="min-w-0 flex-1 truncate font-medium">
-                      {session.title}
-                    </span>
+                    <span className="min-w-0 flex-1 truncate font-medium">{session.title}</span>
                     <span className="max-w-[136px] shrink-0 truncate text-[12px] text-secondary/75">
                       {agentName}
                     </span>

@@ -132,6 +132,102 @@ describe('agentService.updateAgent', () => {
   });
 });
 
+describe('agentService.addPreset', () => {
+  test('updates an existing preset Agent summary instead of adding a duplicate', async () => {
+    store.dispatch(
+      setAgents([
+        {
+          id: 'marketing-agent',
+          name: '旧推广 Agent',
+          description: '',
+          icon: '',
+          model: '',
+          workingDirectory: '',
+          enabled: true,
+          pinned: false,
+          pinOrder: null,
+          isDefault: false,
+          source: 'preset',
+          skillIds: [],
+        },
+      ]),
+    );
+
+    (globalThis as { window?: unknown }).window = {
+      electron: {
+        agents: {
+          addPreset: vi.fn().mockResolvedValue(
+            makeAgent({
+              id: 'marketing-agent',
+              name: '推广 Agent',
+              source: 'preset',
+              presetId: 'marketing-agent',
+            }),
+          ),
+        },
+      },
+    };
+
+    await agentService.addPreset('marketing-agent');
+
+    expect(store.getState().agent.agents).toHaveLength(1);
+    expect(store.getState().agent.agents[0].name).toBe('推广 Agent');
+  });
+});
+
+describe('agentService.getPresetTemplates', () => {
+  test('marks installed preset templates with their current enabled state', async () => {
+    store.dispatch(
+      setAgents([
+        {
+          id: 'marketing-agent',
+          name: '推广 Agent',
+          description: '',
+          icon: '',
+          model: '',
+          workingDirectory: '',
+          enabled: false,
+          pinned: false,
+          pinOrder: null,
+          isDefault: false,
+          source: 'preset',
+          skillIds: [],
+        },
+      ]),
+    );
+
+    (globalThis as { window?: unknown }).window = {
+      electron: {
+        agents: {
+          presetTemplates: vi.fn().mockResolvedValue([
+            {
+              id: 'marketing-agent',
+              name: '推广 Agent',
+              nameEn: 'Marketing Agent',
+              icon: '',
+              description: '',
+              descriptionEn: '',
+              identity: '',
+              identityEn: '',
+              systemPrompt: '',
+              systemPromptEn: '',
+              skillIds: [],
+            },
+          ]),
+        },
+      },
+    };
+
+    await expect(agentService.getPresetTemplates()).resolves.toMatchObject([
+      {
+        id: 'marketing-agent',
+        installed: true,
+        enabled: false,
+      },
+    ]);
+  });
+});
+
 describe('agentService external research settings', () => {
   test('reports when external research settings save bridge is unavailable', () => {
     (globalThis as { window?: unknown }).window = {

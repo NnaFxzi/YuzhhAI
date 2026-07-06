@@ -23,6 +23,7 @@ import BetterSqlite3 from 'better-sqlite3';
 import { CoworkSystemMessageKind } from '../common/coworkSystemMessages';
 import { AgentAvatarSvg, DefaultAgentAvatarIcon, encodeAgentAvatarIcon } from '../shared/agent/avatar';
 import { CoworkForkMode } from '../shared/cowork/constants';
+import { InheritSetting, SettingScope } from '../shared/cowork/layeredSettings';
 import { CoworkStore } from './coworkStore';
 import { ContinuityCapsuleSource } from './libs/agentEngine/coworkContinuityCapsule';
 
@@ -79,7 +80,18 @@ function setupDb(): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS cowork_config (
       key TEXT PRIMARY KEY,
-      value TEXT
+      value TEXT NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+  `);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS cowork_workspace_settings (
+      workspace_id TEXT NOT NULL,
+      key TEXT NOT NULL,
+      value TEXT NOT NULL,
+      updated_at INTEGER NOT NULL,
+      PRIMARY KEY (workspace_id, key)
     );
   `);
 
@@ -889,6 +901,113 @@ test('getConfig defaults skipMissedJobs to true when config is missing', () => {
   const config = store.getConfig();
 
   expect(config.skipMissedJobs).toBe(true);
+});
+
+test('getConfig marks missing working directory as default fallback', () => {
+  const config = store.getConfig();
+
+  expect(config.workingDirectory).toContain('yuzhh-ai-assistant');
+  expect(config.workingDirectoryConfigured).toBe(false);
+});
+
+test('getConfig marks explicit working directory as configured', () => {
+  store.setConfig({ workingDirectory: '/global/project' });
+
+  const config = store.getConfig();
+
+  expect(config.workingDirectory).toBe('/global/project');
+  expect(config.workingDirectoryConfigured).toBe(true);
+});
+
+test('workspace settings can override global cowork settings', () => {
+  store.setConfig({
+    workingDirectory: '/global/project',
+    memoryEnabled: true,
+    embeddingEnabled: false,
+  });
+
+  store.setWorkspaceSettings('workspace-a', {
+    workingDirectory: '/workspace/project',
+    embeddingEnabled: true,
+  });
+
+  const settings = store.getWorkspaceSettings('workspace-a');
+  expect(settings).toEqual({
+    workingDirectory: '/workspace/project',
+    embeddingEnabled: true,
+  });
+});
+
+test('workspace settings can reset a key back to inherited global value', () => {
+  store.setWorkspaceSettings('workspace-a', {
+    workingDirectory: '/workspace/project',
+    embeddingEnabled: true,
+  });
+
+  store.setWorkspaceSettings('workspace-a', {
+    workingDirectory: InheritSetting.Value,
+  });
+
+  expect(store.getWorkspaceSettings('workspace-a')).toEqual({
+    embeddingEnabled: true,
+  });
+});
+
+test('workspace settings skip corrupt JSON rows and keep valid settings', () => {
+  const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  const now = Date.now();
+  db.prepare(
+    `
+    INSERT INTO cowork_workspace_settings (workspace_id, key, value, updated_at)
+    VALUES
+      ('workspace-a', 'workingDirectory', ?, ?),
+      ('workspace-a', 'embeddingEnabled', '{broken', ?)
+  `,
+  ).run(JSON.stringify('/workspace/project'), now, now);
+
+  const settings = store.getWorkspaceSettings('workspace-a');
+
+  expect(settings).toEqual({
+    workingDirectory: '/workspace/project',
+  });
+  expect(warnSpy).toHaveBeenCalledWith(
+    '[CoworkStore] Failed to parse workspace setting:',
+    { workspaceId: 'workspace-a', key: 'embeddingEnabled' },
+    expect.any(SyntaxError),
+  );
+
+  warnSpy.mockRestore();
+});
+
+test('effective cowork settings resolve global workspace and agent layers', () => {
+  store.setConfig({
+    workingDirectory: '/global/project',
+    embeddingEnabled: false,
+  });
+  store.setWorkspaceSettings('workspace-a', {
+    workingDirectory: '/workspace/project',
+    embeddingEnabled: true,
+  });
+  const agent = store.createAgent({
+    name: 'Docs Agent',
+    workingDirectory: '/agent/project',
+    model: 'agent-model',
+    skillIds: ['agent-skill'],
+  });
+
+  const resolved = store.getEffectiveSettings({
+    workspaceId: 'workspace-a',
+    agentId: agent.id,
+  });
+
+  expect(resolved.values.workingDirectory).toBe('/agent/project');
+  expect(resolved.sources.workingDirectory).toBe(SettingScope.Agent);
+  expect(resolved.values.embeddingEnabled).toBe(true);
+  expect(resolved.sources.embeddingEnabled).toBe(SettingScope.Workspace);
+  expect(resolved.values.defaultModel).toBe('agent-model');
+  expect(resolved.sources.defaultModel).toBe(SettingScope.Agent);
+  expect(resolved.values.skillIds).toEqual(['agent-skill']);
+  expect(resolved.sources.skillIds).toBe(SettingScope.Agent);
 });
 
 test('backfillEmptyAgentModels assigns the current default model to empty agents only', () => {

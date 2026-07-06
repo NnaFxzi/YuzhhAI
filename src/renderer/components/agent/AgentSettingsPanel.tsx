@@ -41,6 +41,14 @@ import {
   getEditableUserInfo,
 } from './agentEditText';
 import AgentExternalResearchPanel from './AgentExternalResearchPanel';
+import {
+  AgentSettingsSaveStep,
+  type AgentSettingsSaveStep as AgentSettingsSaveStepId,
+  type AgentSettingsSaveStepResult,
+  buildAgentSettingsRuntimeImpactMessage,
+  buildAgentSettingsSaveFailureMessage,
+  buildAgentSettingsUpdateRequest,
+} from './agentSettingsPanelUi';
 import AgentSkillSelector from './AgentSkillSelector';
 import { AgentConfirmDialogVariant, AgentDetailTab } from './constants';
 
@@ -95,7 +103,7 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
   const availableModels = useSelector((state: RootState) => state.model.availableModels);
   const defaultSelectedModel = useSelector((state: RootState) => state.model.defaultSelectedModel);
   const skills = useSelector((state: RootState) => state.skill.skills);
-  const [, setAgent] = useState<Agent | null>(null);
+  const [agent, setAgent] = useState<Agent | null>(null);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [systemPrompt, setSystemPrompt] = useState('');
@@ -105,6 +113,7 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
   const [model, setModel] = useState<Model | null>(null);
   const [workingDirectory, setWorkingDirectory] = useState('');
   const [skillIds, setSkillIds] = useState<string[]>([]);
+  const [enabled, setEnabled] = useState(true);
   const [nameTouched, setNameTouched] = useState(false);
   const [saving, setSaving] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -127,6 +136,13 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
   const [boundKeys, setBoundKeys] = useState<Set<string>>(new Set());
   const [initialBoundKeys, setInitialBoundKeys] = useState<Set<string>>(new Set());
   const isMainAgent = isDefaultAgentId(agentId);
+  const selectedAgentSummary = agents.find((item) => item.id === agentId);
+  const isSystemAgent =
+    isMainAgent ||
+    agent?.isDefault === true ||
+    agent?.source === 'preset' ||
+    selectedAgentSummary?.isDefault === true ||
+    selectedAgentSummary?.source === 'preset';
 
   // Snapshot of initial values for dirty detection
   const initialValuesRef = useRef({
@@ -139,6 +155,7 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
     model: '',
     workingDirectory: '',
     skillIds: [] as string[],
+    enabled: true,
   });
 
   const getChangedFields = useCallback((): string[] => {
@@ -155,6 +172,7 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
     if (skillIds.length !== init.skillIds.length || skillIds.some((id, i) => id !== init.skillIds[i])) {
       changedFields.push('skillIds');
     }
+    if (enabled !== init.enabled) changedFields.push('enabled');
     if (JSON.stringify(externalResearchConfig) !== initialExternalResearchRef.current) {
       changedFields.push('externalResearch');
     }
@@ -172,6 +190,7 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
     externalResearchConfig,
     icon,
     identity,
+    enabled,
     initialBoundKeys,
     model,
     name,
@@ -262,6 +281,7 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
     setShowDeleteConfirm(false);
     setShowUnsavedConfirm(false);
     setNameTouched(false);
+    setAgent(null);
     const fallbackExternalResearch = buildDefaultExternalResearchEditConfig(AgentExternalResearchMode.Inherit);
     const fallbackDomesticResearch = buildDefaultDomesticResearchConfig();
     setExternalResearchDefaults(null);
@@ -301,6 +321,7 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
       setModel(resolvedModel);
       setWorkingDirectory(a.workingDirectory ?? '');
       setSkillIds(a.skillIds ?? []);
+      setEnabled(a.enabled);
       const researchSettings = await agentService.getExternalResearchSettings(agentId);
       if (cancelled) return;
       const nextExternalResearch = researchSettings?.agentSettings
@@ -325,6 +346,7 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
         model: resolvedModelRef,
         workingDirectory: a.workingDirectory ?? '',
         skillIds: a.skillIds ?? [],
+        enabled: a.enabled,
       };
     })();
 
@@ -411,14 +433,40 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
   const handleSave = async () => {
     if (!name.trim()) return;
     const changedFields = getChangedFields();
+    const runtimeImpactMessage = buildAgentSettingsRuntimeImpactMessage(
+      changedFields,
+      key => i18nService.t(key),
+    );
     reportAgentSettingsAction('save_submit', {
       changedFields,
       includeConfigDetails: true,
       isDirty: changedFields.length > 0,
     });
     setSaving(true);
+    const saveStepResults: AgentSettingsSaveStepResult[] = [];
+    let activeSaveStep: AgentSettingsSaveStepId = AgentSettingsSaveStep.Agent;
+    const recordSaveStep = (
+      step: AgentSettingsSaveStep,
+      status: AgentSettingsSaveStepResult['status'],
+    ) => {
+      if (saveStepResults.some((result) => result.step === step && result.status === status)) {
+        return;
+      }
+      saveStepResults.push({ step, status });
+    };
+    const reportSaveFailure = () => {
+      reportAgentSettingsAction('save_failed', {
+        changedFields,
+        includeConfigDetails: true,
+        isDirty: changedFields.length > 0,
+        result: 'failed',
+      });
+      window.dispatchEvent(new CustomEvent('app:showToast', {
+        detail: buildAgentSettingsSaveFailureMessage(saveStepResults, key => i18nService.t(key)),
+      }));
+    };
     try {
-      const result = await agentService.updateAgent(agentId, {
+      const updateRequest = buildAgentSettingsUpdateRequest({
         name: name.trim(),
         description: description.trim(),
         systemPrompt: systemPrompt.trim(),
@@ -427,86 +475,67 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
         workingDirectory: workingDirectory.trim(),
         icon: icon.trim(),
         skillIds,
-      });
+        enabled,
+      }, isSystemAgent);
+      activeSaveStep = AgentSettingsSaveStep.Agent;
+      const result = await agentService.updateAgent(agentId, updateRequest);
       if (!result) {
-        reportAgentSettingsAction('save_failed', {
-          changedFields,
-          includeConfigDetails: true,
-          isDirty: changedFields.length > 0,
-          result: 'failed',
-        });
-        window.dispatchEvent(new CustomEvent('app:showToast', { detail: i18nService.t('agentSaveFailed') }));
+        recordSaveStep(AgentSettingsSaveStep.Agent, 'failed');
+        reportSaveFailure();
         return;
       }
+      recordSaveStep(AgentSettingsSaveStep.Agent, 'success');
       if (changedFields.includes('externalResearch')) {
+        activeSaveStep = AgentSettingsSaveStep.ExternalResearch;
         if (!agentService.canSaveExternalResearchSettings()) {
-          reportAgentSettingsAction('save_failed', {
-            changedFields,
-            includeConfigDetails: true,
-            isDirty: changedFields.length > 0,
-            result: 'failed',
-          });
-          window.dispatchEvent(new CustomEvent('app:showToast', {
-            detail: i18nService.t('agentExternalResearchSaveUnavailable'),
-          }));
+          recordSaveStep(AgentSettingsSaveStep.ExternalResearch, 'failed');
+          reportSaveFailure();
           return;
         }
         const researchSaved = await agentService.saveExternalResearchSettings(agentId, externalResearchConfig);
         if (!researchSaved) {
-          reportAgentSettingsAction('save_failed', {
-            changedFields,
-            includeConfigDetails: true,
-            isDirty: changedFields.length > 0,
-            result: 'failed',
-          });
-          window.dispatchEvent(new CustomEvent('app:showToast', {
-            detail: i18nService.t('agentExternalResearchSaveFailed'),
-          }));
+          recordSaveStep(AgentSettingsSaveStep.ExternalResearch, 'failed');
+          reportSaveFailure();
           return;
         }
+        recordSaveStep(AgentSettingsSaveStep.ExternalResearch, 'success');
       }
       if (changedFields.includes('domesticResearch')) {
+        activeSaveStep = AgentSettingsSaveStep.DomesticResearch;
         const domesticSaved = await agentService.saveDomesticResearchSettings(agentId, domesticResearchConfig);
         if (!domesticSaved) {
-          reportAgentSettingsAction('save_failed', {
-            changedFields,
-            includeConfigDetails: true,
-            isDirty: changedFields.length > 0,
-            result: 'failed',
-          });
-          window.dispatchEvent(new CustomEvent('app:showToast', {
-            detail: i18nService.t('agentDomesticResearchSaveFailed'),
-          }));
+          recordSaveStep(AgentSettingsSaveStep.DomesticResearch, 'failed');
+          reportSaveFailure();
           return;
         }
+        recordSaveStep(AgentSettingsSaveStep.DomesticResearch, 'success');
       }
-      const bootstrapWrites = isMainAgent
-        ? [
-            coworkService.writeBootstrapFile('IDENTITY.md', identity),
-            coworkService.writeBootstrapFile('SOUL.md', systemPrompt),
-            coworkService.writeBootstrapFile('USER.md', userInfo),
-          ]
-        : [
-            coworkService.writeBootstrapFile('USER.md', userInfo),
-          ];
+      const bootstrapWrites: Promise<boolean>[] = [];
+      if (!isSystemAgent && isMainAgent && changedFields.includes('identity')) {
+        bootstrapWrites.push(coworkService.writeBootstrapFile('IDENTITY.md', identity));
+      }
+      if (!isSystemAgent && isMainAgent && changedFields.includes('systemPrompt')) {
+        bootstrapWrites.push(coworkService.writeBootstrapFile('SOUL.md', systemPrompt));
+      }
+      if (changedFields.includes('userInfo')) {
+        bootstrapWrites.push(coworkService.writeBootstrapFile('USER.md', userInfo));
+      }
       if (bootstrapWrites.length > 0) {
+        activeSaveStep = AgentSettingsSaveStep.Bootstrap;
         const bootstrapSaved = await Promise.all(bootstrapWrites);
         if (bootstrapSaved.some((saved) => !saved)) {
-          reportAgentSettingsAction('save_failed', {
-            changedFields,
-            includeConfigDetails: true,
-            isDirty: changedFields.length > 0,
-            result: 'failed',
-          });
-          window.dispatchEvent(new CustomEvent('app:showToast', { detail: i18nService.t('agentSaveFailed') }));
+          recordSaveStep(AgentSettingsSaveStep.Bootstrap, 'failed');
+          reportSaveFailure();
           return;
         }
+        recordSaveStep(AgentSettingsSaveStep.Bootstrap, 'success');
       }
       // Persist IM bindings if changed
       const bindingsChanged =
         boundKeys.size !== initialBoundKeys.size ||
         [...boundKeys].some((k) => !initialBoundKeys.has(k));
       if (bindingsChanged && imConfig) {
+        activeSaveStep = AgentSettingsSaveStep.ImBindings;
         const currentBindings = { ...(imConfig.settings?.platformAgentBindings || {}) };
         // Remove old bindings for this agent
         for (const key of Object.keys(currentBindings)) {
@@ -529,6 +558,7 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
           settings: { ...imConfig.settings, platformAgentBindings: currentBindings },
         });
         await imService.saveAndSyncConfig();
+        recordSaveStep(AgentSettingsSaveStep.ImBindings, 'success');
       }
       reportAgentSettingsAction('save_success', {
         changedFields,
@@ -536,15 +566,15 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
         isDirty: false,
         result: 'success',
       });
+      if (runtimeImpactMessage) {
+        window.dispatchEvent(new CustomEvent('app:showToast', {
+          detail: `${i18nService.t('agentSaveSuccess')}${i18nService.t('agentSaveFeedbackSeparator')}${runtimeImpactMessage}`,
+        }));
+      }
       onClose();
     } catch {
-      reportAgentSettingsAction('save_failed', {
-        changedFields,
-        includeConfigDetails: true,
-        isDirty: changedFields.length > 0,
-        result: 'failed',
-      });
-      window.dispatchEvent(new CustomEvent('app:showToast', { detail: i18nService.t('agentSaveFailed') }));
+      recordSaveStep(activeSaveStep, 'failed');
+      reportSaveFailure();
     } finally {
       setSaving(false);
     }
@@ -599,6 +629,16 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
   const nameInputValue = isMainAgent && !nameTouched
     ? getAgentDisplayName({ id: agentId, name })
     : name;
+  const enabledToggleLabel = isSystemAgent
+    ? i18nService.t('systemAgentEnabledLabel')
+    : i18nService.t('agentEnabledLabel');
+  const enabledToggleHint = isSystemAgent
+    ? i18nService.t('systemAgentEnabledHint')
+    : i18nService.t('agentEnabledHint');
+  const runtimeImpactMessage = buildAgentSettingsRuntimeImpactMessage(
+    getChangedFields(),
+    key => i18nService.t(key),
+  );
 
   const tabs: { key: AgentDetailTab; label: string }[] = [
     { key: AgentDetailTab.Identity, label: i18nService.t('coworkBootstrapIdentityTitle') },
@@ -619,6 +659,7 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
       label: string;
       onClick: () => void;
     },
+    readOnly = false,
   ) => (
     <div className="flex h-full min-h-0 flex-col gap-2">
       {(hint || action) && (
@@ -628,7 +669,7 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
               {hint}
             </p>
           )}
-          {action && (
+          {action && !readOnly && (
             <button
               type="button"
               onClick={action.onClick}
@@ -642,9 +683,12 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
       <textarea
         value={value}
         onChange={(e) => onChange(e.target.value)}
+        readOnly={readOnly}
         placeholder={placeholder}
         aria-label={ariaLabel}
-        className="min-h-0 flex-1 w-full resize-none border border-transparent bg-transparent text-sm leading-6 text-foreground placeholder:text-secondary/45 focus:outline-none"
+        className={`min-h-0 flex-1 w-full resize-none border border-transparent bg-transparent text-sm leading-6 text-foreground placeholder:text-secondary/45 focus:outline-none ${
+          readOnly ? 'cursor-default text-secondary' : ''
+        }`}
       />
     </div>
   );
@@ -808,27 +852,39 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
       >
         <div className="flex shrink-0 items-start justify-between gap-4 px-7 py-5">
           <div className="flex min-w-0 flex-1 items-start gap-3">
-            <AgentAvatarPicker value={icon} onChange={setIcon} />
+            <AgentAvatarPicker value={icon} onChange={setIcon} disabled={isSystemAgent} />
             <div className="min-w-0 flex-1 pt-0.5">
               <input
                 type="text"
                 value={nameInputValue}
+                readOnly={isSystemAgent}
                 onChange={(e) => {
+                  if (isSystemAgent) return;
                   setNameTouched(true);
                   setName(e.target.value);
                 }}
                 placeholder={i18nService.t('agentNamePlaceholder')}
                 aria-label={i18nService.t('agentName')}
-                className="w-full bg-transparent text-lg font-semibold leading-6 text-foreground placeholder:text-secondary/40 focus:outline-none"
+                className={`w-full bg-transparent text-lg font-semibold leading-6 text-foreground placeholder:text-secondary/40 focus:outline-none ${
+                  isSystemAgent ? 'cursor-default' : ''
+                }`}
               />
               <input
                 type="text"
                 value={description}
+                readOnly={isSystemAgent}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder={i18nService.t('agentDescriptionPlaceholder')}
                 aria-label={i18nService.t('agentDescription')}
-                className="mt-0.5 w-full bg-transparent text-sm leading-5 text-secondary placeholder:text-secondary/50 focus:outline-none"
+                className={`mt-0.5 w-full bg-transparent text-sm leading-5 text-secondary placeholder:text-secondary/50 focus:outline-none ${
+                  isSystemAgent ? 'cursor-default' : ''
+                }`}
               />
+              {isSystemAgent && (
+                <p className="mt-2 text-xs leading-5 text-secondary">
+                  {i18nService.t('systemAgentManagedNotice')}
+                </p>
+              )}
             </div>
           </div>
           <button type="button" onClick={handleClose} className="mt-1 p-2 rounded-lg hover:bg-surface-raised transition-colors">
@@ -865,6 +921,8 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
             i18nService.t('coworkBootstrapPlaceholder'),
             i18nService.t('coworkBootstrapSoulTitle'),
             i18nService.t('coworkBootstrapSoulHint'),
+            undefined,
+            isSystemAgent,
           )}
 
           {activeTab === AgentDetailTab.Identity && renderTextEditor(
@@ -873,6 +931,8 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
             i18nService.t('coworkBootstrapPlaceholder'),
             i18nService.t('coworkBootstrapIdentityTitle'),
             i18nService.t('coworkBootstrapIdentityHint'),
+            undefined,
+            isSystemAgent,
           )}
 
           {activeTab === AgentDetailTab.User && renderTextEditor(
@@ -888,7 +948,11 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
           )}
 
           {activeTab === AgentDetailTab.Skills && (
-            <AgentSkillSelector selectedSkillIds={skillIds} onChange={setSkillIds} />
+            <AgentSkillSelector
+              selectedSkillIds={skillIds}
+              onChange={setSkillIds}
+              readOnly={isSystemAgent}
+            />
           )}
 
           {activeTab === AgentDetailTab.ExternalResearch && (
@@ -925,15 +989,40 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
         </div>
 
         {/* Footer */}
+        {runtimeImpactMessage && (
+          <div className="shrink-0 border-t border-border-subtle px-5 py-2 text-xs leading-5 text-secondary">
+            {runtimeImpactMessage}
+          </div>
+        )}
         <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 px-5 py-3.5 border-t border-border">
-          <AgentDetailToolbar
-            model={model}
-            onModelChange={setModel}
-            workingDirectory={workingDirectory}
-            onWorkingDirectoryChange={setWorkingDirectory}
-          />
-          <div className="flex shrink-0 gap-2">
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-3">
+            <AgentDetailToolbar
+              model={model}
+              onModelChange={setModel}
+              workingDirectory={workingDirectory}
+              onWorkingDirectoryChange={setWorkingDirectory}
+            />
             {!isMainAgent && (
+              <button
+                type="button"
+                onClick={() => setEnabled((current) => !current)}
+                aria-pressed={enabled}
+                className="flex min-w-[180px] max-w-full items-center justify-between gap-3 rounded-lg border border-border bg-surface px-3 py-2 text-left transition-colors hover:bg-surface-raised"
+              >
+                <span className="min-w-0">
+                  <span className="block truncate text-xs font-medium text-foreground">
+                    {enabledToggleLabel}
+                  </span>
+                  <span className="block truncate text-[11px] leading-4 text-secondary">
+                    {enabledToggleHint}
+                  </span>
+                </span>
+                {renderToggle(enabled)}
+              </button>
+            )}
+          </div>
+          <div className="flex shrink-0 gap-2">
+            {!isSystemAgent && (
               <button
                 type="button"
                 onClick={() => setShowDeleteConfirm(true)}

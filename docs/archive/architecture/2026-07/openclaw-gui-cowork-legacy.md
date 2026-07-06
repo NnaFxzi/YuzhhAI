@@ -1,5 +1,9 @@
 # LobsterAI 架构说明：OpenClaw、GUI 与 Cowork 的关系
 
+> Legacy note: this document is kept for historical architecture context. It may describe the removed `yd_cowork`
+> runtime and must not be treated as the current runtime boundary. Current project guidance treats OpenClaw as the only
+> active Cowork agent runtime.
+
 ## 1. 一句话结论
 
 - `Cowork` 是产品能力层（会话、消息、权限、状态流转）。
@@ -128,9 +132,9 @@ sequenceDiagram
 
 ## 6. 你可以把它理解为
 
-- `GUI`：控制台与展示层  
-- `Cowork`：统一任务协议与状态机  
-- `OpenClaw`：可插拔执行内核之一  
+- `GUI`：控制台与展示层
+- `Cowork`：统一任务协议与状态机
+- `OpenClaw`：可插拔执行内核之一
 
 ## 7. 关键代码入口（便于继续深入）
 

@@ -25,7 +25,7 @@ import { LogReporterAction, reportYdAnalyzer } from '../services/logReporter';
 import { formatShortcutForDisplay, getShortcutConflictSignature, matchesShortcut } from '../services/shortcuts';
 import { themeService } from '../services/theme';
 import type { RootState } from '../store';
-import { selectCoworkConfig } from '../store/selectors/coworkSelectors';
+import { selectCoworkConfig, selectCurrentSession } from '../store/selectors/coworkSelectors';
 import { setAvailableModels } from '../store/slices/modelSlice';
 import type {
   CoworkAgentEngine,
@@ -39,6 +39,11 @@ import { OpenClawSessionKeepAlive as OpenClawSessionKeepAliveValues } from '../t
 import Modal from './common/Modal';
 import DreamingSettingsSection from './cowork/DreamingSettingsSection';
 import EmbeddingSettingsSection from './cowork/EmbeddingSettingsSection';
+import {
+  resolveWorkspaceSettingsContext,
+  WorkspaceSettingsContextDisabledReason,
+} from './cowork/workspaceSettingsContext';
+import WorkspaceSettingsPanel from './cowork/WorkspaceSettingsPanel';
 import ErrorMessage from './ErrorMessage';
 import BrainIcon from './icons/BrainIcon';
 import EditIcon from './icons/EditIcon';
@@ -1569,6 +1574,21 @@ const Settings: React.FC<SettingsProps> = ({
   }, [isExportingLogs]);
 
   const coworkConfig = useSelector(selectCoworkConfig);
+  const currentCoworkSession = useSelector(selectCurrentSession);
+  const effectiveCoworkSettings = useSelector((state: RootState) => state.cowork.effectiveSettings);
+  const workspaceSettingsContext = useMemo(() => resolveWorkspaceSettingsContext({
+    sessionCwd: currentCoworkSession?.cwd,
+    globalWorkingDirectory: coworkConfig.workingDirectory,
+    globalWorkingDirectoryConfigured: coworkConfig.workingDirectoryConfigured,
+  }), [
+    currentCoworkSession?.cwd,
+    coworkConfig.workingDirectory,
+    coworkConfig.workingDirectoryConfigured,
+  ]);
+  const workspaceSettingsDisabledHintKey = workspaceSettingsContext.disabledReason
+    === WorkspaceSettingsContextDisabledReason.DefaultFallback
+    ? 'workspaceSettingsDefaultFallbackDisabledHint'
+    : 'workspaceSettingsDisabledHint';
 
   const [coworkAgentEngine, setCoworkAgentEngine] = useState<CoworkAgentEngine>(coworkConfig.agentEngine || 'openclaw');
   const [coworkMemoryEnabled, setCoworkMemoryEnabled] = useState<boolean>(coworkConfig.memoryEnabled ?? true);
@@ -4137,6 +4157,12 @@ const Settings: React.FC<SettingsProps> = ({
     </div>
   );
 
+  const renderCoworkGlobalDefaultsNotice = () => (
+    <div className="rounded-lg border border-border bg-surface px-3 py-2 text-xs leading-5 text-secondary">
+      {i18nService.t('coworkGlobalDefaultsNotice')}
+    </div>
+  );
+
   const renderTabContent = () => {
     switch(activeTab) {
       case 'general':
@@ -4285,6 +4311,13 @@ const Settings: React.FC<SettingsProps> = ({
           <div className="space-y-8 pb-2">
             {isOpenClawAgentEngine && (
               <>
+                <WorkspaceSettingsPanel
+                  workspaceId={workspaceSettingsContext.workspaceId}
+                  workspaceLabel={workspaceSettingsContext.label}
+                  disabledHintKey={workspaceSettingsDisabledHintKey}
+                  effectiveSettings={effectiveCoworkSettings}
+                />
+
                 <section className="space-y-3">
                   <h4 className="text-sm font-medium text-foreground">
                     {i18nService.t('openClawRuntimeStatusTitle')}
@@ -4522,6 +4555,7 @@ const Settings: React.FC<SettingsProps> = ({
         ];
         return (
           <div className="flex flex-col h-full space-y-4">
+            {renderCoworkGlobalDefaultsNotice()}
             <div
               className="flex flex-wrap gap-2 border-b border-border pb-3 shrink-0"
               role="tablist"
@@ -4649,7 +4683,8 @@ const Settings: React.FC<SettingsProps> = ({
 
       case 'coworkDreaming':
         return (
-          <div className="min-h-full">
+          <div className="min-h-full space-y-4">
+            {renderCoworkGlobalDefaultsNotice()}
             <DreamingSettingsSection
               dreamingEnabled={dreamingEnabled}
               dreamingFrequency={dreamingFrequency}

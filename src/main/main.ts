@@ -65,6 +65,9 @@ import {
   formatCoworkImageAttachmentLimit,
   validateCoworkImageAttachmentSize,
 } from '../shared/cowork/imageAttachments';
+import type {
+  LayeredCoworkSettingsUpdate,
+} from '../shared/cowork/layeredSettings';
 import { containsPlanModePrompt } from '../shared/cowork/planMode';
 import {
   type CoworkSelectedTextSnippet,
@@ -115,7 +118,12 @@ import { createLocalFileProtocolResponse } from './artifactLocalFileProtocol';
 import { authQuotaGateStateFromQuota, AuthSubscriptionStatus, createDefaultAuthQuotaGateState, normalizeAuthQuota } from './authQuota';
 import { type AutoLaunchStatus, getAutoLaunchStatus, isAutoLaunched, setAutoLaunchEnabled } from './autoLaunchManager';
 import { getRecentComputerUseLogEntries } from './computerUse/computerUseLogs';
-import { type CoworkForkContextMessage, type CoworkMessage, CoworkStore } from './coworkStore';
+import {
+  type CoworkEffectiveSettingsInput,
+  type CoworkForkContextMessage,
+  type CoworkMessage,
+  CoworkStore,
+} from './coworkStore';
 import { buildDevServerUnavailableDataUrl } from './devServerErrorPage';
 import { registerEnterpriseLeadWorkspaceHandlers } from './enterpriseLeadWorkspace/ipcHandlers';
 import { EnterpriseLeadWorkspaceService } from './enterpriseLeadWorkspace/service';
@@ -259,6 +267,7 @@ import {
   classifyAppConfigChange,
   classifyCoworkConfigChange,
   classifyImOpenClawConfigChange,
+  classifyWorkspaceSettingsChange,
   createStableConfigFingerprint,
   OpenClawConfigImpact,
   OpenClawConfigImpactReason,
@@ -1296,6 +1305,7 @@ let storeInitPromise: Promise<SqliteStore> | null = null;
 let sqliteBackupManager: SqliteBackupManager | null = null;
 let openClawEngineManager: OpenClawEngineManager | null = null;
 let openClawConfigSync: OpenClawConfigSync | null = null;
+let openClawEffectiveSettingsInput: CoworkEffectiveSettingsInput = {};
 let openClawBootstrapPromise: Promise<OpenClawEngineStatus> | null = null;
 let cachedSubscriptionStatus: string = AuthSubscriptionStatus.Free;
 let cachedMediaGenerationEntitled = false;
@@ -1678,7 +1688,7 @@ const getContentGenerationService = (): ContentGenerationService => {
 };
 
 const resolveAgentDefaultWorkingDirectory = (agentId?: string): string => {
-  const resolvedAgentId = agentId?.trim() || 'main';
+  const resolvedAgentId = getAgentManager().resolveRuntimeAgent(agentId).id;
   const agentWorkingDirectory = getAgentManager()
     .getAgent(resolvedAgentId)
     ?.workingDirectory?.trim();
@@ -1731,6 +1741,7 @@ const getOpenClawConfigSync = (): OpenClawConfigSync => {
     openClawConfigSync = new OpenClawConfigSync({
       engineManager: getOpenClawEngineManager(),
       getCoworkConfig: () => getCoworkStore().getConfig(),
+      getEffectiveSettings: () => getCoworkStore().getEffectiveSettings(openClawEffectiveSettingsInput),
       getBrowserWebAccessConfig: () => getStore().get<AppConfigSettings>('app_config')?.browserWebAccess,
       isEnterprise: () => !!getStore().get('enterprise_config'),
       getOpenClawSessionPolicy: () => loadOpenClawSessionPolicyConfig(getStore()),
@@ -2484,6 +2495,16 @@ const getCoworkEngineRouter = () => {
             imStore,
             getDefaultCwd: (agentId?: string) =>
               resolveAgentDefaultWorkingDirectory(agentId) || os.homedir(),
+            resolveRuntimeAgentId: (agentId?: string) =>
+              getAgentManager().resolveRuntimeAgent(agentId).id,
+            getRuntimeAgentSessionDefaults: (agentId?: string) => {
+              const agent = getAgentManager().resolveRuntimeAgent(agentId);
+              return {
+                agentId: agent.id,
+                activeSkillIds: agent.skillIds,
+                modelOverride: agent.model,
+              };
+            },
             resolveJobName: jobId => getCronJobService().getJobNameSync(jobId),
           });
           openClawRuntimeAdapter.setChannelSessionSync(channelSessionSync);
@@ -2856,9 +2877,18 @@ function normalizeSelectedTextSnippetsForIpc(value: unknown): CoworkSelectedText
 }
 
 // 获取正确的预加载脚本路径
-const PRELOAD_PATH = app.isPackaged
-  ? path.join(__dirname, 'preload.js')
-  : path.join(__dirname, '../dist-electron/preload.js');
+const getPreloadPath = (): string => {
+  if (app.isPackaged) {
+    return path.join(__dirname, 'preload.js');
+  }
+
+  const compiledPreloadPath = path.join(__dirname, 'preload.js');
+  return fs.existsSync(compiledPreloadPath)
+    ? compiledPreloadPath
+    : path.join(__dirname, '../dist-electron/preload.js');
+};
+
+const PRELOAD_PATH = getPreloadPath();
 
 // 获取应用图标路径（Windows 使用 .ico，其他平台使用 .png）
 const getAppIconPath = (): string | undefined => {
@@ -5734,6 +5764,12 @@ if (!gotTheLock) {
       updateWorkspaceAgents: (workspaceId, agents) =>
         getEnterpriseLeadWorkspaceService().updateWorkspaceAgents(workspaceId, agents),
       listRuns: workspaceId => getEnterpriseLeadWorkspaceService().listRuns(workspaceId),
+      listChatSessions: workspaceId =>
+        getEnterpriseLeadWorkspaceService().listChatSessions(workspaceId),
+      getChatSession: (workspaceId, sessionId) =>
+        getEnterpriseLeadWorkspaceService().getChatSession(workspaceId, sessionId),
+      deleteChatSession: (workspaceId, sessionId) =>
+        getEnterpriseLeadWorkspaceService().deleteChatSession(workspaceId, sessionId),
       chat: (workspaceId, request) => getEnterpriseLeadWorkspaceService().chat(workspaceId, request),
       createRun: (workspaceId, userGoal) =>
         getEnterpriseLeadWorkspaceService().createRun(workspaceId, userGoal),
@@ -6221,13 +6257,14 @@ if (!gotTheLock) {
 
         const coworkStoreInstance = getCoworkStore();
         const config = coworkStoreInstance.getConfig();
+        const runtimeAgent = getAgentManager().resolveRuntimeAgent(options.agentId);
         const systemPrompt = mergeCoworkSystemPrompt(options.systemPrompt ?? config.systemPrompt);
         const persistedSystemPrompt = containsPlanModePrompt(systemPrompt)
           ? mergeCoworkSystemPrompt(config.systemPrompt)
           : systemPrompt;
         const selectedTaskDirectory = resolveSessionWorkingDirectory({
           cwd: options.cwd,
-          agentId: options.agentId,
+          agentId: runtimeAgent.id,
         });
 
         if (!selectedTaskDirectory) {
@@ -6250,7 +6287,8 @@ if (!gotTheLock) {
         );
         const title = options.title?.trim() || fallbackTitle;
         const taskWorkingDirectory = resolveTaskWorkingDirectory(selectedTaskDirectory);
-        const runtimeSkillIds = options.runtimeSkillIds ?? options.activeSkillIds;
+        const runtimeSkillIds = options.runtimeSkillIds ?? options.activeSkillIds ?? runtimeAgent.skillIds;
+        const sessionModelOverride = options.modelOverride || runtimeAgent.model || '';
         const selectedTextSnippets = normalizeSelectedTextSnippetsForIpc(options.selectedTextSnippets);
         if (selectedTextSnippets.length > 0) {
           console.log(
@@ -6265,15 +6303,15 @@ if (!gotTheLock) {
           persistedSystemPrompt,
           config.executionMode || 'local',
           runtimeSkillIds || [],
-          options.agentId || 'main',
-          options.modelOverride || '',
+          runtimeAgent.id,
+          sessionModelOverride,
         );
 
-        if (options.modelOverride) {
+        if (sessionModelOverride) {
           console.log(
             '[Cowork:StartSession] session created with modelOverride:',
             session.id,
-            options.modelOverride,
+            sessionModelOverride,
           );
         }
 
@@ -6335,7 +6373,7 @@ if (!gotTheLock) {
             workspaceRoot: taskWorkingDirectory,
             confirmationMode: 'modal',
             imageAttachments: options.imageAttachments,
-            agentId: options.agentId,
+            agentId: runtimeAgent.id,
             mediaSelection: normalizedMediaSelection,
             mediaReferences: options.mediaReferences,
             selectedTextSnippets,
@@ -7363,6 +7401,71 @@ if (!gotTheLock) {
       };
     }
   });
+
+  ipcMain.handle(CoworkIpcChannel.GetWorkspaceSettings, async (_event, workspaceId: string) => {
+    try {
+      const settings = getCoworkStore().getWorkspaceSettings(workspaceId);
+      return { success: true, settings };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to get workspace settings',
+      };
+    }
+  });
+
+  ipcMain.handle(
+    CoworkIpcChannel.SetWorkspaceSettings,
+    async (_event, workspaceId: string, updates: LayeredCoworkSettingsUpdate) => {
+      try {
+        const previousEffectiveSettings = getCoworkStore().getEffectiveSettings({ workspaceId });
+        getCoworkStore().setWorkspaceSettings(workspaceId, updates);
+        const settings = getCoworkStore().getWorkspaceSettings(workspaceId);
+        const effectiveSettings = getCoworkStore().getEffectiveSettings({ workspaceId });
+        openClawEffectiveSettingsInput = { workspaceId };
+        const impactDecision = classifyWorkspaceSettingsChange(
+          previousEffectiveSettings.values,
+          effectiveSettings.values,
+        );
+        if (impactDecision.impact !== OpenClawConfigImpact.None) {
+          const syncResult = await syncOpenClawConfig({
+            reason: 'workspace-settings-change',
+            restartGatewayIfRunning: impactDecision.impact === OpenClawConfigImpact.Restart,
+            expectedImpact: impactDecision.impact,
+          });
+          if (!syncResult.success && getCoworkStore().getConfig().agentEngine === 'openclaw') {
+            return {
+              success: false,
+              error: syncResult.error || 'OpenClaw config sync failed.',
+              settings,
+              effectiveSettings,
+            };
+          }
+        }
+        return { success: true, settings, effectiveSettings };
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed to set workspace settings',
+        };
+      }
+    },
+  );
+
+  ipcMain.handle(
+    CoworkIpcChannel.GetEffectiveSettings,
+    async (_event, input: { workspaceId?: string; agentId?: string; sessionId?: string } = {}) => {
+      try {
+        const settings = getCoworkStore().getEffectiveSettings(input);
+        return { success: true, settings };
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed to get effective settings',
+        };
+      }
+    },
+  );
 
   ipcMain.handle(OpenClawSessionPolicyIpc.Get, async () => {
     try {

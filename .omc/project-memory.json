@@ -1,0 +1,278 @@
+{
+  "version": "1.0.0",
+  "lastScanned": 1783262360131,
+  "projectRoot": "/Users/lijiahao/yuzhh-ai-assistant",
+  "techStack": {
+    "languages": [
+      {
+        "name": "JavaScript/TypeScript",
+        "version": ">=24.15.0 <25",
+        "confidence": "high",
+        "markers": ["package.json"]
+      },
+      {
+        "name": "TypeScript",
+        "version": null,
+        "confidence": "high",
+        "markers": ["tsconfig.json"]
+      }
+    ],
+    "frameworks": [
+      {
+        "name": "react",
+        "version": "18.2.0",
+        "category": "frontend"
+      },
+      {
+        "name": "react-dom",
+        "version": "18.2.0",
+        "category": "frontend"
+      },
+      {
+        "name": "esbuild",
+        "version": "0.21.5",
+        "category": "build"
+      },
+      {
+        "name": "vite",
+        "version": "5.1.4",
+        "category": "build"
+      },
+      {
+        "name": "vitest",
+        "version": "4.1.0",
+        "category": "testing"
+      }
+    ],
+    "packageManager": "npm",
+    "runtime": "Node.js 24.15.025"
+  },
+  "build": {
+    "buildCommand": "npm run build",
+    "testCommand": "npm test",
+    "lintCommand": "npm run lint",
+    "devCommand": "npm run dev",
+    "scripts": {
+      "dev": "vite",
+      "prebuild": "node scripts/generate-keyfrom-build-info.cjs",
+      "build": "tsc && vite build",
+      "lint": "eslint src/",
+      "check:release-branding": "node scripts/check-release-branding.cjs",
+      "format": "prettier --write .",
+      "format:check": "prettier --check .",
+      "prepare": "husky",
+      "test": "vitest run",
+      "pretest": "npm rebuild better-sqlite3",
+      "test:sqlite-backup:seed": "node tests/sqlite-backup/generate-large-db.cjs",
+      "preview": "vite preview",
+      "compile:electron": "tsc --project electron-tsconfig.json",
+      "precompile:electron": "electron-builder install-app-deps",
+      "build:skill:web-search": "npm install --prefix SKILLs/web-search && npx tsc -p SKILLs/web-search/tsconfig.json && node -e \"const fs=require('fs');['.connection','.server.log','.server.pid'].forEach(f=>{try{fs.unlinkSync('SKILLs/web-search/'+f)}catch(e){}});\"",
+      "build:skill:tech-news": "node scripts/build-skill-tech-news.js",
+      "build:skill:email": "cd SKILLs/imap-smtp-email && npm install --production",
+      "build:skills": "npm run build:skill:web-search && npm run build:skill:tech-news && npm run build:skill:email",
+      "start:electron": "cross-env NODE_ENV=development ELECTRON_START_URL=http://localhost:5175 electron .",
+      "electron:dev": "rimraf dist-electron && npm run compile:electron && concurrently \"vite --port 5175\" \"wait-on -v -t 120000 -d 20000 http://localhost:5175 dist-electron/.electron-ready && npm run start:electron\"",
+      "electron:dev:openclaw": "npm run openclaw:runtime:host && npm run electron:dev",
+      "postinstall": "patch-package && electron-builder install-app-deps",
+      "pack": "npm run setup:python-runtime && npm run build && npm run compile:electron && npm run build:skills && electron-builder --dir --config scripts/electron-builder-config.cjs",
+      "dist": "npm run setup:python-runtime && npm run build && npm run compile:electron && npm run build:skills && electron-builder --config scripts/electron-builder-config.cjs",
+      "dist:mac": "electron-builder --mac --config scripts/electron-builder-config.cjs",
+      "predist:mac": "npm run build && npm run compile:electron && npm run build:skills && npm run openclaw:runtime:mac-arm64",
+      "dist:mac:x64": "npm run build && npm run compile:electron && npm run build:skills && npm run openclaw:runtime:mac-x64 && electron-builder --mac --x64 --config scripts/electron-builder-config.cjs",
+      "dist:mac:arm64": "npm run build && npm run compile:electron && npm run build:skills && npm run openclaw:runtime:mac-arm64 && electron-builder --mac --arm64 --config scripts/electron-builder-config.cjs",
+      "dist:mac:universal": "npm run build && npm run compile:electron && npm run build:skills && electron-builder --mac --universal --config scripts/electron-builder-config.cjs",
+      "predist:win": "npm run openclaw:runtime:win-x64",
+      "dist:win": "npm run setup:python-runtime && npm run build && npm run compile:electron && npm run build:skills && electron-builder --win --x64 --config scripts/electron-builder-config.cjs",
+      "predist:linux": "npm run openclaw:runtime:linux-x64",
+      "dist:linux": "npm run build && npm run compile:electron && npm run build:skills && electron-builder --linux --config scripts/electron-builder-config.cjs",
+      "clean:release": "rimraf release",
+      "generate:tray-icons": "node scripts/generate-tray-icons.js",
+      "setup:mingit": "node scripts/setup-mingit.js",
+      "setup:python-runtime": "node scripts/setup-python-runtime.js",
+      "openclaw:ensure": "node scripts/ensure-openclaw-version.cjs",
+      "openclaw:patch": "node scripts/apply-openclaw-patches.cjs",
+      "openclaw:plugins": "node scripts/ensure-openclaw-plugins.cjs",
+      "openclaw:extensions:local": "node scripts/sync-local-openclaw-extensions.cjs",
+      "openclaw:bundle": "node scripts/bundle-openclaw-gateway.cjs",
+      "openclaw:precompile": "node scripts/precompile-openclaw-extensions.cjs",
+      "openclaw:channel-deps": "node scripts/install-openclaw-channel-deps.cjs",
+      "openclaw:prune": "node scripts/prune-openclaw-runtime.cjs",
+      "openclaw:runtime:host": "node scripts/openclaw-runtime-host.cjs",
+      "openclaw:runtime:mac-arm64": "npm run openclaw:ensure && npm run openclaw:patch && node scripts/run-build-openclaw-runtime.cjs mac-arm64 && node scripts/sync-openclaw-runtime-current.cjs mac-arm64 && npm run openclaw:bundle && npm run openclaw:plugins && npm run openclaw:extensions:local && npm run openclaw:precompile && npm run openclaw:channel-deps && npm run openclaw:prune",
+      "openclaw:runtime:mac-x64": "npm run openclaw:ensure && npm run openclaw:patch && node scripts/run-build-openclaw-runtime.cjs mac-x64 && node scripts/sync-openclaw-runtime-current.cjs mac-x64 && npm run openclaw:bundle && npm run openclaw:plugins && npm run openclaw:extensions:local && npm run openclaw:precompile && npm run openclaw:channel-deps && npm run openclaw:prune",
+      "openclaw:runtime:win-x64": "npm run openclaw:ensure && npm run openclaw:patch && node scripts/run-build-openclaw-runtime.cjs win-x64 && node scripts/sync-openclaw-runtime-current.cjs win-x64 && npm run openclaw:bundle && npm run openclaw:plugins && npm run openclaw:extensions:local && npm run openclaw:precompile && npm run openclaw:channel-deps && npm run openclaw:prune",
+      "openclaw:runtime:win-arm64": "npm run openclaw:ensure && npm run openclaw:patch && node scripts/run-build-openclaw-runtime.cjs win-arm64 && node scripts/sync-openclaw-runtime-current.cjs win-arm64 && npm run openclaw:bundle && npm run openclaw:plugins && npm run openclaw:extensions:local && npm run openclaw:precompile && npm run openclaw:channel-deps && npm run openclaw:prune",
+      "openclaw:runtime:linux-x64": "npm run openclaw:ensure && npm run openclaw:patch && node scripts/run-build-openclaw-runtime.cjs linux-x64 && node scripts/sync-openclaw-runtime-current.cjs linux-x64 && npm run openclaw:bundle && npm run openclaw:plugins && npm run openclaw:extensions:local && npm run openclaw:precompile && npm run openclaw:channel-deps && npm run openclaw:prune",
+      "openclaw:runtime:linux-arm64": "npm run openclaw:ensure && npm run openclaw:patch && node scripts/run-build-openclaw-runtime.cjs linux-arm64 && node scripts/sync-openclaw-runtime-current.cjs linux-arm64 && npm run openclaw:bundle && npm run openclaw:plugins && npm run openclaw:extensions:local && npm run openclaw:precompile && npm run openclaw:channel-deps && npm run openclaw:prune",
+      "regenerate:icon": "bash scripts/regenerate-mac-icon.sh",
+      "fix:mac-icon": "bash scripts/fix-mac-icon-display.sh"
+    }
+  },
+  "conventions": {
+    "namingStyle": null,
+    "importStyle": null,
+    "testPattern": "*.test.ts",
+    "fileOrganization": null
+  },
+  "structure": {
+    "isMonorepo": false,
+    "workspaces": [],
+    "mainDirectories": ["docs", "public", "scripts", "src", "tests"],
+    "gitBranches": {
+      "defaultBranch": "main",
+      "branchingStrategy": null
+    }
+  },
+  "customNotes": [],
+  "directoryMap": {
+    "SKILLs": {
+      "path": "SKILLs",
+      "purpose": null,
+      "fileCount": 1,
+      "lastAccessed": 1783262360124,
+      "keyFiles": ["skills.config.json"]
+    },
+    "brand": {
+      "path": "brand",
+      "purpose": null,
+      "fileCount": 4,
+      "lastAccessed": 1783262360125,
+      "keyFiles": [
+        "yuzhh-lobster-ai-icon.png",
+        "yuzhh-lobster-ai-icon.svg",
+        "yuzhh-logo-ai-concept.png",
+        "yuzhh-logo-concept.svg"
+      ]
+    },
+    "build": {
+      "path": "build",
+      "purpose": "Build output",
+      "fileCount": 1,
+      "lastAccessed": 1783262360126,
+      "keyFiles": ["entitlements.mac.plist"]
+    },
+    "dist": {
+      "path": "dist",
+      "purpose": "Distribution/build output",
+      "fileCount": 17,
+      "lastAccessed": 1783262360126,
+      "keyFiles": ["dingding.png", "discord.svg", "email.svg", "feishu.png", "hand.png"]
+    },
+    "dist-electron": {
+      "path": "dist-electron",
+      "purpose": null,
+      "fileCount": 0,
+      "lastAccessed": 1783262360126,
+      "keyFiles": []
+    },
+    "docs": {
+      "path": "docs",
+      "purpose": "Documentation",
+      "fileCount": 0,
+      "lastAccessed": 1783262360126,
+      "keyFiles": []
+    },
+    "openclaw-extensions": {
+      "path": "openclaw-extensions",
+      "purpose": null,
+      "fileCount": 0,
+      "lastAccessed": 1783262360126,
+      "keyFiles": []
+    },
+    "project": {
+      "path": "project",
+      "purpose": null,
+      "fileCount": 0,
+      "lastAccessed": 1783262360127,
+      "keyFiles": []
+    },
+    "public": {
+      "path": "public",
+      "purpose": "Public files",
+      "fileCount": 16,
+      "lastAccessed": 1783262360127,
+      "keyFiles": ["dingding.png", "discord.svg", "email.svg", "feishu.png", "hand.png"]
+    },
+    "resources": {
+      "path": "resources",
+      "purpose": null,
+      "fileCount": 2,
+      "lastAccessed": 1783262360127,
+      "keyFiles": ["SYSTEM_PROMPT.md", "error.html"]
+    },
+    "scripts": {
+      "path": "scripts",
+      "purpose": "Build/utility scripts",
+      "fileCount": 36,
+      "lastAccessed": 1783262360127,
+      "keyFiles": [
+        "apply-openclaw-patches.cjs",
+        "build-openclaw-runtime.sh",
+        "build-skill-tech-news.js",
+        "bundle-openclaw-gateway.cjs",
+        "check-release-branding.cjs"
+      ]
+    },
+    "specs": {
+      "path": "specs",
+      "purpose": null,
+      "fileCount": 1,
+      "lastAccessed": 1783262360128,
+      "keyFiles": ["README.md"]
+    },
+    "src": {
+      "path": "src",
+      "purpose": "Source code",
+      "fileCount": 0,
+      "lastAccessed": 1783262360128,
+      "keyFiles": []
+    },
+    "tests": {
+      "path": "tests",
+      "purpose": "Test files",
+      "fileCount": 30,
+      "lastAccessed": 1783262360128,
+      "keyFiles": [
+        "build-warning-config.test.ts",
+        "commandSafety.test.mjs",
+        "coworkDeleteState.test.mjs",
+        "coworkErrorClassify.test.mjs",
+        "coworkOpenAICompatProxy.responses.test.mjs"
+      ]
+    },
+    "vendor": {
+      "path": "vendor",
+      "purpose": "Third-party code",
+      "fileCount": 1,
+      "lastAccessed": 1783262360128,
+      "keyFiles": []
+    },
+    "dist/assets": {
+      "path": "dist/assets",
+      "purpose": "Static assets",
+      "fileCount": 381,
+      "lastAccessed": 1783262360130,
+      "keyFiles": [
+        "KaTeX_AMS-Regular-BQhdFMY1.woff2",
+        "KaTeX_AMS-Regular-DMm9YOAa.woff",
+        "KaTeX_AMS-Regular-DRggAlZN.ttf"
+      ]
+    }
+  },
+  "hotPaths": [
+    {
+      "path": "package.json",
+      "accessCount": 2,
+      "lastAccessed": 1783262472415,
+      "type": "file"
+    },
+    {
+      "path": "scripts/dev.js",
+      "accessCount": 1,
+      "lastAccessed": 1783262413866,
+      "type": "file"
+    }
+  ],
+  "userDirectives": []
+}

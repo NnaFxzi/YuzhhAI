@@ -33,6 +33,7 @@ export interface PresetAgent {
   systemPromptEn: string;
   skillIds: string[];
   installed?: boolean;
+  enabled?: boolean;
 }
 
 export interface CreateAgentRequest {

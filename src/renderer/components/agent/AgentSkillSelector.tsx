@@ -13,12 +13,19 @@ import { AgentSkillFilter, filterAgentSkills } from './agentSkillSelectorUi';
 interface AgentSkillSelectorProps {
   selectedSkillIds: string[];
   onChange: (skillIds: string[]) => void;
+  readOnly?: boolean;
+  initialFilter?: AgentSkillFilter;
 }
 
-const AgentSkillSelector: React.FC<AgentSkillSelectorProps> = ({ selectedSkillIds, onChange }) => {
+const AgentSkillSelector: React.FC<AgentSkillSelectorProps> = ({
+  selectedSkillIds,
+  onChange,
+  readOnly = false,
+  initialFilter = AgentSkillFilter.All,
+}) => {
   const skills = useSelector((state: RootState) => state.skill.skills);
   const [search, setSearch] = useState('');
-  const [filter, setFilter] = useState<AgentSkillFilter>(AgentSkillFilter.All);
+  const [filter, setFilter] = useState<AgentSkillFilter>(initialFilter);
   const [, setI18nReady] = useState(() => skillService.hasLocalizedSkillDescriptions());
 
   // Load localized skill descriptions from marketplace API
@@ -36,39 +43,36 @@ const AgentSkillSelector: React.FC<AgentSkillSelectorProps> = ({ selectedSkillId
         isMounted = false;
       };
     }
-    skillService.fetchMarketplaceSkills()
-      .then(markReady)
-      .catch(markReady);
+    skillService.fetchMarketplaceSkills().then(markReady).catch(markReady);
 
     return () => {
       isMounted = false;
     };
   }, []);
 
-  const enabledSkills = useMemo(
-    () => skills.filter((s) => s.enabled),
-    [skills],
-  );
+  const enabledSkills = useMemo(() => skills.filter(s => s.enabled), [skills]);
 
   const getDescription = useCallback(
-    (skill: Skill) => skillService.getLocalizedSkillDescription(skill.id, skill.name, skill.description),
+    (skill: Skill) =>
+      skillService.getLocalizedSkillDescription(skill.id, skill.name, skill.description),
     [],
   );
 
   const filteredSkills = useMemo(
-    () => filterAgentSkills({
-      skills: enabledSkills,
-      selectedSkillIds,
-      filter,
-      query: search,
-      getDescription,
-    }),
+    () =>
+      filterAgentSkills({
+        skills: enabledSkills,
+        selectedSkillIds,
+        filter,
+        query: search,
+        getDescription,
+      }),
     [enabledSkills, selectedSkillIds, filter, search, getDescription],
   );
 
   const selectedSkillChips = useMemo(
-    () => selectedSkillIds
-      .map(id => {
+    () =>
+      selectedSkillIds.map(id => {
         const skill = skills.find(item => item.id === id);
         return {
           id,
@@ -79,8 +83,9 @@ const AgentSkillSelector: React.FC<AgentSkillSelectorProps> = ({ selectedSkillId
   );
 
   const toggle = (skillId: string) => {
+    if (readOnly) return;
     if (selectedSkillIds.includes(skillId)) {
-      onChange(selectedSkillIds.filter((id) => id !== skillId));
+      onChange(selectedSkillIds.filter(id => id !== skillId));
     } else {
       onChange([...selectedSkillIds, skillId]);
     }
@@ -92,9 +97,12 @@ const AgentSkillSelector: React.FC<AgentSkillSelectorProps> = ({ selectedSkillId
     return i18nService.t('agentSkillCustomBadge');
   };
 
-  const selectionText = selectedSkillIds.length === 0
-    ? i18nService.t('agentSkillsSelectionAll')
-    : i18nService.t('agentSkillsSelectionCount').replace('{count}', String(selectedSkillIds.length));
+  const selectionText =
+    selectedSkillIds.length === 0
+      ? i18nService.t('agentSkillsSelectionAll')
+      : i18nService
+          .t('agentSkillsSelectionCount')
+          .replace('{count}', String(selectedSkillIds.length));
 
   const filterOptions = [
     [AgentSkillFilter.All, 'agentSkillsFilterAll'],
@@ -109,14 +117,12 @@ const AgentSkillSelector: React.FC<AgentSkillSelectorProps> = ({ selectedSkillId
       <div className="shrink-0 rounded-lg border border-border bg-surface-raised/40 px-3.5 py-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="min-w-0 flex-1">
-            <div className="text-sm font-semibold text-foreground">
-              {selectionText}
-            </div>
+            <div className="text-sm font-semibold text-foreground">{selectionText}</div>
             <div className="mt-1 text-xs leading-5 text-secondary">
               {i18nService.t('agentSkillsHint')}
             </div>
           </div>
-          {selectedSkillIds.length > 0 && (
+          {selectedSkillIds.length > 0 && !readOnly && (
             <button
               type="button"
               onClick={() => onChange([])}
@@ -140,12 +146,15 @@ const AgentSkillSelector: React.FC<AgentSkillSelectorProps> = ({ selectedSkillId
                 <button
                   key={skill.id}
                   type="button"
+                  disabled={readOnly}
                   onClick={() => toggle(skill.id)}
-                  aria-label={i18nService.t('agentSkillsRemoveSkill').replace('{skill}', skill.label)}
-                  className="inline-flex max-w-full items-center gap-1.5 rounded-md border border-primary/25 bg-primary/10 px-2 py-1 text-xs font-medium text-primary transition-colors hover:border-primary/50 hover:bg-primary/15"
+                  aria-label={i18nService
+                    .t('agentSkillsRemoveSkill')
+                    .replace('{skill}', skill.label)}
+                  className="inline-flex max-w-full items-center gap-1.5 rounded-md border border-primary/25 bg-primary/10 px-2 py-1 text-xs font-medium text-primary transition-colors hover:border-primary/50 hover:bg-primary/15 disabled:cursor-default disabled:hover:border-primary/25 disabled:hover:bg-primary/10"
                 >
                   <span className="truncate">{skill.label}</span>
-                  <XMarkIcon className="h-3.5 w-3.5 shrink-0" />
+                  {!readOnly && <XMarkIcon className="h-3.5 w-3.5 shrink-0" />}
                 </button>
               ))}
             </div>
@@ -159,7 +168,7 @@ const AgentSkillSelector: React.FC<AgentSkillSelectorProps> = ({ selectedSkillId
           <input
             type="text"
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={e => setSearch(e.target.value)}
             placeholder={i18nService.t('agentSkillsSearch')}
             aria-label={i18nService.t('agentSkillsSearch')}
             className="h-9 w-full rounded-md border border-border-subtle bg-surface-raised/30 pl-9 pr-3 text-xs text-foreground placeholder:text-secondary/45 focus:border-border focus:bg-surface focus:outline-none"
@@ -204,7 +213,7 @@ const AgentSkillSelector: React.FC<AgentSkillSelectorProps> = ({ selectedSkillId
             <div className="text-xs font-semibold text-foreground">
               {i18nService.t('agentSkillsAvailableTitle')}
             </div>
-            {filteredSkills.map((skill) => {
+            {filteredSkills.map(skill => {
               const isSelected = selectedSkillIds.includes(skill.id);
               const description = getDescription(skill);
 
@@ -212,12 +221,11 @@ const AgentSkillSelector: React.FC<AgentSkillSelectorProps> = ({ selectedSkillId
                 <button
                   key={skill.id}
                   type="button"
+                  disabled={readOnly}
                   onClick={() => toggle(skill.id)}
                   aria-pressed={isSelected}
-                  className={`group flex min-h-[72px] w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors hover:border-primary/60 hover:bg-surface-raised/60 ${
-                    isSelected
-                      ? 'border-primary bg-primary/5'
-                      : 'border-border bg-surface'
+                  className={`group flex min-h-[72px] w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors hover:border-primary/60 hover:bg-surface-raised/60 disabled:cursor-default disabled:hover:bg-surface disabled:hover:border-border ${
+                    isSelected ? 'border-primary bg-primary/5' : 'border-border bg-surface'
                   }`}
                 >
                   <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-surface-raised">

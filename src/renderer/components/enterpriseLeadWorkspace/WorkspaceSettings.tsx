@@ -67,7 +67,6 @@ import {
   getExternalResearchProviderConnectionStatus,
   getModelProviderConnectionStatus,
   getWorkspaceSettingsBlockingIssues,
-  getWorkspaceSettingsReadiness,
 } from './workspaceSettingsReadiness';
 
 export { getWorkspaceSettingsReadiness } from './workspaceSettingsReadiness';
@@ -116,6 +115,48 @@ const providerLabelKeys: Record<ExternalResearchProviderIdValue, string> = {
   [ExternalResearchProviderId.Tavily]: 'agentExternalResearchTavily',
   [ExternalResearchProviderId.Firecrawl]: 'agentExternalResearchFirecrawl',
 };
+
+const ResearchQuickMode = {
+  LocalOnly: 'local_only',
+  WebSearch: 'web_search',
+  WebCrawl: 'web_crawl',
+} as const;
+type ResearchQuickMode = typeof ResearchQuickMode[keyof typeof ResearchQuickMode];
+
+const SkillPresetId = {
+  AcquisitionContent: 'acquisition_content',
+  ResearchAnalysis: 'research_analysis',
+  LightweightChat: 'lightweight_chat',
+} as const;
+type SkillPresetId = typeof SkillPresetId[keyof typeof SkillPresetId];
+
+interface SkillPresetDefinition {
+  id: SkillPresetId;
+  titleKey: string;
+  descriptionKey: string;
+  skillIds: string[];
+}
+
+const skillPresetDefinitions: SkillPresetDefinition[] = [
+  {
+    id: SkillPresetId.AcquisitionContent,
+    titleKey: 'enterpriseLeadWorkbenchSkillPresetAcquisitionContent',
+    descriptionKey: 'enterpriseLeadWorkbenchSkillPresetAcquisitionContentDesc',
+    skillIds: ['article-writer', 'content-planner', 'web-search', 'xlsx', 'risk-review'],
+  },
+  {
+    id: SkillPresetId.ResearchAnalysis,
+    titleKey: 'enterpriseLeadWorkbenchSkillPresetResearchAnalysis',
+    descriptionKey: 'enterpriseLeadWorkbenchSkillPresetResearchAnalysisDesc',
+    skillIds: ['web-search', 'technology-search', 'xlsx'],
+  },
+  {
+    id: SkillPresetId.LightweightChat,
+    titleKey: 'enterpriseLeadWorkbenchSkillPresetLightweightChat',
+    descriptionKey: 'enterpriseLeadWorkbenchSkillPresetLightweightChatDesc',
+    skillIds: ['docx', 'xlsx'],
+  },
+];
 
 const contentPlatformLabelKeys: Record<EnterpriseLeadContentOutputPlatformIdValue, string> = {
   [EnterpriseLeadContentOutputPlatformId.XiaohongshuDraft]:
@@ -216,17 +257,6 @@ const ensureWorkspaceSettingsHaveProviders = (
     model: initial.model,
   });
 };
-
-const parseModelIds = (value: string): string[] =>
-  Array.from(new Set(
-    value
-      .split(',')
-      .map(item => item.trim())
-      .filter(Boolean),
-  ));
-
-const joinModelIds = (models: ProviderConfig['models']): string =>
-  (models ?? []).map(model => model.id).join(', ');
 
 const getFirstModelId = (provider?: ProviderConfig): string =>
   provider?.models?.find(model => model.id.trim())?.id.trim() ?? '';
@@ -420,6 +450,7 @@ export const WorkspaceSettings: React.FC<WorkspaceSettingsProps> = ({
   const [modelTestResult, setModelTestResult] = useState<WorkspaceModelConnectionTestResult | null>(null);
   const [researchTesting, setResearchTesting] = useState<Record<string, boolean>>({});
   const [researchTestResults, setResearchTestResults] = useState<Record<string, ExternalResearchTestResult>>({});
+  const [selectedSkillPresetId, setSelectedSkillPresetId] = useState<SkillPresetId>(SkillPresetId.AcquisitionContent);
 
   useEffect(() => {
     let cancelled = false;
@@ -489,6 +520,7 @@ export const WorkspaceSettings: React.FC<WorkspaceSettingsProps> = ({
   const activeProvider = activeProviderKey
     ? draftSettings.model.providers[activeProviderKey]
     : undefined;
+  const activeProviderModels = activeProvider?.models ?? [];
   const activeProviderStatus = activeProviderKey && activeProvider
     ? getModelProviderConnectionStatus(activeProviderKey, activeProvider)
     : null;
@@ -500,10 +532,6 @@ export const WorkspaceSettings: React.FC<WorkspaceSettingsProps> = ({
     () => sortSkillsForWorkspace(skills, draftSettings.skillIds),
     [draftSettings.skillIds, skills],
   );
-  const readinessItems = useMemo(
-    () => getWorkspaceSettingsReadiness(draftSettings),
-    [draftSettings],
-  );
   const blockingIssues = useMemo(
     () => getWorkspaceSettingsBlockingIssues(draftSettings),
     [draftSettings],
@@ -511,6 +539,24 @@ export const WorkspaceSettings: React.FC<WorkspaceSettingsProps> = ({
   const firstBlockingIssue = blockingIssues[0] ?? null;
   const isDirty = JSON.stringify(draftSettings) !== JSON.stringify(savedSettings);
   const canSaveSettings = isDirty && saveState !== 'saving' && blockingIssues.length === 0;
+  const selectedResearchProviderId = ExternalResearchProviderIds.find(providerId =>
+    draftSettings.externalResearch.providers[providerId]?.enabled) ?? '';
+  const selectedResearchProvider = selectedResearchProviderId
+    ? draftSettings.externalResearch.providers[selectedResearchProviderId]
+    : null;
+  const selectedResearchProviderTestResult = selectedResearchProviderId
+    ? researchTestResults[selectedResearchProviderId]
+    : undefined;
+  const selectedResearchQuickMode: ResearchQuickMode = selectedResearchProviderId === ExternalResearchProviderId.Tavily
+    ? ResearchQuickMode.WebSearch
+    : selectedResearchProviderId === ExternalResearchProviderId.Firecrawl
+      ? ResearchQuickMode.WebCrawl
+      : ResearchQuickMode.LocalOnly;
+  const quickSetupCompleteCount = [
+    selectedDefaultModelValue.length > 0,
+    draftSettings.skillIds.length > 0,
+    draftSettings.contentPlatforms.outputRules.defaultPlatformId.length > 0,
+  ].filter(Boolean).length;
 
   const markDirty = (): void => {
     if (saveState !== 'saving') {
@@ -586,40 +632,6 @@ export const WorkspaceSettings: React.FC<WorkspaceSettingsProps> = ({
     }));
   };
 
-  const updateProviderModels = (providerKey: string, value: string): void => {
-    setModelTestResult(previous => (
-      previous?.providerKey === providerKey ? null : previous
-    ));
-    const modelIds = parseModelIds(value);
-    updateSettings(previous => {
-      const currentProvider = previous.model.providers[providerKey] ?? fallbackProviderConfig(providerKey);
-      const previousModels = new Map((currentProvider.models ?? []).map(model => [model.id, model]));
-      const models = modelIds.map(modelId => ({
-        ...previousModels.get(modelId),
-        id: modelId,
-        name: previousModels.get(modelId)?.name || modelId,
-      }));
-      const defaultModelStillAvailable = models.some(model => model.id === previous.model.defaultModel);
-      const shouldReplaceDefault = previous.model.defaultModelProvider === providerKey
-        && (!previous.model.defaultModel || !defaultModelStillAvailable);
-
-      return {
-        ...previous,
-        model: {
-          ...previous.model,
-          defaultModel: shouldReplaceDefault ? (models[0]?.id ?? '') : previous.model.defaultModel,
-          providers: {
-            ...previous.model.providers,
-            [providerKey]: {
-              ...currentProvider,
-              models,
-            },
-          },
-        },
-      };
-    });
-  };
-
   const testModelProvider = async (providerKey: string): Promise<void> => {
     const provider = draftSettings.model.providers[providerKey];
     if (!provider || modelTestingProviderKey) {
@@ -660,6 +672,19 @@ export const WorkspaceSettings: React.FC<WorkspaceSettingsProps> = ({
     });
   };
 
+  const selectSkillPreset = (preset: SkillPresetDefinition): void => {
+    setSelectedSkillPresetId(preset.id);
+    const availableSkillIds = new Set(skills.map(skill => skill.id));
+    const presetSkillIds = preset.skillIds.filter(skillId => availableSkillIds.has(skillId));
+    const nextSkillIds = presetSkillIds.length > 0 || skills.length > 0
+      ? presetSkillIds
+      : preset.skillIds;
+    updateSettings(previous => ({
+      ...previous,
+      skillIds: nextSkillIds,
+    }));
+  };
+
   const updateExternalResearchProvider = (
     providerId: ExternalResearchProviderIdValue,
     patch: Partial<EnterpriseLeadWorkspaceSettings['externalResearch']['providers'][ExternalResearchProviderIdValue]>,
@@ -682,6 +707,43 @@ export const WorkspaceSettings: React.FC<WorkspaceSettingsProps> = ({
         },
       },
     }));
+  };
+
+  const updateResearchServiceProvider = (
+    providerId: ExternalResearchProviderIdValue | '',
+  ): void => {
+    setResearchTestResults({});
+    updateSettings(previous => ({
+      ...previous,
+      externalResearch: {
+        ...previous.externalResearch,
+        providers: {
+          ...previous.externalResearch.providers,
+          [ExternalResearchProviderId.Tavily]: {
+            ...previous.externalResearch.providers[ExternalResearchProviderId.Tavily],
+            enabled: providerId === ExternalResearchProviderId.Tavily,
+          },
+          [ExternalResearchProviderId.Firecrawl]: {
+            ...previous.externalResearch.providers[ExternalResearchProviderId.Firecrawl],
+            enabled: providerId === ExternalResearchProviderId.Firecrawl,
+          },
+        },
+      },
+    }));
+  };
+
+  const updateSelectedResearchApiKey = (apiKey: string): void => {
+    if (!selectedResearchProviderId) {
+      return;
+    }
+    updateExternalResearchProvider(selectedResearchProviderId, { apiKey });
+  };
+
+  const testSelectedResearchProvider = async (): Promise<void> => {
+    if (!selectedResearchProviderId) {
+      return;
+    }
+    await testExternalResearchProvider(selectedResearchProviderId);
   };
 
   const testExternalResearchProvider = async (
@@ -899,17 +961,22 @@ export const WorkspaceSettings: React.FC<WorkspaceSettingsProps> = ({
   };
 
   const renderProviderEditor = () => (
-    <section className="rounded-lg border border-border bg-background p-4 shadow-sm">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h2 className="truncate text-lg font-semibold leading-6 text-foreground">
-            {i18nService.t('enterpriseLeadWorkbenchProviderConfigTitle')}
-          </h2>
-          <p className="mt-0.5 text-sm leading-6 text-secondary">
-            {i18nService.t('enterpriseLeadWorkbenchProviderConfigDesc')}
-          </p>
-        </div>
-        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+    <details className="rounded-lg border border-border bg-background shadow-sm">
+      <summary className="grid cursor-pointer list-none grid-cols-[minmax(0,1fr)_auto] items-start gap-3 px-4 py-3 marker:hidden [&::-webkit-details-marker]:hidden">
+        <span className="min-w-0">
+          <span className="block truncate text-lg font-semibold leading-6 text-foreground">
+            {i18nService.t('enterpriseLeadWorkbenchAdvancedModelTitle')}
+          </span>
+          <span className="mt-0.5 block text-sm leading-6 text-secondary">
+            {i18nService.t('enterpriseLeadWorkbenchAdvancedModelDesc')}
+          </span>
+        </span>
+        <span className="rounded-lg bg-primary/10 px-3 py-2 text-xs font-medium text-primary ring-1 ring-primary/20">
+          {i18nService.t('enterpriseLeadWorkbenchWorkspaceScoped')}
+        </span>
+      </summary>
+      <div className="border-t border-border p-4">
+        <div className="flex flex-wrap items-center justify-end gap-2">
           <button
             type="button"
             onClick={addCustomModelProvider}
@@ -918,11 +985,7 @@ export const WorkspaceSettings: React.FC<WorkspaceSettingsProps> = ({
             <PlusIcon className="h-3.5 w-3.5" />
             {i18nService.t('enterpriseLeadWorkbenchCustomModelProviderAdd')}
           </button>
-          <span className="rounded-lg bg-primary/10 px-3 py-2 text-xs font-medium text-primary ring-1 ring-primary/20">
-            {i18nService.t('enterpriseLeadWorkbenchWorkspaceScoped')}
-          </span>
         </div>
-      </div>
 
       <div className="mt-4 rounded-lg border border-border bg-surface px-3 py-3">
         <label className="grid gap-1.5">
@@ -1082,12 +1145,34 @@ export const WorkspaceSettings: React.FC<WorkspaceSettingsProps> = ({
                   <span className="text-xs font-medium text-secondary">
                     {i18nService.t('enterpriseLeadWorkbenchProviderModelIds')}
                   </span>
-                  <input
-                    type="text"
-                    value={joinModelIds(activeProvider.models)}
-                    onChange={event => updateProviderModels(activeProviderKey, event.target.value)}
+                  <select
+                    value={
+                      activeProviderModels.some(model => model.id === draftSettings.model.defaultModel)
+                        ? encodeDefaultModelOption(activeProviderKey, draftSettings.model.defaultModel)
+                        : ''
+                    }
+                    onChange={event => updateDefaultModel(event.target.value)}
+                    disabled={activeProviderModels.length === 0}
                     className="mt-1 h-8 w-full rounded-md border border-border bg-background px-2 text-xs text-foreground outline-none focus:border-primary"
-                  />
+                  >
+                    <option value="">
+                      {i18nService.t('enterpriseLeadWorkbenchDefaultModelUnavailable')}
+                    </option>
+                    {activeProviderModels.map(model => {
+                      const modelId = model.id.trim();
+                      if (!modelId) {
+                        return null;
+                      }
+                      return (
+                        <option
+                          key={modelId}
+                          value={encodeDefaultModelOption(activeProviderKey, modelId)}
+                        >
+                          {model.name?.trim() || modelId}
+                        </option>
+                      );
+                    })}
+                  </select>
                 </label>
               </div>
               <p className="text-xs leading-5 text-secondary">
@@ -1136,26 +1221,27 @@ export const WorkspaceSettings: React.FC<WorkspaceSettingsProps> = ({
           </div>
         )}
       </div>
-    </section>
+      </div>
+    </details>
   );
 
   const renderSkillsEditor = () => (
-    <section className="rounded-lg border border-border bg-background p-4 shadow-sm">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h2 className="truncate text-lg font-semibold leading-6 text-foreground">
-            {i18nService.t('enterpriseLeadWorkbenchSkillsTitle')}
-          </h2>
-          <p className="mt-0.5 text-sm leading-6 text-secondary">
-            {i18nService.t('enterpriseLeadWorkbenchSkillsRealDesc')}
-          </p>
-        </div>
+    <details className="rounded-lg border border-border bg-background shadow-sm">
+      <summary className="grid cursor-pointer list-none grid-cols-[minmax(0,1fr)_auto] items-start gap-3 px-4 py-3 marker:hidden [&::-webkit-details-marker]:hidden">
+        <span className="min-w-0">
+          <span className="block truncate text-lg font-semibold leading-6 text-foreground">
+            {i18nService.t('enterpriseLeadWorkbenchAdvancedSkillsTitle')}
+          </span>
+          <span className="mt-0.5 block text-sm leading-6 text-secondary">
+            {i18nService.t('enterpriseLeadWorkbenchAdvancedSkillsDesc')}
+          </span>
+        </span>
         <span className="shrink-0 rounded-lg bg-primary/10 px-3 py-2 text-xs font-medium text-primary ring-1 ring-primary/20">
           {draftSettings.skillIds.length}/{skills.length}
         </span>
-      </div>
+      </summary>
 
-      <div className="mt-4 grid max-h-72 gap-1.5 overflow-y-auto pr-1">
+      <div className="grid max-h-72 gap-1.5 overflow-y-auto border-t border-border p-4">
         {orderedSkills.length === 0 ? (
           <div className="rounded-lg border border-dashed border-border px-3 py-4 text-sm text-secondary">
             {i18nService.t('enterpriseLeadWorkbenchSkillsEmpty')}
@@ -1197,21 +1283,26 @@ export const WorkspaceSettings: React.FC<WorkspaceSettingsProps> = ({
           );
         })}
       </div>
-    </section>
+    </details>
   );
 
   const renderExternalResearchEditor = () => (
-    <section className="rounded-lg border border-border bg-background p-4 shadow-sm">
-      <div className="min-w-0">
-        <h2 className="truncate text-lg font-semibold leading-6 text-foreground">
-          {i18nService.t('enterpriseLeadWorkbenchResearchTitle')}
-        </h2>
-        <p className="mt-0.5 text-sm leading-6 text-secondary">
-          {i18nService.t('enterpriseLeadWorkbenchResearchRealDesc')}
-        </p>
-      </div>
+    <details className="rounded-lg border border-border bg-background shadow-sm">
+      <summary className="grid cursor-pointer list-none grid-cols-[minmax(0,1fr)_auto] items-start gap-3 px-4 py-3 marker:hidden [&::-webkit-details-marker]:hidden">
+        <span className="min-w-0">
+          <span className="block truncate text-lg font-semibold leading-6 text-foreground">
+            {i18nService.t('enterpriseLeadWorkbenchResearchProvidersTitle')}
+          </span>
+          <span className="mt-0.5 block text-sm leading-6 text-secondary">
+            {i18nService.t('enterpriseLeadWorkbenchResearchProvidersDesc')}
+          </span>
+        </span>
+        <span className="shrink-0 rounded-lg bg-amber-500/10 px-3 py-2 text-xs font-medium text-amber-700 ring-1 ring-amber-500/25 dark:text-amber-300">
+          {i18nService.t('enterpriseLeadWorkbenchOptional')}
+        </span>
+      </summary>
 
-      <div className="mt-4 grid gap-2 md:grid-cols-2">
+      <div className="grid gap-2 border-t border-border p-4 md:grid-cols-2">
         {ExternalResearchProviderIds.map(providerId => {
           const provider = draftSettings.externalResearch.providers[providerId];
           const providerStatus = getExternalResearchProviderConnectionStatus(provider);
@@ -1289,20 +1380,20 @@ export const WorkspaceSettings: React.FC<WorkspaceSettingsProps> = ({
           );
         })}
       </div>
-    </section>
+    </details>
   );
 
   const renderDomesticResearchEditor = () => (
-    <section className="rounded-lg border border-border bg-background p-4 shadow-sm">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h2 className="truncate text-lg font-semibold leading-6 text-foreground">
-            {i18nService.t('enterpriseLeadWorkbenchDomesticSourcesTitle')}
-          </h2>
-          <p className="mt-0.5 text-sm leading-6 text-secondary">
-            {i18nService.t('enterpriseLeadWorkbenchDomesticSourcesDesc')}
-          </p>
-        </div>
+    <details className="rounded-lg border border-border bg-background shadow-sm">
+      <summary className="grid cursor-pointer list-none grid-cols-[minmax(0,1fr)_auto] items-start gap-3 px-4 py-3 marker:hidden [&::-webkit-details-marker]:hidden">
+        <span className="min-w-0">
+          <span className="block truncate text-lg font-semibold leading-6 text-foreground">
+            {i18nService.t('enterpriseLeadWorkbenchResearchSourcesTitle')}
+          </span>
+          <span className="mt-0.5 block text-sm leading-6 text-secondary">
+            {i18nService.t('enterpriseLeadWorkbenchResearchSourcesDesc')}
+          </span>
+        </span>
         <button
           type="button"
           onClick={addCustomDomesticSource}
@@ -1311,9 +1402,9 @@ export const WorkspaceSettings: React.FC<WorkspaceSettingsProps> = ({
           <PlusIcon className="h-3.5 w-3.5" />
           {i18nService.t('enterpriseLeadWorkbenchCustomSourceAdd')}
         </button>
-      </div>
+      </summary>
 
-      <div className="mt-4 grid gap-2 lg:grid-cols-2">
+      <div className="grid gap-2 border-t border-border p-4 lg:grid-cols-2">
         {DomesticResearchSourceIds.map(sourceId => {
           const source = draftSettings.domesticResearch.sources[sourceId];
           return (
@@ -1399,21 +1490,26 @@ export const WorkspaceSettings: React.FC<WorkspaceSettingsProps> = ({
           </div>
         ))}
       </div>
-    </section>
+    </details>
   );
 
   const renderContentPlatformEditor = () => (
-    <section className="rounded-lg border border-border bg-background p-4 shadow-sm">
-      <div className="min-w-0">
-        <h2 className="truncate text-lg font-semibold leading-6 text-foreground">
-          {i18nService.t('enterpriseLeadWorkbenchContentPlatformsTitle')}
-        </h2>
-        <p className="mt-0.5 text-sm leading-6 text-secondary">
-          {i18nService.t('enterpriseLeadWorkbenchContentPlatformsDesc')}
-        </p>
-      </div>
+    <details className="rounded-lg border border-border bg-background shadow-sm">
+      <summary className="grid cursor-pointer list-none grid-cols-[minmax(0,1fr)_auto] items-start gap-3 px-4 py-3 marker:hidden [&::-webkit-details-marker]:hidden">
+        <span className="min-w-0">
+          <span className="block truncate text-lg font-semibold leading-6 text-foreground">
+            {i18nService.t('enterpriseLeadWorkbenchContentDeliveryTitle')}
+          </span>
+          <span className="mt-0.5 block text-sm leading-6 text-secondary">
+            {i18nService.t('enterpriseLeadWorkbenchContentDeliveryDesc')}
+          </span>
+        </span>
+        <span className="shrink-0 rounded-lg bg-primary/10 px-3 py-2 text-xs font-medium text-primary ring-1 ring-primary/20">
+          {i18nService.t('enterpriseLeadWorkbenchStatusConfigured')}
+        </span>
+      </summary>
 
-      <div className="mt-4 grid gap-2">
+      <div className="grid gap-2 border-t border-border p-4">
         {EnterpriseLeadContentOutputPlatformIds.map(platformId => {
           const platform = draftSettings.contentPlatforms.platforms[platformId];
           if (!platform) return null;
@@ -1616,8 +1712,293 @@ export const WorkspaceSettings: React.FC<WorkspaceSettingsProps> = ({
           </label>
         </div>
       </div>
-    </section>
+    </details>
   );
+
+  const renderQuickSetup = () => {
+    const isTestingSelectedResearchProvider = selectedResearchProviderId
+      ? researchTesting[selectedResearchProviderId] === true
+      : false;
+    const canTestSelectedResearchProvider = Boolean(
+      selectedResearchProviderId && selectedResearchProvider?.apiKey.trim(),
+    );
+
+    return (
+      <section className="rounded-lg border border-border bg-background shadow-sm">
+        <div className="flex items-start justify-between gap-4 border-b border-border px-4 py-4">
+          <div className="min-w-0">
+            <h2 className="truncate text-lg font-semibold leading-6 text-foreground">
+              {i18nService.t('enterpriseLeadWorkbenchQuickSetupTitle')}
+            </h2>
+            <p className="mt-1 text-sm leading-6 text-secondary">
+              {i18nService.t('enterpriseLeadWorkbenchQuickSetupDesc')}
+            </p>
+          </div>
+          <div className="shrink-0 rounded-lg bg-primary/10 px-3 py-2 text-right text-xs font-medium text-primary ring-1 ring-primary/20">
+            <div className="text-lg font-semibold leading-5">
+              {quickSetupCompleteCount}/3
+            </div>
+            <div className="mt-1">
+              {i18nService.t('enterpriseLeadWorkbenchQuickSetupProgress')}
+            </div>
+          </div>
+        </div>
+
+        <div className="divide-y divide-border">
+          <section className="grid gap-3 px-4 py-4 md:grid-cols-[2rem_minmax(0,1fr)_auto]">
+            <span className="grid h-8 w-8 place-items-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
+              1
+            </span>
+            <div className="min-w-0">
+              <h3 className="text-sm font-semibold text-foreground">
+                {i18nService.t('enterpriseLeadWorkbenchQuickModelTitle')}
+              </h3>
+              <p className="mt-1 text-xs leading-5 text-secondary">
+                {i18nService.t('enterpriseLeadWorkbenchQuickModelDesc')}
+              </p>
+              <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+                <select
+                  value={selectedDefaultModelValue}
+                  onChange={event => updateDefaultModel(event.target.value)}
+                  disabled={defaultModelOptions.length === 0}
+                  className="h-9 rounded-md border border-border bg-background px-2 text-sm text-foreground outline-none focus:border-primary disabled:cursor-not-allowed disabled:opacity-60"
+                  aria-label={i18nService.t('enterpriseLeadWorkbenchDefaultModelSelect')}
+                >
+                  <option value="">
+                    {i18nService.t(
+                      defaultModelOptions.length > 0
+                        ? 'enterpriseLeadWorkbenchDefaultModelUnavailable'
+                        : 'enterpriseLeadWorkbenchDefaultModelNoOptions',
+                    )}
+                  </option>
+                  {defaultModelOptions.map(option => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  disabled={!activeProviderStatus?.ready || isTestingActiveModelProvider}
+                  onClick={() => activeProviderKey && void testModelProvider(activeProviderKey)}
+                  className="h-9 rounded-md border border-border px-3 text-xs font-medium text-foreground transition-colors hover:bg-surface-raised disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {i18nService.t(
+                    isTestingActiveModelProvider
+                      ? 'testing'
+                      : 'enterpriseLeadWorkbenchTestModelConnection',
+                  )}
+                </button>
+              </div>
+            </div>
+            <span className={`h-fit rounded-full px-2 py-1 text-xs font-medium ${
+              selectedDefaultModelValue
+                ? statusBadgeClassNames[EnterpriseLeadWorkbenchStatusTone.Enabled]
+                : statusBadgeClassNames[EnterpriseLeadWorkbenchStatusTone.Warning]
+            }`}
+            >
+              {i18nService.t(selectedDefaultModelValue
+                ? 'enterpriseLeadWorkspaceSettingsReady'
+                : 'enterpriseLeadWorkspaceSettingsNeedsSetup')}
+            </span>
+          </section>
+
+          <section className="grid gap-3 px-4 py-4 md:grid-cols-[2rem_minmax(0,1fr)_auto]">
+            <span className="grid h-8 w-8 place-items-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
+              2
+            </span>
+            <div className="min-w-0">
+              <h3 className="text-sm font-semibold text-foreground">
+                {i18nService.t('enterpriseLeadWorkbenchQuickSkillPresetTitle')}
+              </h3>
+              <p className="mt-1 text-xs leading-5 text-secondary">
+                {i18nService.t('enterpriseLeadWorkbenchQuickSkillPresetDesc')}
+              </p>
+              <div className="mt-3 grid gap-2 lg:grid-cols-3">
+                {skillPresetDefinitions.map(preset => (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    onClick={() => selectSkillPreset(preset)}
+                    className={`rounded-lg border px-3 py-3 text-left transition-colors ${
+                      selectedSkillPresetId === preset.id
+                        ? 'border-primary/40 bg-primary/5'
+                        : 'border-border bg-surface hover:bg-surface-raised'
+                    }`}
+                  >
+                    <strong className="block text-sm text-foreground">
+                      {i18nService.t(preset.titleKey)}
+                    </strong>
+                    <span className="mt-1 block text-xs leading-5 text-secondary">
+                      {i18nService.t(preset.descriptionKey)}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+            <span className={`h-fit rounded-full px-2 py-1 text-xs font-medium ${
+              draftSettings.skillIds.length > 0
+                ? statusBadgeClassNames[EnterpriseLeadWorkbenchStatusTone.Enabled]
+                : statusBadgeClassNames[EnterpriseLeadWorkbenchStatusTone.Warning]
+            }`}
+            >
+              {draftSettings.skillIds.length > 0
+                ? `${draftSettings.skillIds.length} ${i18nService.t('enterpriseLeadWorkbenchQuickSkillsSelected')}`
+                : i18nService.t('enterpriseLeadWorkbenchQuickSkillsPending')}
+            </span>
+          </section>
+
+          <section className="grid gap-3 px-4 py-4 md:grid-cols-[2rem_minmax(0,1fr)_auto]">
+            <span className="grid h-8 w-8 place-items-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
+              3
+            </span>
+            <div className="min-w-0">
+              <h3 className="text-sm font-semibold text-foreground">
+                {i18nService.t('enterpriseLeadWorkbenchQuickResearchOutputTitle')}
+              </h3>
+              <p className="mt-1 text-xs leading-5 text-secondary">
+                {i18nService.t('enterpriseLeadWorkbenchQuickResearchOutputDesc')}
+              </p>
+              <div className="mt-3 grid gap-2 lg:grid-cols-3">
+                <button
+                  type="button"
+                  onClick={() => updateResearchServiceProvider('')}
+                  className={`rounded-lg border px-3 py-3 text-left transition-colors ${
+                    selectedResearchQuickMode === ResearchQuickMode.LocalOnly
+                      ? 'border-primary/40 bg-primary/5'
+                      : 'border-border bg-surface hover:bg-surface-raised'
+                  }`}
+                >
+                  <strong className="block text-sm text-foreground">
+                    {i18nService.t('enterpriseLeadWorkbenchResearchModeLocalOnly')}
+                  </strong>
+                  <span className="mt-1 block text-xs leading-5 text-secondary">
+                    {i18nService.t('enterpriseLeadWorkbenchResearchModeLocalOnlyDesc')}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => updateResearchServiceProvider(ExternalResearchProviderId.Tavily)}
+                  className={`rounded-lg border px-3 py-3 text-left transition-colors ${
+                    selectedResearchQuickMode === ResearchQuickMode.WebSearch
+                      ? 'border-primary/40 bg-primary/5'
+                      : 'border-border bg-surface hover:bg-surface-raised'
+                  }`}
+                >
+                  <strong className="block text-sm text-foreground">
+                    {i18nService.t('enterpriseLeadWorkbenchResearchModeWebSearch')}
+                  </strong>
+                  <span className="mt-1 block text-xs leading-5 text-secondary">
+                    {i18nService.t('enterpriseLeadWorkbenchResearchModeWebSearchDesc')}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => updateResearchServiceProvider(ExternalResearchProviderId.Firecrawl)}
+                  className={`rounded-lg border px-3 py-3 text-left transition-colors ${
+                    selectedResearchQuickMode === ResearchQuickMode.WebCrawl
+                      ? 'border-primary/40 bg-primary/5'
+                      : 'border-border bg-surface hover:bg-surface-raised'
+                  }`}
+                >
+                  <strong className="block text-sm text-foreground">
+                    {i18nService.t('enterpriseLeadWorkbenchResearchModeWebCrawl')}
+                  </strong>
+                  <span className="mt-1 block text-xs leading-5 text-secondary">
+                    {i18nService.t('enterpriseLeadWorkbenchResearchModeWebCrawlDesc')}
+                  </span>
+                </button>
+              </div>
+              <div className="mt-3 grid gap-2 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1fr)_auto]">
+                <select
+                  value={selectedResearchProviderId}
+                  onChange={event => updateResearchServiceProvider(event.target.value as ExternalResearchProviderIdValue | '')}
+                  className="h-9 rounded-md border border-border bg-background px-2 text-sm text-foreground outline-none focus:border-primary"
+                  aria-label={i18nService.t('enterpriseLeadWorkbenchResearchProviderSelect')}
+                >
+                  <option value="">
+                    {i18nService.t('enterpriseLeadWorkbenchResearchProviderNone')}
+                  </option>
+                  {ExternalResearchProviderIds.map(providerId => (
+                    <option key={providerId} value={providerId}>
+                      {i18nService.t(providerLabelKeys[providerId])}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  type={selectedResearchProviderId && shownSecrets[selectedResearchProviderId] ? 'text' : 'password'}
+                  value={selectedResearchProvider?.apiKey ?? ''}
+                  onChange={event => updateSelectedResearchApiKey(event.target.value)}
+                  disabled={!selectedResearchProviderId}
+                  placeholder={i18nService.t('enterpriseLeadWorkbenchResearchProviderApiKeyPlaceholder')}
+                  className="h-9 rounded-md border border-border bg-background px-2 text-sm text-foreground outline-none focus:border-primary disabled:cursor-not-allowed disabled:opacity-60"
+                />
+                <button
+                  type="button"
+                  disabled={!canTestSelectedResearchProvider || isTestingSelectedResearchProvider}
+                  onClick={() => void testSelectedResearchProvider()}
+                  className="h-9 rounded-md border border-border px-3 text-xs font-medium text-foreground transition-colors hover:bg-surface-raised disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {i18nService.t(
+                    isTestingSelectedResearchProvider
+                      ? 'agentExternalResearchTesting'
+                      : 'agentExternalResearchTest',
+                  )}
+                </button>
+              </div>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                <select
+                  value={draftSettings.contentPlatforms.outputRules.defaultPlatformId}
+                  onChange={event => updateContentOutputRules({ defaultPlatformId: event.target.value })}
+                  className="h-9 rounded-md border border-border bg-background px-2 text-sm text-foreground outline-none focus:border-primary"
+                  aria-label={i18nService.t('enterpriseLeadWorkbenchContentDefaultTarget')}
+                >
+                  {EnterpriseLeadContentOutputPlatformIds.map(platformId => (
+                    <option key={platformId} value={platformId}>
+                      {i18nService.t(contentPlatformLabelKeys[platformId])}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value="domestic_sources"
+                  disabled
+                  className="h-9 rounded-md border border-border bg-background px-2 text-sm text-foreground outline-none focus:border-primary disabled:cursor-not-allowed disabled:opacity-70"
+                  aria-label={i18nService.t('enterpriseLeadWorkbenchResearchMaterialSource')}
+                >
+                  <option value="domestic_sources">
+                    {i18nService.t('enterpriseLeadWorkbenchResearchMaterialDomesticLinks')}
+                  </option>
+                </select>
+              </div>
+              {selectedResearchProviderTestResult ? (() => {
+                const feedback = getExternalResearchTestFeedback(selectedResearchProviderTestResult);
+                return (
+                  <div className={`mt-3 flex items-start gap-2 rounded-md border px-2.5 py-2 text-xs ${feedback.toneClassName}`}>
+                    {feedback.icon === 'success' ? (
+                      <CheckCircleIcon className="mt-0.5 h-4 w-4 shrink-0" />
+                    ) : (
+                      <ExclamationTriangleIcon className="mt-0.5 h-4 w-4 shrink-0" />
+                    )}
+                    <div className="min-w-0">
+                      <div className="font-semibold">
+                        {i18nService.t(feedback.labelKey)}
+                      </div>
+                      <div className="mt-0.5 break-words leading-5">
+                        {feedback.message}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })() : null}
+            </div>
+            <span className="h-fit rounded-full bg-amber-500/10 px-2 py-1 text-xs font-medium text-amber-700 ring-1 ring-amber-500/25 dark:text-amber-300">
+              {i18nService.t('enterpriseLeadWorkbenchQuickResearchOptional')}
+            </span>
+          </section>
+        </div>
+      </section>
+    );
+  };
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-y-auto bg-surface-raised px-6 py-5">
@@ -1628,7 +2009,7 @@ export const WorkspaceSettings: React.FC<WorkspaceSettingsProps> = ({
               {i18nService.t('enterpriseLeadWorkbenchNavSettings')}
             </h1>
             <p className="mt-1 text-sm leading-6 text-secondary">
-              {i18nService.t('enterpriseLeadWorkbenchModelDesc')}
+              {i18nService.t('enterpriseLeadWorkbenchSettingsQuickDesc')}
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-2">
@@ -1658,34 +2039,38 @@ export const WorkspaceSettings: React.FC<WorkspaceSettingsProps> = ({
           </div>
         </div>
 
-        <section className="grid gap-3 md:grid-cols-3">
-          {readinessItems.map(item => (
-            <div
-              key={item.id}
-              className="rounded-lg border border-border bg-background px-4 py-3 shadow-sm"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <h2 className="truncate text-sm font-semibold text-foreground">
-                    {i18nService.t(item.titleKey)}
-                  </h2>
-                  <p className="mt-1 text-xs leading-5 text-secondary">
-                    {i18nService.t(item.descriptionKey)}
-                  </p>
-                </div>
-                <span className={`shrink-0 rounded-full px-2 py-1 text-xs font-medium ${statusBadgeClassNames[item.tone]}`}>
-                  {i18nService.t(item.statusKey)}
-                </span>
-              </div>
-            </div>
-          ))}
-        </section>
-
+        {renderQuickSetup()}
         {renderProviderEditor()}
         {renderSkillsEditor()}
         {renderExternalResearchEditor()}
         {renderDomesticResearchEditor()}
         {renderContentPlatformEditor()}
+
+        <div className="sticky bottom-4 z-10 flex items-center justify-between gap-3 rounded-lg border border-primary/20 bg-background/95 px-4 py-3 shadow-sm backdrop-blur">
+          <div className="min-w-0">
+            <div className="text-sm font-semibold text-foreground">
+              {i18nService.t('enterpriseLeadWorkbenchQuickSaveDockTitle')}
+            </div>
+            <div className="mt-0.5 truncate text-xs leading-5 text-secondary">
+              {i18nService.t('enterpriseLeadWorkbenchQuickSaveDockDesc')}
+            </div>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <span className="hidden rounded-md bg-surface px-2 py-1 text-xs font-medium text-secondary sm:inline-flex">
+              {getSaveStatusLabel()}
+            </span>
+            <button
+              type="button"
+              disabled={!canSaveSettings}
+              onClick={() => void saveSettings()}
+              className="h-9 rounded-lg bg-primary px-3 text-xs font-medium text-white transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-white/80 dark:disabled:bg-slate-700"
+            >
+              {saveState === 'saving'
+                ? i18nService.t('saving')
+                : i18nService.t('enterpriseLeadWorkbenchSaveConfig')}
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );

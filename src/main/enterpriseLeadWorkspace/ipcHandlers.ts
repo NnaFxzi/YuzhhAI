@@ -11,6 +11,8 @@ import type {
   EnterpriseLeadWorkspaceChatRequest,
   EnterpriseLeadWorkspaceChatResearchResult,
   EnterpriseLeadWorkspaceChatResponse,
+  EnterpriseLeadWorkspaceChatSession,
+  EnterpriseLeadWorkspaceChatSessionSummary,
   EnterpriseLeadWorkspaceDraft,
   EnterpriseLeadWorkspaceProfile,
   EnterpriseLeadWorkspaceRunSummary,
@@ -25,9 +27,13 @@ import {
 export interface EnterpriseLeadWorkspaceHandlerDeps {
   service: {
     listWorkspaces: () => EnterpriseLeadWorkspace[] | Promise<EnterpriseLeadWorkspace[]>;
-    getWorkspace: (id: string) => EnterpriseLeadWorkspace | null | Promise<EnterpriseLeadWorkspace | null>;
+    getWorkspace: (
+      id: string,
+    ) => EnterpriseLeadWorkspace | null | Promise<EnterpriseLeadWorkspace | null>;
     extractDraftFromConversation: (text: string) => Promise<EnterpriseLeadWorkspaceDraft>;
-    createWorkspace: (draft: EnterpriseLeadWorkspaceDraft) => EnterpriseLeadWorkspace | Promise<EnterpriseLeadWorkspace>;
+    createWorkspace: (
+      draft: EnterpriseLeadWorkspaceDraft,
+    ) => EnterpriseLeadWorkspace | Promise<EnterpriseLeadWorkspace>;
     deleteWorkspace: (workspaceId: string) => boolean | Promise<boolean>;
     updateWorkspaceProfile: (
       workspaceId: string,
@@ -44,6 +50,19 @@ export interface EnterpriseLeadWorkspaceHandlerDeps {
     listRuns: (
       workspaceId: string,
     ) => EnterpriseLeadWorkspaceRunSummary[] | Promise<EnterpriseLeadWorkspaceRunSummary[]>;
+    listChatSessions: (
+      workspaceId: string,
+    ) =>
+      | EnterpriseLeadWorkspaceChatSessionSummary[]
+      | Promise<EnterpriseLeadWorkspaceChatSessionSummary[]>;
+    getChatSession: (
+      workspaceId: string,
+      sessionId: string,
+    ) =>
+      | EnterpriseLeadWorkspaceChatSession
+      | null
+      | Promise<EnterpriseLeadWorkspaceChatSession | null>;
+    deleteChatSession: (workspaceId: string, sessionId: string) => boolean | Promise<boolean>;
     chat: (
       workspaceId: string,
       request: EnterpriseLeadWorkspaceChatRequest,
@@ -172,6 +191,7 @@ const readChatRequest = (value: unknown): EnterpriseLeadWorkspaceChatRequest => 
 
   const input = value as {
     message?: unknown;
+    sessionId?: unknown;
     targetAgentId?: unknown;
     recentMessages?: unknown;
   };
@@ -181,6 +201,9 @@ const readChatRequest = (value: unknown): EnterpriseLeadWorkspaceChatRequest => 
 
   if (typeof input.targetAgentId === 'string') {
     request.targetAgentId = input.targetAgentId;
+  }
+  if (typeof input.sessionId === 'string') {
+    request.sessionId = input.sessionId;
   }
 
   const recentMessages = readRecentChatMessages(input.recentMessages);
@@ -351,6 +374,45 @@ export function registerEnterpriseLeadWorkspaceHandlers(
         return ok(await deps.service.chat(workspaceId, readChatRequest(input?.request)));
       } catch (error) {
         return fail<EnterpriseLeadWorkspaceChatResponse>(error);
+      }
+    },
+  );
+
+  ipcMain.handle(
+    EnterpriseLeadWorkspaceIpc.ListChatSessions,
+    async (_event, workspaceId: unknown) => {
+      try {
+        return ok(
+          await deps.service.listChatSessions(requireNonEmptyString(workspaceId, 'Workspace id')),
+        );
+      } catch (error) {
+        return fail<EnterpriseLeadWorkspaceChatSessionSummary[]>(error);
+      }
+    },
+  );
+
+  ipcMain.handle(
+    EnterpriseLeadWorkspaceIpc.GetChatSession,
+    async (_event, input: { workspaceId?: unknown; sessionId?: unknown }) => {
+      try {
+        const workspaceId = requireNonEmptyString(input?.workspaceId, 'Workspace id');
+        const sessionId = requireNonEmptyString(input?.sessionId, 'Chat session id');
+        return ok(await deps.service.getChatSession(workspaceId, sessionId));
+      } catch (error) {
+        return fail<EnterpriseLeadWorkspaceChatSession | null>(error);
+      }
+    },
+  );
+
+  ipcMain.handle(
+    EnterpriseLeadWorkspaceIpc.DeleteChatSession,
+    async (_event, input: { workspaceId?: unknown; sessionId?: unknown }) => {
+      try {
+        const workspaceId = requireNonEmptyString(input?.workspaceId, 'Workspace id');
+        const sessionId = requireNonEmptyString(input?.sessionId, 'Chat session id');
+        return ok(await deps.service.deleteChatSession(workspaceId, sessionId));
+      } catch (error) {
+        return fail<boolean>(error);
       }
     },
   );

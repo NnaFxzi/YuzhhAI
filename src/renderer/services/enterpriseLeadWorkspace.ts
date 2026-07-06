@@ -6,6 +6,8 @@ import type {
   EnterpriseLeadWorkspaceAgentBinding,
   EnterpriseLeadWorkspaceChatRequest,
   EnterpriseLeadWorkspaceChatResponse,
+  EnterpriseLeadWorkspaceChatSession,
+  EnterpriseLeadWorkspaceChatSessionSummary,
   EnterpriseLeadWorkspaceDraft,
   EnterpriseLeadWorkspaceProfile,
   EnterpriseLeadWorkspaceRunSummary,
@@ -186,6 +188,26 @@ export const runWorkflow = async (
     api => api.runWorkflow(workspaceId, runId),
   );
 
+export const listChatSessions = async (
+  workspaceId: string,
+): Promise<EnterpriseLeadWorkspaceChatSessionSummary[]> =>
+  request<EnterpriseLeadWorkspaceChatSessionSummary[]>('listChatSessions', [], api =>
+    api.listChatSessions(workspaceId),
+  );
+
+export const getChatSession = async (
+  workspaceId: string,
+  sessionId: string,
+): Promise<EnterpriseLeadWorkspaceChatSession | null> =>
+  request<EnterpriseLeadWorkspaceChatSession | null>('getChatSession', null, api =>
+    api.getChatSession(workspaceId, sessionId),
+  );
+
+export const deleteChatSession = async (workspaceId: string, sessionId: string): Promise<boolean> =>
+  requestOrThrow<boolean>('deleteChatSession', false, api =>
+    api.deleteChatSession(workspaceId, sessionId),
+  );
+
 export const chat = async (
   workspaceId: string,
   chatRequest: EnterpriseLeadWorkspaceChatRequest,
@@ -252,6 +274,9 @@ export const enterpriseLeadWorkspaceService = {
   createRun,
   getRun,
   runWorkflow,
+  listChatSessions,
+  getChatSession,
+  deleteChatSession,
   chat,
   runTask,
   rerunTask,

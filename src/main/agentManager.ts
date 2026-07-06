@@ -1,3 +1,4 @@
+import { AgentId } from '../shared/agent';
 import type { Agent, CoworkStore, CreateAgentRequest, UpdateAgentRequest } from './coworkStore';
 import {
   AUTO_INSTALLED_PRESET_AGENT_IDS,
@@ -8,11 +9,28 @@ import {
 
 interface ManagedPresetVisibilityStore {
   isManagedPresetAgentHidden?: (id: string) => boolean;
-  markManagedPresetAgentHidden?: (id: string) => void;
   clearManagedPresetAgentHidden?: (id: string) => void;
 }
 
 const AUTO_INSTALLED_PRESET_AGENT_ID_SET = new Set<string>(AUTO_INSTALLED_PRESET_AGENT_IDS);
+const GLOBAL_AGENT_CREATE_ERROR =
+  'Global Agent creation is limited to built-in system Agents. Use addPresetAgent for system Agents or create workspace Agents inside a workspace.';
+const SYSTEM_AGENT_DEFINITION_UPDATE_ERROR =
+  'System Agent definition fields are managed by LobsterAI. Only model, workingDirectory, enabled, and pinned can be updated.';
+const SYSTEM_AGENT_RUNTIME_UPDATE_KEYS = new Set<keyof UpdateAgentRequest>([
+  'model',
+  'workingDirectory',
+  'enabled',
+  'pinned',
+]);
+
+const isSystemAgent = (agent: Agent): boolean =>
+  agent.id === AgentId.Main || agent.isDefault || agent.source === 'preset';
+
+const getSystemAgentDefinitionUpdateKeys = (updates: UpdateAgentRequest): string[] =>
+  Object.keys(updates).filter(
+    key => !SYSTEM_AGENT_RUNTIME_UPDATE_KEYS.has(key as keyof UpdateAgentRequest),
+  );
 
 /**
  * AgentManager handles CRUD operations for agents and preset agent installation.
@@ -42,15 +60,33 @@ export class AgentManager {
     return agents.find(a => a.isDefault) || agents[0];
   }
 
-  createAgent(request: CreateAgentRequest, defaultModel?: string): Agent {
-    return this.store.createAgent({
-      ...request,
-      model: request.model?.trim() || defaultModel?.trim() || '',
-      workingDirectory: request.workingDirectory?.trim() || '',
-    });
+  resolveRuntimeAgent(agentId?: string): Agent {
+    const requestedAgentId = agentId?.trim() || AgentId.Main;
+    const requestedAgent = this.getAgent(requestedAgentId);
+    if (requestedAgent?.enabled) {
+      return requestedAgent;
+    }
+
+    return this.getAgent(AgentId.Main) ?? this.getDefaultAgent();
+  }
+
+  createAgent(_request: CreateAgentRequest, _defaultModel?: string): Agent {
+    throw new Error(GLOBAL_AGENT_CREATE_ERROR);
   }
 
   updateAgent(agentId: string, updates: UpdateAgentRequest): Agent | null {
+    const existing = this.store.getAgent(agentId);
+    if (!existing) return null;
+
+    if (isSystemAgent(existing)) {
+      const definitionUpdateKeys = getSystemAgentDefinitionUpdateKeys(updates);
+      if (definitionUpdateKeys.length > 0) {
+        throw new Error(
+          `${SYSTEM_AGENT_DEFINITION_UPDATE_ERROR} Rejected fields: ${definitionUpdateKeys.join(', ')}.`,
+        );
+      }
+    }
+
     return this.store.updateAgent(agentId, {
       ...updates,
       ...(updates.workingDirectory !== undefined
@@ -60,10 +96,13 @@ export class AgentManager {
   }
 
   deleteAgent(agentId: string): boolean {
-    const deleted = this.store.deleteAgent(agentId);
-    if (deleted && AUTO_INSTALLED_PRESET_AGENT_ID_SET.has(agentId)) {
-      this.getVisibilityStore().markManagedPresetAgentHidden?.(agentId);
+    if (AUTO_INSTALLED_PRESET_AGENT_ID_SET.has(agentId)) {
+      this.ensureAutoInstalledPresetAgents();
+      this.getVisibilityStore().clearManagedPresetAgentHidden?.(agentId);
+      return false;
     }
+
+    const deleted = this.store.deleteAgent(agentId);
     return deleted;
   }
 
@@ -73,7 +112,7 @@ export class AgentManager {
     this.ensureAutoInstalledPresetAgents();
     const existingAgents = this.store.listAgents();
     const existingPresetIds = new Set(
-      existingAgents.filter(a => a.source === 'preset').map(a => a.presetId)
+      existingAgents.filter(a => a.source === 'preset').map(a => a.presetId),
     );
     // Only return presets that haven't been added yet
     return PRESET_AGENTS.filter(p => !existingPresetIds.has(p.id));
@@ -89,7 +128,13 @@ export class AgentManager {
 
     // Check if already installed
     const existing = this.store.getAgent(preset.id);
-    if (existing) return existing;
+    if (existing) {
+      this.getVisibilityStore().clearManagedPresetAgentHidden?.(presetId);
+      if (!existing.enabled) {
+        return this.store.updateAgent(existing.id, { enabled: true });
+      }
+      return existing;
+    }
 
     this.getVisibilityStore().clearManagedPresetAgentHidden?.(presetId);
 
@@ -111,7 +156,9 @@ export class AgentManager {
         continue;
       }
 
-      if (this.getVisibilityStore().isManagedPresetAgentHidden?.(presetId) === true) continue;
+      if (this.getVisibilityStore().isManagedPresetAgentHidden?.(presetId) === true) {
+        this.getVisibilityStore().clearManagedPresetAgentHidden?.(presetId);
+      }
 
       this.store.createAgent({
         ...presetToCreateRequest(preset),

@@ -506,9 +506,9 @@ const MyAgentSidebarTree: React.FC<MyAgentSidebarTreeProps> = ({
   }, [agentNodes, batchAgentId, onBatchSelectableItemsChange, subagentsBySessionId]);
 
   return (
-    <div className="pb-3" role="tree" aria-label={i18nService.t('myAgents')}>
+    <div className="pb-3" role="tree" aria-label={i18nService.t('systemAgents')}>
       <RecentConversationsSection
-        onSelectConversation={(session) => void handleSelectRecentConversation(session)}
+        onSelectConversation={session => void handleSelectRecentConversation(session)}
         onDeleteConversation={handleDeleteRecentConversation}
         deletedSessionIds={recentDeletedSessionIds}
       />
@@ -534,7 +534,7 @@ const MyAgentSidebarTree: React.FC<MyAgentSidebarTreeProps> = ({
       {agentNodes.length === 0 ? (
         <div className="px-3 py-6 text-center">
           <p className="text-xs font-medium text-secondary">
-            {i18nService.t('myAgentSidebarNoAgents')}
+            {i18nService.t('systemAgentSidebarNoAgents')}
           </p>
           <button
             type="button"
@@ -544,13 +544,11 @@ const MyAgentSidebarTree: React.FC<MyAgentSidebarTreeProps> = ({
             }}
             className="mt-3 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-primary-hover"
           >
-            {i18nService.t('createNewAgent')}
+            {i18nService.t('addSystemAgent')}
           </button>
         </div>
       ) : projectAgentNodes.length > 0 ? (
-        <div className="space-y-0.5 px-0">
-          {projectAgentNodes.map(renderAgentNode)}
-        </div>
+        <div className="space-y-0.5 px-0">{projectAgentNodes.map(renderAgentNode)}</div>
       ) : null}
 
       <AgentCreateModal
@@ -558,10 +556,7 @@ const MyAgentSidebarTree: React.FC<MyAgentSidebarTreeProps> = ({
         onClose={() => setIsCreateOpen(false)}
         source={createAgentSource}
       />
-      <AgentSettingsPanel
-        agentId={settingsAgentId}
-        onClose={() => setSettingsAgentId(null)}
-      />
+      <AgentSettingsPanel agentId={settingsAgentId} onClose={() => setSettingsAgentId(null)} />
     </div>
   );
 };

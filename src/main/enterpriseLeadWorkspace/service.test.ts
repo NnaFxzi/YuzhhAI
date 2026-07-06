@@ -12,6 +12,7 @@ import {
   EnterpriseLeadRunStatus,
   EnterpriseLeadTaskStatus,
   EnterpriseLeadTodoKind,
+  EnterpriseLeadWorkspaceAgentSource,
 } from '../../shared/enterpriseLeadWorkspace/constants';
 import type { EnterpriseLeadWorkspaceDraft } from '../../shared/enterpriseLeadWorkspace/types';
 import { buildDefaultEnterpriseLeadWorkspaceSettings } from '../../shared/enterpriseLeadWorkspace/validation';
@@ -83,6 +84,7 @@ const createService = (overrides: Partial<{
   modelClient: FakeModelClient;
   agentProvider: EnterpriseLeadWorkspaceAgentProvider;
   researchClient: EnterpriseLeadWorkspaceResearchClient;
+  researchTimeoutMs: number;
 }> = {}): {
   agentProvider: EnterpriseLeadWorkspaceAgentProvider;
   db: Database.Database;
@@ -106,6 +108,7 @@ const createService = (overrides: Partial<{
       modelClient,
       agentProvider,
       researchClient,
+      ...(overrides.researchTimeoutMs === undefined ? {} : { researchTimeoutMs: overrides.researchTimeoutMs }),
     }),
     store,
   };
@@ -222,6 +225,79 @@ describe('EnterpriseLeadWorkspaceService', () => {
     expect(setup.modelClient.prompts[0].prompt).toContain('只输出结构化 JSON');
   });
 
+  test('creates and appends persisted workspace chat sessions', async () => {
+    const setup = createService();
+    db = setup.db;
+    const workspace = setup.service.createWorkspace(draftPayload());
+    setup.modelClient.enqueue({ kind: 'none' });
+    setup.modelClient.enqueue('可以，我来整理安装步骤。');
+
+    const firstResponse = await setup.service.chat(workspace.id, {
+      message: '安装 oh-my-claudecode skill',
+    });
+
+    expect(firstResponse.session?.title).toBe('安装 oh-my-claudecode skill');
+    expect(firstResponse.session?.messages.map(message => message.role)).toEqual([
+      'user',
+      'assistant',
+    ]);
+    expect(setup.service.listChatSessions(workspace.id)).toEqual([{
+      id: firstResponse.session!.id,
+      workspaceId: workspace.id,
+      title: '安装 oh-my-claudecode skill',
+      createdAt: firstResponse.session!.createdAt,
+      updatedAt: firstResponse.session!.updatedAt,
+      messageCount: 2,
+    }]);
+
+    setup.modelClient.enqueue({ kind: 'none' });
+    setup.modelClient.enqueue('继续使用 GitHub 插件。');
+    const secondResponse = await setup.service.chat(workspace.id, {
+      sessionId: firstResponse.session!.id,
+      message: '使用 GitHub 插件',
+      recentMessages: firstResponse.session!.messages,
+    });
+
+    expect(secondResponse.session?.id).toBe(firstResponse.session?.id);
+    expect(secondResponse.session?.messages.map(message => message.content)).toEqual([
+      '安装 oh-my-claudecode skill',
+      '可以，我来整理安装步骤。',
+      '使用 GitHub 插件',
+      '继续使用 GitHub 插件。',
+    ]);
+    expect(setup.service.getChatSession(workspace.id, firstResponse.session!.id)?.messageCount).toBe(4);
+  });
+
+  test('creates a new chat session with the user message before the assistant response completes', async () => {
+    const setup = createService();
+    db = setup.db;
+    const workspace = setup.service.createWorkspace(draftPayload());
+    const pendingPlanning = setup.modelClient.enqueuePending();
+
+    const chatPromise = setup.service.chat(workspace.id, {
+      message: '帮我判断这批客户谁更值得优先跟进',
+    });
+
+    const sessionsDuringPlanning = setup.service.listChatSessions(workspace.id);
+
+    expect(sessionsDuringPlanning).toHaveLength(1);
+    expect(sessionsDuringPlanning[0]).toMatchObject({
+      workspaceId: workspace.id,
+      title: '帮我判断这批客户谁更值得优先跟进',
+      messageCount: 1,
+    });
+    expect(setup.service.getChatSession(
+      workspace.id,
+      sessionsDuringPlanning[0].id,
+    )?.messages.map(message => message.content)).toEqual([
+      '帮我判断这批客户谁更值得优先跟进',
+    ]);
+
+    setup.modelClient.enqueue('商机雷达 Agent 回答。');
+    pendingPlanning.resolve({ researchIntent: { kind: 'none' } });
+    await chatPromise;
+  });
+
   test('creates workspace and run with all workflow Agent tasks', async () => {
     const setup = createService();
     db = setup.db;
@@ -326,6 +402,7 @@ describe('EnterpriseLeadWorkspaceService', () => {
     expect(workspace.workspaceAgents).toEqual([
       {
         agentId: 'global-agent-1',
+        source: EnterpriseLeadWorkspaceAgentSource.WorkspaceCreated,
         enabled: true,
         order: 0,
         overrides: {
@@ -360,6 +437,88 @@ describe('EnterpriseLeadWorkspaceService', () => {
     });
   });
 
+  test('system template bindings resolve workflow defaults before workspace overrides', () => {
+    const setup = createService();
+    db = setup.db;
+
+    const workspace = setup.service.createWorkspace({
+      ...draftPayload(),
+      workspaceAgents: [
+        {
+          agentId: EnterpriseLeadAgentRole.ContentPlanning,
+          source: EnterpriseLeadWorkspaceAgentSource.SystemTemplate,
+          templateId: EnterpriseLeadAgentRole.ContentPlanning,
+          enabled: true,
+          order: 0,
+          overrides: {
+            name: '本空间内容策划 Agent',
+            model: 'gpt-4.1',
+          },
+        },
+      ],
+    });
+
+    const snapshot = setup.service.createRun(workspace.id, '生成渠道内容');
+
+    expect(snapshot.tasks[0].agentSnapshot).toMatchObject({
+      agentId: EnterpriseLeadAgentRole.ContentPlanning,
+      name: '本空间内容策划 Agent',
+      description: '生成小红书、短视频、公众号、产品介绍和销售话术草稿。',
+      identity: '内容策划 Agent',
+      icon: '内',
+      model: 'gpt-4.1',
+      skillIds: [],
+    });
+    expect(snapshot.tasks[0].agentSnapshot?.systemPrompt).toContain('输出：内容草稿、高风险表达、下游上下文');
+  });
+
+  test('workspace-created bindings do not inherit matching global Agent templates', () => {
+    const agentProvider = createAgentProvider([
+      {
+        id: 'agent-content',
+        name: 'Global content Agent',
+        description: 'Global content description',
+        identity: 'Global identity',
+        systemPrompt: 'Global system prompt',
+        icon: 'global',
+        model: 'global-model',
+        skillIds: ['global-skill'],
+        enabled: true,
+      },
+    ]);
+    const setup = createService({ agentProvider });
+    db = setup.db;
+
+    const workspace = setup.service.createWorkspace({
+      ...draftPayload(),
+      workspaceAgents: [
+        {
+          agentId: 'agent-content',
+          source: EnterpriseLeadWorkspaceAgentSource.WorkspaceCreated,
+          enabled: true,
+          order: 0,
+          overrides: {
+            name: 'Workspace content Agent',
+          },
+        },
+      ],
+    });
+
+    const snapshot = setup.service.createRun(workspace.id, '只运行本空间 Agent');
+
+    expect(snapshot.tasks[0].agentSnapshot).toEqual({
+      agentId: 'agent-content',
+      name: 'Workspace content Agent',
+      description: '',
+      identity: '',
+      systemPrompt: '',
+      icon: '',
+      model: '',
+      skillIds: [],
+    });
+    expect(agentProvider.getAgent).not.toHaveBeenCalled();
+  });
+
   test('new runs snapshot edited workspace-owned Agent definitions', () => {
     const setup = createService();
     db = setup.db;
@@ -390,6 +549,64 @@ describe('EnterpriseLeadWorkspaceService', () => {
       agentId: EnterpriseLeadAgentRole.ProductUnderstanding,
       name: '产品诊断 Agent',
       systemPrompt: '输出前必须指出产品资料缺口。',
+    });
+  });
+
+  test('existing run Agent snapshots stay unchanged after workspace Agent edits', () => {
+    const setup = createService();
+    db = setup.db;
+    const workspace = setup.service.createWorkspace({
+      ...draftPayload(),
+      workspaceAgents: [
+        {
+          agentId: 'agent-content',
+          source: EnterpriseLeadWorkspaceAgentSource.WorkspaceCreated,
+          enabled: true,
+          order: 0,
+          overrides: {
+            name: 'Original content Agent',
+            systemPrompt: 'Original prompt',
+            model: 'gpt-original',
+            skillIds: ['original-skill'],
+          },
+        },
+      ],
+    });
+
+    const firstSnapshot = setup.service.createRun(workspace.id, '第一次运行');
+    setup.service.updateWorkspaceAgents(workspace.id, [
+      {
+        agentId: 'agent-content',
+        source: EnterpriseLeadWorkspaceAgentSource.WorkspaceCreated,
+        enabled: true,
+        order: 0,
+        overrides: {
+          name: 'Edited content Agent',
+          systemPrompt: 'Edited prompt',
+          model: 'gpt-edited',
+          skillIds: ['edited-skill'],
+        },
+      },
+    ]);
+    const persistedFirstSnapshot = setup.service.getSnapshot(
+      workspace.id,
+      firstSnapshot.currentRun?.id,
+    );
+    const secondSnapshot = setup.service.createRun(workspace.id, '第二次运行');
+
+    expect(persistedFirstSnapshot.tasks[0].agentSnapshot).toMatchObject({
+      agentId: 'agent-content',
+      name: 'Original content Agent',
+      systemPrompt: 'Original prompt',
+      model: 'gpt-original',
+      skillIds: ['original-skill'],
+    });
+    expect(secondSnapshot.tasks[0].agentSnapshot).toMatchObject({
+      agentId: 'agent-content',
+      name: 'Edited content Agent',
+      systemPrompt: 'Edited prompt',
+      model: 'gpt-edited',
+      skillIds: ['edited-skill'],
     });
   });
 
@@ -641,19 +858,26 @@ describe('EnterpriseLeadWorkspaceService', () => {
     expect(taskPrompt).not.toContain('"endpoint"');
 
     setup.modelClient.enqueue({ researchIntent: { kind: 'none' } });
+    setup.modelClient.enqueue('内容策划 Agent step。');
+    setup.modelClient.enqueue('销售交接 Agent step。');
+    setup.modelClient.enqueue('风控审核 Agent step。');
     setup.modelClient.enqueue('已按小红书输出规则回答。');
 
     await setup.service.chat(workspace.id, {
       message: '根据默认平台写一版触达内容',
     });
 
-    const intentPrompt = setup.modelClient.prompts.at(-2)?.prompt ?? '';
+    const intentPrompt = setup.modelClient.prompts.find(prompt =>
+      prompt.prompt.includes('研究意图判断助手'),
+    )?.prompt ?? '';
     const finalPrompt = setup.modelClient.prompts.at(-1)?.prompt ?? '';
     expect(intentPrompt).toContain('"defaultPlatformId": "xiaohongshu_draft"');
     expect(finalPrompt).toContain('"defaultPlatformId": "xiaohongshu_draft"');
     expect(finalPrompt).toContain('"deliveryMode": "third_party_draft"');
     expect(finalPrompt).toContain('"configured": true');
-    [intentPrompt, finalPrompt].forEach(prompt => {
+    setup.modelClient.prompts
+      .map(prompt => prompt.prompt)
+      .forEach(prompt => {
       expect(prompt).not.toContain('xhs-secret-token');
       expect(prompt).not.toContain('https://draft.example.com/xhs');
       expect(prompt).not.toContain('"token"');
@@ -704,6 +928,10 @@ describe('EnterpriseLeadWorkspaceService', () => {
     expect(response.message).toMatchObject({
       role: 'assistant',
       content: '这是基于工作台资料生成的回答。',
+      agent: {
+        id: 'agent-content',
+        name: 'Workspace content Agent',
+      },
       research: {
         status: 'skipped',
         intent: { kind: 'none' },
@@ -713,9 +941,325 @@ describe('EnterpriseLeadWorkspaceService', () => {
     expect(setup.modelClient.prompts[0].prompt).toContain('工业包装供应商');
     expect(setup.modelClient.prompts[0].prompt).toContain('Workspace content Agent');
     expect(setup.modelClient.prompts[0].prompt).toContain('Workspace-only content strategy');
+    expect(setup.modelClient.prompts[0].prompt).not.toContain('[LobsterAI reply contract]');
     expect(setup.modelClient.prompts[1].prompt).toContain('工业包装供应商');
     expect(setup.modelClient.prompts[1].prompt).toContain('Workspace content Agent');
+    expect(setup.modelClient.prompts[1].prompt).toContain('[LobsterAI reply contract]');
+    expect(setup.modelClient.prompts[1].prompt).toContain('用中文自然回答');
+    expect(setup.modelClient.prompts[1].prompt).toContain('不得编造客户、联系人、认证、价格、交付、产能、案例或成本降低等事实');
+    expect(setup.modelClient.prompts[1].prompt).toContain('明确区分工作空间已有资料、研究结果、建议和推测');
     expect(setup.modelClient.prompts[1].model).toBe('gpt-4.1');
+  });
+
+  test('chat auto mode uses the workspace Agent selected by the planning response', async () => {
+    const setup = createService();
+    db = setup.db;
+    const workspace = setup.service.createWorkspace({
+      ...draftPayload(),
+      workspaceAgents: [
+        {
+          agentId: 'agent-opportunity',
+          enabled: true,
+          order: 0,
+          overrides: {
+            name: '商机雷达 Agent',
+            description: '判断客户方向、采购信号、商机评分和跟进优先级。',
+            systemPrompt: '优先输出商机判断和跟进理由。',
+            model: 'gpt-opportunity',
+          },
+        },
+      ],
+    });
+    setup.modelClient.enqueue({
+      targetAgentId: 'agent-opportunity',
+      researchIntent: { kind: 'none' },
+    });
+    setup.modelClient.enqueue('我会直接按商机雷达 Agent 的职责给出判断。');
+
+    const response = await setup.service.chat(workspace.id, {
+      message: '帮我判断机械设备厂线索的商机优先级',
+    });
+
+    expect(response.message).toMatchObject({
+      role: 'assistant',
+      content: '我会直接按商机雷达 Agent 的职责给出判断。',
+      agent: {
+        id: 'agent-opportunity',
+        name: '商机雷达 Agent',
+      },
+    });
+    expect(setup.modelClient.prompts[0].prompt).toContain('targetAgentId');
+    expect(setup.modelClient.prompts[0].prompt).toContain('不要建议用户去使用或切换 Agent');
+    expect(setup.modelClient.prompts[1].prompt).toContain('你是当前工作空间中的 商机雷达 Agent');
+    expect(setup.modelClient.prompts[1].model).toBe('gpt-opportunity');
+  });
+
+  [
+    {
+      message: '帮我判断客户方向和商机优先级',
+      agentId: EnterpriseLeadAgentRole.OpportunityRadar,
+      agentName: '商机雷达 Agent',
+    },
+    {
+      message: '帮我写一版适合发给机械设备厂老板的私信',
+      agentId: EnterpriseLeadAgentRole.ContentPlanning,
+      agentName: '内容策划 Agent',
+      expectedRoutingAgentNames: ['内容策划 Agent', '销售交接 Agent', '风控审核 Agent'],
+      expectedRouteReason: '识别到：私信/外发文案',
+    },
+    {
+      message: '帮我检查这段宣传文案有没有夸大风险：我们是行业第一，所有客户都能降本 50%。',
+      agentId: EnterpriseLeadAgentRole.RiskReview,
+      agentName: '风控审核 Agent',
+    },
+  ].forEach(({
+    message,
+    agentId,
+    agentName,
+    expectedRoutingAgentNames,
+    expectedRouteReason,
+  }) => {
+    test(`chat auto mode falls back to ${agentName} when the planning response omits targetAgentId`, async () => {
+      const setup = createService();
+      db = setup.db;
+      const workspace = setup.service.createWorkspace(draftPayload());
+      setup.modelClient.enqueue({ researchIntent: { kind: 'none' } });
+      if (expectedRoutingAgentNames) {
+        setup.modelClient.enqueue('内容策划 Agent step。');
+        setup.modelClient.enqueue('销售交接 Agent step。');
+        setup.modelClient.enqueue('风控审核 Agent step。');
+      }
+      setup.modelClient.enqueue(`${agentName} 回答。`);
+
+      const response = await setup.service.chat(workspace.id, { message });
+
+      expect(response.message).toMatchObject({
+        role: 'assistant',
+        content: `${agentName} 回答。`,
+        agent: {
+          id: agentId,
+          name: agentName,
+        },
+      });
+      if (expectedRoutingAgentNames) {
+        expect(response.message.routing).toMatchObject({
+          reason: expectedRouteReason,
+          agents: expectedRoutingAgentNames.map(name => ({
+            name,
+          })),
+        });
+      } else {
+        expect(response.message.routing).toMatchObject({
+          reason: expect.any(String),
+          agents: [
+            {
+              id: agentId,
+              name: agentName,
+            },
+          ],
+        });
+      }
+      if (expectedRoutingAgentNames) {
+        expect(setup.modelClient.prompts[0].prompt).not.toContain('[LobsterAI reply contract]');
+        expect(setup.modelClient.prompts[1].prompt).toContain(`当前执行 Agent：${agentName}`);
+        expect(setup.modelClient.prompts[1].prompt).toContain('[LobsterAI reply contract]');
+        expect(setup.modelClient.prompts[1].prompt).toContain('外部动作只能生成草稿或审批建议');
+        expect(setup.modelClient.prompts.at(-1)?.prompt).toContain(
+          `你是当前工作空间中的 ${agentName}`,
+        );
+        expect(setup.modelClient.prompts[1].prompt).toContain('参与 Agent 链路');
+        expectedRoutingAgentNames.forEach(name => {
+          expect(setup.modelClient.prompts.at(-1)?.prompt).toContain(name);
+        });
+      } else {
+        expect(setup.modelClient.prompts[1].prompt).toContain(
+          `你是当前工作空间中的 ${agentName}`,
+        );
+      }
+    });
+  });
+
+  test('chat customer priority request uses workspace lead sources before asking for a list', async () => {
+    const setup = createService();
+    db = setup.db;
+    const workspace = setup.service.createWorkspace({
+      ...draftPayload(),
+      source: {
+        kind: 'file',
+        label: '制造业客户名单.csv',
+        text: [
+          '客户名单',
+          '杭州长江自动化设备有限公司｜自动化设备｜本周询价不锈钢支架｜月需求 500 套',
+          '苏州恒力包装机械有限公司｜包装机械｜只问价格｜暂无图纸',
+        ].join('\n'),
+      },
+    });
+    setup.modelClient.enqueue({ researchIntent: { kind: 'none' } });
+    setup.modelClient.enqueue('我会直接基于工作区客户名单排序。');
+
+    const response = await setup.service.chat(workspace.id, {
+      message: '帮我判断这批客户谁更值得优先跟进',
+    });
+
+    expect(response.message.content).toBe('我会直接基于工作区客户名单排序。');
+    expect(response.message.agent).toEqual({
+      id: EnterpriseLeadAgentRole.OpportunityRadar,
+      name: '商机雷达 Agent',
+    });
+    expect(setup.modelClient.prompts).toHaveLength(2);
+    expect(setup.modelClient.prompts[0].prompt).toContain('工作区可用线索');
+    expect(setup.modelClient.prompts[1].prompt).toContain('工作区可用线索');
+    expect(setup.modelClient.prompts[1].prompt).toContain('制造业客户名单.csv');
+    expect(setup.modelClient.prompts[1].prompt).toContain('杭州长江自动化设备有限公司');
+    expect(setup.modelClient.prompts[1].prompt).toContain('请直接基于这些线索评分、排序和给出跟进建议');
+  });
+
+  test('chat customer priority request gives a short input prompt when workspace has no leads', async () => {
+    const setup = createService();
+    db = setup.db;
+    const workspace = setup.service.createWorkspace(draftPayload());
+    setup.modelClient.enqueue({ researchIntent: { kind: 'none' } });
+
+    const response = await setup.service.chat(workspace.id, {
+      message: '帮我判断这批客户谁更值得优先跟进',
+    });
+
+    expect(response.message).toMatchObject({
+      role: 'assistant',
+      agent: {
+        id: EnterpriseLeadAgentRole.OpportunityRadar,
+        name: '商机雷达 Agent',
+      },
+      routing: {
+        reason: '识别到：客户优先级/商机判断',
+        agents: [
+          {
+            id: EnterpriseLeadAgentRole.OpportunityRadar,
+            name: '商机雷达 Agent',
+          },
+        ],
+      },
+    });
+    expect(response.message.content).toContain('当前工作区还没有可用于排序的客户名单');
+    expect(response.message.content).toContain('公司名 + 行业/产品 + 需求或沟通信号');
+    expect(response.message.content).not.toContain('客户类型与匹配度');
+    expect(setup.modelClient.prompts).toHaveLength(1);
+  });
+
+  test('chat auto mode executes private-message routes through multiple Agent steps before final synthesis', async () => {
+    const setup = createService();
+    db = setup.db;
+    const workspace = setup.service.createWorkspace(draftPayload());
+    setup.modelClient.enqueue({ researchIntent: { kind: 'none' } });
+    setup.modelClient.enqueue('内容策划 Agent：先生成机械设备厂老板私信草稿。');
+    setup.modelClient.enqueue('销售交接 Agent：补充开场、跟进节奏和异议处理。');
+    setup.modelClient.enqueue('风控审核 Agent：删除绝对化承诺并保留审批提醒。');
+    setup.modelClient.enqueue('最终私信：您好，我们可以先按您的设备结构做一版加工方案草稿。');
+
+    const response = await setup.service.chat(workspace.id, {
+      message: '帮我写一版适合发给机械设备厂老板的私信',
+    });
+
+    expect(response.message).toMatchObject({
+      role: 'assistant',
+      content: '最终私信：您好，我们可以先按您的设备结构做一版加工方案草稿。',
+      agent: {
+        id: EnterpriseLeadAgentRole.ContentPlanning,
+        name: '内容策划 Agent',
+      },
+      routing: {
+        reason: '识别到：私信/外发文案',
+        agents: [
+          { id: EnterpriseLeadAgentRole.ContentPlanning, name: '内容策划 Agent' },
+          { id: EnterpriseLeadAgentRole.SalesHandoff, name: '销售交接 Agent' },
+          { id: EnterpriseLeadAgentRole.RiskReview, name: '风控审核 Agent' },
+        ],
+      },
+    });
+    expect((response.message.routing as any)?.steps).toEqual([
+      {
+        agent: { id: EnterpriseLeadAgentRole.ContentPlanning, name: '内容策划 Agent' },
+        content: '内容策划 Agent：先生成机械设备厂老板私信草稿。',
+      },
+      {
+        agent: { id: EnterpriseLeadAgentRole.SalesHandoff, name: '销售交接 Agent' },
+        content: '销售交接 Agent：补充开场、跟进节奏和异议处理。',
+      },
+      {
+        agent: { id: EnterpriseLeadAgentRole.RiskReview, name: '风控审核 Agent' },
+        content: '风控审核 Agent：删除绝对化承诺并保留审批提醒。',
+      },
+    ]);
+    expect(setup.modelClient.prompts).toHaveLength(5);
+    expect(setup.modelClient.prompts[1].prompt).toContain('当前执行 Agent：内容策划 Agent');
+    expect(setup.modelClient.prompts[2].prompt).toContain('当前执行 Agent：销售交接 Agent');
+    expect(setup.modelClient.prompts[2].prompt).toContain('内容策划 Agent：先生成机械设备厂老板私信草稿。');
+    expect(setup.modelClient.prompts[3].prompt).toContain('当前执行 Agent：风控审核 Agent');
+    expect(setup.modelClient.prompts[3].prompt).toContain('销售交接 Agent：补充开场、跟进节奏和异议处理。');
+    expect(setup.modelClient.prompts[4].prompt).toContain('多 Agent 中间结果');
+    expect(setup.modelClient.prompts[4].prompt).toContain('风控审核 Agent：删除绝对化承诺并保留审批提醒。');
+  });
+
+  test('chat risk review asks for copy when no review text is provided', async () => {
+    const setup = createService();
+    db = setup.db;
+    const workspace = setup.service.createWorkspace(draftPayload());
+    setup.modelClient.enqueue({ researchIntent: { kind: 'none' } });
+
+    const response = await setup.service.chat(workspace.id, {
+      message: '帮我检查这段宣传文案有没有夸大风险',
+    });
+
+    expect(response.message).toMatchObject({
+      role: 'assistant',
+      content: [
+        '可以，我会按风控审核 Agent 来检查。',
+        '',
+        '请把待审宣传文案粘贴过来，最好包含标题、正文、落款和拟发布渠道。',
+        '',
+        '收到后我会输出风险等级、问题句、风险原因、修改建议和可外发版本。',
+      ].join('\n'),
+      agent: {
+        id: EnterpriseLeadAgentRole.RiskReview,
+        name: '风控审核 Agent',
+      },
+      research: {
+        status: 'skipped',
+        summary: '未请求外部调研。',
+      },
+    });
+    expect(setup.modelClient.prompts).toHaveLength(1);
+  });
+
+  test('chat auto mode ignores planning target Agent ids outside the workspace', async () => {
+    const setup = createService();
+    db = setup.db;
+    const workspace = setup.service.createWorkspace({
+      ...draftPayload(),
+      workspaceAgents: [
+        {
+          agentId: 'agent-content',
+          enabled: true,
+          order: 0,
+          overrides: {
+            name: '内容策划 Agent',
+          },
+        },
+      ],
+    });
+    setup.modelClient.enqueue({
+      targetAgentId: 'unbound-agent',
+      researchIntent: { kind: 'none' },
+    });
+    setup.modelClient.enqueue('通用助手回答。');
+
+    const response = await setup.service.chat(workspace.id, {
+      message: '帮我看看下一步',
+    });
+
+    expect(response.message.agent).toBeUndefined();
+    expect(setup.modelClient.prompts[1].prompt).not.toContain('unbound-agent');
+    expect(setup.modelClient.prompts[1].model).toBeUndefined();
   });
 
   test('chat still answers when requested search research is unconfigured', async () => {
@@ -747,6 +1291,61 @@ describe('EnterpriseLeadWorkspaceService', () => {
     expect(response.message.research?.summary).toMatch(/unavailable|unconfigured|not configured/i);
     expect(setup.researchClient.tavilySearch).not.toHaveBeenCalled();
     expect(setup.researchClient.firecrawlSearch).not.toHaveBeenCalled();
+  });
+
+  test('chat still answers when external search research times out', async () => {
+    vi.useFakeTimers();
+    try {
+      const settings = buildDefaultEnterpriseLeadWorkspaceSettings();
+      settings.externalResearch = {
+        mode: AgentExternalResearchMode.Override,
+        providers: {
+          [ExternalResearchProviderId.Tavily]: { enabled: true, apiKey: 'tvly-workspace' },
+          [ExternalResearchProviderId.Firecrawl]: { enabled: false, apiKey: '' },
+        },
+      };
+      const researchClient = createResearchClient({
+        tavilySearch: vi.fn(() => new Promise(() => {})),
+      });
+      const setup = createService({ researchClient, researchTimeoutMs: 5 });
+      db = setup.db;
+      const workspace = setup.service.createWorkspace({
+        ...draftPayload(),
+        settings,
+      });
+      setup.modelClient.enqueue({
+        researchIntent: {
+          kind: 'search',
+          query: '机械设备厂 重型纸箱 采购',
+          provider: 'tavily',
+        },
+      });
+      setup.modelClient.enqueue('调研超时后仍然基于工作台资料回答。');
+
+      let response: Awaited<ReturnType<EnterpriseLeadWorkspaceService['chat']>> | undefined;
+      void setup.service.chat(workspace.id, {
+        message: '查一下机械设备厂线索',
+      }).then(result => {
+        response = result;
+      });
+
+      await vi.advanceTimersByTimeAsync(6);
+      await Promise.resolve();
+
+      expect(response?.message.content).toBe('调研超时后仍然基于工作台资料回答。');
+      expect(response?.message.research).toMatchObject({
+        status: 'failed',
+        intent: {
+          kind: 'search',
+          query: '机械设备厂 重型纸箱 采购',
+          provider: 'tavily',
+        },
+      });
+      expect(response?.message.research?.summary).toContain('timed out');
+      expect(researchClient.tavilySearch).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   test('chat research planning prompt includes configured workspace research capabilities', async () => {
@@ -787,6 +1386,181 @@ describe('EnterpriseLeadWorkspaceService', () => {
     expect(finalPrompt).toContain('"externalResearch"');
     expect(finalPrompt).not.toContain('tvly-workspace');
     expect(finalPrompt).not.toContain('"apiKey"');
+  });
+
+  test('chat falls back to configured external research for customer opportunity requests when planning omits research', async () => {
+    const settings = buildDefaultEnterpriseLeadWorkspaceSettings();
+    settings.externalResearch = {
+      mode: AgentExternalResearchMode.Override,
+      providers: {
+        [ExternalResearchProviderId.Tavily]: { enabled: true, apiKey: 'tvly-workspace' },
+        [ExternalResearchProviderId.Firecrawl]: { enabled: false, apiKey: '' },
+      },
+    };
+    const researchClient = createResearchClient({
+      tavilySearch: vi.fn(async (_apiKey: string, query: string) => ({
+        results: [{
+          title: '杭州长江自动化设备有限公司采购信号',
+          url: 'https://example.com/hangzhou-changjiang',
+          content: `杭州长江自动化设备有限公司正在采购自动化设备支架，${query} 的公开线索`,
+        }, {
+          title: '自动化设备厂客户类型线索',
+          content: '自动化设备厂通常关注非标支架、钣金外壳和设备机箱。',
+        }],
+      })),
+    });
+    const setup = createService({ researchClient });
+    db = setup.db;
+    const workspace = setup.service.createWorkspace({
+      ...draftPayload(),
+      settings,
+    });
+    setup.modelClient.enqueue({ researchIntent: { kind: 'none' } });
+    setup.modelClient.enqueue('已结合调研结果判断客户优先级。');
+
+    const response = await setup.service.chat(workspace.id, {
+      message: '帮我判断这批客户谁更值得优先跟进',
+    });
+
+    expect(response.message.content).toBe('已结合调研结果判断客户优先级。');
+    expect(response.message.research).toMatchObject({
+      status: 'completed',
+      provider: 'tavily',
+      intent: {
+        kind: 'search',
+        provider: 'auto',
+      },
+    });
+    expect(response.message.research?.summary).toContain('1 个具体公司');
+    expect(response.message.research?.summary).toContain('1 条客户类型线索');
+    expect(response.message.research?.summary).not.toBe('未请求外部调研。');
+    expect(response.message.routing?.agents.map(agent => agent.name)).toEqual([
+      '调研助手 Agent',
+      '商机雷达 Agent',
+    ]);
+    expect((response.message.research as any)?.leadCandidates).toEqual([
+      expect.objectContaining({
+        kind: 'company',
+        name: '杭州长江自动化设备有限公司',
+        sourceTitle: '杭州长江自动化设备有限公司采购信号',
+        sourceUrl: 'https://example.com/hangzhou-changjiang',
+        confidence: 'high',
+      }),
+      expect.objectContaining({
+        kind: 'category',
+        name: '自动化设备厂客户类型线索',
+        confidence: 'low',
+      }),
+    ]);
+    expect(researchClient.tavilySearch).toHaveBeenCalledTimes(1);
+    expect(researchClient.tavilySearch).toHaveBeenCalledWith(
+      'tvly-workspace',
+      expect.stringContaining('帮我判断这批客户谁更值得优先跟进'),
+      5,
+    );
+    expect(setup.modelClient.prompts[1].prompt).toContain('杭州长江自动化设备有限公司采购信号');
+    expect(setup.modelClient.prompts[1].prompt).toContain('leadCandidates');
+    expect(setup.modelClient.prompts[1].prompt).toContain('不得输出“模拟客户”');
+    expect(setup.modelClient.prompts[1].prompt).toContain('只能基于工作区可用线索或研究结果中的真实公司');
+    expect(setup.modelClient.prompts[1].prompt).toContain('未拿到具体公司名单');
+  });
+
+  test('chat does not simulate customer ranking when research has no concrete companies', async () => {
+    const settings = buildDefaultEnterpriseLeadWorkspaceSettings();
+    settings.externalResearch = {
+      mode: AgentExternalResearchMode.Override,
+      providers: {
+        [ExternalResearchProviderId.Tavily]: { enabled: false, apiKey: '' },
+        [ExternalResearchProviderId.Firecrawl]: { enabled: true, apiKey: 'fc-workspace' },
+      },
+    };
+    const researchClient = createResearchClient({
+      firecrawlSearch: vi.fn(async () => ({
+        success: true,
+        data: [{
+          title: '自动化设备厂客户类型线索',
+          markdown: '自动化设备厂通常关注非标支架、钣金外壳和设备机箱，但没有具体公司名称。',
+        }, {
+          title: '工程配套客户方向',
+          markdown: '工程配套项目可能采购固定板、安装底座和承重连接件。',
+        }],
+      })),
+    });
+    const setup = createService({ researchClient });
+    db = setup.db;
+    const workspace = setup.service.createWorkspace({
+      ...draftPayload(),
+      settings,
+    });
+    setup.modelClient.enqueue({ researchIntent: { kind: 'none' } });
+
+    const response = await setup.service.chat(workspace.id, {
+      message: '帮我判断这批客户谁更值得优先跟进',
+    });
+
+    expect(response.message.content).toContain('未拿到具体公司名单');
+    expect(response.message.content).toContain('不能把客户类型包装成真实客户来排序');
+    expect(response.message.content).not.toContain('示例线索');
+    expect(response.message.content).not.toContain('模拟');
+    expect(response.message.research).toMatchObject({
+      status: 'completed',
+      provider: 'firecrawl',
+    });
+    expect(response.message.routing?.agents.map(agent => agent.name)).toEqual([
+      '调研助手 Agent',
+      '商机雷达 Agent',
+    ]);
+    expect(setup.modelClient.prompts).toHaveLength(1);
+  });
+
+  test('chat treats workspace customer profiles as directions, not sortable customer lists', async () => {
+    const settings = buildDefaultEnterpriseLeadWorkspaceSettings();
+    settings.externalResearch = {
+      mode: AgentExternalResearchMode.Override,
+      providers: {
+        [ExternalResearchProviderId.Tavily]: { enabled: false, apiKey: '' },
+        [ExternalResearchProviderId.Firecrawl]: { enabled: true, apiKey: 'fc-workspace' },
+      },
+    };
+    const researchClient = createResearchClient({
+      firecrawlSearch: vi.fn(async () => ({
+        success: true,
+        data: [{
+          title: '机械设备厂客户画像',
+          markdown: '机械设备厂、外贸公司和工程承包商是适合开发的客户类型，但没有具体公司名称。',
+        }],
+      })),
+    });
+    const setup = createService({ researchClient });
+    db = setup.db;
+    const workspace = setup.service.createWorkspace({
+      ...draftPayload(),
+      source: {
+        kind: 'conversation',
+        label: '产品理解 Agent 输出',
+        text: [
+          '客户类型线索',
+          '目标客户画像：机械设备厂、外贸公司、工程承包商。',
+          '这些方向适合采购精密金属支架、钣金外壳和安装底座。',
+        ].join('\n'),
+      },
+      settings,
+    });
+    setup.modelClient.enqueue({ researchIntent: { kind: 'none' } });
+
+    const response = await setup.service.chat(workspace.id, {
+      message: '帮我判断这批客户谁更值得优先跟进',
+    });
+
+    expect(response.message.content).toContain('未拿到具体公司名单');
+    expect(response.message.content).toContain('不能把客户类型包装成真实客户来排序');
+    expect(response.message.content).not.toContain('杭州锐途');
+    expect(response.message.content).not.toContain('示例客户');
+    expect(response.message.research).toMatchObject({
+      status: 'completed',
+      provider: 'firecrawl',
+    });
+    expect(setup.modelClient.prompts).toHaveLength(1);
   });
 
   test('chat executes domestic platform search with workspace-enabled searchable sources', async () => {
@@ -923,11 +1697,12 @@ describe('EnterpriseLeadWorkspaceService', () => {
     setup.modelClient.enqueue({ researchIntent: { kind: 'none' } });
     setup.modelClient.enqueue('通用助手回答。');
 
-    await setup.service.chat(workspace.id, {
+    const response = await setup.service.chat(workspace.id, {
       message: '用这个 Agent 帮我回答',
       targetAgentId: 'unbound-global-agent',
     });
 
+    expect(response.message.agent).toBeUndefined();
     expect(setup.modelClient.prompts[1].prompt).not.toContain('Unbound global Agent');
     expect(setup.modelClient.prompts[1].prompt).not.toContain('Unbound secret prompt');
     expect(setup.modelClient.prompts[1].prompt).not.toContain('unbound-model');

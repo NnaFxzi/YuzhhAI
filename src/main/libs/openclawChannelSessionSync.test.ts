@@ -148,6 +148,65 @@ test('channel sync reuses one local session for run-scoped cron session keys', (
   expect(resolveJobName).toHaveBeenCalledWith('daily-monitor');
 });
 
+test('channel sync resolves stale cron Agent ids before creating a local session', () => {
+  let nextId = 0;
+  const createSession = vi.fn(
+    (
+      title: string,
+      cwd: string,
+      systemPrompt: string,
+      executionMode: 'local',
+      activeSkillIds: string[],
+      agentId: string,
+    ) => ({
+      id: `cron-session-${++nextId}`,
+      title,
+      claudeSessionId: null,
+      status: 'idle' as const,
+      pinned: false,
+      cwd,
+      systemPrompt,
+      modelOverride: '',
+      executionMode,
+      activeSkillIds,
+      agentId,
+      messages: [],
+      createdAt: 1,
+      updatedAt: 1,
+    }),
+  );
+  const getDefaultCwd = vi.fn((agentId?: string) => `/repo/${agentId || 'main'}`);
+  const resolveRuntimeAgentId = vi.fn(() => 'main');
+  const sync = new OpenClawChannelSessionSync({
+    coworkStore: {
+      getSession: () => null,
+      createSession,
+    },
+    imStore: {
+      getSessionMapping: () => null,
+      updateSessionLastActive: () => {},
+      deleteSessionMapping: () => {},
+      createSessionMapping: () => {},
+    },
+    getDefaultCwd,
+    resolveRuntimeAgentId,
+  });
+
+  expect(sync.resolveOrCreateCronSession('agent:disabled-agent:cron:daily-monitor')).toBe(
+    'cron-session-1',
+  );
+  expect(resolveRuntimeAgentId).toHaveBeenCalledWith('disabled-agent');
+  expect(getDefaultCwd).toHaveBeenCalledWith('main');
+  expect(createSession).toHaveBeenCalledWith(
+    expect.any(String),
+    '/repo/main',
+    '',
+    'local',
+    [],
+    'main',
+  );
+});
+
 test('channel sync treats stale agent ids as non-current after platform binding changes', () => {
   const sync = new OpenClawChannelSessionSync({
     coworkStore: {
@@ -233,6 +292,152 @@ test('channel sync stores the real OpenClaw session key when creating a mapping'
     'feishu',
     'cowork-1',
     'main',
+    sessionKey,
+  );
+});
+
+test('channel sync resolves disabled IM-bound Agents before creating a local session', () => {
+  const createSessionMapping = vi.fn();
+  const resolveRuntimeAgentId = vi.fn(() => 'main');
+  const getDefaultCwd = vi.fn((agentId?: string) => `/tmp/${agentId || 'fallback'}`);
+  const createSession = vi.fn(
+    (
+      title: string,
+      cwd: string,
+      systemPrompt: string,
+      executionMode: 'local',
+      activeSkillIds: string[],
+      agentId: string,
+    ) => ({
+      id: 'cowork-1',
+      title,
+      claudeSessionId: null,
+      status: 'idle' as const,
+      pinned: false,
+      cwd,
+      systemPrompt,
+      modelOverride: '',
+      executionMode,
+      activeSkillIds,
+      agentId,
+      messages: [],
+      createdAt: 1,
+      updatedAt: 1,
+    }),
+  );
+  const sync = new OpenClawChannelSessionSync({
+    coworkStore: {
+      getSession: () => null,
+      createSession,
+    },
+    imStore: {
+      getIMSettings: () => ({
+        skillsEnabled: true,
+        platformAgentBindings: {
+          feishu: 'disabled-agent',
+        },
+      }),
+      getSessionMapping: () => null,
+      updateSessionLastActive: () => {},
+      deleteSessionMapping: () => {},
+      createSessionMapping,
+    },
+    getDefaultCwd,
+    resolveRuntimeAgentId,
+  });
+
+  const sessionKey = 'agent:disabled-agent:feishu:dm:ou_123';
+
+  expect(sync.resolveOrCreateSession(sessionKey)).toBe('cowork-1');
+  expect(resolveRuntimeAgentId).toHaveBeenCalledWith('disabled-agent');
+  expect(getDefaultCwd).toHaveBeenCalledWith('main');
+  expect(createSession).toHaveBeenCalledWith(
+    expect.any(String),
+    '/tmp/main',
+    '',
+    'local',
+    [],
+    'main',
+  );
+  expect(createSessionMapping).toHaveBeenCalledWith(
+    'dm:ou_123',
+    'feishu',
+    'cowork-1',
+    'main',
+    sessionKey,
+  );
+});
+
+test('channel sync snapshots runtime Agent model and skills for new IM sessions', () => {
+  const createSessionMapping = vi.fn();
+  const createSession = vi.fn(
+    (
+      title: string,
+      cwd: string,
+      systemPrompt: string,
+      executionMode: 'local',
+      activeSkillIds: string[],
+      agentId: string,
+      modelOverride = '',
+    ) => ({
+      id: 'cowork-1',
+      title,
+      claudeSessionId: null,
+      status: 'idle' as const,
+      pinned: false,
+      cwd,
+      systemPrompt,
+      modelOverride,
+      executionMode,
+      activeSkillIds,
+      agentId,
+      messages: [],
+      createdAt: 1,
+      updatedAt: 1,
+    }),
+  );
+  const sync = new OpenClawChannelSessionSync({
+    coworkStore: {
+      getSession: () => null,
+      createSession,
+    },
+    imStore: {
+      getIMSettings: () => ({
+        skillsEnabled: true,
+        platformAgentBindings: {
+          feishu: 'writer',
+        },
+      }),
+      getSessionMapping: () => null,
+      updateSessionLastActive: () => {},
+      deleteSessionMapping: () => {},
+      createSessionMapping,
+    },
+    getDefaultCwd: (agentId?: string) => `/tmp/${agentId || 'fallback'}`,
+    getRuntimeAgentSessionDefaults: (agentId?: string) => ({
+      agentId: agentId?.trim() || 'main',
+      activeSkillIds: ['draft', 'research'],
+      modelOverride: 'openai/gpt-4.1',
+    }),
+  });
+
+  const sessionKey = 'agent:writer:feishu:dm:ou_123';
+
+  expect(sync.resolveOrCreateSession(sessionKey)).toBe('cowork-1');
+  expect(createSession).toHaveBeenCalledWith(
+    expect.any(String),
+    '/tmp/writer',
+    '',
+    'local',
+    ['draft', 'research'],
+    'writer',
+    'openai/gpt-4.1',
+  );
+  expect(createSessionMapping).toHaveBeenCalledWith(
+    'dm:ou_123',
+    'feishu',
+    'cowork-1',
+    'writer',
     sessionKey,
   );
 });

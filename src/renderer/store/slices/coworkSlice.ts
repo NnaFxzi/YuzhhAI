@@ -1,5 +1,6 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 
+import type { LayeredCoworkSettingsResolution } from '../../../shared/cowork/layeredSettings';
 import {
   COWORK_RAIL_TOOLTIP_PREVIEW_MAX_LENGTH,
   type CoworkMessageRailIndexItem,
@@ -74,11 +75,15 @@ interface CoworkState {
   remoteManaged: boolean;
   pendingPermissions: CoworkPermissionRequest[];
   config: CoworkConfig;
+  effectiveSettings: LayeredCoworkSettingsResolution | null;
   /** Media generation models fetched from server */
   mediaModels: { image: MediaModel[]; video: MediaModel[] };
   /** Media generation mode selection per draft key */
   mediaSelection: Record<string, MediaGenerationSelection>;
-  pendingMediaStatusUpdates: Record<string, Array<{ toolCallId: string; details: Record<string, unknown> }>>;
+  pendingMediaStatusUpdates: Record<
+    string,
+    Array<{ toolCallId: string; details: Record<string, unknown> }>
+  >;
 }
 
 const initialState: CoworkState = {
@@ -106,6 +111,7 @@ const initialState: CoworkState = {
   pendingPermissions: [],
   config: {
     workingDirectory: '',
+    workingDirectoryConfigured: false,
     systemPrompt: '',
     executionMode: 'local',
     agentEngine: 'openclaw',
@@ -130,6 +136,7 @@ const initialState: CoworkState = {
       keepAlive: '30d',
     },
   },
+  effectiveSettings: null,
   mediaModels: { image: [], video: [] },
   mediaSelection: {},
   pendingMediaStatusUpdates: {},
@@ -385,8 +392,8 @@ const coworkSlice = createSlice({
 
     setSessions(state, action: PayloadAction<CoworkSessionSummary[]>) {
       state.sessions = action.payload;
-      const validSessionIds = new Set(action.payload.map((session) => session.id));
-      state.unreadSessionIds = state.unreadSessionIds.filter((id) => {
+      const validSessionIds = new Set(action.payload.map(session => session.id));
+      state.unreadSessionIds = state.unreadSessionIds.filter(id => {
         return validSessionIds.has(id) && id !== state.currentSessionId;
       });
     },
@@ -395,7 +402,10 @@ const coworkSlice = createSlice({
       state.hasMoreSessions = action.payload;
     },
 
-    appendSessions(state, action: PayloadAction<{ sessions: CoworkSessionSummary[]; hasMore: boolean }>) {
+    appendSessions(
+      state,
+      action: PayloadAction<{ sessions: CoworkSessionSummary[]; hasMore: boolean }>,
+    ) {
       const { sessions, hasMore } = action.payload;
       const existingIds = new Set(state.sessions.map(s => s.id));
       const newSessions = sessions.filter(s => !existingIds.has(s.id));
@@ -427,7 +437,7 @@ const coworkSlice = createSlice({
         state.currentSessionId = action.payload.id;
         if (!action.payload.id.startsWith('temp-')) {
           const summary = toSessionSummary(action.payload);
-          const sessionIndex = state.sessions.findIndex((session) => session.id === summary.id);
+          const sessionIndex = state.sessions.findIndex(session => session.id === summary.id);
           if (sessionIndex !== -1) {
             state.sessions[sessionIndex] = {
               ...state.sessions[sessionIndex],
@@ -462,7 +472,10 @@ const coworkSlice = createSlice({
       markSessionRead(state, action.payload.id);
     },
 
-    updateSessionStatus(state, action: PayloadAction<{ sessionId: string; status: CoworkSessionStatus }>) {
+    updateSessionStatus(
+      state,
+      action: PayloadAction<{ sessionId: string; status: CoworkSessionStatus }>,
+    ) {
       const { sessionId, status } = action.payload;
 
       // Update in sessions list
@@ -501,7 +514,10 @@ const coworkSlice = createSlice({
       }
     },
 
-    setMessageRailIndexLoading(state, action: PayloadAction<{ sessionId: string; loading: boolean }>) {
+    setMessageRailIndexLoading(
+      state,
+      action: PayloadAction<{ sessionId: string; loading: boolean }>,
+    ) {
       const { sessionId, loading } = action.payload;
       if (loading) {
         state.messageRailIndexLoadingBySessionId[sessionId] = true;
@@ -510,7 +526,10 @@ const coworkSlice = createSlice({
       }
     },
 
-    setMessageRailIndex(state, action: PayloadAction<{ sessionId: string; items: CoworkMessageRailIndexItem[] }>) {
+    setMessageRailIndex(
+      state,
+      action: PayloadAction<{ sessionId: string; items: CoworkMessageRailIndexItem[] }>,
+    ) {
       const { sessionId, items } = action.payload;
       state.messageRailIndexBySessionId[sessionId] = items;
       delete state.messageRailIndexLoadingBySessionId[sessionId];
@@ -535,18 +554,36 @@ const coworkSlice = createSlice({
       }
     },
 
-    addMessage(state, action: PayloadAction<{ sessionId: string; message: CoworkMessage; beforeMessageId?: string }>) {
+    addMessage(
+      state,
+      action: PayloadAction<{
+        sessionId: string;
+        message: CoworkMessage;
+        beforeMessageId?: string;
+      }>,
+    ) {
       const { sessionId, message, beforeMessageId } = action.payload;
 
       if (state.currentSession?.id === sessionId) {
-        const exists = state.currentSession.messages.some((item) => item.id === message.id);
+        const exists = state.currentSession.messages.some(item => item.id === message.id);
         if (!exists) {
           // If beforeMessageId is specified, insert before that message to maintain correct order
           // (e.g. thinking block should appear before the assistant text)
           let inserted = false;
           if (beforeMessageId) {
-            const targetIndex = state.currentSession.messages.findIndex((item) => item.id === beforeMessageId);
-            console.log('[ThinkingOrder] Redux addMessage: beforeMessageId=', beforeMessageId, 'targetIndex=', targetIndex, 'messageId=', message.id, 'totalMessages=', state.currentSession.messages.length);
+            const targetIndex = state.currentSession.messages.findIndex(
+              item => item.id === beforeMessageId,
+            );
+            console.log(
+              '[ThinkingOrder] Redux addMessage: beforeMessageId=',
+              beforeMessageId,
+              'targetIndex=',
+              targetIndex,
+              'messageId=',
+              message.id,
+              'totalMessages=',
+              state.currentSession.messages.length,
+            );
             if (targetIndex !== -1) {
               state.currentSession.messages.splice(targetIndex, 0, message);
               inserted = true;
@@ -572,7 +609,10 @@ const coworkSlice = createSlice({
     },
 
     /** Prepend older messages when user scrolls up to load more history. */
-    prependMessages(state, action: PayloadAction<{ sessionId: string; messages: CoworkMessage[]; newOffset: number }>) {
+    prependMessages(
+      state,
+      action: PayloadAction<{ sessionId: string; messages: CoworkMessage[]; newOffset: number }>,
+    ) {
       const { sessionId, messages, newOffset } = action.payload;
       if (state.currentSession?.id !== sessionId) return;
       if (messages.length === 0) return;
@@ -585,7 +625,15 @@ const coworkSlice = createSlice({
       }
     },
 
-    updateMessageContent(state, action: PayloadAction<{ sessionId: string; messageId: string; content: string; metadata?: Record<string, unknown> }>) {
+    updateMessageContent(
+      state,
+      action: PayloadAction<{
+        sessionId: string;
+        messageId: string;
+        content: string;
+        metadata?: Record<string, unknown>;
+      }>,
+    ) {
       const { sessionId, messageId, content, metadata } = action.payload;
       const updatedAt = Date.now();
 
@@ -595,13 +643,20 @@ const coworkSlice = createSlice({
           state.currentSession.messages[messageIndex].content = content;
           if (metadata) {
             const existingMetadata = state.currentSession.messages[messageIndex].metadata;
-            const existingToolResultDetails = existingMetadata?.toolResultDetails as Record<string, unknown> | undefined;
-            const nextToolResultDetails = metadata.toolResultDetails as Record<string, unknown> | undefined;
+            const existingToolResultDetails = existingMetadata?.toolResultDetails as
+              Record<string, unknown> | undefined;
+            const nextToolResultDetails = metadata.toolResultDetails as
+              Record<string, unknown> | undefined;
             state.currentSession.messages[messageIndex].metadata = {
               ...existingMetadata,
               ...metadata,
               ...(nextToolResultDetails
-                ? { toolResultDetails: mergeMediaDetails(existingToolResultDetails, nextToolResultDetails) }
+                ? {
+                    toolResultDetails: mergeMediaDetails(
+                      existingToolResultDetails,
+                      nextToolResultDetails,
+                    ),
+                  }
                 : {}),
             };
           }
@@ -618,15 +673,22 @@ const coworkSlice = createSlice({
       markSessionUnread(state, sessionId);
     },
 
-    updateToolUseMediaStatus(state, action: PayloadAction<{ sessionId: string; toolCallId: string; details: Record<string, unknown> }>) {
+    updateToolUseMediaStatus(
+      state,
+      action: PayloadAction<{
+        sessionId: string;
+        toolCallId: string;
+        details: Record<string, unknown>;
+      }>,
+    ) {
       const { sessionId, toolCallId, details } = action.payload;
       const updatedAt = Date.now();
       const retainedDetails = retainMediaStatusUpdate(state, sessionId, toolCallId, details);
 
       if (state.currentSession?.id === sessionId) {
-        const message = state.currentSession.messages.find(item => (
-          isMediaStatusToolUseMessage(item, toolCallId, retainedDetails)
-        ));
+        const message = state.currentSession.messages.find(item =>
+          isMediaStatusToolUseMessage(item, toolCallId, retainedDetails),
+        );
         if (message) {
           mergeMediaStatusDetailsIntoMessage(message, retainedDetails);
           state.currentSession.updatedAt = updatedAt;
@@ -663,28 +725,41 @@ const coworkSlice = createSlice({
       if (active && !existing) {
         state.contextMaintenanceSessionIds.push(sessionId);
       } else if (!active && existing) {
-        state.contextMaintenanceSessionIds = state.contextMaintenanceSessionIds.filter(id => id !== sessionId);
+        state.contextMaintenanceSessionIds = state.contextMaintenanceSessionIds.filter(
+          id => id !== sessionId,
+        );
       }
     },
 
-    markCompactionNotified(state, action: PayloadAction<{ sessionId: string; compactionCount: number }>) {
-      state.notifiedCompactionBySessionId[action.payload.sessionId] = action.payload.compactionCount;
+    markCompactionNotified(
+      state,
+      action: PayloadAction<{ sessionId: string; compactionCount: number }>,
+    ) {
+      state.notifiedCompactionBySessionId[action.payload.sessionId] =
+        action.payload.compactionCount;
     },
 
     setRemoteManaged(state, action: PayloadAction<boolean>) {
       state.remoteManaged = action.payload;
     },
 
-    updateSessionPinned(state, action: PayloadAction<{ sessionId: string; pinned: boolean; pinOrder?: number | null }>) {
+    updateSessionPinned(
+      state,
+      action: PayloadAction<{ sessionId: string; pinned: boolean; pinOrder?: number | null }>,
+    ) {
       const { sessionId, pinned, pinOrder } = action.payload;
       const sessionIndex = state.sessions.findIndex(s => s.id === sessionId);
       if (sessionIndex !== -1) {
         state.sessions[sessionIndex].pinned = pinned;
-        state.sessions[sessionIndex].pinOrder = pinned ? (pinOrder ?? state.sessions[sessionIndex].pinOrder ?? null) : null;
+        state.sessions[sessionIndex].pinOrder = pinned
+          ? (pinOrder ?? state.sessions[sessionIndex].pinOrder ?? null)
+          : null;
       }
       if (state.currentSession?.id === sessionId) {
         state.currentSession.pinned = pinned;
-        state.currentSession.pinOrder = pinned ? (pinOrder ?? state.currentSession.pinOrder ?? null) : null;
+        state.currentSession.pinOrder = pinned
+          ? (pinOrder ?? state.currentSession.pinOrder ?? null)
+          : null;
       }
     },
 
@@ -699,7 +774,10 @@ const coworkSlice = createSlice({
       }
     },
 
-    updateCurrentSessionModelOverride(state, action: PayloadAction<{ sessionId: string; modelOverride: string }>) {
+    updateCurrentSessionModelOverride(
+      state,
+      action: PayloadAction<{ sessionId: string; modelOverride: string }>,
+    ) {
       const { sessionId, modelOverride } = action.payload;
       if (state.currentSession?.id !== sessionId) return;
       state.currentSession.modelOverride = modelOverride;
@@ -707,7 +785,7 @@ const coworkSlice = createSlice({
 
     enqueuePendingPermission(state, action: PayloadAction<CoworkPermissionRequest>) {
       const alreadyQueued = state.pendingPermissions.some(
-        (permission) => permission.requestId === action.payload.requestId
+        permission => permission.requestId === action.payload.requestId,
       );
       if (alreadyQueued) return;
       state.pendingPermissions.push(action.payload);
@@ -720,7 +798,7 @@ const coworkSlice = createSlice({
         return;
       }
       state.pendingPermissions = state.pendingPermissions.filter(
-        (permission) => permission.requestId !== requestId
+        permission => permission.requestId !== requestId,
       );
     },
 
@@ -734,6 +812,10 @@ const coworkSlice = createSlice({
 
     updateConfig(state, action: PayloadAction<Partial<CoworkConfig>>) {
       state.config = { ...state.config, ...action.payload };
+    },
+
+    setEffectiveSettings(state, action: PayloadAction<LayeredCoworkSettingsResolution>) {
+      state.effectiveSettings = action.payload;
     },
 
     clearCurrentSession(state) {
@@ -750,9 +832,9 @@ const coworkSlice = createSlice({
       const { sessionId, messageId, planTextHash } = action.payload;
       const existing = state.planConfirmations[sessionId];
       if (
-        existing?.messageId === messageId
-        && existing.planTextHash === planTextHash
-        && existing.state === PlanConfirmationState.Awaiting
+        existing?.messageId === messageId &&
+        existing.planTextHash === planTextHash &&
+        existing.state === PlanConfirmationState.Awaiting
       ) {
         return;
       }
@@ -785,7 +867,10 @@ const coworkSlice = createSlice({
       delete state.planConfirmations[action.payload];
     },
 
-    setDraftAttachments(state, action: PayloadAction<{ draftKey: string; attachments: DraftAttachment[] }>) {
+    setDraftAttachments(
+      state,
+      action: PayloadAction<{ draftKey: string; attachments: DraftAttachment[] }>,
+    ) {
       const { draftKey, attachments } = action.payload;
       if (attachments.length === 0) {
         delete state.draftAttachments[draftKey];
@@ -794,7 +879,10 @@ const coworkSlice = createSlice({
       }
     },
 
-    addDraftAttachment(state, action: PayloadAction<{ draftKey: string; attachment: DraftAttachment }>) {
+    addDraftAttachment(
+      state,
+      action: PayloadAction<{ draftKey: string; attachment: DraftAttachment }>,
+    ) {
       const { draftKey, attachment } = action.payload;
       const existing = state.draftAttachments[draftKey] || [];
       if (existing.some(a => a.path === attachment.path)) return;
@@ -805,7 +893,10 @@ const coworkSlice = createSlice({
       delete state.draftAttachments[action.payload];
     },
 
-    setDraftSelectedTextSnippets(state, action: PayloadAction<{ draftKey: string; snippets: CoworkSelectedTextSnippet[] }>) {
+    setDraftSelectedTextSnippets(
+      state,
+      action: PayloadAction<{ draftKey: string; snippets: CoworkSelectedTextSnippet[] }>,
+    ) {
       const { draftKey, snippets } = action.payload;
       if (snippets.length === 0) {
         delete state.draftSelectedTextSnippets[draftKey];
@@ -814,16 +905,23 @@ const coworkSlice = createSlice({
       }
     },
 
-    addDraftSelectedTextSnippet(state, action: PayloadAction<{ draftKey: string; snippet: CoworkSelectedTextSnippet }>) {
+    addDraftSelectedTextSnippet(
+      state,
+      action: PayloadAction<{ draftKey: string; snippet: CoworkSelectedTextSnippet }>,
+    ) {
       const { draftKey, snippet } = action.payload;
       const existing = state.draftSelectedTextSnippets[draftKey] || [];
       state.draftSelectedTextSnippets[draftKey] = [...existing, snippet];
     },
 
-    removeDraftSelectedTextSnippet(state, action: PayloadAction<{ draftKey: string; snippetId: string }>) {
+    removeDraftSelectedTextSnippet(
+      state,
+      action: PayloadAction<{ draftKey: string; snippetId: string }>,
+    ) {
       const { draftKey, snippetId } = action.payload;
-      const snippets = (state.draftSelectedTextSnippets[draftKey] || [])
-        .filter(snippet => snippet.id !== snippetId);
+      const snippets = (state.draftSelectedTextSnippets[draftKey] || []).filter(
+        snippet => snippet.id !== snippetId,
+      );
       if (snippets.length === 0) {
         delete state.draftSelectedTextSnippets[draftKey];
       } else {
@@ -853,7 +951,10 @@ const coworkSlice = createSlice({
       }
     },
 
-    setDraftCollaborationMode(state, action: PayloadAction<{ draftKey: string; mode: CoworkCollaborationModeType }>) {
+    setDraftCollaborationMode(
+      state,
+      action: PayloadAction<{ draftKey: string; mode: CoworkCollaborationModeType }>,
+    ) {
       const { draftKey, mode } = action.payload;
       if (mode === CoworkCollaborationMode.Default) {
         delete state.draftCollaborationModes[draftKey];
@@ -866,7 +967,10 @@ const coworkSlice = createSlice({
       state.mediaModels = action.payload;
     },
 
-    setMediaSelection(state, action: PayloadAction<{ draftKey: string; selection: MediaGenerationSelection }>) {
+    setMediaSelection(
+      state,
+      action: PayloadAction<{ draftKey: string; selection: MediaGenerationSelection }>,
+    ) {
       const { draftKey, selection } = action.payload;
       if (selection.mode === 'none') {
         delete state.mediaSelection[draftKey];
@@ -916,6 +1020,7 @@ export const {
   dequeuePendingPermission,
   clearPendingPermissions,
   setConfig,
+  setEffectiveSettings,
   updateConfig,
   clearCurrentSession,
   setPlanConfirmationAwaiting,

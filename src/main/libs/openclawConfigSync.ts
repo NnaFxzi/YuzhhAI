@@ -13,6 +13,10 @@ import {
   normalizeBrowserHostnamePolicyList,
   normalizeBrowserWebAccessConfig,
 } from '../../shared/browserWebAccess/constants';
+import {
+  type LayeredCoworkSettingsResolution,
+  SettingScope,
+} from '../../shared/cowork/layeredSettings';
 import { normalizeMcpServerUrlInput } from '../../shared/mcp/url';
 import {
   AuthType,
@@ -1309,6 +1313,7 @@ const buildStreamingModeConfig = (
 type OpenClawConfigSyncDeps = {
   engineManager: OpenClawEngineManager;
   getCoworkConfig: () => CoworkConfig;
+  getEffectiveSettings?: () => LayeredCoworkSettingsResolution | null | undefined;
   getBrowserWebAccessConfig?: () => Partial<BrowserWebAccessConfig> | null | undefined;
   isEnterprise: () => boolean;
   getOpenClawSessionPolicy?: () => { keepAlive: OpenClawSessionKeepAlive };
@@ -1338,6 +1343,7 @@ type OpenClawConfigSyncDeps = {
 export class OpenClawConfigSync {
   private readonly engineManager: OpenClawEngineManager;
   private readonly getCoworkConfig: () => CoworkConfig;
+  private readonly getEffectiveSettings?: () => LayeredCoworkSettingsResolution | null | undefined;
   private readonly getBrowserWebAccessConfig: () => Partial<BrowserWebAccessConfig> | null | undefined;
   private readonly isEnterprise: () => boolean;
   private readonly getOpenClawSessionPolicy?: () => { keepAlive: OpenClawSessionKeepAlive };
@@ -1368,6 +1374,7 @@ export class OpenClawConfigSync {
   constructor(deps: OpenClawConfigSyncDeps) {
     this.engineManager = deps.engineManager;
     this.getCoworkConfig = deps.getCoworkConfig;
+    this.getEffectiveSettings = deps.getEffectiveSettings;
     this.getBrowserWebAccessConfig = deps.getBrowserWebAccessConfig ?? (() => null);
     this.isEnterprise = deps.isEnterprise;
     this.getOpenClawSessionPolicy = deps.getOpenClawSessionPolicy;
@@ -1486,6 +1493,17 @@ loopDetection: MANAGED_TOOL_LOOP_DETECTION,
   sync(reason: string): OpenClawConfigSyncResult {
     const configPath = this.engineManager.getConfigPath();
     const coworkConfig = this.getCoworkConfig();
+    const effectiveSettings = this.getEffectiveSettings?.();
+    const runtimeCoworkConfig: CoworkConfig = effectiveSettings
+      ? {
+          ...coworkConfig,
+          workingDirectory: effectiveSettings.values.workingDirectory,
+          executionMode: effectiveSettings.values.executionMode,
+          memoryEnabled: effectiveSettings.values.memoryEnabled,
+          embeddingEnabled: effectiveSettings.values.embeddingEnabled,
+          dreamingEnabled: effectiveSettings.values.dreamingEnabled,
+        }
+      : coworkConfig;
     const browserWebAccess = normalizeBrowserWebAccessConfig(this.getBrowserWebAccessConfig());
     const apiResolution = resolveRawApiConfig();
 
@@ -1658,15 +1676,34 @@ loopDetection: MANAGED_TOOL_LOOP_DETECTION,
     }
 
     const sandboxMode = mapExecutionModeToSandboxMode(
-      coworkConfig.executionMode || 'local',
+      runtimeCoworkConfig.executionMode || 'local',
       this.isEnterprise(),
     );
     const availableProviders = buildProviderModelCatalog(allProvidersMap);
+    let defaultPrimaryModel = primaryModel;
+    const effectiveDefaultModel = effectiveSettings?.values.defaultModel.trim() || '';
+    if (effectiveDefaultModel) {
+      const qualification = resolveQualifiedAgentModelRef({
+        agentModel: effectiveDefaultModel,
+        availableProviders,
+      });
+      if (qualification.status === 'qualified') {
+        defaultPrimaryModel = qualification.primaryModel;
+      } else if (qualification.status === 'ambiguous') {
+        console.warn(
+          `[OpenClawConfigSync] Skipped ambiguous effective default model "${qualification.modelId}" because it matches multiple providers: ${qualification.providerIds.join(', ')}`,
+        );
+      } else {
+        console.warn(
+          `[OpenClawConfigSync] Skipped unresolved effective default model "${qualification.modelId}"`,
+        );
+      }
+    }
     const agentModelDefaults = Object.keys(perModelCustomDefaults).length > 0
       ? buildCompleteAgentModelDefaults(allProvidersMap, perModelCustomDefaults)
       : {};
     console.log(
-      `[OpenClawConfigSync] sandbox mode: ${sandboxMode} (executionMode: ${coworkConfig.executionMode || 'local'}, enterprise: ${this.isEnterprise()})`,
+      `[OpenClawConfigSync] sandbox mode: ${sandboxMode} (executionMode: ${runtimeCoworkConfig.executionMode || 'local'}, enterprise: ${this.isEnterprise()})`,
     );
 
     const mainWorkspacePath = getMainAgentWorkspacePath(this.engineManager.getStateDir());
@@ -1675,7 +1712,7 @@ loopDetection: MANAGED_TOOL_LOOP_DETECTION,
       .find(agent => agent.id === AgentId.Main)
       ?.workingDirectory
       ?.trim() || '';
-    const taskWorkingDirectory = mainAgentWorkingDirectory || (coworkConfig.workingDirectory || '').trim();
+    const taskWorkingDirectory = mainAgentWorkingDirectory || (runtimeCoworkConfig.workingDirectory || '').trim();
     ensureDir(mainWorkspacePath);
 
     const preinstalledPlugins = readPreinstalledPlugins();
@@ -1781,7 +1818,7 @@ loopDetection: MANAGED_TOOL_LOOP_DETECTION,
         defaults: {
           timeoutSeconds: OPENCLAW_AGENT_TIMEOUT_SECONDS,
           model: {
-            primary: primaryModel,
+            primary: defaultPrimaryModel,
           },
           sandbox: {
             mode: sandboxMode,
@@ -1789,7 +1826,7 @@ loopDetection: MANAGED_TOOL_LOOP_DETECTION,
           workspace: path.resolve(mainWorkspacePath),
           mediaMaxMb: 30,
           ...(taskWorkingDirectory ? { cwd: path.resolve(taskWorkingDirectory) } : {}),
-          ...(coworkConfig.embeddingEnabled ? {
+          ...(runtimeCoworkConfig.embeddingEnabled ? {
             memorySearch: {
               enabled: true,
               provider: (['openai', 'gemini', 'voyage', 'mistral', 'ollama'].includes(coworkConfig.embeddingProvider)
@@ -1823,7 +1860,13 @@ loopDetection: MANAGED_TOOL_LOOP_DETECTION,
             ? { models: agentModelDefaults }
             : {}),
         },
-        ...this.buildAgentsList(primaryModel, this.engineManager.getStateDir(), availableProviders, agents),
+        ...this.buildAgentsList(
+          defaultPrimaryModel,
+          this.engineManager.getStateDir(),
+          availableProviders,
+          agents,
+          effectiveSettings,
+        ),
       },
       ...this.currentBindingsObj,
       session: this.buildSessionConfig(),
@@ -2030,7 +2073,7 @@ loopDetection: MANAGED_TOOL_LOOP_DETECTION,
       const entries = plugins.entries as Record<string, Record<string, unknown>>;
       const existingMemoryCore = entries['memory-core'] ?? {};
       const existingMemoryCoreConfig = (existingMemoryCore as Record<string, unknown>).config as Record<string, unknown> | undefined;
-      if (coworkConfig.dreamingEnabled) {
+      if (runtimeCoworkConfig.dreamingEnabled) {
         entries['memory-core'] = {
           ...existingMemoryCore,
           config: {
@@ -3141,19 +3184,28 @@ loopDetection: MANAGED_TOOL_LOOP_DETECTION,
     stateDir?: string,
     availableProviders?: Record<string, { models: Array<{ id: string }> }>,
     agentsOverride?: Agent[],
+    effectiveSettings?: LayeredCoworkSettingsResolution | null,
   ): { list?: Array<Record<string, unknown>> } {
     const agents = agentsOverride ?? this.getAgents?.() ?? [];
     const mainAgent = agents.find(agent => agent.id === AgentId.Main);
+    const effectiveSkillIds = effectiveSettings?.sources.skillIds !== SettingScope.Default
+      ? effectiveSettings?.values.skillIds
+      : undefined;
 
     const list: Array<Record<string, unknown>> = [
       mainAgent
-        ? buildAgentEntry(mainAgent, defaultPrimaryModel, { availableProviders })
+        ? buildAgentEntry(
+            effectiveSkillIds ? { ...mainAgent, skillIds: effectiveSkillIds } : mainAgent,
+            defaultPrimaryModel,
+            { availableProviders },
+          )
         : {
             id: AgentId.Main,
             default: true,
             identity: {
               name: DefaultAgentProfile.Name,
             },
+            ...(effectiveSkillIds && effectiveSkillIds.length > 0 ? { skills: effectiveSkillIds } : {}),
             model: {
               primary: defaultPrimaryModel,
             },

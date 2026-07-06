@@ -3,7 +3,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 
 import type {
   EnterpriseLeadWorkspace,
-  EnterpriseLeadWorkspaceRunSummary,
+  EnterpriseLeadWorkspaceChatSessionSummary,
 } from '../../../shared/enterpriseLeadWorkspace/types';
 import { enterpriseLeadWorkspaceService } from '../../services/enterpriseLeadWorkspace';
 import { i18nService } from '../../services/i18n';
@@ -21,7 +21,6 @@ import {
 } from './enterpriseLeadWorkspaceUi';
 import WorkspaceAiChat from './WorkspaceAiChat';
 import WorkspaceCreate from './WorkspaceCreate';
-import WorkspaceCreationRecords from './WorkspaceCreationRecords';
 import WorkspaceEntryHome from './WorkspaceEntryHome';
 import WorkspaceKnowledgeBase from './WorkspaceKnowledgeBase';
 import WorkspaceSearch from './WorkspaceSearch';
@@ -36,6 +35,7 @@ interface EnterpriseLeadWorkspaceViewProps {
   onToggleSidebar?: () => void;
   onShellModeChange?: (shellMode: EnterpriseLeadWorkspaceShellModeType) => void;
   updateBadge?: React.ReactNode;
+  onRequestAppSettings?: () => void;
 }
 
 export const EnterpriseLeadWorkspaceView: React.FC<EnterpriseLeadWorkspaceViewProps> = ({
@@ -44,6 +44,7 @@ export const EnterpriseLeadWorkspaceView: React.FC<EnterpriseLeadWorkspaceViewPr
   onToggleSidebar,
   onShellModeChange,
   updateBadge,
+  onRequestAppSettings,
 }) => {
   const [screen, setScreen] = useState<EnterpriseLeadWorkspaceScreen>(
     EnterpriseLeadWorkspaceScreen.Entry,
@@ -54,14 +55,15 @@ export const EnterpriseLeadWorkspaceView: React.FC<EnterpriseLeadWorkspaceViewPr
   const [activeInternalPage, setActiveInternalPage] = useState<EnterpriseLeadWorkspaceInternalPageType>(
     getDefaultWorkspaceInternalPage(),
   );
-  const [sidebarRunSummaries, setSidebarRunSummaries] = useState<EnterpriseLeadWorkspaceRunSummary[]>([]);
-  const [selectedCreationRecordId, setSelectedCreationRecordId] = useState<string | null>(null);
+  const [chatSessions, setChatSessions] = useState<EnterpriseLeadWorkspaceChatSessionSummary[]>([]);
+  const [activeChatSessionId, setActiveChatSessionId] = useState<string | null>(null);
   const [isLoadingWorkspaces, setIsLoadingWorkspaces] = useState(true);
   const [isLoadingWorkspace, setIsLoadingWorkspace] = useState(false);
   const [workspaceError, setWorkspaceError] = useState('');
   const [workspaceListError, setWorkspaceListError] = useState('');
   const navigationRevisionRef = useRef(0);
   const refreshRequestRef = useRef(0);
+  const chatSessionsRequestRef = useRef(0);
   const isMac = window.electron.platform === 'darwin';
   const shellMode = getShellModeForEnterpriseLeadWorkspaceScreen(screen);
 
@@ -123,6 +125,34 @@ export const EnterpriseLeadWorkspaceView: React.FC<EnterpriseLeadWorkspaceViewPr
     void refreshWorkspaces();
   }, [refreshWorkspaces]);
 
+  const refreshChatSessions = useCallback(async (workspaceId: string): Promise<void> => {
+    const requestId = chatSessionsRequestRef.current + 1;
+    chatSessionsRequestRef.current = requestId;
+
+    try {
+      const nextChatSessions = await enterpriseLeadWorkspaceService.listChatSessions(workspaceId);
+      if (chatSessionsRequestRef.current === requestId) {
+        setChatSessions(nextChatSessions);
+      }
+    } catch {
+      if (chatSessionsRequestRef.current === requestId) {
+        setChatSessions([]);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!activeWorkspaceId) {
+      chatSessionsRequestRef.current += 1;
+      setChatSessions([]);
+      setActiveChatSessionId(null);
+      return;
+    }
+
+    setActiveChatSessionId(null);
+    void refreshChatSessions(activeWorkspaceId);
+  }, [activeWorkspaceId, refreshChatSessions]);
+
   useEffect(() => {
     let isCancelled = false;
 
@@ -169,34 +199,6 @@ export const EnterpriseLeadWorkspaceView: React.FC<EnterpriseLeadWorkspaceViewPr
     };
   }, [activeWorkspaceId, workspaces]);
 
-  useEffect(() => {
-    let isCancelled = false;
-
-    if (!activeWorkspaceId) {
-      setSidebarRunSummaries([]);
-      setSelectedCreationRecordId(null);
-      return () => {
-        isCancelled = true;
-      };
-    }
-
-    enterpriseLeadWorkspaceService.listRuns(activeWorkspaceId)
-      .then(runSummaries => {
-        if (!isCancelled) {
-          setSidebarRunSummaries(runSummaries);
-        }
-      })
-      .catch(() => {
-        if (!isCancelled) {
-          setSidebarRunSummaries([]);
-        }
-      });
-
-    return () => {
-      isCancelled = true;
-    };
-  }, [activeWorkspaceId, activeWorkspace?.recentRunId]);
-
   const handleCreate = (): void => {
     navigationRevisionRef.current += 1;
     setScreen(EnterpriseLeadWorkspaceScreen.Create);
@@ -206,6 +208,8 @@ export const EnterpriseLeadWorkspaceView: React.FC<EnterpriseLeadWorkspaceViewPr
     navigationRevisionRef.current += 1;
     setActiveWorkspace(null);
     setActiveWorkspaceId(null);
+    setChatSessions([]);
+    setActiveChatSessionId(null);
     setWorkspaceError('');
     setActiveInternalPage(getDefaultWorkspaceInternalPage());
     setScreen(EnterpriseLeadWorkspaceScreen.Entry);
@@ -215,6 +219,8 @@ export const EnterpriseLeadWorkspaceView: React.FC<EnterpriseLeadWorkspaceViewPr
     navigationRevisionRef.current += 1;
     setActiveWorkspace(null);
     setWorkspaceError('');
+    setChatSessions([]);
+    setActiveChatSessionId(null);
     setActiveWorkspaceId(workspaceId);
     setActiveInternalPage(getDefaultWorkspaceInternalPage());
     setScreen(EnterpriseLeadWorkspaceScreen.Workspace);
@@ -224,6 +230,8 @@ export const EnterpriseLeadWorkspaceView: React.FC<EnterpriseLeadWorkspaceViewPr
     navigationRevisionRef.current += 1;
     setActiveWorkspace(null);
     setWorkspaceError('');
+    setChatSessions([]);
+    setActiveChatSessionId(null);
     setActiveWorkspaceId(workspaceId);
     setActiveInternalPage(getDefaultWorkspaceInternalPage());
     setScreen(EnterpriseLeadWorkspaceScreen.Workspace);
@@ -247,6 +255,8 @@ export const EnterpriseLeadWorkspaceView: React.FC<EnterpriseLeadWorkspaceViewPr
       navigationRevisionRef.current += 1;
       setActiveWorkspaceId(null);
       setActiveWorkspace(null);
+      setChatSessions([]);
+      setActiveChatSessionId(null);
       setActiveInternalPage(getDefaultWorkspaceInternalPage());
       setScreen(EnterpriseLeadWorkspaceScreen.Entry);
     }
@@ -258,23 +268,49 @@ export const EnterpriseLeadWorkspaceView: React.FC<EnterpriseLeadWorkspaceViewPr
     navigationRevisionRef.current += 1;
     setActiveWorkspace(null);
     setActiveWorkspaceId(null);
+    setChatSessions([]);
+    setActiveChatSessionId(null);
     setWorkspaceError('');
-    setSelectedCreationRecordId(null);
-    setSidebarRunSummaries([]);
     setActiveInternalPage(getDefaultWorkspaceInternalPage());
     setScreen(EnterpriseLeadWorkspaceScreen.Entry);
   };
 
   const handleInternalPageChange = (page: EnterpriseLeadWorkspaceInternalPageType): void => {
-    if (page !== EnterpriseLeadWorkspaceInternalPage.CreationRecords) {
-      setSelectedCreationRecordId(null);
+    if (page === EnterpriseLeadWorkspaceInternalPage.AiChat) {
+      setActiveChatSessionId(null);
     }
     setActiveInternalPage(page);
   };
 
-  const handleSidebarRecordSelect = (runId: string): void => {
-    setSelectedCreationRecordId(runId);
-    setActiveInternalPage(EnterpriseLeadWorkspaceInternalPage.CreationRecords);
+  const handleChatSessionSelect = (sessionId: string): void => {
+    setActiveChatSessionId(sessionId);
+    setActiveInternalPage(EnterpriseLeadWorkspaceInternalPage.AiChat);
+  };
+
+  const handleChatSessionDelete = useCallback(async (sessionId: string): Promise<boolean> => {
+    if (!activeWorkspaceId) {
+      return false;
+    }
+
+    const deleted = await enterpriseLeadWorkspaceService.deleteChatSession(
+      activeWorkspaceId,
+      sessionId,
+    );
+    if (!deleted) {
+      return false;
+    }
+
+    setChatSessions(previous => previous.filter(session => session.id !== sessionId));
+    if (activeChatSessionId === sessionId) {
+      setActiveChatSessionId(null);
+    }
+    return true;
+  }, [activeChatSessionId, activeWorkspaceId]);
+
+  const handleChatSessionsUpdated = (): void => {
+    if (activeWorkspaceId) {
+      void refreshChatSessions(activeWorkspaceId);
+    }
   };
 
   const handleWorkspaceUpdated = (workspace: EnterpriseLeadWorkspace): void => {
@@ -356,18 +392,22 @@ export const EnterpriseLeadWorkspaceView: React.FC<EnterpriseLeadWorkspaceViewPr
     }
 
     if (page === EnterpriseLeadWorkspaceInternalPage.Search) {
-      return <WorkspaceSearch workspace={workspace} />;
+      return (
+        <WorkspaceSearch
+          workspace={workspace}
+          chatSessions={chatSessions}
+          onChatSessionSelect={handleChatSessionSelect}
+        />
+      );
     }
 
     if (page === EnterpriseLeadWorkspaceInternalPage.AiChat) {
-      return <WorkspaceAiChat workspace={workspace} />;
-    }
-
-    if (page === EnterpriseLeadWorkspaceInternalPage.CreationRecords) {
       return (
-        <WorkspaceCreationRecords
+        <WorkspaceAiChat
           workspace={workspace}
-          selectedRunId={selectedCreationRecordId}
+          activeSessionId={activeChatSessionId}
+          onSessionChange={setActiveChatSessionId}
+          onSessionsUpdated={handleChatSessionsUpdated}
         />
       );
     }
@@ -403,8 +443,14 @@ export const EnterpriseLeadWorkspaceView: React.FC<EnterpriseLeadWorkspaceViewPr
               activePage={activeInternalPage}
               onPageChange={handleInternalPageChange}
               onExitWorkspace={handleExitWorkspace}
-              recentRuns={sidebarRunSummaries}
-              onRecordSelect={handleSidebarRecordSelect}
+              chatSessions={chatSessions}
+              activeChatSessionId={
+                activeInternalPage === EnterpriseLeadWorkspaceInternalPage.AiChat
+                  ? activeChatSessionId
+                  : null
+              }
+              onChatSessionSelect={handleChatSessionSelect}
+              onChatSessionDelete={handleChatSessionDelete}
             >
               {renderWorkspaceInternalPage(activeInternalPage, workspace)}
             </WorkspaceShell>
@@ -427,6 +473,7 @@ export const EnterpriseLeadWorkspaceView: React.FC<EnterpriseLeadWorkspaceViewPr
         onHistoryOpen={handleHistoryOpen}
         onOpen={handleOpen}
         onDeleteWorkspace={handleDeleteWorkspace}
+        onRequestAppSettings={onRequestAppSettings}
       />
     );
   };

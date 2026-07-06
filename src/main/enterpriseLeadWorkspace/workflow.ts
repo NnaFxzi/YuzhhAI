@@ -1,5 +1,8 @@
 import type { EnterpriseLeadAgentRole } from '../../shared/enterpriseLeadWorkspace/constants';
-import { EnterpriseLeadAgentRole as AgentRole } from '../../shared/enterpriseLeadWorkspace/constants';
+import {
+  EnterpriseLeadAgentRole as AgentRole,
+  EnterpriseLeadWorkspaceAgentSource,
+} from '../../shared/enterpriseLeadWorkspace/constants';
 import type { EnterpriseLeadWorkspaceAgentBinding } from '../../shared/enterpriseLeadWorkspace/types';
 
 export interface EnterpriseLeadAgentMetadata {
@@ -133,10 +136,11 @@ export const buildDefaultEnterpriseLeadWorkspaceAgents = (
 ): EnterpriseLeadWorkspaceAgentBinding[] => {
   const roleSet = new Set(roles);
 
-  return ENTERPRISE_LEAD_AGENT_WORKFLOW
-    .filter(agent => roleSet.has(agent.role))
-    .map((agent, order) => ({
+  return ENTERPRISE_LEAD_AGENT_WORKFLOW.filter(agent => roleSet.has(agent.role)).map(
+    (agent, order) => ({
       agentId: agent.role,
+      source: EnterpriseLeadWorkspaceAgentSource.SystemTemplate,
+      templateId: agent.role,
       enabled: true,
       order,
       overrides: {
@@ -147,5 +151,6 @@ export const buildDefaultEnterpriseLeadWorkspaceAgents = (
         icon: agent.shortLabel,
         skillIds: [] as string[],
       },
-    }));
+    }),
+  );
 };

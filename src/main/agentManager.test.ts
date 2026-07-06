@@ -29,6 +29,30 @@ const createStoredAgent = (overrides: Partial<Agent> = {}): Agent => {
   };
 };
 
+const createMainAgent = (overrides: Partial<Agent> = {}): Agent => {
+  const now = Date.now();
+  return {
+    id: 'main',
+    name: 'Main Agent',
+    description: '',
+    systemPrompt: '',
+    identity: '',
+    model: 'provider/main-model',
+    workingDirectory: '/tmp/main',
+    icon: '',
+    skillIds: ['main-skill'],
+    enabled: true,
+    pinned: false,
+    pinOrder: null,
+    isDefault: true,
+    source: 'custom',
+    presetId: '',
+    createdAt: now,
+    updatedAt: now,
+    ...overrides,
+  };
+};
+
 class FakeCoworkStore {
   private agents: Agent[];
   private hiddenManagedPresetAgentIds = new Set<string>();
@@ -93,6 +117,30 @@ class FakeCoworkStore {
 }
 
 describe('AgentManager managed preset agents', () => {
+  test('createAgent rejects global custom agents because user-created agents are workspace-scoped', () => {
+    const store = new FakeCoworkStore();
+    const manager = new AgentManager(store as unknown as CoworkStore);
+
+    expect(() => manager.createAgent({ name: 'Custom Global Agent' })).toThrow(
+      /Global Agent creation is limited to built-in system Agents/,
+    );
+    expect(store.getAgent('custom-global-agent')).toBeNull();
+  });
+
+  test('createAgent rejects direct preset writes so system Agents go through addPresetAgent', () => {
+    const store = new FakeCoworkStore();
+    const manager = new AgentManager(store as unknown as CoworkStore);
+
+    expect(() =>
+      manager.createAgent({
+        name: '推广agent',
+        source: 'preset',
+        presetId: MARKETING_AGENT_ID,
+      }),
+    ).toThrow(/addPresetAgent/);
+    expect(store.getAgent(MARKETING_AGENT_ID)).toBeNull();
+  });
+
   test('listAgents auto-installs 推广agent when it has not existed before', () => {
     const store = new FakeCoworkStore();
     const manager = new AgentManager(store as unknown as CoworkStore);
@@ -163,15 +211,16 @@ describe('AgentManager managed preset agents', () => {
     expect(marketingAgents).toHaveLength(1);
   });
 
-  test('deleteAgent prevents 推广agent from being auto-restored after manager reload', () => {
+  test('deleteAgent keeps auto-installed 推广agent recoverable instead of hiding it', () => {
     const store = new FakeCoworkStore();
     const manager = new AgentManager(store as unknown as CoworkStore);
 
-    expect(manager.listAgents().some((agent) => agent.id === MARKETING_AGENT_ID)).toBe(true);
-    expect(manager.deleteAgent(MARKETING_AGENT_ID)).toBe(true);
+    expect(manager.listAgents().some(agent => agent.id === MARKETING_AGENT_ID)).toBe(true);
+    expect(manager.deleteAgent(MARKETING_AGENT_ID)).toBe(false);
 
     const reloadedManager = new AgentManager(store as unknown as CoworkStore);
-    expect(reloadedManager.listAgents().some((agent) => agent.id === MARKETING_AGENT_ID)).toBe(false);
+    expect(reloadedManager.listAgents().some(agent => agent.id === MARKETING_AGENT_ID)).toBe(true);
+    expect(store.isManagedPresetAgentHidden(MARKETING_AGENT_ID)).toBe(false);
   });
 
   test('listAgents refreshes an existing managed 推广agent to the latest prompt without changing user runtime fields', () => {
@@ -187,5 +236,83 @@ describe('AgentManager managed preset agents', () => {
     expect(marketingAgent?.workingDirectory).toBe('/tmp/project');
     expect(marketingAgent?.pinned).toBe(true);
     expect(marketingAgent?.pinOrder).toBe(1);
+  });
+
+  test('updateAgent allows runtime fields on system preset agents', () => {
+    const store = new FakeCoworkStore([createStoredAgent()]);
+    const manager = new AgentManager(store as unknown as CoworkStore);
+
+    const updated = manager.updateAgent(MARKETING_AGENT_ID, {
+      model: 'provider/new-model',
+      workingDirectory: '/tmp/next',
+      enabled: false,
+      pinned: false,
+    });
+
+    expect(updated).toMatchObject({
+      id: MARKETING_AGENT_ID,
+      model: 'provider/new-model',
+      workingDirectory: '/tmp/next',
+      enabled: false,
+      pinned: false,
+    });
+  });
+
+  test('addPresetAgent re-enables an installed but disabled system preset agent', () => {
+    const store = new FakeCoworkStore([createStoredAgent({ enabled: false })]);
+    const manager = new AgentManager(store as unknown as CoworkStore);
+
+    const restored = manager.addPresetAgent(MARKETING_AGENT_ID);
+
+    expect(restored).toMatchObject({
+      id: MARKETING_AGENT_ID,
+      enabled: true,
+    });
+    expect(store.getAgent(MARKETING_AGENT_ID)?.enabled).toBe(true);
+  });
+
+  test('updateAgent rejects system preset definition field edits', () => {
+    const store = new FakeCoworkStore([createStoredAgent()]);
+    const manager = new AgentManager(store as unknown as CoworkStore);
+
+    expect(() =>
+      manager.updateAgent(MARKETING_AGENT_ID, {
+        systemPrompt: '用户改写的提示词',
+        skillIds: ['custom-skill'],
+      }),
+    ).toThrow(/System Agent definition fields are managed by LobsterAI/);
+
+    expect(store.getAgent(MARKETING_AGENT_ID)).toMatchObject({
+      systemPrompt: '旧版推广提示词',
+      skillIds: [],
+    });
+  });
+
+  test('resolveRuntimeAgent falls back to main for disabled or missing Agents', () => {
+    const store = new FakeCoworkStore([createMainAgent(), createStoredAgent({ enabled: false })]);
+    const manager = new AgentManager(store as unknown as CoworkStore);
+
+    expect(manager.resolveRuntimeAgent(MARKETING_AGENT_ID)).toMatchObject({
+      id: 'main',
+      model: 'provider/main-model',
+      skillIds: ['main-skill'],
+    });
+    expect(manager.resolveRuntimeAgent('missing-agent')).toMatchObject({
+      id: 'main',
+    });
+    expect(manager.resolveRuntimeAgent('   ')).toMatchObject({
+      id: 'main',
+    });
+  });
+
+  test('resolveRuntimeAgent keeps an enabled system Agent for new runtime work', () => {
+    const store = new FakeCoworkStore([createMainAgent(), createStoredAgent({ enabled: true })]);
+    const manager = new AgentManager(store as unknown as CoworkStore);
+
+    expect(manager.resolveRuntimeAgent(MARKETING_AGENT_ID)).toMatchObject({
+      id: MARKETING_AGENT_ID,
+      model: 'provider/model',
+      workingDirectory: '/tmp/project',
+    });
   });
 });

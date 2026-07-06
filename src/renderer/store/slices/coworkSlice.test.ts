@@ -1,5 +1,6 @@
 import { expect, test } from 'vitest';
 
+import { SettingScope } from '../../../shared/cowork/layeredSettings';
 import { CoworkSessionStatusValue } from '../../types/cowork';
 import coworkReducer, {
   addMessage,
@@ -7,6 +8,7 @@ import coworkReducer, {
   setConfig,
   setCurrentSession,
   setCurrentSessionId,
+  setEffectiveSettings,
   setSessions,
   updateCurrentSessionModelOverride,
   updateMessageContent,
@@ -73,6 +75,36 @@ test('setConfig preserves loaded OpenClaw session policy', () => {
   }));
 
   expect(state.config.openClawSessionPolicy.keepAlive).toBe('365d');
+});
+
+test('setEffectiveSettings stores resolved settings separately from global config', () => {
+  const state = coworkReducer(
+    undefined,
+    setEffectiveSettings({
+      values: {
+        workingDirectory: '/workspace/project',
+        executionMode: 'local',
+        memoryEnabled: true,
+        embeddingEnabled: true,
+        dreamingEnabled: false,
+        skillIds: ['workspace-skill'],
+        defaultModel: 'workspace-model',
+      },
+      sources: {
+        workingDirectory: SettingScope.Workspace,
+        executionMode: SettingScope.Global,
+        memoryEnabled: SettingScope.Global,
+        embeddingEnabled: SettingScope.Workspace,
+        dreamingEnabled: SettingScope.Global,
+        skillIds: SettingScope.Workspace,
+        defaultModel: SettingScope.Workspace,
+      },
+    }),
+  );
+
+  expect(state.effectiveSettings?.values.workingDirectory).toBe('/workspace/project');
+  expect(state.effectiveSettings?.sources.workingDirectory).toBe(SettingScope.Workspace);
+  expect(state.config.workingDirectory).toBe('');
 });
 
 test('updateCurrentSessionModelOverride only patches the active session', () => {

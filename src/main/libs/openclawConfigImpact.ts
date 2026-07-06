@@ -17,6 +17,9 @@ export const OpenClawConfigImpactReason = {
   CoworkRuntimeConfig: 'cowork.runtime',
   CoworkOpenClawConfig: 'cowork.openclaw',
   CoworkDreamingConfig: 'cowork.dreaming',
+  WorkspaceRuntimeConfig: 'workspace.runtime',
+  WorkspaceOpenClawConfig: 'workspace.openclaw',
+  WorkspaceDreamingConfig: 'workspace.dreaming',
   ImConfig: 'im.config',
   ImForceRestart: 'im.forceRestart',
   PluginInstall: 'plugin.install',
@@ -78,6 +81,17 @@ const COWORK_RESTART_FIELDS = new Set([
   'dreamingModel',
   'dreamingTimezone',
 ]);
+
+const WORKSPACE_SYNC_FIELDS = new Set([
+  'workingDirectory',
+  'executionMode',
+  'memoryEnabled',
+  'embeddingEnabled',
+  'skillIds',
+  'defaultModel',
+]);
+
+const WORKSPACE_RESTART_FIELDS = new Set(['dreamingEnabled']);
 
 const noImpact = (): ImpactDecision => ({
   impact: OpenClawConfigImpact.None,
@@ -150,16 +164,17 @@ export const removeImpactDecisionReasons = (
 
   const decisions = remainingReasons.map(reason => {
     if (
-      reason === OpenClawConfigImpactReason.AppUseSystemProxy
-      || reason === OpenClawConfigImpactReason.AppProviderSecret
-      || reason === OpenClawConfigImpactReason.CoworkDreamingConfig
-      || reason === OpenClawConfigImpactReason.ImConfig
-      || reason === OpenClawConfigImpactReason.ImForceRestart
-      || reason === OpenClawConfigImpactReason.PluginInstall
-      || reason === OpenClawConfigImpactReason.PluginUninstall
-      || reason === OpenClawConfigImpactReason.PluginToggle
-      || reason === OpenClawConfigImpactReason.PluginConfig
-      || reason === OpenClawConfigImpactReason.McpConfig
+      reason === OpenClawConfigImpactReason.AppUseSystemProxy ||
+      reason === OpenClawConfigImpactReason.AppProviderSecret ||
+      reason === OpenClawConfigImpactReason.CoworkDreamingConfig ||
+      reason === OpenClawConfigImpactReason.WorkspaceDreamingConfig ||
+      reason === OpenClawConfigImpactReason.ImConfig ||
+      reason === OpenClawConfigImpactReason.ImForceRestart ||
+      reason === OpenClawConfigImpactReason.PluginInstall ||
+      reason === OpenClawConfigImpactReason.PluginUninstall ||
+      reason === OpenClawConfigImpactReason.PluginToggle ||
+      reason === OpenClawConfigImpactReason.PluginConfig ||
+      reason === OpenClawConfigImpactReason.McpConfig
     ) {
       return decision(OpenClawConfigImpact.Restart, reason);
     }
@@ -266,14 +281,47 @@ export const classifyCoworkConfigChange = (
 
   for (const field of COWORK_SYNC_FIELDS) {
     if (changed(previous[field], next[field])) {
-      decisions.push(decision(OpenClawConfigImpact.Sync, OpenClawConfigImpactReason.CoworkOpenClawConfig));
+      decisions.push(
+        decision(OpenClawConfigImpact.Sync, OpenClawConfigImpactReason.CoworkOpenClawConfig),
+      );
       break;
     }
   }
 
   for (const field of COWORK_RESTART_FIELDS) {
     if (changed(previous[field], next[field])) {
-      decisions.push(decision(OpenClawConfigImpact.Restart, OpenClawConfigImpactReason.CoworkDreamingConfig));
+      decisions.push(
+        decision(OpenClawConfigImpact.Restart, OpenClawConfigImpactReason.CoworkDreamingConfig),
+      );
+      break;
+    }
+  }
+
+  return mergeImpactDecision(...decisions);
+};
+
+export const classifyWorkspaceSettingsChange = (
+  previousConfig: unknown,
+  nextConfig: unknown,
+): ImpactDecision => {
+  const previous = isPlainObject(previousConfig) ? previousConfig : {};
+  const next = isPlainObject(nextConfig) ? nextConfig : {};
+  const decisions: ImpactDecision[] = [];
+
+  for (const field of WORKSPACE_SYNC_FIELDS) {
+    if (changed(previous[field], next[field])) {
+      decisions.push(
+        decision(OpenClawConfigImpact.Sync, OpenClawConfigImpactReason.WorkspaceRuntimeConfig),
+      );
+      break;
+    }
+  }
+
+  for (const field of WORKSPACE_RESTART_FIELDS) {
+    if (changed(previous[field], next[field])) {
+      decisions.push(
+        decision(OpenClawConfigImpact.Restart, OpenClawConfigImpactReason.WorkspaceDreamingConfig),
+      );
       break;
     }
   }

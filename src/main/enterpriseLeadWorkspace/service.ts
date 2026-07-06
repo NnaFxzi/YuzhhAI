@@ -20,6 +20,7 @@ import {
   EnterpriseLeadRunStatus,
   EnterpriseLeadTaskStatus,
   EnterpriseLeadTodoKind,
+  EnterpriseLeadWorkspaceAgentSource,
   EnterpriseLeadWorkspaceType,
 } from '../../shared/enterpriseLeadWorkspace/constants';
 import type {
@@ -34,11 +35,16 @@ import type {
   EnterpriseLeadTodoInput,
   EnterpriseLeadWorkspace,
   EnterpriseLeadWorkspaceAgentBinding,
+  EnterpriseLeadWorkspaceChatLeadCandidate,
   EnterpriseLeadWorkspaceChatMessage,
   EnterpriseLeadWorkspaceChatRequest,
   EnterpriseLeadWorkspaceChatResearchIntent,
   EnterpriseLeadWorkspaceChatResearchResult,
   EnterpriseLeadWorkspaceChatResponse,
+  EnterpriseLeadWorkspaceChatRouteStep,
+  EnterpriseLeadWorkspaceChatRouting,
+  EnterpriseLeadWorkspaceChatSession,
+  EnterpriseLeadWorkspaceChatSessionSummary,
   EnterpriseLeadWorkspaceDraft,
   EnterpriseLeadWorkspaceProfile,
   EnterpriseLeadWorkspaceRunAgentSnapshot,
@@ -51,16 +57,18 @@ import {
   normalizeWorkspaceChatResearchIntent,
   normalizeWorkspaceDraftInput,
 } from '../../shared/enterpriseLeadWorkspace/validation';
-import type { ModelClientAdapter } from '../industryPack/modelClientAdapter';
+import type { ModelClientAdapter, ModelGenerationInput } from '../industryPack/modelClientAdapter';
 import { resolveRawApiConfigFromAppConfig } from '../libs/claudeSettings';
 import { parseModelJsonObject } from './modelJson';
 import {
   buildAgentChatPrompt,
   buildAgentTaskPrompt,
+  buildWorkspaceChatAgentStepPrompt,
   buildWorkspaceChatResearchIntentPrompt,
   buildWorkspaceChatResponsePrompt,
   buildWorkspaceExtractionPrompt,
   type WorkspaceChatAgentPromptSummary,
+  type WorkspaceChatLeadContext,
 } from './promptTemplates';
 import type {
   CreateEnterpriseLeadTaskInput,
@@ -77,6 +85,7 @@ interface EnterpriseLeadWorkspaceServiceOptions {
   modelClient: ModelClientAdapter;
   agentProvider?: EnterpriseLeadWorkspaceAgentProvider;
   researchClient?: EnterpriseLeadWorkspaceResearchClient;
+  researchTimeoutMs?: number;
 }
 
 export interface EnterpriseLeadWorkspaceAgentTemplate {
@@ -104,6 +113,37 @@ export interface EnterpriseLeadWorkspaceResearchClient {
   domesticSearch(sourceId: string, query: string, maxResults: number): Promise<unknown>;
 }
 
+interface WorkspaceChatPlanningResult {
+  researchIntent: EnterpriseLeadWorkspaceChatResearchIntent;
+  targetAgent: WorkspaceChatAgentPromptSummary | null;
+  route: WorkspaceChatAgentRoute | null;
+}
+
+interface WorkspaceChatAutoRouteRule {
+  agentIds: EnterpriseLeadAgentRole[];
+  agentTextPatterns: string[];
+  messagePatterns: string[];
+  reason: string;
+}
+
+interface WorkspaceChatAgentRoute {
+  agents: WorkspaceChatAgentPromptSummary[];
+  reason: string;
+}
+
+interface WorkspaceChatAgentStepRunInput {
+  workspace: EnterpriseLeadWorkspace;
+  effectiveAgents: WorkspaceChatAgentPromptSummary[];
+  targetAgent: WorkspaceChatAgentPromptSummary | null;
+  route: WorkspaceChatAgentRoute | null;
+  recentMessages: EnterpriseLeadWorkspaceChatMessage[];
+  userMessage: string;
+  recentRunOutputs: unknown[];
+  workspaceLeadContext: WorkspaceChatLeadContext;
+  research: EnterpriseLeadWorkspaceChatResearchResult;
+  apiConfig?: ModelGenerationInput['apiConfig'];
+}
+
 const noopAgentProvider: EnterpriseLeadWorkspaceAgentProvider = {
   listAgents: () => [],
   getAgent: () => null,
@@ -125,8 +165,84 @@ const WorkspaceChatResearchStatus = {
 
 const RESEARCH_PROMPT_PAYLOAD_TEXT_LIMIT = 2_000;
 const RESEARCH_PROMPT_PAYLOAD_ITEM_LIMIT = 24;
+const DEFAULT_WORKSPACE_CHAT_RESEARCH_TIMEOUT_MS = 20_000;
 const sensitiveResearchPayloadKeyPattern =
   /(api.?key|secret|token|authorization|cookie|password|credential|raw|html)/i;
+
+const WORKSPACE_CHAT_SESSION_TITLE_LIMIT = 48;
+const WORKSPACE_CHAT_RESEARCH_AGENT_ATTRIBUTION = {
+  id: 'research_helper',
+  name: '调研助手 Agent',
+} as const;
+const WORKSPACE_CHAT_LEAD_CANDIDATE_LIMIT = 8;
+
+const RISK_REVIEW_MISSING_COPY_RESPONSE = [
+  '可以，我会按风控审核 Agent 来检查。',
+  '',
+  '请把待审宣传文案粘贴过来，最好包含标题、正文、落款和拟发布渠道。',
+  '',
+  '收到后我会输出风险等级、问题句、风险原因、修改建议和可外发版本。',
+].join('\n');
+
+const OPPORTUNITY_MISSING_CUSTOMERS_RESPONSE = [
+  '可以，我会用商机雷达 Agent 判断优先级。',
+  '',
+  '当前工作区还没有可用于排序的客户名单。请粘贴客户列表，或先导入包含公司名、行业、地区、需求、沟通记录的线索文件。',
+  '',
+  '最少给我：公司名 + 行业/产品 + 需求或沟通信号。我收到后会直接排序并给出跟进建议。',
+].join('\n');
+
+const OPPORTUNITY_RESEARCH_WITHOUT_COMPANIES_RESPONSE = [
+  '可以，我已经按商机雷达 Agent 检查了当前工作区资料和本轮调研结果。',
+  '',
+  '关键结论：未拿到具体公司名单，所以现在不能判断“这批客户谁更值得优先跟进”。我也不能把客户类型包装成真实客户来排序。',
+  '',
+  '当前能确定的是优先开发方向：自动化设备/包装机械/物流设备类机械厂，其次是有 OEM/ODM 需求的外贸公司或跨境电商品牌，再其次是工程承包商。',
+  '',
+  '下一步请提供客户名单，或继续按这些方向调研真实公司。拿到公司名、行业、需求信号或沟通记录后，我会直接给出评分排序和跟进建议。',
+].join('\n');
+
+const WORKSPACE_CHAT_AUTO_ROUTE_RULES: WorkspaceChatAutoRouteRule[] = [
+  {
+    agentIds: [EnterpriseLeadAgentRole.RiskReview],
+    agentTextPatterns: ['risk_review', '风控', '审核', '风险', '夸大'],
+    messagePatterns: ['夸大', '风险', '风控', '审核', '合规', '宣传文案', '禁用表达'],
+    reason: '识别到：宣传文案/夸大风险',
+  },
+  {
+    agentIds: [EnterpriseLeadAgentRole.OpportunityRadar],
+    agentTextPatterns: ['opportunity_radar', '商机', '机会', '采购信号', '评分', '优先级'],
+    messagePatterns: [
+      '商机',
+      '机会',
+      '采购信号',
+      '评分',
+      '优先级',
+      '优先跟进',
+      '值得优先',
+      '谁更值得',
+      '客户画像',
+      '客户方向',
+    ],
+    reason: '识别到：客户优先级/商机判断',
+  },
+  {
+    agentIds: [
+      EnterpriseLeadAgentRole.ContentPlanning,
+      EnterpriseLeadAgentRole.SalesHandoff,
+      EnterpriseLeadAgentRole.RiskReview,
+    ],
+    agentTextPatterns: ['content_planning', '内容', '文案', '话术', '私信', '草稿'],
+    messagePatterns: ['私信', '文案', '话术', '内容', '草稿', '小红书', '短视频', '公众号'],
+    reason: '识别到：私信/外发文案',
+  },
+  {
+    agentIds: [EnterpriseLeadAgentRole.SalesHandoff],
+    agentTextPatterns: ['sales_handoff', '销售', '交接', '跟进', 'sop', '异议'],
+    messagePatterns: ['销售交接', '跟进sop', '跟进 SOP', '异议处理', '销售待办'],
+    reason: '识别到：销售跟进/交接',
+  },
+];
 
 const workflowRoles = (): EnterpriseLeadAgentRole[] =>
   ENTERPRISE_LEAD_AGENT_WORKFLOW.map(item => item.role);
@@ -208,6 +324,14 @@ const resolveWorkspaceApiConfig = (workspace: EnterpriseLeadWorkspace) =>
     providers: workspace.settings.model.providers,
   }).config ?? undefined;
 
+const buildWorkspaceChatSessionTitle = (message: string): string => {
+  const compact = message.replace(/\s+/g, ' ').trim();
+  if (compact.length <= WORKSPACE_CHAT_SESSION_TITLE_LIMIT) {
+    return compact || 'New chat';
+  }
+  return `${compact.slice(0, WORKSPACE_CHAT_SESSION_TITLE_LIMIT - 1)}…`;
+};
+
 export class EnterpriseLeadWorkspaceService {
   private readonly store: EnterpriseLeadWorkspaceStore;
 
@@ -217,11 +341,17 @@ export class EnterpriseLeadWorkspaceService {
 
   private readonly researchClient: EnterpriseLeadWorkspaceResearchClient;
 
+  private readonly researchTimeoutMs: number;
+
   constructor(options: EnterpriseLeadWorkspaceServiceOptions) {
     this.store = options.store;
     this.modelClient = options.modelClient;
     this.agentProvider = options.agentProvider ?? noopAgentProvider;
     this.researchClient = options.researchClient ?? noopResearchClient;
+    this.researchTimeoutMs =
+      options.researchTimeoutMs && options.researchTimeoutMs > 0
+        ? options.researchTimeoutMs
+        : DEFAULT_WORKSPACE_CHAT_RESEARCH_TIMEOUT_MS;
   }
 
   listWorkspaces(): EnterpriseLeadWorkspace[] {
@@ -309,6 +439,33 @@ export class EnterpriseLeadWorkspaceService {
     });
   }
 
+  listChatSessions(workspaceId: string): EnterpriseLeadWorkspaceChatSessionSummary[] {
+    const workspace = this.store.getWorkspace(workspaceId);
+    if (!workspace) {
+      throw new Error('Enterprise lead workspace not found');
+    }
+
+    return this.store.listChatSessions(workspaceId);
+  }
+
+  getChatSession(workspaceId: string, sessionId: string): EnterpriseLeadWorkspaceChatSession | null {
+    const workspace = this.store.getWorkspace(workspaceId);
+    if (!workspace) {
+      throw new Error('Enterprise lead workspace not found');
+    }
+
+    return this.store.getChatSession(workspaceId, sessionId);
+  }
+
+  deleteChatSession(workspaceId: string, sessionId: string): boolean {
+    const workspace = this.store.getWorkspace(workspaceId);
+    if (!workspace) {
+      throw new Error('Enterprise lead workspace not found');
+    }
+
+    return this.store.deleteChatSession(workspaceId, sessionId);
+  }
+
   async chat(
     workspaceId: string,
     request: EnterpriseLeadWorkspaceChatRequest,
@@ -319,46 +476,121 @@ export class EnterpriseLeadWorkspaceService {
     }
 
     const effectiveAgents = this.resolveEffectiveWorkspaceAgents(workspace);
-    const targetAgent = this.resolveTargetAgent(request.targetAgentId, effectiveAgents);
+    const manualTargetAgent = this.resolveTargetAgent(request.targetAgentId, effectiveAgents);
     const recentMessages = this.sanitizeRecentMessages(workspace, request.recentMessages ?? []);
     const recentRunOutputs = this.collectRecentRunOutputs(workspace);
+    const workspaceLeadContext = this.collectWorkspaceLeadContext(workspace, recentRunOutputs);
+    const existingSession = request.sessionId
+      ? this.store.getChatSession(workspace.id, request.sessionId)
+      : null;
+    if (request.sessionId && !existingSession) {
+      throw new Error('Enterprise lead chat session not found');
+    }
+    const session = existingSession ?? this.store.createChatSession({
+      workspaceId: workspace.id,
+      title: buildWorkspaceChatSessionTitle(request.message),
+    });
+    this.store.appendChatMessage(session.id, {
+      id: randomUUID(),
+      role: 'user',
+      content: request.message,
+      createdAt: new Date().toISOString(),
+    });
     const apiConfig = resolveWorkspaceApiConfig(workspace);
     const intentResult = await this.modelClient.generate({
       prompt: buildWorkspaceChatResearchIntentPrompt({
         workspace,
         effectiveAgents,
-        targetAgent,
+        targetAgent: manualTargetAgent,
         recentMessages,
         userMessage: request.message,
         recentRunOutputs,
+        workspaceLeadContext,
       }),
       apiConfig,
-      ...(targetAgent?.model ? { model: targetAgent.model } : {}),
+      ...(manualTargetAgent?.model ? { model: manualTargetAgent.model } : {}),
     });
-    const researchIntent = this.parseResearchIntent(intentResult.text);
-    const research = await this.executeResearch(workspace, researchIntent);
-    const answer = await this.modelClient.generate({
+    const planning = this.parseChatPlanningResult(
+      intentResult.text,
+      manualTargetAgent,
+      effectiveAgents,
+      request.message,
+    );
+    const { targetAgent, route } = planning;
+    const researchIntent = this.resolveEffectiveChatResearchIntent({
+      workspace,
+      plannedIntent: planning.researchIntent,
+      targetAgent,
+      userMessage: request.message,
+    });
+    const research = this.enrichResearchResultForChat(
+      await this.executeResearch(workspace, researchIntent),
+    );
+    const shortcutAnswer = this.resolveShortcutChatAnswer(
+      request.message,
+      targetAgent,
+      workspaceLeadContext,
+      research,
+    );
+    const agentStepResults = shortcutAnswer
+      ? []
+      : await this.runWorkspaceChatAgentSteps({
+        workspace,
+        effectiveAgents,
+        targetAgent,
+        route,
+        recentMessages,
+        userMessage: request.message,
+        recentRunOutputs,
+        workspaceLeadContext,
+        research,
+        apiConfig,
+      });
+    const responseRoute = route
+      ? this.withResearchAgentRoute(route, research, effectiveAgents)
+      : null;
+    const answerText = shortcutAnswer ?? (await this.modelClient.generate({
       prompt: buildWorkspaceChatResponsePrompt({
         workspace,
         effectiveAgents,
         targetAgent,
+        routing: responseRoute ? this.toChatRouting(responseRoute) : null,
+        agentStepResults,
         recentMessages,
         userMessage: request.message,
         recentRunOutputs,
+        workspaceLeadContext,
         researchResult: this.sanitizeResearchForPrompt(workspace, research),
       }),
       apiConfig,
       ...(targetAgent?.model ? { model: targetAgent.model } : {}),
-    });
+    })).text.trim();
+    const assistantMessage: EnterpriseLeadWorkspaceChatMessage = {
+      id: randomUUID(),
+      role: 'assistant',
+      content: answerText,
+      createdAt: new Date().toISOString(),
+      ...(targetAgent
+        ? {
+          agent: {
+            id: targetAgent.id,
+            name: targetAgent.name,
+          },
+        }
+        : {}),
+      ...(route
+        ? {
+          routing: this.toChatRouting(responseRoute ?? route, agentStepResults),
+        }
+        : {}),
+      research,
+    };
+    this.store.appendChatMessage(session.id, assistantMessage);
+    const persistedSession = this.store.getChatSession(workspace.id, session.id);
 
     return {
-      message: {
-        id: randomUUID(),
-        role: 'assistant',
-        content: answer.text.trim(),
-        createdAt: new Date().toISOString(),
-        research,
-      },
+      message: assistantMessage,
+      ...(persistedSession ? { session: persistedSession } : {}),
     };
   }
 
@@ -563,7 +795,18 @@ export class EnterpriseLeadWorkspaceService {
   private mergeWorkspaceAgentBinding(
     binding: EnterpriseLeadWorkspaceAgentBinding,
   ): WorkspaceChatAgentPromptSummary | null {
-    const overrides = binding.overrides;
+    const baseBinding = binding.source === EnterpriseLeadWorkspaceAgentSource.SystemTemplate
+      ? this.resolveSystemTemplateBinding(binding)
+      : null;
+    if (binding.source === EnterpriseLeadWorkspaceAgentSource.SystemTemplate && !baseBinding) {
+      return null;
+    }
+
+    const baseOverrides = baseBinding?.overrides ?? {};
+    const overrides = {
+      ...baseOverrides,
+      ...binding.overrides,
+    };
     const name = overrides.name ?? binding.name ?? binding.agentId;
     return {
       id: binding.agentId,
@@ -575,6 +818,17 @@ export class EnterpriseLeadWorkspaceService {
       model: overrides.model ?? binding.model ?? '',
       skillIds: overrides.skillIds ?? binding.skillIds ?? [],
     };
+  }
+
+  private resolveSystemTemplateBinding(
+    binding: EnterpriseLeadWorkspaceAgentBinding,
+  ): EnterpriseLeadWorkspaceAgentBinding | null {
+    const templateId = binding.templateId ?? binding.agentId;
+    if (!isEnterpriseLeadAgentRole(templateId)) {
+      return null;
+    }
+
+    return buildDefaultEnterpriseLeadWorkspaceAgents([templateId])[0] ?? null;
   }
 
   private resolveTargetAgent(
@@ -637,6 +891,9 @@ export class EnterpriseLeadWorkspaceService {
       sanitized.payload = {
         dataSummary: payloadSummary,
       };
+    }
+    if (research.leadCandidates?.length) {
+      sanitized.leadCandidates = research.leadCandidates;
     }
     return sanitized;
   }
@@ -731,14 +988,733 @@ export class EnterpriseLeadWorkspaceService {
       }));
   }
 
-  private parseResearchIntent(modelText: string): EnterpriseLeadWorkspaceChatResearchIntent {
+  private collectWorkspaceLeadContext(
+    workspace: EnterpriseLeadWorkspace,
+    recentRunOutputs: unknown[],
+  ): WorkspaceChatLeadContext {
+    const sources: WorkspaceChatLeadContext['sources'] = [];
+
+    workspace.extractionSources.forEach((source, index) => {
+      const label = source.label.trim() || `工作区资料 ${index + 1}`;
+      const text = source.text?.trim() ?? '';
+      const searchableText = [label, text].filter(Boolean).join('\n');
+      if (!this.isLikelyWorkspaceLeadText(searchableText)) {
+        return;
+      }
+      sources.push({
+        kind: 'workspace_source',
+        label,
+        text: this.summarizeWorkspaceLeadText(text || label),
+      });
+    });
+
+    recentRunOutputs.forEach((output, index) => {
+      const text = this.summarizeResearchPayloadForPrompt(output);
+      if (!this.isLikelyWorkspaceLeadText(text)) {
+        return;
+      }
+      sources.push({
+        kind: 'run_output',
+        label: `最近运行输出 ${index + 1}`,
+        text: this.summarizeWorkspaceLeadText(text),
+      });
+    });
+
+    const limitedSources = sources.slice(0, 6);
+    if (limitedSources.length === 0) {
+      return {
+        status: 'empty',
+        note: '没有检测到可用于客户排序的具体客户名单或线索。',
+        sources: [],
+      };
+    }
+
+    return {
+      status: 'available',
+      note: '检测到工作区已有线索。请直接基于这些线索评分、排序和给出跟进建议；不要要求用户重复提供名单。',
+      sources: limitedSources,
+    };
+  }
+
+  private summarizeWorkspaceLeadText(text: string): string {
+    return text
+      .split(/\r?\n/)
+      .map(line => line.replace(/\s+/g, ' ').trim())
+      .filter(Boolean)
+      .join('\n')
+      .slice(0, 1_800);
+  }
+
+  private isLikelyWorkspaceLeadText(text: string): boolean {
+    const normalizedText = this.normalizeAutoRouteText(text);
+    if (!normalizedText) {
+      return false;
+    }
+
+    const explicitLeadPatterns = [
+      '客户名单',
+      '客户列表',
+      '客户池',
+      '客户线索',
+      '客户类型线索',
+      '线索池',
+      '线索名单',
+      '线索',
+      '潜客',
+      '潜在客户',
+      '公司名称',
+      '公司名',
+      '客户名称',
+      '联系人',
+      '询价',
+      '采购信号',
+      '沟通记录',
+      '跟进记录',
+    ];
+    if (explicitLeadPatterns.some(pattern =>
+      normalizedText.includes(this.normalizeAutoRouteText(pattern)),
+    )) {
+      return true;
+    }
+
+    const lines = text.split(/\r?\n|[;；]/).filter(line => line.trim().length > 0);
+    const companyMarkers = text.match(/有限公司|股份有限公司|集团|公司/g) ?? [];
+    const hasDemandSignal = ['询价', '需求', '采购', '月需求', '图纸', '打样', '报价', '跟进']
+      .some(pattern => normalizedText.includes(this.normalizeAutoRouteText(pattern)));
+
+    return lines.length >= 2 && companyMarkers.length >= 2 && hasDemandSignal;
+  }
+
+  private enrichResearchResultForChat(
+    research: EnterpriseLeadWorkspaceChatResearchResult,
+  ): EnterpriseLeadWorkspaceChatResearchResult {
+    if (research.status !== WorkspaceChatResearchStatus.Completed) {
+      return research;
+    }
+
+    const leadCandidates = this.extractLeadCandidatesFromResearchPayload(research.payload);
+    if (leadCandidates.length === 0) {
+      return research;
+    }
+
+    const companyCount = leadCandidates.filter(candidate => candidate.kind === 'company').length;
+    const categoryCount = leadCandidates.filter(candidate => candidate.kind === 'category').length;
+    return {
+      ...research,
+      summary: `调研提取 ${companyCount} 个具体公司，${categoryCount} 条客户类型线索。`,
+      leadCandidates,
+    };
+  }
+
+  private extractLeadCandidatesFromResearchPayload(
+    payload: unknown,
+  ): EnterpriseLeadWorkspaceChatLeadCandidate[] {
+    const entries = this.collectResearchPayloadEntries(payload);
+    const seen = new Set<string>();
+    const candidates: EnterpriseLeadWorkspaceChatLeadCandidate[] = [];
+
+    for (const entry of entries) {
+      const text = [entry.title, entry.content].filter(Boolean).join('\n');
+      if (!this.isLikelyWorkspaceLeadText(text)) {
+        continue;
+      }
+
+      const companyName = this.extractCompanyName(text);
+      const kind = companyName ? 'company' : 'category';
+      const name = companyName ?? entry.title.slice(0, 80);
+      const key = `${kind}:${name}:${entry.url ?? ''}`;
+      if (!name || seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+
+      const demandSignal = this.extractDemandSignal(text);
+      candidates.push({
+        kind,
+        name,
+        evidence: entry.content.slice(0, 280) || entry.title,
+        ...(entry.title ? { sourceTitle: entry.title } : {}),
+        ...(entry.url ? { sourceUrl: entry.url } : {}),
+        ...(demandSignal ? { demandSignal } : {}),
+        matchReason: kind === 'company'
+          ? '搜索结果包含具体公司名称和客户/采购相关信号。'
+          : '搜索结果包含客户类型或行业需求方向，但没有具体公司名称。',
+        confidence: kind === 'company' ? 'high' : 'low',
+      });
+
+      if (candidates.length >= WORKSPACE_CHAT_LEAD_CANDIDATE_LIMIT) {
+        break;
+      }
+    }
+
+    return candidates;
+  }
+
+  private collectResearchPayloadEntries(payload: unknown): Array<{
+    title: string;
+    content: string;
+    url?: string;
+  }> {
+    const entries: Array<{ title: string; content: string; url?: string }> = [];
+    const seen = new WeakSet<object>();
+
+    const visit = (value: unknown): void => {
+      if (!value || typeof value !== 'object' || entries.length >= WORKSPACE_CHAT_LEAD_CANDIDATE_LIMIT * 2) {
+        return;
+      }
+      if (seen.has(value)) {
+        return;
+      }
+      seen.add(value);
+
+      if (Array.isArray(value)) {
+        value.forEach(visit);
+        return;
+      }
+
+      const record = value as Record<string, unknown>;
+      const title = this.cleanResearchEntryText(record.title ?? record.name ?? record.companyName);
+      const content = this.cleanResearchEntryText(
+        record.content
+          ?? record.snippet
+          ?? record.description
+          ?? record.markdown
+          ?? record.text,
+      );
+      const url = this.cleanResearchEntryText(record.url ?? record.link ?? record.sourceUrl);
+      if (title || content) {
+        entries.push({
+          title: title || content.slice(0, 80),
+          content,
+          ...(url ? { url } : {}),
+        });
+      }
+
+      Object.values(record).forEach(visit);
+    };
+
+    visit(payload);
+    return entries;
+  }
+
+  private cleanResearchEntryText(value: unknown): string {
+    return typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : '';
+  }
+
+  private extractCompanyName(text: string): string | null {
+    const match = text.match(/[\u4e00-\u9fa5A-Za-z0-9（）()·\-]{2,50}(?:股份有限公司|集团有限公司|有限公司|集团|公司)/);
+    const companyName = match?.[0]?.trim() ?? '';
+    if (!companyName || this.isGenericCompanyName(companyName)) {
+      return null;
+    }
+    return companyName;
+  }
+
+  private isGenericCompanyName(companyName: string): boolean {
+    const normalized = companyName.replace(/\s+/g, '');
+    if (/^[\u4e00-\u9fa5A-Za-z0-9（）()·-]{1,2}公司$/.test(normalized)) {
+      return true;
+    }
+    return [
+      '具体公司',
+      '没有具体公司',
+      '无具体公司',
+      '外贸公司',
+      '电商公司',
+      '跨境电商公司',
+      '机械设备公司',
+      '自动化设备公司',
+      '品牌公司',
+      '客户公司',
+      '目标公司',
+      '潜在公司',
+      '公司名称',
+      '客户类型',
+      '客户画像',
+      '目标客户画像',
+    ].some(pattern => normalized.includes(pattern));
+  }
+
+  private extractDemandSignal(text: string): string | null {
+    const signalMatch = text.match(/[^。；;\n]*(?:采购|询价|需求|招标|扩产|招聘|设备|自动化|钣金|机箱|支架)[^。；;\n]*/);
+    return signalMatch?.[0]?.replace(/\s+/g, ' ').trim().slice(0, 160) ?? null;
+  }
+
+  private async runWorkspaceChatAgentSteps({
+    workspace,
+    effectiveAgents,
+    targetAgent,
+    route,
+    recentMessages,
+    userMessage,
+    recentRunOutputs,
+    workspaceLeadContext,
+    research,
+    apiConfig,
+  }: WorkspaceChatAgentStepRunInput): Promise<EnterpriseLeadWorkspaceChatRouteStep[]> {
+    if (!route || route.agents.length <= 1) {
+      return [];
+    }
+
+    const stepResults: EnterpriseLeadWorkspaceChatRouteStep[] = [];
+    const routing = this.toChatRouting(route);
+
+    for (const currentAgent of route.agents) {
+      const result = await this.modelClient.generate({
+        prompt: buildWorkspaceChatAgentStepPrompt({
+          workspace,
+          effectiveAgents,
+          targetAgent,
+          routing,
+          currentAgent,
+          previousStepResults: stepResults,
+          recentMessages,
+          userMessage,
+          recentRunOutputs,
+          workspaceLeadContext,
+          researchResult: this.sanitizeResearchForPrompt(workspace, research),
+        }),
+        apiConfig,
+        ...(currentAgent.model ? { model: currentAgent.model } : {}),
+      });
+      stepResults.push({
+        agent: {
+          id: currentAgent.id,
+          name: currentAgent.name,
+        },
+        content: result.text.trim(),
+      });
+    }
+
+    return stepResults;
+  }
+
+  private parseChatPlanningResult(
+    modelText: string,
+    manualTargetAgent: WorkspaceChatAgentPromptSummary | null,
+    effectiveAgents: WorkspaceChatAgentPromptSummary[],
+    userMessage: string,
+  ): WorkspaceChatPlanningResult {
     try {
       const parsed = parseModelJsonObject(modelText);
       const rawIntent = isRecord(parsed) ? parsed.researchIntent : undefined;
-      return normalizeWorkspaceChatResearchIntent(rawIntent);
+      const plannedTargetAgent = this.resolvePlannedTargetAgent(parsed, effectiveAgents);
+      const route = this.resolveChatAgentRoute({
+        manualTargetAgent,
+        plannedTargetAgent,
+        userMessage,
+        effectiveAgents,
+      });
+      return {
+        researchIntent: normalizeWorkspaceChatResearchIntent(rawIntent),
+        targetAgent: route?.agents[0] ?? null,
+        route,
+      };
     } catch {
-      return { kind: 'none' };
+      const route = this.resolveChatAgentRoute({
+        manualTargetAgent,
+        plannedTargetAgent: null,
+        userMessage,
+        effectiveAgents,
+      });
+      return {
+        researchIntent: { kind: 'none' },
+        targetAgent: route?.agents[0] ?? null,
+        route,
+      };
     }
+  }
+
+  private resolveEffectiveChatResearchIntent({
+    workspace,
+    plannedIntent,
+    targetAgent,
+    userMessage,
+  }: {
+    workspace: EnterpriseLeadWorkspace;
+    plannedIntent: EnterpriseLeadWorkspaceChatResearchIntent;
+    targetAgent: WorkspaceChatAgentPromptSummary | null;
+    userMessage: string;
+  }): EnterpriseLeadWorkspaceChatResearchIntent {
+    if (plannedIntent.kind !== 'none') {
+      return plannedIntent;
+    }
+
+    const autoIntent = this.resolveAutoExternalSearchResearchIntent({
+      workspace,
+      targetAgent,
+      userMessage,
+    });
+    return autoIntent ?? plannedIntent;
+  }
+
+  private resolveAutoExternalSearchResearchIntent({
+    workspace,
+    targetAgent,
+    userMessage,
+  }: {
+    workspace: EnterpriseLeadWorkspace;
+    targetAgent: WorkspaceChatAgentPromptSummary | null;
+    userMessage: string;
+  }): EnterpriseLeadWorkspaceChatResearchIntent | null {
+    if (!this.selectSearchProvider(workspace, 'auto')) {
+      return null;
+    }
+    if (!this.shouldAutoSearchForLeadOpportunity(userMessage, targetAgent)) {
+      return null;
+    }
+
+    return {
+      kind: 'search',
+      query: this.buildLeadOpportunitySearchQuery(workspace, userMessage),
+      provider: 'auto',
+    };
+  }
+
+  private shouldAutoSearchForLeadOpportunity(
+    userMessage: string,
+    targetAgent: WorkspaceChatAgentPromptSummary | null,
+  ): boolean {
+    const normalizedMessage = this.normalizeAutoRouteText(userMessage);
+    if (!normalizedMessage) {
+      return false;
+    }
+
+    const hasResearchCue = [
+      '调研',
+      '查',
+      '搜索',
+      '搜',
+      '找',
+      '线索',
+      '客户名单',
+      '客户列表',
+      '客户线索',
+      '潜在客户',
+      '采购信号',
+    ].some(pattern => normalizedMessage.includes(this.normalizeAutoRouteText(pattern)));
+    const hasOpportunityCue = [
+      '商机',
+      '优先跟进',
+      '谁更值得',
+      '优先级',
+      '判断这批客户',
+      '判断这些客户',
+    ].some(pattern => normalizedMessage.includes(this.normalizeAutoRouteText(pattern)));
+
+    return hasResearchCue || (hasOpportunityCue && Boolean(targetAgent && this.isOpportunityRadarAgent(targetAgent)));
+  }
+
+  private buildLeadOpportunitySearchQuery(
+    workspace: EnterpriseLeadWorkspace,
+    userMessage: string,
+  ): string {
+    const profile = workspace.profile;
+    const terms = [
+      userMessage.trim(),
+      profile.productList.slice(0, 4).join(' '),
+      profile.targetCustomers.slice(0, 4).join(' '),
+      profile.applicationScenarios.slice(0, 4).join(' '),
+      '客户线索 采购信号 商机优先级',
+    ]
+      .map(term => term.replace(/\s+/g, ' ').trim())
+      .filter(Boolean);
+    return Array.from(new Set(terms)).join(' ').slice(0, 500);
+  }
+
+  private resolveChatAgentRoute({
+    manualTargetAgent,
+    plannedTargetAgent,
+    userMessage,
+    effectiveAgents,
+  }: {
+    manualTargetAgent: WorkspaceChatAgentPromptSummary | null;
+    plannedTargetAgent: WorkspaceChatAgentPromptSummary | null;
+    userMessage: string;
+    effectiveAgents: WorkspaceChatAgentPromptSummary[];
+  }): WorkspaceChatAgentRoute | null {
+    if (manualTargetAgent) {
+      return {
+        reason: `手动选择：${manualTargetAgent.name}`,
+        agents: [manualTargetAgent],
+      };
+    }
+    if (plannedTargetAgent) {
+      return {
+        reason: `自动判断：${plannedTargetAgent.name} 与任务匹配`,
+        agents: [plannedTargetAgent],
+      };
+    }
+    return this.resolveAutoRoute(userMessage, effectiveAgents);
+  }
+
+  private resolvePlannedTargetAgent(
+    parsedPlanning: unknown,
+    effectiveAgents: WorkspaceChatAgentPromptSummary[],
+  ): WorkspaceChatAgentPromptSummary | null {
+    if (!isRecord(parsedPlanning)) {
+      return null;
+    }
+
+    const route = isRecord(parsedPlanning.route) ? parsedPlanning.route : null;
+    const agent = isRecord(parsedPlanning.agent) ? parsedPlanning.agent : null;
+    const rawTargetAgentId =
+      (typeof parsedPlanning.targetAgentId === 'string' ? parsedPlanning.targetAgentId : undefined)
+      ?? (route && typeof route.targetAgentId === 'string' ? route.targetAgentId : undefined)
+      ?? (agent && typeof agent.id === 'string' ? agent.id : undefined);
+
+    return this.resolveTargetAgent(rawTargetAgentId, effectiveAgents);
+  }
+
+  private resolveAutoRoute(
+    userMessage: string,
+    effectiveAgents: WorkspaceChatAgentPromptSummary[],
+  ): WorkspaceChatAgentRoute | null {
+    const normalizedMessage = this.normalizeAutoRouteText(userMessage);
+    if (!normalizedMessage) {
+      return null;
+    }
+
+    const matchedRule = WORKSPACE_CHAT_AUTO_ROUTE_RULES.find(rule =>
+      rule.messagePatterns.some(pattern =>
+        normalizedMessage.includes(this.normalizeAutoRouteText(pattern)),
+      ),
+    );
+    if (!matchedRule) {
+      return null;
+    }
+
+    const agents = this.findAutoRouteAgents(matchedRule, effectiveAgents);
+    return agents.length > 0
+      ? {
+        agents,
+        reason: matchedRule.reason,
+      }
+      : null;
+  }
+
+  private findAutoRouteAgents(
+    rule: WorkspaceChatAutoRouteRule,
+    effectiveAgents: WorkspaceChatAgentPromptSummary[],
+  ): WorkspaceChatAgentPromptSummary[] {
+    const directAgents = rule.agentIds
+      .map(agentId => effectiveAgents.find(agent => agent.id === agentId))
+      .filter((agent): agent is WorkspaceChatAgentPromptSummary => Boolean(agent));
+    if (directAgents.length > 0) {
+      return directAgents;
+    }
+
+    const textMatchedAgent = effectiveAgents.find(agent => {
+        const searchableText = this.normalizeAutoRouteText([
+          agent.id,
+          agent.name,
+          agent.description,
+          agent.identity,
+          agent.systemPrompt,
+        ].join(' '));
+        return rule.agentTextPatterns.some(pattern =>
+          searchableText.includes(this.normalizeAutoRouteText(pattern)),
+        );
+      })
+      ?? null;
+    return textMatchedAgent ? [textMatchedAgent] : [];
+  }
+
+  private normalizeAutoRouteText(value: string): string {
+    return value.replace(/\s+/g, '').trim().toLowerCase();
+  }
+
+  private withResearchAgentRoute(
+    route: WorkspaceChatAgentRoute,
+    research: EnterpriseLeadWorkspaceChatResearchResult,
+    effectiveAgents: WorkspaceChatAgentPromptSummary[],
+  ): WorkspaceChatAgentRoute {
+    if (research.status !== WorkspaceChatResearchStatus.Completed || research.intent.kind === 'none') {
+      return route;
+    }
+
+    const researchAgent = this.resolveResearchAgentAttribution(effectiveAgents);
+    if (route.agents.some(agent => agent.id === researchAgent.id)) {
+      return route;
+    }
+
+    return {
+      ...route,
+      agents: [
+        researchAgent,
+        ...route.agents,
+      ],
+    };
+  }
+
+  private resolveResearchAgentAttribution(
+    effectiveAgents: WorkspaceChatAgentPromptSummary[],
+  ): WorkspaceChatAgentPromptSummary {
+    const configuredResearchAgent = effectiveAgents.find(agent => {
+      const searchableText = this.normalizeAutoRouteText([
+        agent.id,
+        agent.name,
+        agent.description,
+        agent.identity,
+        agent.systemPrompt,
+      ].join(' '));
+      return ['调研', '研究', '搜索', '情报', 'research'].some(pattern =>
+        searchableText.includes(this.normalizeAutoRouteText(pattern)),
+      );
+    });
+    return configuredResearchAgent ?? {
+      ...WORKSPACE_CHAT_RESEARCH_AGENT_ATTRIBUTION,
+      description: '执行外部搜索、读取公开来源并整理调研依据。',
+      identity: '调研助手 Agent',
+      systemPrompt: '执行外部搜索、读取公开来源并整理调研依据。',
+      icon: '研',
+      model: '',
+      skillIds: [],
+    };
+  }
+
+  private toChatRouting(
+    route: WorkspaceChatAgentRoute,
+    steps: EnterpriseLeadWorkspaceChatRouteStep[] = [],
+  ): EnterpriseLeadWorkspaceChatRouting {
+    return {
+      reason: route.reason,
+      agents: route.agents.map(agent => ({
+        id: agent.id,
+        name: agent.name,
+      })),
+      ...(steps.length > 0 ? { steps } : {}),
+    };
+  }
+
+  private resolveShortcutChatAnswer(
+    userMessage: string,
+    targetAgent: WorkspaceChatAgentPromptSummary | null,
+    workspaceLeadContext: WorkspaceChatLeadContext,
+    research: EnterpriseLeadWorkspaceChatResearchResult,
+  ): string | null {
+    if (!targetAgent) {
+      return null;
+    }
+    if (
+      this.isOpportunityRadarAgent(targetAgent)
+      && this.isCustomerPriorityReferenceRequest(userMessage)
+    ) {
+      const hasConcreteWorkspaceLeads = this.hasConcreteWorkspaceLeadContext(workspaceLeadContext);
+      if (research.intent.kind === 'none' && !hasConcreteWorkspaceLeads) {
+        return OPPORTUNITY_MISSING_CUSTOMERS_RESPONSE;
+      }
+      if (!hasConcreteWorkspaceLeads && !this.hasConcreteResearchLeadCandidates(research)) {
+        return OPPORTUNITY_RESEARCH_WITHOUT_COMPANIES_RESPONSE;
+      }
+    }
+    if (
+      this.isRiskReviewAgent(targetAgent)
+      && this.isRiskReviewMissingCopyRequest(userMessage)
+    ) {
+      return RISK_REVIEW_MISSING_COPY_RESPONSE;
+    }
+    return null;
+  }
+
+  private hasConcreteWorkspaceLeadContext(
+    workspaceLeadContext: WorkspaceChatLeadContext,
+  ): boolean {
+    return workspaceLeadContext.sources.some(source =>
+      Boolean(this.extractCompanyName([source.label, source.text].join('\n'))),
+    );
+  }
+
+  private hasConcreteResearchLeadCandidates(
+    research: EnterpriseLeadWorkspaceChatResearchResult,
+  ): boolean {
+    return research.leadCandidates?.some(candidate => candidate.kind === 'company') ?? false;
+  }
+
+  private isOpportunityRadarAgent(agent: WorkspaceChatAgentPromptSummary): boolean {
+    if (agent.id === EnterpriseLeadAgentRole.OpportunityRadar) {
+      return true;
+    }
+    const searchableText = this.normalizeAutoRouteText([
+      agent.id,
+      agent.name,
+      agent.description,
+      agent.identity,
+      agent.systemPrompt,
+    ].join(' '));
+    return ['opportunity_radar', '商机', '机会', '采购信号', '评分', '优先级'].some(pattern =>
+      searchableText.includes(this.normalizeAutoRouteText(pattern)),
+    );
+  }
+
+  private isCustomerPriorityReferenceRequest(userMessage: string): boolean {
+    const normalizedMessage = this.normalizeAutoRouteText(userMessage);
+    if (!normalizedMessage) {
+      return false;
+    }
+
+    const hasCustomerReference = [
+      '这批客户',
+      '这些客户',
+      '这组客户',
+      '客户名单',
+      '客户列表',
+      '线索名单',
+      '这批线索',
+      '这些线索',
+    ].some(pattern => normalizedMessage.includes(this.normalizeAutoRouteText(pattern)));
+    const hasPriorityIntent = [
+      '优先跟进',
+      '值得优先',
+      '谁更值得',
+      '优先级',
+      '排序',
+      '评分',
+      '判断',
+    ].some(pattern => normalizedMessage.includes(this.normalizeAutoRouteText(pattern)));
+
+    return hasCustomerReference && hasPriorityIntent;
+  }
+
+  private isRiskReviewAgent(agent: WorkspaceChatAgentPromptSummary): boolean {
+    if (agent.id === EnterpriseLeadAgentRole.RiskReview) {
+      return true;
+    }
+    const searchableText = this.normalizeAutoRouteText([
+      agent.id,
+      agent.name,
+      agent.description,
+      agent.identity,
+      agent.systemPrompt,
+    ].join(' '));
+    return ['risk_review', '风控', '审核', '风险'].some(pattern =>
+      searchableText.includes(this.normalizeAutoRouteText(pattern)),
+    );
+  }
+
+  private isRiskReviewMissingCopyRequest(userMessage: string): boolean {
+    const trimmedMessage = userMessage.trim();
+    if (!trimmedMessage) {
+      return true;
+    }
+
+    const normalizedMessage = this.normalizeAutoRouteText(trimmedMessage);
+    const asksForReview = ['检查', '审核', '风控', '风险', '夸大', '合规', '宣传文案']
+      .some(pattern => normalizedMessage.includes(this.normalizeAutoRouteText(pattern)));
+    if (!asksForReview) {
+      return false;
+    }
+
+    const [, trailingContent = ''] = trimmedMessage.split(/[:：\n]/, 2);
+    if (trailingContent.trim().length > 0) {
+      return trailingContent.replace(/[“”"']/g, '').trim().length < 12;
+    }
+
+    const possibleCopy = trimmedMessage
+      .replace(/帮我|请|检查|审核|看看|一下|这段|宣传文案|有没有|是否|夸大|风险|风控|合规/g, '')
+      .replace(/\s+/g, '')
+      .trim();
+    return possibleCopy.length < 24 && trimmedMessage.length < 70;
   }
 
   private async executeResearch(
@@ -749,7 +1725,7 @@ export class EnterpriseLeadWorkspaceService {
       return {
         intent,
         status: WorkspaceChatResearchStatus.Skipped,
-        summary: 'No external research was requested.',
+        summary: '未请求外部调研。',
       };
     }
 
@@ -788,8 +1764,14 @@ export class EnterpriseLeadWorkspaceService {
 
     const config = workspace.settings.externalResearch.providers[provider];
     const payload = provider === ExternalResearchProviderId.Tavily
-      ? await this.researchClient.tavilySearch(config.apiKey, intent.query, 5)
-      : await this.researchClient.firecrawlSearch(config.apiKey, intent.query, 5);
+      ? await this.withResearchTimeout(
+          this.researchClient.tavilySearch(config.apiKey, intent.query, 5),
+          `${provider} search`,
+        )
+      : await this.withResearchTimeout(
+          this.researchClient.firecrawlSearch(config.apiKey, intent.query, 5),
+          `${provider} search`,
+        );
 
     return {
       intent,
@@ -814,10 +1796,16 @@ export class EnterpriseLeadWorkspaceService {
 
     const config = workspace.settings.externalResearch.providers[provider];
     const payload = provider === ExternalResearchProviderId.Firecrawl
-      ? await Promise.all(intent.urls.map(url =>
-          this.researchClient.firecrawlScrape(config.apiKey, url),
-        ))
-      : await this.researchClient.tavilyExtract(config.apiKey, intent.urls, intent.query);
+      ? await this.withResearchTimeout(
+          Promise.all(intent.urls.map(url =>
+            this.researchClient.firecrawlScrape(config.apiKey, url),
+          )),
+          `${provider} extraction`,
+        )
+      : await this.withResearchTimeout(
+          this.researchClient.tavilyExtract(config.apiKey, intent.urls, intent.query),
+          `${provider} extraction`,
+        );
 
     return {
       intent,
@@ -844,7 +1832,10 @@ export class EnterpriseLeadWorkspaceService {
     );
     const searched = await Promise.all(searchableSources.map(async source => ({
       sourceId: source.sourceId,
-      result: await this.researchClient.domesticSearch(source.sourceId, workspace.name, 5),
+      result: await this.withResearchTimeout(
+        this.researchClient.domesticSearch(source.sourceId, workspace.name, 5),
+        `${source.sourceId} domestic status search`,
+      ),
     })));
     const enabledCustomSources = domesticConfig.customSources.filter(source => source.enabled);
 
@@ -882,7 +1873,10 @@ export class EnterpriseLeadWorkspaceService {
 
     const searched = await Promise.all(searchableSourceIds.map(async sourceId => ({
       sourceId,
-      result: await this.researchClient.domesticSearch(sourceId, intent.query, 5),
+      result: await this.withResearchTimeout(
+        this.researchClient.domesticSearch(sourceId, intent.query, 5),
+        `${sourceId} domestic search`,
+      ),
     })));
 
     return {
@@ -905,6 +1899,21 @@ export class EnterpriseLeadWorkspaceService {
       status: WorkspaceChatResearchStatus.Failed,
       summary,
     };
+  }
+
+  private withResearchTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    const timeoutPromise = new Promise<never>((_resolve, reject) => {
+      timeoutId = setTimeout(() => {
+        reject(new Error(`${label} timed out after ${this.researchTimeoutMs}ms.`));
+      }, this.researchTimeoutMs);
+    });
+
+    return Promise.race([promise, timeoutPromise]).finally(() => {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+    });
   }
 
   private selectSearchProvider(

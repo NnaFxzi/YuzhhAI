@@ -358,6 +358,34 @@ test('outbound prompt includes selected assistant text as quoted reference data'
   );
 });
 
+test('outbound prompt injects the reply contract before the current request', async () => {
+  const adapter = new OpenClawRuntimeAdapter(
+    {
+      getSession: () => null,
+      getAgent: () => null,
+    } as never,
+    {} as never,
+  );
+  const internal = adapter as unknown as {
+    bridgedSessions: Set<string>;
+    buildOutboundPrompt: (
+      sessionId: string,
+      prompt: string,
+      systemPrompt?: string,
+      agentId?: string,
+    ) => Promise<string>;
+  };
+  internal.bridgedSessions.add('session-1');
+
+  const prompt = await internal.buildOutboundPrompt('session-1', '帮我优化回复质量');
+
+  expect(prompt).toContain('[LobsterAI reply contract]');
+  expect(prompt).toContain('Answer in the same language as the latest user request');
+  expect(prompt.indexOf('[LobsterAI reply contract]')).toBeLessThan(
+    prompt.indexOf('[Current user request]'),
+  );
+});
+
 test('outbound prompt injects continuity capsule bridge before the current request', async () => {
   const adapter = new OpenClawRuntimeAdapter({
     getSession: () => null,

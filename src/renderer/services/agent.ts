@@ -47,6 +47,21 @@ const syncActiveSkillsForCurrentAgent = (agentId: string, skillIds: string[]): v
   }
 };
 
+const toAgentSummary = (agent: Agent) => ({
+  id: agent.id,
+  name: agent.name,
+  description: agent.description,
+  icon: agent.icon,
+  model: agent.model ?? '',
+  workingDirectory: agent.workingDirectory ?? '',
+  enabled: agent.enabled,
+  pinned: agent.pinned ?? false,
+  pinOrder: agent.pinOrder ?? null,
+  isDefault: agent.isDefault,
+  source: agent.source,
+  skillIds: agent.skillIds ?? [],
+});
+
 class AgentService {
   canSaveExternalResearchSettings(): boolean {
     return typeof window.electron?.agents?.saveExternalResearchSettings === 'function';
@@ -57,21 +72,7 @@ class AgentService {
     try {
       const agents = await window.electron?.agents?.list();
       if (agents) {
-        const mappedAgents = agents.map((a) => ({
-          id: a.id,
-          name: a.name,
-          description: a.description,
-          icon: a.icon,
-          model: a.model ?? '',
-          workingDirectory: a.workingDirectory ?? '',
-          enabled: a.enabled,
-          pinned: a.pinned ?? false,
-          pinOrder: a.pinOrder ?? null,
-          isDefault: a.isDefault,
-          source: a.source,
-          skillIds: a.skillIds ?? [],
-        }));
-        store.dispatch(setAgents(mappedAgents));
+        store.dispatch(setAgents(agents.map(toAgentSummary)));
       }
     } catch (error) {
       console.error('Failed to load agents:', error);
@@ -93,20 +94,7 @@ class AgentService {
     try {
       const agent = await window.electron?.agents?.create(request);
       if (agent) {
-        store.dispatch(addAgent({
-          id: agent.id,
-          name: agent.name,
-          description: agent.description,
-          icon: agent.icon,
-          model: agent.model ?? '',
-          workingDirectory: agent.workingDirectory ?? '',
-          enabled: agent.enabled,
-          pinned: agent.pinned ?? false,
-          pinOrder: agent.pinOrder ?? null,
-          isDefault: agent.isDefault,
-          source: agent.source,
-          skillIds: agent.skillIds ?? [],
-        }));
+        store.dispatch(addAgent(toAgentSummary(agent)));
         return agent;
       }
       return null;
@@ -252,7 +240,20 @@ class AgentService {
   async getPresetTemplates(): Promise<PresetAgent[]> {
     try {
       const presets = await window.electron?.agents?.presetTemplates();
-      return presets ?? [];
+      const agentsByPresetId = new Map(
+        store
+          .getState()
+          .agent.agents.filter(agent => agent.source === 'preset')
+          .map(agent => [agent.id, agent]),
+      );
+      return (presets ?? []).map(preset => {
+        const installedAgent = agentsByPresetId.get(preset.id);
+        return {
+          ...preset,
+          installed: Boolean(installedAgent),
+          enabled: installedAgent?.enabled,
+        };
+      });
     } catch (error) {
       console.error('Failed to get preset agent templates:', error);
       return [];
@@ -263,20 +264,11 @@ class AgentService {
     try {
       const agent = await window.electron?.agents?.addPreset(presetId);
       if (agent) {
-        store.dispatch(addAgent({
-          id: agent.id,
-          name: agent.name,
-          description: agent.description,
-          icon: agent.icon,
-          model: agent.model ?? '',
-          workingDirectory: agent.workingDirectory ?? '',
-          enabled: agent.enabled,
-          pinned: agent.pinned ?? false,
-          pinOrder: agent.pinOrder ?? null,
-          isDefault: agent.isDefault,
-          source: agent.source,
-          skillIds: agent.skillIds ?? [],
-        }));
+        const summary = toAgentSummary(agent);
+        const existing = store.getState().agent.agents.some(item => item.id === agent.id);
+        store.dispatch(
+          existing ? updateAgentAction({ id: agent.id, updates: summary }) : addAgent(summary),
+        );
         return agent;
       }
       return null;

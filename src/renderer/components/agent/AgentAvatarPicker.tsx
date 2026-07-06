@@ -13,15 +13,26 @@ import AgentAvatarIcon, {
 interface AgentAvatarPickerProps {
   value: string;
   onChange: (value: string) => void;
+  disabled?: boolean;
 }
 
-const AgentAvatarPicker: React.FC<AgentAvatarPickerProps> = ({ value, onChange }) => {
+const AgentAvatarPicker: React.FC<AgentAvatarPickerProps> = ({
+  value,
+  onChange,
+  disabled = false,
+}) => {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
   const selectedAvatar = useMemo(() => {
     return parseAgentAvatarIcon(value) ?? DefaultAgentAvatar;
   }, [value]);
+
+  useEffect(() => {
+    if (disabled) {
+      setIsOpen(false);
+    }
+  }, [disabled]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -40,6 +51,7 @@ const AgentAvatarPicker: React.FC<AgentAvatarPickerProps> = ({ value, onChange }
   }, [isOpen]);
 
   const updateAvatar = (nextAvatar: typeof selectedAvatar) => {
+    if (disabled) return;
     onChange(encodeAgentAvatarIcon(nextAvatar));
   };
 
@@ -47,10 +59,11 @@ const AgentAvatarPicker: React.FC<AgentAvatarPickerProps> = ({ value, onChange }
     <div ref={containerRef} className="relative shrink-0">
       <button
         type="button"
-        onClick={() => setIsOpen((prev) => !prev)}
+        disabled={disabled}
+        onClick={() => setIsOpen(prev => !prev)}
         title={i18nService.t('agentAvatarPickerTitle')}
         aria-label={i18nService.t('agentAvatarPickerTitle')}
-        className={`rounded-full transition-shadow hover:shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/50 ${
+        className={`rounded-full transition-shadow hover:shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/50 disabled:cursor-default disabled:hover:shadow-none ${
           isOpen ? 'ring-2 ring-primary/60' : ''
         }`}
       >
@@ -63,11 +76,9 @@ const AgentAvatarPicker: React.FC<AgentAvatarPickerProps> = ({ value, onChange }
       </button>
 
       {isOpen && (
-        <div
-          className="absolute left-0 top-full z-50 mt-2 w-[324px] overflow-hidden rounded-2xl border border-border bg-surface shadow-2xl"
-        >
+        <div className="absolute left-0 top-full z-50 mt-2 w-[324px] overflow-hidden rounded-2xl border border-border bg-surface shadow-2xl">
           <div className="grid max-h-[360px] grid-cols-6 gap-x-4 gap-y-4 overflow-y-auto px-6 py-5">
-            {AGENT_AVATAR_SVG_OPTIONS.map((option) => {
+            {AGENT_AVATAR_SVG_OPTIONS.map(option => {
               const optionValue = encodeAgentAvatarIcon({ svg: option.svg });
               const isSelected = selectedAvatar.svg === option.svg;
 

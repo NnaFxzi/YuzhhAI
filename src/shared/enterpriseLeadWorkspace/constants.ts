@@ -18,6 +18,13 @@ export const EnterpriseLeadAgentRole = {
 export type EnterpriseLeadAgentRole =
   typeof EnterpriseLeadAgentRole[keyof typeof EnterpriseLeadAgentRole];
 
+export const EnterpriseLeadWorkspaceAgentSource = {
+  SystemTemplate: 'system_template',
+  WorkspaceCreated: 'workspace_created',
+} as const;
+export type EnterpriseLeadWorkspaceAgentSource =
+  (typeof EnterpriseLeadWorkspaceAgentSource)[keyof typeof EnterpriseLeadWorkspaceAgentSource];
+
 export const EnterpriseLeadRunStatus = {
   Draft: 'draft',
   Running: 'running',
@@ -186,6 +193,9 @@ export const EnterpriseLeadWorkspaceIpc = {
   CreateRun: 'enterpriseLeadWorkspace:runs:create',
   GetRun: 'enterpriseLeadWorkspace:runs:get',
   RunWorkflow: 'enterpriseLeadWorkspace:runs:runWorkflow',
+  ListChatSessions: 'enterpriseLeadWorkspace:chatSessions:list',
+  GetChatSession: 'enterpriseLeadWorkspace:chatSessions:get',
+  DeleteChatSession: 'enterpriseLeadWorkspace:chatSessions:delete',
   Chat: 'enterpriseLeadWorkspace:chat:send',
   RunTask: 'enterpriseLeadWorkspace:tasks:run',
   RerunTask: 'enterpriseLeadWorkspace:tasks:rerun',

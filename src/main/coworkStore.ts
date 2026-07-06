@@ -15,6 +15,14 @@ import {
   type CoworkForkMode as CoworkForkModeType,
 } from '../shared/cowork/constants';
 import {
+  type CoworkSettingsLayer,
+  InheritSetting,
+  type LayeredCoworkSettingsUpdate,
+  type LayeredCoworkSettingsValues,
+  resolveLayeredCoworkSettings,
+  SettingScope,
+} from '../shared/cowork/layeredSettings';
+import {
   COWORK_RAIL_TOOLTIP_PREVIEW_MAX_LENGTH,
   type CoworkMessageRailIndexItem,
   getCoworkRailPreview,
@@ -530,6 +538,7 @@ export interface CoworkConversationSearchRecord {
 
 export interface CoworkConfig {
   workingDirectory: string;
+  workingDirectoryConfigured?: boolean;
   systemPrompt: string;
   executionMode: CoworkExecutionMode;
   agentEngine: CoworkAgentEngine;
@@ -575,6 +584,12 @@ CoworkConfig,
   | 'dreamingModel'
   | 'dreamingTimezone'
 >>;
+
+export interface CoworkEffectiveSettingsInput {
+  workspaceId?: string;
+  agentId?: string;
+  sessionId?: string;
+}
 
 export type PluginSource = 'npm' | 'clawhub' | 'git' | 'local' | 'openclaw';
 
@@ -711,7 +726,7 @@ export class CoworkStore {
   }
 
   private escapeLikePattern(value: string): string {
-    return value.replace(/[\\%_]/g, (match) => `\\${match}`);
+    return value.replace(/[\\%_]/g, match => `\\${match}`);
   }
 
   private mapSessionSummaryRow(row: CoworkSessionSummaryRow): CoworkSessionSummary {
@@ -770,7 +785,7 @@ export class CoworkStore {
     executionMode: CoworkExecutionMode = 'local',
     activeSkillIds: string[] = [],
     agentId: string = 'main',
-    modelOverride: string = ''
+    modelOverride: string = '',
   ): CoworkSession {
     const id = uuidv4();
     const now = Date.now();
@@ -914,7 +929,10 @@ export class CoworkStore {
         ...(row.last_compacted_at != null ? { lastCompactedAt: row.last_compacted_at } : {}),
       };
     } catch (error) {
-      console.warn(`[CoworkStore] corrupt continuity capsule detected for session ${sessionId}, ignoring capsule.`, error);
+      console.warn(
+        `[CoworkStore] corrupt continuity capsule detected for session ${sessionId}, ignoring capsule.`,
+        error,
+      );
       return null;
     }
   }
@@ -951,10 +969,16 @@ export class CoworkStore {
     const uniqueIds = Array.from(new Set(sessionIds.filter(Boolean)));
     if (uniqueIds.length === 0) return;
     const placeholders = uniqueIds.map(() => '?').join(',');
-    this.db.prepare(`DELETE FROM cowork_session_capsules WHERE session_id IN (${placeholders})`).run(...uniqueIds);
+    this.db
+      .prepare(`DELETE FROM cowork_session_capsules WHERE session_id IN (${placeholders})`)
+      .run(...uniqueIds);
   }
 
-  private copyContinuityCapsuleToFork(sourceSessionId: string, forkedSessionId: string, timestamp: number): void {
+  private copyContinuityCapsuleToFork(
+    sourceSessionId: string,
+    forkedSessionId: string,
+    timestamp: number,
+  ): void {
     const source = this.getContinuityCapsule(sourceSessionId);
     if (!source) return;
     const copied: CoworkContinuityCapsule = {
@@ -967,7 +991,9 @@ export class CoworkStore {
     this.upsertContinuityCapsule(forkedSessionId, copied);
   }
 
-  private getSessionForkMetadata(id: string): Pick<
+  private getSessionForkMetadata(
+    id: string,
+  ): Pick<
     CoworkSession,
     | 'parentSessionId'
     | 'forkedFromMessageId'
@@ -1042,7 +1068,9 @@ export class CoworkStore {
     const messageLimitSequence = forkBoundary?.sequence ?? null;
 
     if (forkedFromMessageId && (!forkBoundary || forkBoundary.sequence == null)) {
-      throw new Error(`Message ${forkedFromMessageId} not found in session ${options.sourceSessionId}`);
+      throw new Error(
+        `Message ${forkedFromMessageId} not found in session ${options.sourceSessionId}`,
+      );
     }
 
     const sourceMessages = this.getForkSourceMessages(
@@ -1165,9 +1193,9 @@ export class CoworkStore {
     providedMessages: CoworkForkContextMessage[],
     forkBoundary: CoworkForkBoundary | null,
   ): CoworkForkContextMessage[] {
-    const provided = providedMessages.find((message) => (
-      message.content.trim() && this.shouldCopyForkContextMessage(message, forkBoundary)
-    ));
+    const provided = providedMessages.find(
+      message => message.content.trim() && this.shouldCopyForkContextMessage(message, forkBoundary),
+    );
     if (provided) return [provided];
 
     const rows = this.getAll<CoworkMessageRow>(
@@ -1202,7 +1230,8 @@ export class CoworkStore {
     forkedFromMessageId: string | null,
   ): CoworkMessageRow[] {
     const where = maxSequence == null ? '' : 'AND sequence <= ?';
-    const params: (string | number)[] = maxSequence == null ? [sessionId] : [sessionId, maxSequence];
+    const params: (string | number)[] =
+      maxSequence == null ? [sessionId] : [sessionId, maxSequence];
     const rows = this.getAll<CoworkMessageRow>(
       `
       SELECT id, type, content, metadata, created_at, sequence
@@ -1213,10 +1242,13 @@ export class CoworkStore {
       params,
     );
 
-    return rows.filter((row) => this.shouldCopyForkMessage(row, forkedFromMessageId));
+    return rows.filter(row => this.shouldCopyForkMessage(row, forkedFromMessageId));
   }
 
-  private shouldCopyForkMessage(row: CoworkMessageRow, forkedFromMessageId: string | null): boolean {
+  private shouldCopyForkMessage(
+    row: CoworkMessageRow,
+    forkedFromMessageId: string | null,
+  ): boolean {
     if (!row.metadata) return true;
     try {
       const metadata = JSON.parse(row.metadata) as CoworkMessageMetadata;
@@ -1260,11 +1292,14 @@ export class CoworkStore {
       if (Array.isArray(sanitized.selectedTextSnippets)) {
         sanitized.selectedTextSnippets = sanitized.selectedTextSnippets.map(snippet => ({
           ...snippet,
-          ...(snippet.sourceMessageId && (snippet.sourceType ?? snippet.sourceMessageType) === CoworkSelectedTextSource.AssistantMessage
+          ...(snippet.sourceMessageId &&
+          (snippet.sourceType ?? snippet.sourceMessageType) ===
+            CoworkSelectedTextSource.AssistantMessage
             ? {
-              sourceMessageId: forkedMessageIds.get(snippet.sourceMessageId) ?? snippet.sourceMessageId,
-              sourceId: forkedMessageIds.get(snippet.sourceMessageId) ?? snippet.sourceId,
-            }
+                sourceMessageId:
+                  forkedMessageIds.get(snippet.sourceMessageId) ?? snippet.sourceMessageId,
+                sourceId: forkedMessageIds.get(snippet.sourceMessageId) ?? snippet.sourceId,
+              }
             : {}),
         }));
       }
@@ -1279,7 +1314,13 @@ export class CoworkStore {
     updates: Partial<
       Pick<
         CoworkSession,
-        'title' | 'claudeSessionId' | 'status' | 'cwd' | 'systemPrompt' | 'modelOverride' | 'executionMode'
+        | 'title'
+        | 'claudeSessionId'
+        | 'status'
+        | 'cwd'
+        | 'systemPrompt'
+        | 'modelOverride'
+        | 'executionMode'
       >
     >,
     options: { touchUpdatedAt?: boolean } = {},
@@ -1336,18 +1377,21 @@ export class CoworkStore {
   }
 
   listSessionIdsByAgent(agentId: string): string[] {
-    const rows = this.getAll<{ id: string }>(
-      'SELECT id FROM cowork_sessions WHERE agent_id = ?',
-      [agentId],
-    );
+    const rows = this.getAll<{ id: string }>('SELECT id FROM cowork_sessions WHERE agent_id = ?', [
+      agentId,
+    ]);
     return rows.map(row => row.id);
   }
 
   private deleteSessionRows(ids: string[]): void {
     if (ids.length === 0) return;
     const placeholders = ids.map(() => '?').join(',');
-    this.db.prepare(`DELETE FROM cowork_session_capsules WHERE session_id IN (${placeholders})`).run(...ids);
-    this.db.prepare(`DELETE FROM cowork_messages WHERE session_id IN (${placeholders})`).run(...ids);
+    this.db
+      .prepare(`DELETE FROM cowork_session_capsules WHERE session_id IN (${placeholders})`)
+      .run(...ids);
+    this.db
+      .prepare(`DELETE FROM cowork_messages WHERE session_id IN (${placeholders})`)
+      .run(...ids);
     this.db.prepare(`DELETE FROM cowork_sessions WHERE id IN (${placeholders})`).run(...ids);
   }
 
@@ -1385,13 +1429,14 @@ export class CoworkStore {
 
   setSessionPinned(id: string, pinned: boolean): number | null {
     if (!pinned) {
-      this.db.prepare('UPDATE cowork_sessions SET pinned = 0, pin_order = NULL WHERE id = ?').run(id);
+      this.db
+        .prepare('UPDATE cowork_sessions SET pinned = 0, pin_order = NULL WHERE id = ?')
+        .run(id);
       return null;
     }
 
-    const session = this.db
-      .prepare('SELECT agent_id FROM cowork_sessions WHERE id = ?')
-      .get(id) as { agent_id?: string | null } | undefined;
+    const session = this.db.prepare('SELECT agent_id FROM cowork_sessions WHERE id = ?').get(id) as
+      { agent_id?: string | null } | undefined;
     if (!session) {
       return null;
     }
@@ -1416,17 +1461,22 @@ export class CoworkStore {
   countSessions(agentId?: string): number {
     if (agentId) {
       const row = this.db
-        .prepare("SELECT COUNT(*) as count FROM cowork_sessions WHERE COALESCE(NULLIF(TRIM(agent_id), ''), 'main') = ?")
+        .prepare(
+          "SELECT COUNT(*) as count FROM cowork_sessions WHERE COALESCE(NULLIF(TRIM(agent_id), ''), 'main') = ?",
+        )
         .get(agentId) as { count: number } | undefined;
       return row?.count || 0;
     }
     const row = this.db.prepare('SELECT COUNT(*) as count FROM cowork_sessions').get() as
-      | { count: number }
-      | undefined;
+      { count: number } | undefined;
     return row?.count || 0;
   }
 
-  listSessions(limit = COWORK_SESSION_PAGE_SIZE, offset = 0, agentId?: string): CoworkSessionSummary[] {
+  listSessions(
+    limit = COWORK_SESSION_PAGE_SIZE,
+    offset = 0,
+    agentId?: string,
+  ): CoworkSessionSummary[] {
     let rows: CoworkSessionSummaryRow[];
     if (agentId) {
       rows = this.getAll<CoworkSessionSummaryRow>(
@@ -1660,7 +1710,7 @@ export class CoworkStore {
       [sessionId],
     );
 
-    const visibleRows = rows.filter((row) => {
+    const visibleRows = rows.filter(row => {
       if (row.type !== 'assistant' || !row.metadata) return true;
       try {
         const metadata = JSON.parse(row.metadata) as CoworkMessageMetadata;
@@ -1721,7 +1771,11 @@ export class CoworkStore {
     });
   }
 
-  addMessage(sessionId: string, message: Omit<CoworkMessage, 'id' | 'timestamp'>, timestamp?: number): CoworkMessage {
+  addMessage(
+    sessionId: string,
+    message: Omit<CoworkMessage, 'id' | 'timestamp'>,
+    timestamp?: number,
+  ): CoworkMessage {
     const id = uuidv4();
     const now = timestamp ?? Date.now();
 
@@ -1854,7 +1908,11 @@ export class CoworkStore {
           ORDER BY COALESCE(sequence, created_at) ASC, created_at ASC, ROWID ASC
         `,
         )
-        .all(sessionId) as Array<{ type: 'user' | 'assistant'; content: string; created_at: number }>;
+        .all(sessionId) as Array<{
+        type: 'user' | 'assistant';
+        content: string;
+        created_at: number;
+      }>;
       const existingTimestamps = new Map<string, number[]>();
       for (const row of existingRows) {
         const timestamp = normalizeMessageTimestamp(Number(row.created_at));
@@ -1891,9 +1949,8 @@ export class CoworkStore {
         const existingKey = `${entry.role}\x1f${entry.text}`;
         const matchingExistingTimestamps = existingTimestamps.get(existingKey);
         const existingTimestamp = matchingExistingTimestamps?.shift();
-        const messageTimestamp = normalizeMessageTimestamp(entry.timestamp)
-          ?? existingTimestamp
-          ?? now;
+        const messageTimestamp =
+          normalizeMessageTimestamp(entry.timestamp) ?? existingTimestamp ?? now;
         insertedTimestamps.push(messageTimestamp);
         this.db
           .prepare(
@@ -1913,10 +1970,11 @@ export class CoworkStore {
           );
       }
 
-      const updatedAt = insertedTimestamps.length > 0
-        ? insertedTimestamps[insertedTimestamps.length - 1]
-        : now;
-      this.db.prepare('UPDATE cowork_sessions SET updated_at = ? WHERE id = ?').run(updatedAt, sessionId);
+      const updatedAt =
+        insertedTimestamps.length > 0 ? insertedTimestamps[insertedTimestamps.length - 1] : now;
+      this.db
+        .prepare('UPDATE cowork_sessions SET updated_at = ? WHERE id = ?')
+        .run(updatedAt, sessionId);
     })();
   }
 
@@ -1985,9 +2043,11 @@ export class CoworkStore {
       [...configKeys],
     );
     const cfg = new Map(configRows.map(r => [r.key, r.value]));
+    const configuredWorkingDirectory = cfg.get('workingDirectory')?.trim() || '';
 
     return {
-      workingDirectory: cfg.get('workingDirectory') || getDefaultWorkingDirectory(),
+      workingDirectory: configuredWorkingDirectory || getDefaultWorkingDirectory(),
+      workingDirectoryConfigured: configuredWorkingDirectory.length > 0,
       systemPrompt: getDefaultSystemPrompt(),
       executionMode: 'local' as CoworkExecutionMode,
       agentEngine: 'openclaw' as CoworkAgentEngine,
@@ -2008,9 +2068,11 @@ export class CoworkStore {
       embeddingEnabled: parseBooleanConfig(cfg.get('embeddingEnabled'), DEFAULT_EMBEDDING_ENABLED),
       embeddingProvider: cfg.get('embeddingProvider') || DEFAULT_EMBEDDING_PROVIDER,
       embeddingModel: cfg.get('embeddingModel') || DEFAULT_EMBEDDING_MODEL,
-      embeddingLocalModelPath: cfg.get('embeddingLocalModelPath') || DEFAULT_EMBEDDING_LOCAL_MODEL_PATH,
+      embeddingLocalModelPath:
+        cfg.get('embeddingLocalModelPath') || DEFAULT_EMBEDDING_LOCAL_MODEL_PATH,
       embeddingVectorWeight: parseEmbeddingVectorWeight(cfg.get('embeddingVectorWeight')),
-      embeddingRemoteBaseUrl: cfg.get('embeddingRemoteBaseUrl') || DEFAULT_EMBEDDING_REMOTE_BASE_URL,
+      embeddingRemoteBaseUrl:
+        cfg.get('embeddingRemoteBaseUrl') || DEFAULT_EMBEDDING_REMOTE_BASE_URL,
       embeddingRemoteApiKey: cfg.get('embeddingRemoteApiKey') || DEFAULT_EMBEDDING_REMOTE_API_KEY,
       dreamingEnabled: parseBooleanConfig(cfg.get('dreamingEnabled'), DEFAULT_DREAMING_ENABLED),
       dreamingFrequency: cfg.get('dreamingFrequency') || DEFAULT_DREAMING_FREQUENCY,
@@ -2035,16 +2097,28 @@ export class CoworkStore {
       this.upsertConfig('memoryEnabled', config.memoryEnabled ? '1' : '0', now);
     }
     if (config.memoryImplicitUpdateEnabled !== undefined) {
-      this.upsertConfig('memoryImplicitUpdateEnabled', config.memoryImplicitUpdateEnabled ? '1' : '0', now);
+      this.upsertConfig(
+        'memoryImplicitUpdateEnabled',
+        config.memoryImplicitUpdateEnabled ? '1' : '0',
+        now,
+      );
     }
     if (config.memoryLlmJudgeEnabled !== undefined) {
       this.upsertConfig('memoryLlmJudgeEnabled', config.memoryLlmJudgeEnabled ? '1' : '0', now);
     }
     if (config.memoryGuardLevel !== undefined) {
-      this.upsertConfig('memoryGuardLevel', normalizeMemoryGuardLevel(config.memoryGuardLevel), now);
+      this.upsertConfig(
+        'memoryGuardLevel',
+        normalizeMemoryGuardLevel(config.memoryGuardLevel),
+        now,
+      );
     }
     if (config.memoryUserMemoriesMaxItems !== undefined) {
-      this.upsertConfig('memoryUserMemoriesMaxItems', String(clampMemoryUserMemoriesMaxItems(config.memoryUserMemoriesMaxItems)), now);
+      this.upsertConfig(
+        'memoryUserMemoriesMaxItems',
+        String(clampMemoryUserMemoriesMaxItems(config.memoryUserMemoriesMaxItems)),
+        now,
+      );
     }
     if (config.skipMissedJobs !== undefined) {
       this.upsertConfig('skipMissedJobs', config.skipMissedJobs ? '1' : '0', now);
@@ -2062,7 +2136,11 @@ export class CoworkStore {
       this.upsertConfig('embeddingLocalModelPath', String(config.embeddingLocalModelPath), now);
     }
     if (config.embeddingVectorWeight !== undefined) {
-      this.upsertConfig('embeddingVectorWeight', String(Math.max(0, Math.min(1, config.embeddingVectorWeight))), now);
+      this.upsertConfig(
+        'embeddingVectorWeight',
+        String(Math.max(0, Math.min(1, config.embeddingVectorWeight))),
+        now,
+      );
     }
     if (config.embeddingRemoteBaseUrl !== undefined) {
       this.upsertConfig('embeddingRemoteBaseUrl', String(config.embeddingRemoteBaseUrl), now);
@@ -2082,6 +2160,125 @@ export class CoworkStore {
     if (config.dreamingTimezone !== undefined) {
       this.upsertConfig('dreamingTimezone', String(config.dreamingTimezone), now);
     }
+  }
+
+  getWorkspaceSettings(workspaceId: string): Partial<LayeredCoworkSettingsValues> {
+    const rows = this.getAll<{ key: string; value: string }>(
+      'SELECT key, value FROM cowork_workspace_settings WHERE workspace_id = ?',
+      [workspaceId],
+    );
+
+    const settings: Partial<LayeredCoworkSettingsValues> = {};
+    for (const row of rows) {
+      try {
+        settings[row.key as keyof LayeredCoworkSettingsValues] = JSON.parse(row.value) as never;
+      } catch (error) {
+        console.warn(
+          '[CoworkStore] Failed to parse workspace setting:',
+          { workspaceId, key: row.key },
+          error,
+        );
+      }
+    }
+
+    return settings;
+  }
+
+  setWorkspaceSettings(workspaceId: string, updates: LayeredCoworkSettingsUpdate): void {
+    const now = Date.now();
+    const transaction = this.db.transaction(() => {
+      for (const [key, value] of Object.entries(updates)) {
+        if (value === InheritSetting.Value) {
+          this.db
+            .prepare('DELETE FROM cowork_workspace_settings WHERE workspace_id = ? AND key = ?')
+            .run(workspaceId, key);
+          continue;
+        }
+
+        this.db
+          .prepare(
+            `
+            INSERT INTO cowork_workspace_settings (workspace_id, key, value, updated_at)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(workspace_id, key)
+            DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
+          `,
+          )
+          .run(workspaceId, key, JSON.stringify(value), now);
+      }
+    });
+    transaction();
+  }
+
+  getEffectiveSettings(input: CoworkEffectiveSettingsInput = {}) {
+    const config = this.getConfig();
+    const globalLayer: CoworkSettingsLayer = {
+      scope: SettingScope.Global,
+      values: {
+        workingDirectory: config.workingDirectory,
+        executionMode: config.executionMode,
+        memoryEnabled: config.memoryEnabled,
+        embeddingEnabled: config.embeddingEnabled,
+        dreamingEnabled: config.dreamingEnabled,
+        skillIds: [],
+        defaultModel: '',
+      },
+    };
+
+    const workspaceLayer: CoworkSettingsLayer | undefined = input.workspaceId
+      ? {
+          scope: SettingScope.Workspace,
+          values: this.getWorkspaceSettings(input.workspaceId),
+        }
+      : undefined;
+
+    const agent = input.agentId ? this.getAgent(input.agentId) : null;
+    const agentValues: Partial<LayeredCoworkSettingsValues> = {};
+    if (agent?.workingDirectory.trim()) {
+      agentValues.workingDirectory = agent.workingDirectory.trim();
+    }
+    if (agent?.model.trim()) {
+      agentValues.defaultModel = agent.model.trim();
+    }
+    if (agent?.skillIds.length) {
+      agentValues.skillIds = agent.skillIds;
+    }
+    const agentLayer: CoworkSettingsLayer | undefined =
+      Object.keys(agentValues).length > 0
+        ? {
+            scope: SettingScope.Agent,
+            values: agentValues,
+          }
+        : undefined;
+
+    const session = input.sessionId ? this.getSession(input.sessionId) : null;
+    const sessionValues: Partial<LayeredCoworkSettingsValues> = {};
+    if (session?.cwd.trim()) {
+      sessionValues.workingDirectory = session.cwd.trim();
+    }
+    if (session?.executionMode) {
+      sessionValues.executionMode = session.executionMode;
+    }
+    if (session?.modelOverride.trim()) {
+      sessionValues.defaultModel = session.modelOverride.trim();
+    }
+    if (session?.activeSkillIds.length) {
+      sessionValues.skillIds = session.activeSkillIds;
+    }
+    const sessionLayer: CoworkSettingsLayer | undefined =
+      Object.keys(sessionValues).length > 0
+        ? {
+            scope: SettingScope.Session,
+            values: sessionValues,
+          }
+        : undefined;
+
+    return resolveLayeredCoworkSettings({
+      global: globalLayer,
+      workspace: workspaceLayer,
+      agent: agentLayer,
+      session: sessionLayer,
+    });
   }
 
   getAppLanguage(): 'zh' | 'en' {
@@ -2836,7 +3033,9 @@ export class CoworkStore {
     if (id === AgentId.Main) return false; // Cannot delete default agent
 
     const deleteAgent = this.db.transaction((agentId: string): boolean => {
-      const result = this.db.prepare('DELETE FROM agents WHERE id = ? AND is_default = 0').run(agentId);
+      const result = this.db
+        .prepare('DELETE FROM agents WHERE id = ? AND is_default = 0')
+        .run(agentId);
       if (result.changes === 0) {
         return false;
       }
@@ -2927,13 +3126,14 @@ export class CoworkStore {
       version: row.version || undefined,
       enabled: Boolean(row.enabled),
       installedAt: row.installed_at,
-      config: row.config ? JSON.parse(row.config) as Record<string, unknown> : undefined,
+      config: row.config ? (JSON.parse(row.config) as Record<string, unknown>) : undefined,
     }));
   }
 
   addUserPlugin(plugin: UserInstalledPlugin): void {
-    this.db.prepare(
-      `INSERT INTO user_plugins (plugin_id, source, spec, registry, version, enabled, installed_at)
+    this.db
+      .prepare(
+        `INSERT INTO user_plugins (plugin_id, source, spec, registry, version, enabled, installed_at)
        VALUES (?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(plugin_id) DO UPDATE SET
          source = excluded.source,
@@ -2942,15 +3142,16 @@ export class CoworkStore {
          version = excluded.version,
          enabled = excluded.enabled,
          installed_at = excluded.installed_at`,
-    ).run(
-      plugin.pluginId,
-      plugin.source,
-      plugin.spec,
-      plugin.registry || null,
-      plugin.version || null,
-      plugin.enabled ? 1 : 0,
-      plugin.installedAt,
-    );
+      )
+      .run(
+        plugin.pluginId,
+        plugin.source,
+        plugin.spec,
+        plugin.registry || null,
+        plugin.version || null,
+        plugin.enabled ? 1 : 0,
+        plugin.installedAt,
+      );
   }
 
   removeUserPlugin(pluginId: string): void {
@@ -2958,13 +3159,15 @@ export class CoworkStore {
   }
 
   setUserPluginEnabled(pluginId: string, enabled: boolean): void {
-    this.db.prepare('UPDATE user_plugins SET enabled = ? WHERE plugin_id = ?')
+    this.db
+      .prepare('UPDATE user_plugins SET enabled = ? WHERE plugin_id = ?')
       .run(enabled ? 1 : 0, pluginId);
   }
 
   getUserPluginConfig(pluginId: string): Record<string, unknown> | null {
     const row = this.getOne<{ config: string | null }>(
-      'SELECT config FROM user_plugins WHERE plugin_id = ?', [pluginId],
+      'SELECT config FROM user_plugins WHERE plugin_id = ?',
+      [pluginId],
     );
     if (!row?.config) return null;
     try {
@@ -2975,7 +3178,8 @@ export class CoworkStore {
   }
 
   setUserPluginConfig(pluginId: string, config: Record<string, unknown>): void {
-    this.db.prepare('UPDATE user_plugins SET config = ? WHERE plugin_id = ?')
+    this.db
+      .prepare('UPDATE user_plugins SET config = ? WHERE plugin_id = ?')
       .run(JSON.stringify(config), pluginId);
   }
 
@@ -3000,7 +3204,7 @@ export class CoworkStore {
       version: row.version || undefined,
       enabled: Boolean(row.enabled),
       installedAt: row.installed_at,
-      config: row.config ? JSON.parse(row.config) as Record<string, unknown> : undefined,
+      config: row.config ? (JSON.parse(row.config) as Record<string, unknown>) : undefined,
     };
   }
 }

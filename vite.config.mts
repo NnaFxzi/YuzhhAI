@@ -11,8 +11,16 @@ const katexVersion = process.env.npm_package_dependencies_katex?.replace(/^[~^]/
 const pdfJsAssetRoot = path.resolve(__dirname, 'node_modules/pdfjs-dist');
 const pdfJsPublicPath = '/pdfjs/';
 const pdfJsAssetDirs = [
-  { route: `${pdfJsPublicPath}cmaps/`, source: path.join(pdfJsAssetRoot, 'cmaps'), output: 'cmaps' },
-  { route: `${pdfJsPublicPath}standard_fonts/`, source: path.join(pdfJsAssetRoot, 'standard_fonts'), output: 'standard_fonts' },
+  {
+    route: `${pdfJsPublicPath}cmaps/`,
+    source: path.join(pdfJsAssetRoot, 'cmaps'),
+    output: 'cmaps',
+  },
+  {
+    route: `${pdfJsPublicPath}standard_fonts/`,
+    source: path.join(pdfJsAssetRoot, 'standard_fonts'),
+    output: 'standard_fonts',
+  },
 ];
 
 function servePdfJsAsset(
@@ -89,10 +97,23 @@ export default defineConfig({
             outDir: 'dist-electron',
             minify: false,
             rollupOptions: {
-              external: (id) => {
-                const staticExternals = ['better-sqlite3', 'discord.js', 'zlib-sync', '@discordjs/opus', 'bufferutil', 'utf-8-validate', 'node-nim', 'nim-web-sdk-ng'];
+              external: id => {
+                const staticExternals = [
+                  'better-sqlite3',
+                  'discord.js',
+                  'zlib-sync',
+                  '@discordjs/opus',
+                  'bufferutil',
+                  'utf-8-validate',
+                  'node-nim',
+                  'nim-web-sdk-ng',
+                ];
                 if (staticExternals.includes(id)) return true;
-                if (id.startsWith('@larksuite/openclaw-lark-tools') || id.startsWith('@larksuite/openclaw-lark')) return true;
+                if (
+                  id.startsWith('@larksuite/openclaw-lark-tools') ||
+                  id.startsWith('@larksuite/openclaw-lark')
+                )
+                  return true;
                 return false;
               },
               output: {
@@ -127,6 +148,7 @@ export default defineConfig({
     alias: {
       '@shared': path.resolve(__dirname, './src/shared'),
       '@': path.resolve(__dirname, './src/renderer'),
+      'lottie-web': 'lottie-web/build/player/lottie_light.js',
     },
   },
   build: {

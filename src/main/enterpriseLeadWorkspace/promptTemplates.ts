@@ -8,9 +8,16 @@ import type {
   EnterpriseLeadWorkspace,
   EnterpriseLeadWorkspaceChatMessage,
   EnterpriseLeadWorkspaceChatResearchResult,
+  EnterpriseLeadWorkspaceChatRouteStep,
+  EnterpriseLeadWorkspaceChatRouting,
   EnterpriseLeadWorkspaceContentPlatformConfig,
   EnterpriseLeadWorkspaceContentPlatformSettings,
 } from '../../shared/enterpriseLeadWorkspace/types';
+import {
+  AiDialogueReplyLanguage,
+  AiDialogueReplySurface,
+  buildAiDialogueReplyContract,
+} from '../libs/aiDialogueReplyContract';
 import { getEnterpriseLeadAgentMetadata } from './workflow';
 
 interface WorkspaceExtractionPromptInput {
@@ -39,22 +46,52 @@ export interface WorkspaceChatAgentPromptSummary {
   skillIds: string[];
 }
 
+export interface WorkspaceChatLeadContext {
+  status: 'available' | 'empty';
+  note: string;
+  sources: Array<{
+    kind: 'workspace_source' | 'run_output';
+    label: string;
+    text: string;
+  }>;
+}
+
 interface WorkspaceChatPromptBaseInput {
   workspace: EnterpriseLeadWorkspace;
   effectiveAgents: WorkspaceChatAgentPromptSummary[];
   targetAgent?: WorkspaceChatAgentPromptSummary | null;
+  routing?: EnterpriseLeadWorkspaceChatRouting | null;
   recentMessages: EnterpriseLeadWorkspaceChatMessage[];
   userMessage: string;
   recentRunOutputs?: unknown[];
+  workspaceLeadContext?: WorkspaceChatLeadContext;
 }
 
 type WorkspaceChatResearchIntentPromptInput = WorkspaceChatPromptBaseInput;
 
 interface WorkspaceChatResponsePromptInput extends WorkspaceChatPromptBaseInput {
+  agentStepResults?: EnterpriseLeadWorkspaceChatRouteStep[];
+  researchResult: EnterpriseLeadWorkspaceChatResearchResult;
+}
+
+interface WorkspaceChatAgentStepPromptInput extends WorkspaceChatPromptBaseInput {
+  currentAgent: WorkspaceChatAgentPromptSummary;
+  previousStepResults: EnterpriseLeadWorkspaceChatRouteStep[];
   researchResult: EnterpriseLeadWorkspaceChatResearchResult;
 }
 
 const stringify = (value: unknown): string => JSON.stringify(value, null, 2);
+
+const buildEnterpriseLeadReplyContract = (): string => buildAiDialogueReplyContract({
+  surface: AiDialogueReplySurface.EnterpriseLead,
+  language: AiDialogueReplyLanguage.Zh,
+});
+
+const emptyWorkspaceLeadContext = (): WorkspaceChatLeadContext => ({
+  status: 'empty',
+  note: '没有检测到可用于客户排序的具体客户名单或线索。',
+  sources: [],
+});
 
 const isEnterpriseLeadAgentRole = (value: string): value is EnterpriseLeadAgentRole =>
   Object.values(EnterpriseLeadAgentRole).includes(value as EnterpriseLeadAgentRole);
@@ -384,6 +421,7 @@ export function buildWorkspaceChatResearchIntentPrompt({
   recentMessages,
   userMessage,
   recentRunOutputs = [],
+  workspaceLeadContext,
 }: WorkspaceChatResearchIntentPromptInput): string {
   return [
     '你是企业获客工作空间的研究意图判断助手。',
@@ -394,6 +432,7 @@ export function buildWorkspaceChatResearchIntentPrompt({
     '判断是否需要只读研究能力来回答用户。外部动作只允许搜索、读取、摘录、总结或起草，不得发布、评论、私信、发送邮件或修改外部系统。',
     '只输出 JSON，schema 如下：',
     stringify({
+      targetAgentId: '自动模式下选择的当前工作空间 Agent id；没有明确匹配时为空字符串。手动指定目标 Agent 时必须回填该 id。',
       researchIntent: {
         kind: 'none | search | extract | domestic_search | domestic_status',
         query: 'search/extract/domestic_search 可选查询词，最多 500 字',
@@ -402,6 +441,13 @@ export function buildWorkspaceChatResearchIntentPrompt({
         sourceIds: ['domestic_search 可选国内来源 id，例如 bilibili、wechat_official_accounts'],
       },
     }),
+    '',
+    'Agent 使用规则：',
+    targetAgent
+      ? `- 用户已手动指定目标 Agent：${targetAgent.id} / ${targetAgent.name}。targetAgentId 必须返回这个 id。`
+      : '- 当前处于自动模式：必须从“当前工作空间内 Agents”中判断是否有已启用 Agent 明确匹配用户任务。',
+    '- 如果某个 Agent 已经配置且明确匹配，返回它的 id，让系统直接使用；不要建议用户去使用或切换 Agent。',
+    '- 如果没有明确匹配，targetAgentId 返回空字符串，并由通用助手回答。',
     '',
     '当前工作空间资料：',
     stringify({
@@ -416,6 +462,9 @@ export function buildWorkspaceChatResearchIntentPrompt({
       domesticResearch: workspace.settings.domesticResearch,
       contentPlatforms: toPromptContentPlatformSettings(workspace.settings.contentPlatforms),
     }),
+    '',
+    '工作区可用线索：',
+    stringify(workspaceLeadContext ?? emptyWorkspaceLeadContext()),
     '',
     '当前工作空间内 Agents：',
     stringify(effectiveAgents),
@@ -434,30 +483,121 @@ export function buildWorkspaceChatResearchIntentPrompt({
   ].join('\n');
 }
 
-export function buildWorkspaceChatResponsePrompt({
+export function buildWorkspaceChatAgentStepPrompt({
   workspace,
   effectiveAgents,
   targetAgent,
+  routing,
+  currentAgent,
+  previousStepResults,
   recentMessages,
   userMessage,
   recentRunOutputs = [],
   researchResult,
+  workspaceLeadContext,
+}: WorkspaceChatAgentStepPromptInput): string {
+  return [
+    `当前执行 Agent：${currentAgent.name}`,
+    currentAgent.description || '当前工作空间中的专业 Agent。',
+    currentAgent.identity ? `Agent 身份：${currentAgent.identity}` : '',
+    currentAgent.systemPrompt ? `Agent 系统提示词：${currentAgent.systemPrompt}` : '',
+    '',
+    '安全边界：',
+    buildChatSafetySection(),
+    '- 只生成本 Agent 的中间贡献，不要声称已经完成其他 Agent 的职责。',
+    '- 不得发布、评论、私信、发送邮件、建联、下单或修改外部系统。',
+    '- 不得编造客户、联系人、认证、价格、交付、产能、案例或成本降低等事实。',
+    '',
+    '回复质量规则：',
+    buildEnterpriseLeadReplyContract(),
+    '',
+    '输出要求：',
+    '- 用中文输出。',
+    '- 只输出本 Agent 的中间结果，不要输出最终汇总标题。',
+    '- 如果前序 Agent 输出存在问题，可以指出并修正。',
+    '',
+    '工作空间资料：',
+    stringify({
+      id: workspace.id,
+      name: workspace.name,
+      profile: workspace.profile,
+      extractionSources: workspace.extractionSources,
+      riskRules: workspace.riskRules,
+      enabledAgentRoles: workspace.enabledAgentRoles,
+      workspaceSkillIds: workspace.settings.skillIds,
+      externalResearch: toPromptExternalResearchSettings(workspace),
+      domesticResearch: workspace.settings.domesticResearch,
+      contentPlatforms: toPromptContentPlatformSettings(workspace.settings.contentPlatforms),
+    }),
+    '',
+    '工作区可用线索：',
+    stringify(workspaceLeadContext ?? emptyWorkspaceLeadContext()),
+    '',
+    '当前工作空间内 Agents：',
+    stringify(effectiveAgents),
+    '',
+    '目标 Agent：',
+    stringify(targetAgent ?? null),
+    '',
+    '参与 Agent 链路：',
+    stringify(routing ?? null),
+    '',
+    '前序 Agent 中间结果：',
+    stringify(previousStepResults),
+    '',
+    '最近对话：',
+    stringify(recentMessages),
+    '',
+    '最近运行输出：',
+    stringify(recentRunOutputs),
+    '',
+    '研究结果：',
+    stringify(researchResult),
+    '',
+    '用户本轮消息：',
+    userMessage,
+  ].filter(line => line !== '').join('\n');
+}
+
+export function buildWorkspaceChatResponsePrompt({
+  workspace,
+  effectiveAgents,
+  targetAgent,
+  routing,
+  agentStepResults = [],
+  recentMessages,
+  userMessage,
+  recentRunOutputs = [],
+  researchResult,
+  workspaceLeadContext,
 }: WorkspaceChatResponsePromptInput): string {
   return [
     targetAgent
       ? `你是当前工作空间中的 ${targetAgent.name}，请按该 Agent 的职责回答用户。`
-      : '你是企业获客工作空间 AI 助手，请基于当前工作空间资料回答用户。',
+      : '你是企业获客工作空间 AI 助手，当前处于 Agent 自动模式，请基于当前工作空间资料回答用户。',
     '',
     '安全边界：',
     buildChatSafetySection(),
     '- 外部动作只允许只读搜索、读取、摘录、总结或起草；不得发布、评论、私信、发送邮件、建联、下单或修改外部系统。',
     '- 不得编造客户、联系人、认证、价格、交付、产能、案例或成本降低等事实；信息不足时明确说明。',
     '',
+    '回复质量规则：',
+    buildEnterpriseLeadReplyContract(),
+    '',
     '回答要求：',
     '- 用中文自然回答，不输出 JSON。',
     '- 明确区分“工作空间已有资料”“研究结果”和“建议/推测”。',
     '- 如果研究失败或未配置，说明限制，并继续基于已有工作空间资料给出可执行建议。',
+    '- 涉及客户线索、商机评分或跟进优先级时，不得输出“模拟客户”“模拟线索”或虚构客户名单。',
+    '- 只能基于工作区可用线索或研究结果中的真实公司、真实页面、真实公开信号做排序；证据不足时不要把客户类别包装成具体客户。',
+    '- 如果研究结果只包含行业类别、关键词或泛化方向，必须明确说明“未拿到具体公司名单”，然后输出可跟进客户类型、继续调研建议和需要用户补充的信息。',
     '- 如涉及外发内容，只能生成草稿或审批建议。',
+    targetAgent
+      ? '- 当前已经选中目标 Agent，请直接按这个 Agent 的职责完成，不再让用户手动切换。'
+      : '- 自动模式下，如果当前工作空间内某个 Agent 明确匹配，请自行代入该 Agent 的职责完成；不要建议用户去使用或切换 Agent。',
+    routing?.agents.length && routing.agents.length > 1
+      ? '- 当前有参与 Agent 链路，请按链路顺序综合多个 Agent 的职责，输出一份完整结果。'
+      : '',
     '',
     '当前工作空间资料：',
     stringify({
@@ -473,11 +613,20 @@ export function buildWorkspaceChatResponsePrompt({
       contentPlatforms: toPromptContentPlatformSettings(workspace.settings.contentPlatforms),
     }),
     '',
+    '工作区可用线索：',
+    stringify(workspaceLeadContext ?? emptyWorkspaceLeadContext()),
+    '',
     '当前工作空间内 Agents：',
     stringify(effectiveAgents),
     '',
     '目标 Agent：',
     stringify(targetAgent ?? null),
+    '',
+    '参与 Agent 链路：',
+    stringify(routing ?? null),
+    '',
+    '多 Agent 中间结果：',
+    stringify(agentStepResults),
     '',
     '最近对话：',
     stringify(recentMessages),

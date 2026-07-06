@@ -13,6 +13,7 @@ import {
   EnterpriseLeadContentPlatformId,
   EnterpriseLeadRiskLevel,
   EnterpriseLeadTodoKind,
+  EnterpriseLeadWorkspaceAgentSource,
 } from './constants';
 import {
   buildDefaultEnterpriseLeadWorkspaceSettings,
@@ -414,6 +415,7 @@ describe('enterprise lead workspace validation', () => {
     expect(normalized).toEqual([
       {
         agentId: 'agent-a',
+        source: EnterpriseLeadWorkspaceAgentSource.WorkspaceCreated,
         enabled: false,
         order: 0,
         overrides: {
@@ -427,6 +429,48 @@ describe('enterprise lead workspace validation', () => {
         },
       },
     ]);
+  });
+
+  test('marks legacy role-based workspace agent bindings as system templates', () => {
+    const normalized = normalizeEnterpriseLeadWorkspaceAgents([
+      {
+        agentId: ' product_understanding ',
+        enabled: true,
+        order: 0,
+        overrides: {
+          name: '产品理解 Agent',
+        },
+      },
+    ]);
+
+    expect(normalized[0]).toEqual(
+      expect.objectContaining({
+        agentId: EnterpriseLeadAgentRole.ProductUnderstanding,
+        source: EnterpriseLeadWorkspaceAgentSource.SystemTemplate,
+        templateId: EnterpriseLeadAgentRole.ProductUnderstanding,
+      }),
+    );
+  });
+
+  test('marks legacy non-role workspace agent bindings as workspace-created agents', () => {
+    const normalized = normalizeEnterpriseLeadWorkspaceAgents([
+      {
+        agentId: ' custom-space-agent ',
+        enabled: true,
+        order: 0,
+        overrides: {
+          name: '自建 Agent',
+        },
+      },
+    ]);
+
+    expect(normalized[0]).toEqual(
+      expect.objectContaining({
+        agentId: 'custom-space-agent',
+        source: EnterpriseLeadWorkspaceAgentSource.WorkspaceCreated,
+      }),
+    );
+    expect(normalized[0]).not.toHaveProperty('templateId');
   });
 
   test('normalizes workspace-owned Agent definitions from direct fields', () => {
@@ -448,6 +492,8 @@ describe('enterprise lead workspace validation', () => {
     expect(normalized).toEqual([
       {
         agentId: EnterpriseLeadAgentRole.ProductUnderstanding,
+        source: EnterpriseLeadWorkspaceAgentSource.SystemTemplate,
+        templateId: EnterpriseLeadAgentRole.ProductUnderstanding,
         enabled: true,
         order: 0,
         overrides: {
@@ -525,6 +571,7 @@ describe('enterprise lead workspace validation', () => {
     expect(normalized).not.toContainEqual(expect.objectContaining({ agentId: '' }));
     expect(normalized[2]).toEqual({
       agentId: 'agent-one',
+      source: EnterpriseLeadWorkspaceAgentSource.WorkspaceCreated,
       enabled: false,
       order: 2,
       overrides: {

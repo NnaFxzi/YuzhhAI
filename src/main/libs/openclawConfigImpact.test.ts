@@ -6,6 +6,7 @@ import {
   classifyCoworkConfigChange,
   classifyImOpenClawConfigChange,
   classifyPluginConfigChange,
+  classifyWorkspaceSettingsChange,
   createStableConfigFingerprint,
   mergeImpactDecision,
   OpenClawConfigImpact,
@@ -207,6 +208,30 @@ describe('OpenClaw config impact classification', () => {
     expect(result).toEqual({
       impact: OpenClawConfigImpact.None,
       reasons: [],
+    });
+  });
+
+  test('classifies workspace runtime setting changes as OpenClaw sync', () => {
+    const result = classifyWorkspaceSettingsChange(
+      { workingDirectory: '/a', memoryEnabled: true, embeddingEnabled: false },
+      { workingDirectory: '/b', memoryEnabled: false, embeddingEnabled: false },
+    );
+
+    expect(result).toEqual({
+      impact: OpenClawConfigImpact.Sync,
+      reasons: [OpenClawConfigImpactReason.WorkspaceRuntimeConfig],
+    });
+  });
+
+  test('classifies workspace dreaming changes as OpenClaw restart', () => {
+    const result = classifyWorkspaceSettingsChange(
+      { dreamingEnabled: false },
+      { dreamingEnabled: true },
+    );
+
+    expect(result).toEqual({
+      impact: OpenClawConfigImpact.Restart,
+      reasons: [OpenClawConfigImpactReason.WorkspaceDreamingConfig],
     });
   });
 

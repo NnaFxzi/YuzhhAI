@@ -35,6 +35,11 @@ import { t } from '../../i18n';
 import { MediaGenerationTool } from '../../mediaGenerationPolicy';
 import type { SubagentMessageStore } from '../../subagentMessageStore';
 import type { SubagentRunStore } from '../../subagentRunStore';
+import {
+  AiDialogueReplyLanguage,
+  AiDialogueReplySurface,
+  buildAiDialogueReplyContract,
+} from '../aiDialogueReplyContract';
 import { setCoworkProxySessionId } from '../coworkOpenAICompatProxy';
 import { extractOpenClawAssistantStreamParts,extractOpenClawAssistantStreamText } from '../openclawAssistantText';
 import {
@@ -4007,6 +4012,12 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
       if (selectedTextSection) {
         sections.push(selectedTextSection);
       }
+      sections.push(
+        buildAiDialogueReplyContract({
+          surface: AiDialogueReplySurface.Cowork,
+          language: AiDialogueReplyLanguage.Auto,
+        }),
+      );
       if (prompt.trim()) {
         sections.push(`[Current user request]\n${prompt}`);
       }

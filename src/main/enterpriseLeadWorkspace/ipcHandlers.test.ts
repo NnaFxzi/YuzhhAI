@@ -48,6 +48,9 @@ const makeDeps = (): {
     updateWorkspaceSettings: vi.fn(() => workspace),
     updateWorkspaceAgents: vi.fn(() => workspace),
     listRuns: vi.fn(() => []),
+    listChatSessions: vi.fn(() => []),
+    getChatSession: vi.fn(() => null),
+    deleteChatSession: vi.fn(() => true),
     chat: vi.fn(() => chatResponse),
     createRun: vi.fn(),
     getSnapshot: vi.fn(),
@@ -98,6 +101,25 @@ describe('registerEnterpriseLeadWorkspaceHandlers', () => {
     const result = await handler?.(undefined, 'workspace-1');
 
     expect(service.deleteWorkspace).toHaveBeenCalledWith('workspace-1');
+    expect(result).toEqual({
+      success: true,
+      data: true,
+    });
+  });
+
+  test('deletes a workspace chat session through the chat session delete channel', async () => {
+    const { deps, service } = makeDeps();
+    registerEnterpriseLeadWorkspaceHandlers(deps);
+
+    const handler = registeredHandlers.get(EnterpriseLeadWorkspaceIpc.DeleteChatSession);
+    expect(handler).toBeDefined();
+
+    const result = await handler?.(undefined, {
+      workspaceId: 'workspace-1',
+      sessionId: 'chat-1',
+    });
+
+    expect(service.deleteChatSession).toHaveBeenCalledWith('workspace-1', 'chat-1');
     expect(result).toEqual({
       success: true,
       data: true,

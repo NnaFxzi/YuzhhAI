@@ -111,7 +111,8 @@ const AgentCreateModal: React.FC<AgentCreateModalProps> = ({
   const [creating, setCreating] = useState(false);
   const [presetTemplates, setPresetTemplates] = useState<PresetAgent[]>([]);
   const [templatesLoading, setTemplatesLoading] = useState(false);
-  const [showTemplatePicker, setShowTemplatePicker] = useState(false);
+  const [showTemplatePicker, setShowTemplatePicker] = useState(true);
+  const [addingPresetId, setAddingPresetId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<AgentDetailTab>(AgentDetailTab.Identity);
   const [externalResearchConfig, setExternalResearchConfig] = useState<ExternalResearchEditConfig>(
     buildDefaultExternalResearchEditConfig(AgentExternalResearchMode.Inherit),
@@ -275,7 +276,8 @@ const AgentCreateModal: React.FC<AgentCreateModalProps> = ({
     initialDomesticResearchRef.current = JSON.stringify(defaultDomesticResearch);
     setActiveTab(AgentDetailTab.Identity);
     setShowUnsavedConfirm(false);
-    setShowTemplatePicker(false);
+    setShowTemplatePicker(true);
+    setAddingPresetId(null);
     setSelectedTemplate(null);
     setBoundKeys(new Set());
     reportAgentCreateAction('open', {
@@ -326,12 +328,14 @@ const AgentCreateModal: React.FC<AgentCreateModalProps> = ({
     setDomesticResearchConfig(defaultDomesticResearch);
     initialDomesticResearchRef.current = JSON.stringify(defaultDomesticResearch);
     setActiveTab(AgentDetailTab.Identity);
-    setShowTemplatePicker(false);
+    setShowTemplatePicker(true);
     setSelectedTemplate(null);
     setBoundKeys(new Set());
   };
 
-  const handleApplyTemplate = (preset: PresetAgent) => {
+  const handleApplyTemplate = async (preset: PresetAgent) => {
+    if (creating) return;
+
     const isEn = i18nService.getLanguage() === 'en';
     const templateName = isEn && preset.nameEn ? preset.nameEn : preset.name;
     const template = {
@@ -339,20 +343,66 @@ const AgentCreateModal: React.FC<AgentCreateModalProps> = ({
       name: templateName,
       skillCount: preset.skillIds?.length ?? 0,
     };
-    setName(templateName);
-    setDescription(isEn && preset.descriptionEn ? preset.descriptionEn : preset.description);
-    setSystemPrompt(isEn && preset.systemPromptEn ? preset.systemPromptEn : preset.systemPrompt);
-    setIdentity(isEn && preset.identityEn ? preset.identityEn : preset.identity);
-    setIcon(preset.icon?.trim() || DefaultAgentAvatarIcon);
-    setSkillIds(preset.skillIds ?? []);
     setSelectedTemplate(template);
     reportAgentCreateAction('template_selected', {
       activeTab: AgentDetailTab.Identity,
-      isDirty: true,
+      isDirty: false,
       template,
     });
-    setActiveTab(AgentDetailTab.Identity);
-    setShowTemplatePicker(false);
+    reportAgentCreateAction('create_submit', {
+      changedFields: [],
+      includeConfigDetails: false,
+      isDirty: false,
+      template,
+    });
+    setCreating(true);
+    setAddingPresetId(preset.id);
+    try {
+      const agent = await agentService.addPreset(preset.id);
+      if (agent) {
+        agentService.switchAgent(agent.id);
+        reportAgentCreateAction('create_success', {
+          changedFields: [],
+          includeConfigDetails: false,
+          isDirty: false,
+          result: 'success',
+          template,
+        });
+        onClose();
+        resetForm();
+      } else {
+        reportAgentCreateAction('create_failed', {
+          changedFields: [],
+          errorCode: 'create_agent_failed',
+          includeConfigDetails: false,
+          isDirty: false,
+          result: 'failed',
+          template,
+        });
+        window.dispatchEvent(
+          new CustomEvent('app:showToast', {
+            detail: i18nService.t('systemAgentAddFailed'),
+          }),
+        );
+      }
+    } catch {
+      reportAgentCreateAction('create_failed', {
+        changedFields: [],
+        errorCode: 'unknown',
+        includeConfigDetails: false,
+        isDirty: false,
+        result: 'failed',
+        template,
+      });
+      window.dispatchEvent(
+        new CustomEvent('app:showToast', {
+          detail: i18nService.t('systemAgentAddFailed'),
+        }),
+      );
+    } finally {
+      setCreating(false);
+      setAddingPresetId(null);
+    }
   };
 
   const handleClose = () => {
@@ -888,18 +938,20 @@ const AgentCreateModal: React.FC<AgentCreateModalProps> = ({
     reportAgentCreateAction('close_template_picker', {
       isDirty: isDirty(),
     });
-    setShowTemplatePicker(false);
+    handleClose();
   };
 
   const content = showTemplatePicker ? (
     <AgentTemplatePickerContent
       presets={presetTemplates}
       loading={templatesLoading}
+      addingPresetId={addingPresetId}
       onClose={closeTemplatePicker}
-      onNew={closeTemplatePicker}
       onSelect={handleApplyTemplate}
     />
-  ) : editorContent;
+  ) : (
+    editorContent
+  );
 
   return (
     <>
@@ -936,27 +988,29 @@ const AgentCreateModal: React.FC<AgentCreateModalProps> = ({
 const AgentTemplatePickerContent: React.FC<{
   presets: PresetAgent[];
   loading: boolean;
+  addingPresetId: string | null;
   onClose: () => void;
-  onNew: () => void;
   onSelect: (preset: PresetAgent) => void;
-}> = ({ presets, loading, onClose, onNew, onSelect }) => {
+}> = ({ presets, loading, addingPresetId, onClose, onSelect }) => {
   const isEn = i18nService.getLanguage() === 'en';
 
   return (
     <>
       <div className="flex shrink-0 items-center justify-between gap-3 px-7 py-5">
-        <h2 className="text-lg font-semibold text-foreground">
-          {i18nService.t('agentTemplateTitle')}
-        </h2>
+        <div className="min-w-0">
+          <h2 className="text-lg font-semibold text-foreground">
+            {i18nService.t('systemAgentTemplateTitle')}
+          </h2>
+          <p className="mt-1 text-sm leading-5 text-secondary">
+            {i18nService.t('systemAgentTemplateDesc')}
+          </p>
+        </div>
         <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={onNew}
-            className="h-8 rounded-lg border border-border bg-surface px-3 text-sm font-medium text-foreground hover:bg-surface-raised transition-colors"
+            onClick={onClose}
+            className="p-2 rounded-lg hover:bg-surface-raised transition-colors"
           >
-            {i18nService.t('agentTemplateNew')}
-          </button>
-          <button type="button" onClick={onClose} className="p-2 rounded-lg hover:bg-surface-raised transition-colors">
             <XMarkIcon className="h-5 w-5 text-secondary" />
           </button>
         </div>
@@ -969,20 +1023,34 @@ const AgentTemplatePickerContent: React.FC<{
           </div>
         ) : presets.length === 0 ? (
           <div className="flex h-40 items-center justify-center text-sm text-secondary">
-            {i18nService.t('agentTemplateEmpty')}
+            {i18nService.t('systemAgentTemplateEmpty')}
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            {presets.map((preset) => {
+            {presets.map(preset => {
               const name = isEn && preset.nameEn ? preset.nameEn : preset.name;
-              const description = isEn && preset.descriptionEn ? preset.descriptionEn : preset.description;
+              const description =
+                isEn && preset.descriptionEn ? preset.descriptionEn : preset.description;
+              const installed = preset.installed === true;
+              const enabled = preset.enabled !== false;
+              const statusLabel = installed
+                ? enabled
+                  ? i18nService.t('systemAgentStatusEnabled')
+                  : i18nService.t('systemAgentStatusDisabled')
+                : i18nService.t('systemAgentStatusAvailable');
+              const actionLabel = installed
+                ? enabled
+                  ? i18nService.t('openSystemAgent')
+                  : i18nService.t('restoreSystemAgent')
+                : i18nService.t('addSystemAgentShort');
 
               return (
                 <button
                   key={preset.id}
                   type="button"
+                  disabled={Boolean(addingPresetId)}
                   onClick={() => onSelect(preset)}
-                  className="group flex min-h-[132px] flex-col items-start rounded-xl border border-border bg-surface p-4 text-left transition-colors hover:border-primary/40 hover:bg-surface-raised"
+                  className="group flex min-h-[132px] flex-col items-start rounded-xl border border-border bg-surface p-4 text-left transition-colors hover:border-primary/40 hover:bg-surface-raised disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   <div className="flex w-full items-center gap-3">
                     <AgentAvatarIcon
@@ -994,6 +1062,22 @@ const AgentTemplatePickerContent: React.FC<{
                     <div className="min-w-0 flex-1 truncate text-sm font-semibold text-foreground">
                       {name}
                     </div>
+                    <span
+                      className={`shrink-0 rounded-md px-2 py-0.5 text-[11px] font-medium ${
+                        installed
+                          ? enabled
+                            ? 'bg-primary/10 text-primary'
+                            : 'bg-amber-500/10 text-amber-600 dark:text-amber-400'
+                          : 'bg-surface-raised text-secondary'
+                      }`}
+                    >
+                      {statusLabel}
+                    </span>
+                    <span className="shrink-0 rounded-md border border-border px-2 py-0.5 text-xs font-medium text-secondary">
+                      {addingPresetId === preset.id
+                        ? i18nService.t('systemAgentAdding')
+                        : actionLabel}
+                    </span>
                   </div>
                   <div className="mt-3 text-sm leading-6 text-foreground/90 line-clamp-3">
                     {description}

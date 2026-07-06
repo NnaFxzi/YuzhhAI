@@ -1,0 +1,929 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta content="width=device-width, initial-scale=1" name="viewport">
+  <title>企业线索工作区 AI 对话页重设计原型</title>
+  <style>
+    :root {
+      --bg: #f7f9fc;
+      --bg-soft: #eef3f8;
+      --panel: #ffffff;
+      --panel-raised: #f8fbff;
+      --panel-footer: #f7f9fc;
+      --line: #dfe7f1;
+      --line-soft: #edf2f7;
+      --text: #17202a;
+      --text-soft: #4b5b6b;
+      --muted: #8b98a7;
+      --muted-strong: #667789;
+      --blue: #2f80ff;
+      --blue-soft: rgba(47, 128, 255, 0.1);
+      --send: #9fc2ff;
+      --shadow: 0 24px 64px rgba(36, 53, 75, 0.12);
+      --radius: 20px;
+      color-scheme: light;
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+      "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      min-height: 100%;
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      letter-spacing: 0;
+    }
+
+    body {
+      overflow: hidden;
+    }
+
+    button,
+    textarea {
+      font: inherit;
+    }
+
+    button {
+      cursor: pointer;
+    }
+
+    button:focus-visible,
+    textarea:focus-visible {
+      outline: 2px solid rgba(47, 128, 255, 0.28);
+      outline-offset: 3px;
+    }
+
+    svg {
+      display: block;
+      width: 17px;
+      height: 17px;
+      stroke-width: 1.8;
+    }
+
+    .app {
+      position: relative;
+      min-height: 100vh;
+      overflow: hidden;
+      background: radial-gradient(circle at 50% 52%, rgba(47, 128, 255, 0.07), transparent 34%),
+      linear-gradient(180deg, #ffffff 0%, #f7f9fc 58%, #f4f7fb 100%),
+      var(--bg);
+    }
+
+    .center-stage {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      padding: 40px 24px;
+    }
+
+    .prompt-stack {
+      width: min(760px, calc(100vw - 160px));
+      transform: translateY(-12px);
+    }
+
+    .headline {
+      margin: 0 0 42px;
+      color: var(--text);
+      font-size: clamp(26px, 2.4vw, 34px);
+      font-weight: 520;
+      line-height: 1.18;
+      text-align: center;
+    }
+
+    .conversation-shell {
+      display: none;
+      min-height: 0;
+      margin-bottom: 18px;
+      overflow: hidden;
+    }
+
+    .chat-thread {
+      display: grid;
+      min-height: 0;
+      align-content: end;
+      gap: 22px;
+      overflow-y: auto;
+      padding: 4px 10px 2px;
+      scrollbar-width: thin;
+      scrollbar-color: #c8d5e4 transparent;
+    }
+
+    .message-row {
+      display: flex;
+      min-width: 0;
+    }
+
+    .message-row.user {
+      justify-content: end;
+    }
+
+    .message-bubble {
+      max-width: min(70%, 560px);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: #ffffff;
+      color: var(--text);
+      padding: 13px 15px;
+      box-shadow: 0 8px 24px rgba(36, 53, 75, 0.06);
+      font-size: 14px;
+      line-height: 24px;
+    }
+
+    .message-row.user .message-bubble {
+      border-color: #cfe0ff;
+      background: #f3f7ff;
+    }
+
+    .assistant-message {
+      display: block;
+      width: min(82%, 680px);
+    }
+
+    .assistant-card {
+      min-width: 0;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+      box-shadow: none;
+      overflow: visible;
+    }
+
+    .assistant-card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      border-bottom: 0;
+      padding: 0 0 10px;
+    }
+
+    .assistant-title {
+      display: flex;
+      min-width: 0;
+      align-items: center;
+      gap: 8px;
+      color: var(--muted-strong);
+      font-size: 13px;
+      font-weight: 760;
+      line-height: 20px;
+    }
+
+    .live-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--blue);
+      box-shadow: 0 0 0 4px rgba(47, 128, 255, 0.12);
+    }
+
+    .assistant-time {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 620;
+      white-space: nowrap;
+    }
+
+    .assistant-body {
+      display: grid;
+      gap: 12px;
+      padding: 0;
+    }
+
+    .assistant-copy {
+      margin: 0;
+      color: var(--text-soft);
+      font-size: 14px;
+      line-height: 24px;
+    }
+
+    .run-steps {
+      display: grid;
+      gap: 8px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: rgba(255, 255, 255, 0.84);
+      padding: 10px;
+      box-shadow: 0 10px 28px rgba(36, 53, 75, 0.06);
+    }
+
+    .run-step {
+      display: grid;
+      grid-template-columns: 24px minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 9px;
+      min-height: 40px;
+      border: 0;
+      border-radius: 12px;
+      background: #f8fbff;
+      padding: 8px 10px;
+    }
+
+    .step-icon {
+      display: grid;
+      width: 24px;
+      height: 24px;
+      place-items: center;
+      border-radius: 8px;
+      background: var(--blue-soft);
+      color: var(--blue);
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .run-step strong {
+      display: block;
+      overflow: hidden;
+      color: var(--text);
+      font-size: 13px;
+      line-height: 18px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .run-step span {
+      display: block;
+      overflow: hidden;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 18px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .step-state {
+      border-radius: 999px;
+      background: #eef5ff;
+      color: var(--blue);
+      padding: 4px 8px;
+      font-size: 11px;
+      font-weight: 760;
+      white-space: nowrap;
+    }
+
+    .step-state.warning {
+      background: #fff7e8;
+      color: #a45f14;
+    }
+
+    .preview-card {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 12px;
+      border: 1px solid #cfe0ff;
+      border-radius: 14px;
+      background: linear-gradient(180deg, #f8fbff, #ffffff);
+      padding: 12px 13px;
+    }
+
+    .preview-card strong {
+      display: block;
+      color: var(--text);
+      font-size: 13px;
+      line-height: 20px;
+    }
+
+    .preview-card span {
+      display: block;
+      margin-top: 2px;
+      color: var(--muted-strong);
+      font-size: 12px;
+      line-height: 18px;
+    }
+
+    .preview-action {
+      border: 1px solid #cfe0ff;
+      border-radius: 10px;
+      background: #ffffff;
+      color: var(--blue);
+      padding: 7px 10px;
+      font-size: 12px;
+      font-weight: 760;
+      white-space: nowrap;
+    }
+
+    .preview-action:hover {
+      background: var(--blue-soft);
+    }
+
+    .composer-shell {
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--panel-footer);
+      box-shadow: var(--shadow);
+    }
+
+    .composer {
+      overflow: hidden;
+      border-radius: var(--radius);
+      background: var(--panel);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+    }
+
+    .input-wrap {
+      min-height: 92px;
+      padding: 18px 20px 7px;
+    }
+
+    textarea {
+      display: block;
+      width: 100%;
+      min-height: 78px;
+      resize: none;
+      border: 0;
+      background: transparent;
+      color: var(--text);
+      font-size: 16px;
+      font-weight: 520;
+      line-height: 28px;
+      outline: none;
+    }
+
+    textarea::placeholder {
+      color: #a1adbb;
+      opacity: 1;
+    }
+
+    .composer-toolbar {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 16px;
+      min-height: 56px;
+      border-top: 1px solid transparent;
+      padding: 0 12px 12px 18px;
+    }
+
+    .tool-left,
+    .tool-right {
+      display: flex;
+      min-width: 0;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .tool-right {
+      justify-content: end;
+      gap: 11px;
+    }
+
+    .tool-button {
+      display: inline-grid;
+      width: 30px;
+      height: 30px;
+      place-items: center;
+      border: 0;
+      border-radius: 9px;
+      background: transparent;
+      color: #8c9aaa;
+      padding: 0;
+      transition: color 120ms ease, background-color 120ms ease;
+    }
+
+    .tool-button:hover {
+      background: #eef4fb;
+      color: #425569;
+    }
+
+    .agent-button {
+      display: inline-flex;
+      min-width: 0;
+      align-items: center;
+      gap: 7px;
+      border: 0;
+      border-radius: 10px;
+      background: transparent;
+      color: var(--blue);
+      padding: 4px 6px;
+      font-size: 15px;
+      font-weight: 680;
+      line-height: 24px;
+      transition: background-color 120ms ease;
+    }
+
+    .agent-button:hover {
+      background: var(--blue-soft);
+    }
+
+    .agent-button svg {
+      width: 17px;
+      height: 17px;
+    }
+
+    .chevron {
+      width: 15px;
+      height: 15px;
+    }
+
+    .model-button {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      border: 0;
+      border-radius: 10px;
+      background: transparent;
+      color: #5f6f82;
+      padding: 4px 7px;
+      font-size: 15px;
+      font-weight: 570;
+      line-height: 24px;
+      transition: background-color 120ms ease, color 120ms ease;
+      white-space: nowrap;
+    }
+
+    .model-button:hover {
+      background: #eef4fb;
+      color: #25364a;
+    }
+
+    .model-button svg {
+      width: 16px;
+      height: 16px;
+    }
+
+    .send {
+      display: inline-grid;
+      width: 40px;
+      height: 40px;
+      place-items: center;
+      border: 0;
+      border-radius: 50%;
+      background: var(--send);
+      color: #ffffff;
+      padding: 0;
+      transition: background-color 120ms ease, opacity 120ms ease, transform 120ms ease;
+    }
+
+    .send:not(:disabled):hover {
+      background: #6ca6ff;
+      transform: translateY(-1px);
+    }
+
+    .send:disabled {
+      cursor: not-allowed;
+      opacity: 0.46;
+      transform: none;
+    }
+
+    .context-strip {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-height: 52px;
+      border-top: 1px solid var(--line-soft);
+      background: var(--panel-footer);
+      color: #5b6b7d;
+      padding: 0 22px;
+      font-size: 14px;
+      font-weight: 560;
+    }
+
+    .context-strip svg {
+      width: 16px;
+      height: 16px;
+      color: #8a98a8;
+    }
+
+    .context-text {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .agent-menu {
+      position: absolute;
+      left: 50%;
+      top: calc(50% + 98px);
+      display: none;
+      width: 244px;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: #ffffff;
+      box-shadow: 0 18px 48px rgba(36, 53, 75, 0.16);
+      transform: translateX(-370px);
+    }
+
+    .agent-menu.visible {
+      display: block;
+    }
+
+    .agent-option {
+      display: grid;
+      width: 100%;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 10px;
+      border: 0;
+      border-bottom: 1px solid var(--line-soft);
+      background: transparent;
+      color: var(--text);
+      padding: 11px 13px;
+      text-align: left;
+    }
+
+    .agent-option:last-child {
+      border-bottom: 0;
+    }
+
+    .agent-option:hover {
+      background: var(--blue-soft);
+    }
+
+    .agent-option strong {
+      display: block;
+      overflow: hidden;
+      font-size: 14px;
+      line-height: 20px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .agent-option span {
+      display: block;
+      overflow: hidden;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 18px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .agent-option .selected {
+      color: var(--blue);
+      font-size: 13px;
+      font-weight: 760;
+      line-height: 20px;
+    }
+
+    .toast {
+      position: fixed;
+      left: 50%;
+      bottom: 28px;
+      display: none;
+      align-items: center;
+      gap: 9px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #ffffff;
+      color: var(--text);
+      padding: 10px 14px;
+      font-size: 13px;
+      font-weight: 620;
+      box-shadow: 0 16px 40px rgba(36, 53, 75, 0.14);
+      transform: translateX(-50%);
+    }
+
+    .toast.visible {
+      display: inline-flex;
+    }
+
+    .app.is-chat .center-stage {
+      place-items: center;
+      padding: 28px 24px 24px;
+    }
+
+    .app.is-chat .prompt-stack {
+      display: grid;
+      width: min(860px, calc(100vw - 120px));
+      height: min(720px, calc(100vh - 52px));
+      grid-template-rows: minmax(0, 1fr) auto;
+      transform: none;
+    }
+
+    .app.is-chat .headline {
+      display: none;
+    }
+
+    .app.is-chat .conversation-shell {
+      display: grid;
+    }
+
+    .app.is-chat .composer-shell {
+      border-radius: 18px;
+      box-shadow: 0 18px 48px rgba(36, 53, 75, 0.12);
+    }
+
+    .app.is-chat .input-wrap {
+      min-height: 58px;
+      padding: 13px 16px 4px;
+    }
+
+    .app.is-chat textarea {
+      min-height: 44px;
+      font-size: 15px;
+      line-height: 24px;
+    }
+
+    .app.is-chat .composer-toolbar {
+      min-height: 48px;
+      padding: 0 10px 10px 14px;
+    }
+
+    .app.is-chat .context-strip {
+      min-height: 44px;
+    }
+
+    @media (max-width: 760px) {
+      .prompt-stack {
+        width: min(620px, calc(100vw - 64px));
+        transform: translateY(-10px);
+      }
+
+      .headline {
+        margin-bottom: 34px;
+        font-size: 27px;
+      }
+
+      .composer-toolbar {
+        grid-template-columns: 1fr;
+      }
+
+      .app.is-chat .prompt-stack {
+        width: min(620px, calc(100vw - 36px));
+        height: calc(100vh - 32px);
+      }
+
+      .assistant-message,
+      .message-bubble {
+        width: 100%;
+        max-width: 100%;
+      }
+
+      .run-step,
+      .preview-card {
+        grid-template-columns: minmax(0, 1fr);
+      }
+
+      .tool-right {
+        justify-content: space-between;
+      }
+
+      .agent-menu {
+        left: 24px;
+        top: calc(50% + 112px);
+        transform: none;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        scroll-behavior: auto !important;
+        transition-duration: 0.01ms !important;
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+      }
+    }
+  </style>
+</head>
+<body>
+<div class="app" id="app">
+  <main class="center-stage">
+    <section aria-label="AI 对话入口" class="prompt-stack">
+      <div aria-label="对话内容" aria-live="polite" class="conversation-shell" id="conversationShell">
+        <div class="chat-thread">
+          <article class="message-row user">
+            <div class="message-bubble" id="userBubble">
+              帮我调研 20 家自动化设备厂，并生成适合销售直接发送的第一版私信。
+            </div>
+          </article>
+
+          <article class="message-row assistant">
+            <div class="assistant-message">
+              <div class="assistant-card">
+                <div class="assistant-card-header">
+                  <div class="assistant-title">
+                    <span aria-hidden="true" class="live-dot"></span>
+                    <span>正在组织 Agent 接力</span>
+                  </div>
+                  <span class="assistant-time">刚刚</span>
+                </div>
+                <div class="assistant-body">
+                  <p class="assistant-copy">
+                    我会先读取本空间的产品知识和销售口径，再把任务拆给商机雷达、内容策划和销售交接三个角色。
+                  </p>
+                  <div aria-label="执行进度" class="run-steps">
+                    <div class="run-step">
+                      <span class="step-icon">1</span>
+                      <div>
+                        <strong>产品理解 Agent</strong>
+                        <span>引用精密件、非标加工、交付能力等知识</span>
+                      </div>
+                      <span class="step-state">已就绪</span>
+                    </div>
+                    <div class="run-step">
+                      <span class="step-icon">2</span>
+                      <div>
+                        <strong>商机雷达 Agent</strong>
+                        <span>外部调研源暂未配置，先按知识库生成筛选条件</span>
+                      </div>
+                      <span class="step-state warning">待配置</span>
+                    </div>
+                    <div class="run-step">
+                      <span class="step-icon">3</span>
+                      <div>
+                        <strong>销售交接 Agent</strong>
+                        <span>准备输出名单字段、筛选理由和首轮私信</span>
+                      </div>
+                      <span class="step-state">排队中</span>
+                    </div>
+                  </div>
+                  <div class="preview-card">
+                    <div>
+                      <strong>本次交付预览</strong>
+                      <span>候选客户清单、触达优先级、销售可复制私信</span>
+                    </div>
+                    <button class="preview-action" type="button">查看草稿</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </article>
+        </div>
+      </div>
+
+      <h1 class="headline">接下来要完成什么？</h1>
+
+      <form class="composer-shell" id="chatForm">
+        <div class="composer">
+          <div class="input-wrap">
+            <textarea aria-label="对话消息" id="messageInput" placeholder="随心输入"></textarea>
+          </div>
+
+          <div class="composer-toolbar">
+            <div class="tool-left">
+              <button aria-label="添加上下文" class="tool-button" title="添加上下文" type="button">
+                <svg aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path d="M12 5v14"></path>
+                  <path d="M5 12h14"></path>
+                </svg>
+              </button>
+              <button aria-expanded="false" aria-haspopup="menu" class="agent-button" id="agentButton" type="button">
+                <svg aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path d="M12 3 5 6v5c0 4.4 2.9 8.4 7 10 4.1-1.6 7-5.6 7-10V6z"></path>
+                  <path d="M9 12l2 2 4-5"></path>
+                </svg>
+                <span id="agentLabel">全部 / 通用助手</span>
+                <svg aria-hidden="true" class="chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path d="m6 9 6 6 6-6"></path>
+                </svg>
+              </button>
+            </div>
+
+            <div class="tool-right">
+              <button aria-label="模型强度" class="model-button" title="模型强度" type="button">
+                <svg aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path d="m13 2-8 12h7l-1 8 8-12h-7z"></path>
+                </svg>
+                <span>5.5 超高</span>
+                <svg aria-hidden="true" class="chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path d="m6 9 6 6 6-6"></path>
+                </svg>
+              </button>
+              <button aria-label="语音输入" class="tool-button" title="语音输入" type="button">
+                <svg aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3z"></path>
+                  <path d="M19 11a7 7 0 0 1-14 0"></path>
+                  <path d="M12 18v3"></path>
+                </svg>
+              </button>
+              <button aria-label="发送" class="send" disabled id="sendButton" type="submit">
+                <svg aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path d="M12 19V5"></path>
+                  <path d="m5 12 7-7 7 7"></path>
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="context-strip">
+          <svg aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path d="M4 6.5A2.5 2.5 0 0 1 6.5 4H20v15H6.5A2.5 2.5 0 0 1 4 16.5z"></path>
+            <path d="M8 4v15"></path>
+          </svg>
+          <span class="context-text">杭州启盛精密制造有限公司</span>
+        </div>
+      </form>
+    </section>
+  </main>
+
+  <div aria-label="选择目标 Agent" class="agent-menu" id="agentMenu" role="menu">
+    <button class="agent-option" data-label="全部 / 通用助手" role="menuitem" type="button">
+        <span>
+          <strong>全部 / 通用助手</strong>
+          <span>自动判断并编排 Agent</span>
+        </span>
+      <span class="selected">当前</span>
+    </button>
+    <button class="agent-option" data-label="商机雷达" role="menuitem" type="button">
+        <span>
+          <strong>商机雷达</strong>
+          <span>找客户、查公司、筛线索</span>
+        </span>
+    </button>
+    <button class="agent-option" data-label="内容策划" role="menuitem" type="button">
+        <span>
+          <strong>内容策划</strong>
+          <span>写私信、话术和跟进素材</span>
+        </span>
+    </button>
+    <button class="agent-option" data-label="风控审核" role="menuitem" type="button">
+        <span>
+          <strong>风控审核</strong>
+          <span>检查承诺、风险和敏感表达</span>
+        </span>
+    </button>
+  </div>
+
+  <div aria-live="polite" class="toast" id="toast" role="status">
+    <svg aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path d="M20 6 9 17l-5-5"></path>
+    </svg>
+    已提交给当前 Agent
+  </div>
+</div>
+
+<script>
+  const app = document.querySelector('#app');
+  const input = document.querySelector('#messageInput');
+  const sendButton = document.querySelector('#sendButton');
+  const form = document.querySelector('#chatForm');
+  const toast = document.querySelector('#toast');
+  const userBubble = document.querySelector('#userBubble');
+  const agentButton = document.querySelector('#agentButton');
+  const agentMenu = document.querySelector('#agentMenu');
+  const agentLabel = document.querySelector('#agentLabel');
+  const agentOptions = Array.from(document.querySelectorAll('.agent-option'));
+
+  const syncSendState = () => {
+    sendButton.disabled = input.value.trim().length === 0;
+  };
+
+  const closeAgentMenu = () => {
+    agentMenu.classList.remove('visible');
+    agentButton.setAttribute('aria-expanded', 'false');
+  };
+
+  input.addEventListener('input', syncSendState);
+
+  agentButton.addEventListener('click', () => {
+    const isVisible = agentMenu.classList.toggle('visible');
+    agentButton.setAttribute('aria-expanded', String(isVisible));
+  });
+
+  agentOptions.forEach(option => {
+    option.addEventListener('click', () => {
+      agentLabel.textContent = option.dataset.label;
+      agentOptions.forEach(item => {
+        const selected = item.querySelector('.selected');
+        if (selected) {
+          selected.remove();
+        }
+      });
+      const marker = document.createElement('span');
+      marker.className = 'selected';
+      marker.textContent = '当前';
+      option.append(marker);
+      closeAgentMenu();
+    });
+  });
+
+  document.addEventListener('click', event => {
+    if (!agentMenu.contains(event.target) && !agentButton.contains(event.target)) {
+      closeAgentMenu();
+    }
+  });
+
+  form.addEventListener('submit', event => {
+    event.preventDefault();
+
+    const message = input.value.trim();
+
+    if (!message) {
+      return;
+    }
+
+    userBubble.textContent = message;
+    app.classList.add('is-chat');
+    input.value = '';
+    syncSendState();
+    input.focus();
+
+    toast.classList.add('visible');
+    window.setTimeout(() => {
+      toast.classList.remove('visible');
+    }, 1800);
+  });
+</script>
+</body>
+</html>
