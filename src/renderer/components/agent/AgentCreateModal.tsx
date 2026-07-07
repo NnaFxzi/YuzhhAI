@@ -446,130 +446,21 @@ const AgentCreateModal: React.FC<AgentCreateModalProps> = ({
     setActiveTab(targetTab);
   };
 
-  const handleCreate = async () => {
-    if (!name.trim()) return;
+  const handleCreate = () => {
     const changedFields = getChangedFields();
-    const externalResearchChanged = changedFields.includes('externalResearch');
-    const domesticResearchChanged = changedFields.includes('domesticResearch');
-    reportAgentCreateAction('create_submit', {
+
+    reportAgentCreateAction('create_failed', {
       changedFields,
+      errorCode: 'create_agent_failed',
       includeConfigDetails: true,
       isDirty: changedFields.length > 0,
+      result: 'failed',
     });
-    setCreating(true);
-    try {
-      if (externalResearchChanged && !agentService.canSaveExternalResearchSettings()) {
-        reportAgentCreateAction('create_failed', {
-          changedFields,
-          errorCode: 'unknown',
-          includeConfigDetails: true,
-          isDirty: changedFields.length > 0,
-          result: 'failed',
-        });
-        window.dispatchEvent(new CustomEvent('app:showToast', {
-          detail: i18nService.t('agentExternalResearchSaveUnavailable'),
-        }));
-        return;
-      }
-      if (userInfo !== initialUserInfoRef.current) {
-        const userInfoSaved = await coworkService.writeBootstrapFile('USER.md', userInfo);
-        if (!userInfoSaved) {
-          reportAgentCreateAction('create_failed', {
-            changedFields,
-            errorCode: 'user_info_write_failed',
-            includeConfigDetails: true,
-            isDirty: changedFields.length > 0,
-            result: 'failed',
-          });
-          window.dispatchEvent(new CustomEvent('app:showToast', { detail: i18nService.t('agentCreateFailed') }));
-          return;
-        }
-      }
-      const agent = await agentService.createAgent({
-        name: name.trim(),
-        description: description.trim(),
-        systemPrompt: systemPrompt.trim(),
-        identity: identity.trim(),
-        model: model ? toOpenClawModelRef(model) : '',
-        workingDirectory: workingDirectory.trim(),
-        icon: icon.trim() || undefined,
-        skillIds,
-      });
-      if (agent) {
-        if (externalResearchChanged) {
-          const researchSaved = await agentService.saveExternalResearchSettings(agent.id, externalResearchConfig);
-          if (!researchSaved) {
-            reportAgentCreateAction('create_failed', {
-              changedFields,
-              errorCode: 'unknown',
-              includeConfigDetails: true,
-              isDirty: changedFields.length > 0,
-              result: 'failed',
-            });
-            window.dispatchEvent(new CustomEvent('app:showToast', {
-              detail: i18nService.t('agentExternalResearchSaveFailed'),
-            }));
-            return;
-          }
-        }
-        if (domesticResearchChanged) {
-          const domesticSaved = await agentService.saveDomesticResearchSettings(agent.id, domesticResearchConfig);
-          if (!domesticSaved) {
-            reportAgentCreateAction('create_failed', {
-              changedFields,
-              errorCode: 'unknown',
-              includeConfigDetails: true,
-              isDirty: changedFields.length > 0,
-              result: 'failed',
-            });
-            window.dispatchEvent(new CustomEvent('app:showToast', {
-              detail: i18nService.t('agentDomesticResearchSaveFailed'),
-            }));
-            return;
-          }
-        }
-        // Save IM bindings after agent is created
-        if (boundKeys.size > 0 && imConfig) {
-          const currentBindings = { ...(imConfig.settings?.platformAgentBindings || {}) };
-          for (const key of boundKeys) {
-            currentBindings[key] = agent.id;
-          }
-          await imService.persistConfig({
-            settings: { ...imConfig.settings, platformAgentBindings: currentBindings },
-          });
-          await imService.saveAndSyncConfig();
-        }
-        agentService.switchAgent(agent.id);
-        reportAgentCreateAction('create_success', {
-          changedFields,
-          includeConfigDetails: true,
-          isDirty: false,
-          result: 'success',
-        });
-        onClose();
-        resetForm();
-      } else {
-        reportAgentCreateAction('create_failed', {
-          changedFields,
-          errorCode: 'create_agent_failed',
-          includeConfigDetails: true,
-          isDirty: changedFields.length > 0,
-          result: 'failed',
-        });
-        window.dispatchEvent(new CustomEvent('app:showToast', { detail: i18nService.t('agentCreateFailed') }));
-      }
-    } catch {
-      reportAgentCreateAction('create_failed', {
-        changedFields,
-        errorCode: 'unknown',
-        includeConfigDetails: true,
-        isDirty: changedFields.length > 0,
-        result: 'failed',
-      });
-      window.dispatchEvent(new CustomEvent('app:showToast', { detail: i18nService.t('agentCreateFailed') }));
-    } finally {
-      setCreating(false);
-    }
+    window.dispatchEvent(
+      new CustomEvent('app:showToast', {
+        detail: i18nService.t('agentGlobalCreateUnavailable'),
+      }),
+    );
   };
 
   const handleToggleIMBinding = (key: string) => {

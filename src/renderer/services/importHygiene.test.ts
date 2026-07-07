@@ -14,6 +14,13 @@ describe('renderer import hygiene', () => {
     expect(source).not.toMatch(/import\(\s*['"]\.\/cowork['"]\s*\)/);
   });
 
+  test('does not create custom global agents from the agent creation modal', () => {
+    const source = readSource('src/renderer/components/agent/AgentCreateModal.tsx');
+
+    expect(source).not.toContain('agentService.createAgent(');
+    expect(source).toContain('agentGlobalCreateUnavailable');
+  });
+
   test.each([
     'src/renderer/services/auth.ts',
     'src/renderer/components/ModelSelector.tsx',

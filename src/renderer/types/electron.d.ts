@@ -34,10 +34,14 @@ import type {
 } from '../../shared/dataMigration/constants';
 import type {
   EnterpriseLeadAgentTask,
+  EnterpriseLeadExtractionSource,
   EnterpriseLeadIpcResult,
   EnterpriseLeadPendingVersion,
   EnterpriseLeadWorkspace,
   EnterpriseLeadWorkspaceAgentBinding,
+  EnterpriseLeadWorkspaceAgentCalibrationRequest,
+  EnterpriseLeadWorkspaceAgentCalibrationResponse,
+  EnterpriseLeadWorkspaceChatProgressEvent,
   EnterpriseLeadWorkspaceChatRequest,
   EnterpriseLeadWorkspaceChatResponse,
   EnterpriseLeadWorkspaceChatSession,
@@ -409,6 +413,7 @@ interface McpMarketplaceData {
   servers: McpMarketplaceServer[];
 }
 
+import type { AgentResponseContract } from '@shared/agent';
 import type { Platform } from '@shared/platform';
 
 import type { Agent, PresetAgent } from './agent';
@@ -589,6 +594,7 @@ interface IElectronAPI {
       workingDirectory?: string;
       icon?: string;
       skillIds?: string[];
+      responseContract?: AgentResponseContract;
       source?: string;
       presetId?: string;
     }) => Promise<Agent>;
@@ -603,6 +609,7 @@ interface IElectronAPI {
         workingDirectory?: string;
         icon?: string;
         skillIds?: string[];
+        responseContract?: AgentResponseContract;
         enabled?: boolean;
         pinned?: boolean;
       },
@@ -681,6 +688,10 @@ interface IElectronAPI {
       workspaceId: string,
       profile: EnterpriseLeadWorkspaceProfile,
     ) => Promise<EnterpriseLeadIpcResult<EnterpriseLeadWorkspace>>;
+    updateWorkspaceSources: (
+      workspaceId: string,
+      sources: EnterpriseLeadExtractionSource[],
+    ) => Promise<EnterpriseLeadIpcResult<EnterpriseLeadWorkspace>>;
     updateWorkspaceSettings: (
       workspaceId: string,
       settings: EnterpriseLeadWorkspaceSettingsUpdate,
@@ -719,6 +730,14 @@ interface IElectronAPI {
       workspaceId: string,
       request: EnterpriseLeadWorkspaceChatRequest,
     ) => Promise<EnterpriseLeadIpcResult<EnterpriseLeadWorkspaceChatResponse>>;
+    onChatProgress: (
+      requestId: string,
+      callback: (event: EnterpriseLeadWorkspaceChatProgressEvent) => void,
+    ) => () => void;
+    testWorkspaceAgent: (
+      workspaceId: string,
+      request: EnterpriseLeadWorkspaceAgentCalibrationRequest,
+    ) => Promise<EnterpriseLeadIpcResult<EnterpriseLeadWorkspaceAgentCalibrationResponse>>;
     runTask: (taskId: string) => Promise<EnterpriseLeadIpcResult<EnterpriseLeadAgentTask>>;
     rerunTask: (taskId: string) => Promise<EnterpriseLeadIpcResult<EnterpriseLeadAgentTask>>;
     createPendingVersion: (
@@ -1172,6 +1191,7 @@ interface IElectronAPI {
       size?: number;
       readBytes?: number;
       truncated?: boolean;
+      parser?: string;
       error?: string;
     }>;
     generateThumbnail: (

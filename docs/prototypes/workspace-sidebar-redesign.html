@@ -1,0 +1,869 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta content="width=device-width, initial-scale=1" name="viewport">
+  <title>工作区左侧导航原型</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --app-bg: #f4f6fa;
+      --panel: #ffffff;
+      --panel-soft: #f8fafd;
+      --surface: #f3f6fb;
+      --surface-strong: #edf3ff;
+      --line: #dfe5ee;
+      --line-soft: #edf1f6;
+      --text: #151b2a;
+      --text-soft: #4f596a;
+      --muted: #758092;
+      --faint: #a1aabb;
+      --primary: #2f6fed;
+      --primary-soft: #eaf2ff;
+      --primary-border: #cdddfb;
+      --green: #12a474;
+      --green-soft: #e8f7f1;
+      --amber: #b7791f;
+      --amber-soft: #fff5df;
+      --danger: #dc2626;
+      --shadow: 0 24px 70px rgba(20, 31, 50, 0.13);
+      --small-shadow: 0 12px 28px rgba(20, 31, 50, 0.08);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      min-height: 100%;
+    }
+
+    body {
+      margin: 0;
+      background: var(--app-bg);
+      color: var(--text);
+    }
+
+    button {
+      font: inherit;
+      cursor: pointer;
+    }
+
+    .page {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 28px;
+    }
+
+    .app {
+      width: min(1220px, 100%);
+      height: min(780px, calc(100vh - 56px));
+      min-height: 620px;
+      display: grid;
+      grid-template-columns: 292px minmax(0, 1fr);
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+    }
+
+    .sidebar {
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      border-right: 1px solid var(--line);
+      background: linear-gradient(180deg, #ffffff 0%, #fbfcff 52%, #f8fafd 100%);
+      padding: 14px 12px;
+    }
+
+    .nav {
+      display: grid;
+      gap: 3px;
+      flex: 0 0 auto;
+      padding: 0;
+    }
+
+    .nav-item,
+    .session-button,
+    .exit-button,
+    .delete-button,
+    .toolbar-button,
+    .primary-button {
+      border: 0;
+      background: transparent;
+      color: inherit;
+      outline: 0;
+    }
+
+    .nav-item,
+    .exit-button {
+      position: relative;
+      height: 36px;
+      display: grid;
+      grid-template-columns: 26px minmax(0, 1fr);
+      align-items: center;
+      gap: 8px;
+      border-radius: 7px;
+      padding: 0 8px;
+      color: var(--muted);
+      text-align: left;
+      font-size: 13px;
+      font-weight: 650;
+      letter-spacing: 0;
+      transition: background 150ms ease, color 150ms ease, box-shadow 150ms ease;
+    }
+
+    .nav-item:hover,
+    .exit-button:hover {
+      background: var(--surface);
+      color: var(--text);
+    }
+
+    .nav-item.is-active {
+      color: var(--text);
+      background: var(--primary-soft);
+      box-shadow: inset 0 0 0 1px rgba(47, 111, 237, 0.12);
+    }
+
+    .nav-item.is-active::before,
+    .session-row.is-active::before {
+      content: "";
+      position: absolute;
+      left: 5px;
+      top: 8px;
+      bottom: 8px;
+      width: 2px;
+      border-radius: 999px;
+      background: var(--primary);
+    }
+
+    .icon {
+      width: 26px;
+      height: 26px;
+      display: grid;
+      place-items: center;
+      color: var(--faint);
+    }
+
+    .nav-item.is-active .icon {
+      color: var(--primary);
+    }
+
+    .icon svg {
+      width: 17px;
+      height: 17px;
+      stroke-width: 1.85;
+    }
+
+    .label {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .conversations {
+      min-height: 0;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      margin-top: 16px;
+      padding-top: 2px;
+      overflow: hidden;
+    }
+
+    .section-title {
+      padding: 0 2px 8px 4px;
+      color: var(--text-soft);
+      font-size: 12px;
+      line-height: 18px;
+      font-weight: 720;
+    }
+
+    .session-list {
+      min-height: 0;
+      flex: 1;
+      display: grid;
+      align-content: start;
+      gap: 3px;
+      overflow-y: auto;
+      padding-right: 3px;
+      scrollbar-color: #c8d1df transparent;
+      scrollbar-gutter: stable;
+      scrollbar-width: thin;
+    }
+
+    .session-list::-webkit-scrollbar {
+      width: 10px;
+    }
+
+    .session-list::-webkit-scrollbar-track {
+      background: transparent;
+      margin-block: 6px;
+    }
+
+    .session-list::-webkit-scrollbar-thumb {
+      border: 3px solid transparent;
+      border-radius: 999px;
+      background: #c8d1df;
+      background-clip: content-box;
+    }
+
+    .session-row {
+      position: relative;
+      min-height: 40px;
+      display: flex;
+      align-items: center;
+      border-radius: 9px;
+      color: var(--muted);
+      transition: background 150ms ease, color 150ms ease, box-shadow 150ms ease;
+    }
+
+    .session-row:hover {
+      background: var(--surface);
+      color: var(--text);
+    }
+
+    .session-row.is-active {
+      background: var(--primary-soft);
+      color: var(--text);
+      box-shadow: inset 0 0 0 1px rgba(47, 111, 237, 0.13);
+    }
+
+    .session-button {
+      min-width: 0;
+      min-height: 40px;
+      width: 100%;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 8px;
+      border-radius: 9px;
+      padding: 7px 36px 7px 12px;
+      text-align: left;
+      color: inherit;
+    }
+
+    .session-name {
+      min-width: 0;
+      overflow: hidden;
+      color: inherit;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 13px;
+      line-height: 20px;
+      font-weight: 650;
+    }
+
+    .date {
+      height: 20px;
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.74);
+      color: var(--faint);
+      padding: 0 6px;
+      font-size: 11px;
+      font-weight: 720;
+      transition: opacity 130ms ease;
+    }
+
+    .session-row:hover .date,
+    .session-row:focus-within .date {
+      opacity: 0;
+    }
+
+    .delete-button {
+      position: absolute;
+      right: 6px;
+      top: 50%;
+      width: 28px;
+      height: 28px;
+      display: grid;
+      place-items: center;
+      border-radius: 7px;
+      color: var(--faint);
+      opacity: 0;
+      transform: translateY(-50%);
+      transition: background 150ms ease, color 150ms ease, opacity 150ms ease;
+    }
+
+    .session-row:hover .delete-button,
+    .session-row:focus-within .delete-button {
+      opacity: 1;
+    }
+
+    .delete-button:hover {
+      background: rgba(220, 38, 38, 0.08);
+      color: var(--danger);
+    }
+
+    .delete-button svg {
+      width: 16px;
+      height: 16px;
+    }
+
+    .exit {
+      flex: 0 0 auto;
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid var(--line-soft);
+    }
+
+    .main {
+      min-width: 0;
+      min-height: 0;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+      background: #f7f9fc;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      padding: 20px 24px;
+      border-bottom: 1px solid var(--line-soft);
+      background: rgba(255, 255, 255, 0.76);
+      backdrop-filter: blur(16px);
+    }
+
+    .eyebrow {
+      margin: 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 18px;
+      font-weight: 700;
+    }
+
+    h1 {
+      margin: 2px 0 0;
+      color: var(--text);
+      font-size: 22px;
+      line-height: 30px;
+      font-weight: 800;
+      letter-spacing: 0;
+    }
+
+    .top-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .toolbar-button,
+    .primary-button {
+      min-height: 34px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      border-radius: 8px;
+      padding: 0 12px;
+      font-size: 12px;
+      font-weight: 720;
+      transition: background 150ms ease, border-color 150ms ease, color 150ms ease;
+    }
+
+    .toolbar-button {
+      border: 1px solid var(--line);
+      background: #ffffff;
+      color: var(--text-soft);
+    }
+
+    .toolbar-button:hover {
+      background: var(--surface);
+      color: var(--text);
+    }
+
+    .primary-button {
+      background: var(--primary);
+      color: #ffffff;
+    }
+
+    .workspace {
+      min-height: 0;
+      overflow: auto;
+      padding: 22px 24px 24px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.08fr) minmax(280px, 0.92fr);
+      gap: 18px;
+    }
+
+    .panel {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--panel);
+      box-shadow: var(--small-shadow);
+    }
+
+    .panel-header {
+      padding: 16px 18px 12px;
+      border-bottom: 1px solid var(--line-soft);
+    }
+
+    .panel-title {
+      margin: 0;
+      font-size: 15px;
+      line-height: 22px;
+      font-weight: 800;
+    }
+
+    .panel-desc {
+      margin: 4px 0 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 20px;
+    }
+
+    .task-list,
+    .agent-list {
+      display: grid;
+      gap: 10px;
+      padding: 14px;
+    }
+
+    .task {
+      display: grid;
+      grid-template-columns: 38px minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 12px;
+      padding: 12px;
+      border: 1px solid var(--line-soft);
+      border-radius: 10px;
+      background: var(--panel-soft);
+    }
+
+    .task-icon {
+      width: 38px;
+      height: 38px;
+      display: grid;
+      place-items: center;
+      border-radius: 9px;
+      background: var(--primary-soft);
+      color: var(--primary);
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    .task-title,
+    .agent-name {
+      font-size: 13px;
+      line-height: 20px;
+      font-weight: 760;
+    }
+
+    .task-meta,
+    .agent-role {
+      margin-top: 2px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 18px;
+    }
+
+    .pill {
+      height: 24px;
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      padding: 0 9px;
+      font-size: 11px;
+      font-weight: 760;
+      white-space: nowrap;
+    }
+
+    .pill.green {
+      background: var(--green-soft);
+      color: var(--green);
+    }
+
+    .pill.amber {
+      background: var(--amber-soft);
+      color: var(--amber);
+    }
+
+    .agent {
+      display: grid;
+      grid-template-columns: 34px minmax(0, 1fr);
+      align-items: center;
+      gap: 10px;
+      padding: 10px;
+      border: 1px solid var(--line-soft);
+      border-radius: 10px;
+      background: #ffffff;
+    }
+
+    .avatar {
+      width: 34px;
+      height: 34px;
+      display: grid;
+      place-items: center;
+      border-radius: 9px;
+      background: var(--surface-strong);
+      color: var(--primary);
+      font-size: 12px;
+      font-weight: 850;
+    }
+
+    @media (max-width: 1080px) {
+      .grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 780px) {
+      .page {
+        padding: 0;
+      }
+
+      .app {
+        width: 100%;
+        height: 100vh;
+        min-height: 0;
+        grid-template-columns: 78px minmax(0, 1fr);
+        border: 0;
+        border-radius: 0;
+      }
+
+      .sidebar {
+        padding: 10px 8px;
+      }
+
+      .nav-item,
+      .exit-button {
+        grid-template-columns: 1fr;
+        justify-items: center;
+        padding: 0;
+      }
+
+      .nav-item .label,
+      .exit-button .label,
+      .conversations {
+        display: none;
+      }
+
+      .grid {
+        grid-template-columns: 1fr;
+      }
+
+      .topbar {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+    }
+  </style>
+</head>
+<body>
+<svg aria-hidden="true" style="position:absolute;width:0;height:0;overflow:hidden">
+  <symbol id="icon-dashboard" viewBox="0 0 24 24">
+    <path
+      d="M3.5 6.5A1.5 1.5 0 0 1 5 5h4.5A1.5 1.5 0 0 1 11 6.5v3A1.5 1.5 0 0 1 9.5 11H5a1.5 1.5 0 0 1-1.5-1.5v-3ZM14 7.5A1.5 1.5 0 0 1 15.5 6H19a1.5 1.5 0 0 1 1.5 1.5V17a1.5 1.5 0 0 1-1.5 1.5h-3.5A1.5 1.5 0 0 1 14 17V7.5ZM4.5 15A1.5 1.5 0 0 1 6 13.5h3.5A1.5 1.5 0 0 1 11 15v2A1.5 1.5 0 0 1 9.5 18.5H6A1.5 1.5 0 0 1 4.5 17v-2Z"
+      fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" />
+  </symbol>
+  <symbol id="icon-chat" viewBox="0 0 24 24">
+    <path
+      d="M5.5 5.5h9A3.5 3.5 0 0 1 18 9v3.2a3.5 3.5 0 0 1-3.5 3.5H11l-4.2 3.1v-3.1H5.5A3.5 3.5 0 0 1 2 12.2V9a3.5 3.5 0 0 1 3.5-3.5ZM18 9.2h.5A3.5 3.5 0 0 1 22 12.7v2.1a3.5 3.5 0 0 1-3.5 3.5h-.8V21l-3.2-2.7H12"
+      fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" />
+  </symbol>
+  <symbol id="icon-search" viewBox="0 0 24 24">
+    <path d="M10.8 18.1a7.3 7.3 0 1 0 0-14.6 7.3 7.3 0 0 0 0 14.6ZM16.2 16.2 21 21" fill="none" stroke="currentColor"
+          stroke-linecap="round" stroke-linejoin="round" />
+  </symbol>
+  <symbol id="icon-book" viewBox="0 0 24 24">
+    <path
+      d="M4 5.2c2.8-.7 5-.2 7 1.5v13c-2-1.7-4.2-2.2-7-1.5v-13ZM20 5.2c-2.8-.7-5-.2-7 1.5v13c2-1.7 4.2-2.2 7-1.5v-13Z"
+      fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" />
+  </symbol>
+  <symbol id="icon-team" viewBox="0 0 24 24">
+    <path
+      d="M12 12.2a3.7 3.7 0 1 0 0-7.4 3.7 3.7 0 0 0 0 7.4ZM5 19.2a7.2 7.2 0 0 1 14 0M4.4 12a2.7 2.7 0 0 0 0-5.3M2.3 18.2a5.5 5.5 0 0 1 4.2-4.7M19.6 12a2.7 2.7 0 0 1 0-5.3M21.7 18.2a5.5 5.5 0 0 0-4.2-4.7"
+      fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" />
+  </symbol>
+  <symbol id="icon-back" viewBox="0 0 24 24">
+    <path d="M10.5 19 3.5 12l7-7M4 12h16.5" fill="none" stroke="currentColor" stroke-linecap="round"
+          stroke-linejoin="round" />
+  </symbol>
+  <symbol id="icon-trash" viewBox="0 0 24 24">
+    <path d="M9 4.5h6M4.5 7h15M9.5 10v7M14.5 10v7M6.5 7l1 12.2A2 2 0 0 0 9.5 21h5a2 2 0 0 0 2-1.8l1-12.2" fill="none"
+          stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" />
+  </symbol>
+</svg>
+
+<main class="page">
+  <section aria-label="工作区导航原型" class="app">
+    <aside class="sidebar">
+      <nav aria-label="线索工作区" class="nav">
+        <button class="nav-item is-active" data-page="工作台" type="button">
+          <span class="icon"><svg><use href="#icon-dashboard" /></svg></span>
+          <span class="label">工作台</span>
+        </button>
+        <button class="nav-item" data-page="新对话" type="button">
+          <span class="icon"><svg><use href="#icon-chat" /></svg></span>
+          <span class="label">新对话</span>
+        </button>
+        <button class="nav-item" data-page="搜索" type="button">
+          <span class="icon"><svg><use href="#icon-search" /></svg></span>
+          <span class="label">搜索</span>
+        </button>
+        <button class="nav-item" data-page="知识库" type="button">
+          <span class="icon"><svg><use href="#icon-book" /></svg></span>
+          <span class="label">知识库</span>
+        </button>
+        <button class="nav-item" data-page="Agent 团队" type="button">
+          <span class="icon"><svg><use href="#icon-team" /></svg></span>
+          <span class="label">Agent 团队</span>
+        </button>
+      </nav>
+
+      <section aria-label="对话列表" class="conversations">
+        <div class="section-title">
+          对话
+        </div>
+        <div class="session-list">
+          <div class="session-row">
+            <button class="session-button" type="button">
+              <span class="session-name">1</span>
+              <span class="date">今天</span>
+            </button>
+            <button aria-label="删除对话 1" class="delete-button" type="button">
+              <svg>
+                <use href="#icon-trash" />
+              </svg>
+            </button>
+          </div>
+          <div class="session-row is-active">
+            <button class="session-button" type="button">
+              <span class="session-name">123</span>
+              <span class="date">今天</span>
+            </button>
+            <button aria-label="删除对话 123" class="delete-button" type="button">
+              <svg>
+                <use href="#icon-trash" />
+              </svg>
+            </button>
+          </div>
+          <div class="session-row">
+            <button class="session-button" type="button">
+              <span class="session-name">你好！</span>
+              <span class="date">今天</span>
+            </button>
+            <button aria-label="删除对话 你好！" class="delete-button" type="button">
+              <svg>
+                <use href="#icon-trash" />
+              </svg>
+            </button>
+          </div>
+          <div class="session-row">
+            <button class="session-button" type="button">
+              <span class="session-name">你好</span>
+              <span class="date">今天</span>
+            </button>
+            <button aria-label="删除对话 你好" class="delete-button" type="button">
+              <svg>
+                <use href="#icon-trash" />
+              </svg>
+            </button>
+          </div>
+          <div class="session-row">
+            <button class="session-button" type="button">
+              <span class="session-name">帮我判断这批客户谁更值得优先跟进</span>
+              <span class="date">今天</span>
+            </button>
+            <button aria-label="删除对话 帮我判断这批客户谁更值得优先跟进" class="delete-button" type="button">
+              <svg>
+                <use href="#icon-trash" />
+              </svg>
+            </button>
+          </div>
+          <div class="session-row">
+            <button class="session-button" type="button">
+              <span class="session-name">客户名单优先级评估</span>
+              <span class="date">今天</span>
+            </button>
+            <button aria-label="删除对话 客户名单优先级评估" class="delete-button" type="button">
+              <svg>
+                <use href="#icon-trash" />
+              </svg>
+            </button>
+          </div>
+          <div class="session-row">
+            <button class="session-button" type="button">
+              <span class="session-name">生成本周销售跟进清单</span>
+              <span class="date">今天</span>
+            </button>
+            <button aria-label="删除对话 生成本周销售跟进清单" class="delete-button" type="button">
+              <svg>
+                <use href="#icon-trash" />
+              </svg>
+            </button>
+          </div>
+          <div class="session-row">
+            <button class="session-button" type="button">
+              <span class="session-name">整理汽车零部件厂线索</span>
+              <span class="date">1 天</span>
+            </button>
+            <button aria-label="删除对话 整理汽车零部件厂线索" class="delete-button" type="button">
+              <svg>
+                <use href="#icon-trash" />
+              </svg>
+            </button>
+          </div>
+          <div class="session-row">
+            <button class="session-button" type="button">
+              <span class="session-name">更新知识库里的触达限制</span>
+              <span class="date">2 天</span>
+            </button>
+            <button aria-label="删除对话 更新知识库里的触达限制" class="delete-button" type="button">
+              <svg>
+                <use href="#icon-trash" />
+              </svg>
+            </button>
+          </div>
+          <div class="session-row">
+            <button class="session-button" type="button">
+              <span class="session-name">检查外发文案风险</span>
+              <span class="date">2 天</span>
+            </button>
+            <button aria-label="删除对话 检查外发文案风险" class="delete-button" type="button">
+              <svg>
+                <use href="#icon-trash" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <div class="exit">
+        <button class="exit-button" type="button">
+          <span class="icon"><svg><use href="#icon-back" /></svg></span>
+          <span class="label">返回空间列表</span>
+        </button>
+      </div>
+    </aside>
+
+    <section class="main">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">华南重包获客工作台</p>
+          <h1 id="page-title">工作台</h1>
+        </div>
+        <div class="top-actions">
+          <button class="toolbar-button" type="button">同步知识库</button>
+          <button class="toolbar-button" type="button">查看历史</button>
+          <button class="primary-button" type="button">开始新任务</button>
+        </div>
+      </header>
+
+      <div class="workspace">
+        <div class="grid">
+          <section class="panel">
+            <div class="panel-header">
+              <h2 class="panel-title">今日推进</h2>
+              <p class="panel-desc">聚合当前空间里的线索、对话和 Agent 执行状态。</p>
+            </div>
+            <div class="task-list">
+              <article class="task">
+                <span class="task-icon">线</span>
+                <div>
+                  <div class="task-title">筛选华南自动化设备厂线索</div>
+                  <div class="task-meta">商机雷达 Agent 已整理 18 条候选客户</div>
+                </div>
+                <span class="pill green">可跟进</span>
+              </article>
+              <article class="task">
+                <span class="task-icon">文</span>
+                <div>
+                  <div class="task-title">生成首轮私信和电话开场白</div>
+                  <div class="task-meta">内容策划 Agent 等待确认触达渠道</div>
+                </div>
+                <span class="pill amber">待确认</span>
+              </article>
+              <article class="task">
+                <span class="task-icon">审</span>
+                <div>
+                  <div class="task-title">检查报价承诺与外发风险</div>
+                  <div class="task-meta">风控审核 Agent 标记 2 条需要人工复核</div>
+                </div>
+                <span class="pill amber">需复核</span>
+              </article>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-header">
+              <h2 class="panel-title">Agent 团队</h2>
+              <p class="panel-desc">当前空间启用的协作角色。</p>
+            </div>
+            <div class="agent-list">
+              <article class="agent">
+                <span class="avatar">控</span>
+                <div>
+                  <div class="agent-name">总控 Agent</div>
+                  <div class="agent-role">拆解任务、调度流程、汇总结果</div>
+                </div>
+              </article>
+              <article class="agent">
+                <span class="avatar">商</span>
+                <div>
+                  <div class="agent-name">商机雷达 Agent</div>
+                  <div class="agent-role">判断客户方向与采购信号</div>
+                </div>
+              </article>
+              <article class="agent">
+                <span class="avatar">审</span>
+                <div>
+                  <div class="agent-name">风控审核 Agent</div>
+                  <div class="agent-role">检查来源、承诺和外发风险</div>
+                </div>
+              </article>
+            </div>
+          </section>
+        </div>
+      </div>
+    </section>
+  </section>
+</main>
+
+<script>
+  const pageTitle = document.querySelector('#page-title');
+
+  document.querySelectorAll('.nav-item').forEach((button) => {
+    button.addEventListener('click', () => {
+      document.querySelectorAll('.nav-item').forEach((item) => item.classList.remove('is-active'));
+      button.classList.add('is-active');
+      pageTitle.textContent = button.dataset.page || '工作台';
+    });
+  });
+
+  document.querySelectorAll('.session-row').forEach((row) => {
+    row.querySelector('.session-button').addEventListener('click', () => {
+      document.querySelectorAll('.session-row').forEach((item) => item.classList.remove('is-active'));
+      row.classList.add('is-active');
+    });
+  });
+
+  document.querySelectorAll('.delete-button').forEach((button) => {
+    button.addEventListener('click', (event) => {
+      event.stopPropagation();
+      const row = button.closest('.session-row');
+      if (row) {
+        row.style.opacity = '0';
+        row.style.transform = 'translateX(-8px)';
+        setTimeout(() => row.remove(), 160);
+      }
+    });
+  });
+</script>
+</body>
+</html>

@@ -1,12 +1,18 @@
 import { ArrowLeftIcon } from '@heroicons/react/24/outline';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useSelector } from 'react-redux';
 
 import type {
   EnterpriseLeadWorkspace,
   EnterpriseLeadWorkspaceChatSessionSummary,
 } from '../../../shared/enterpriseLeadWorkspace/types';
+import { coworkService } from '../../services/cowork';
 import { enterpriseLeadWorkspaceService } from '../../services/enterpriseLeadWorkspace';
 import { i18nService } from '../../services/i18n';
+import type { RootState } from '../../store';
+import type { CoworkSessionSummary } from '../../types/cowork';
+import { CoworkView, type CoworkViewProps } from '../cowork';
+import CoworkSearchModal from '../cowork/CoworkSearchModal';
 import SidebarToggleIcon from '../icons/SidebarToggleIcon';
 import WindowTitleBar from '../window/WindowTitleBar';
 import {
@@ -20,11 +26,16 @@ import {
   sortWorkspacesByRecentUpdate,
 } from './enterpriseLeadWorkspaceUi';
 import WorkspaceAiChat from './WorkspaceAiChat';
+import { buildEnterpriseLeadCoworkHandoffRequest } from './workspaceCoworkHandoff';
+import {
+  getWorkspaceSidebarActiveChatSessionId,
+  openEmbeddedCoworkConversationRecord,
+  selectWorkspaceCoworkSearchSession,
+} from './workspaceCoworkSessionActions';
+import { mapCoworkSessionsToEnterpriseLeadChatSessionSummaries } from './workspaceCoworkSessionRecords';
 import WorkspaceCreate from './WorkspaceCreate';
 import WorkspaceEntryHome from './WorkspaceEntryHome';
 import WorkspaceKnowledgeBase from './WorkspaceKnowledgeBase';
-import WorkspaceSearch from './WorkspaceSearch';
-import WorkspaceSettings from './WorkspaceSettings';
 import WorkspaceShell from './WorkspaceShell';
 import WorkspaceStart from './WorkspaceStart';
 import WorkspaceWorkbench from './WorkspaceWorkbench';
@@ -35,7 +46,10 @@ interface EnterpriseLeadWorkspaceViewProps {
   onToggleSidebar?: () => void;
   onShellModeChange?: (shellMode: EnterpriseLeadWorkspaceShellModeType) => void;
   updateBadge?: React.ReactNode;
-  onRequestAppSettings?: () => void;
+  onRequestAppSettings?: CoworkViewProps['onRequestAppSettings'];
+  onPrepareCoworkChat?: (draft: string) => void;
+  onShowSkills?: () => void;
+  onShowKits?: () => void;
 }
 
 export const EnterpriseLeadWorkspaceView: React.FC<EnterpriseLeadWorkspaceViewProps> = ({
@@ -45,6 +59,9 @@ export const EnterpriseLeadWorkspaceView: React.FC<EnterpriseLeadWorkspaceViewPr
   onShellModeChange,
   updateBadge,
   onRequestAppSettings,
+  onPrepareCoworkChat,
+  onShowSkills,
+  onShowKits,
 }) => {
   const [screen, setScreen] = useState<EnterpriseLeadWorkspaceScreen>(
     EnterpriseLeadWorkspaceScreen.Entry,
@@ -56,6 +73,7 @@ export const EnterpriseLeadWorkspaceView: React.FC<EnterpriseLeadWorkspaceViewPr
     useState<EnterpriseLeadWorkspaceInternalPageType>(getDefaultWorkspaceInternalPage());
   const [chatSessions, setChatSessions] = useState<EnterpriseLeadWorkspaceChatSessionSummary[]>([]);
   const [activeChatSessionId, setActiveChatSessionId] = useState<string | null>(null);
+  const [isWorkspaceSearchOpen, setIsWorkspaceSearchOpen] = useState(false);
   const [isLoadingWorkspaces, setIsLoadingWorkspaces] = useState(true);
   const [isLoadingWorkspace, setIsLoadingWorkspace] = useState(false);
   const [workspaceError, setWorkspaceError] = useState('');
@@ -65,6 +83,9 @@ export const EnterpriseLeadWorkspaceView: React.FC<EnterpriseLeadWorkspaceViewPr
   const chatSessionsRequestRef = useRef(0);
   const isMac = window.electron.platform === 'darwin';
   const shellMode = getShellModeForEnterpriseLeadWorkspaceScreen(screen);
+  const isEmbeddedCoworkMode = Boolean(onPrepareCoworkChat);
+  const coworkSessions = useSelector((state: RootState) => state.cowork.sessions);
+  const currentCoworkSessionId = useSelector((state: RootState) => state.cowork.currentSessionId);
 
   useEffect(() => {
     onShellModeChange?.(shellMode);
@@ -145,12 +166,18 @@ export const EnterpriseLeadWorkspaceView: React.FC<EnterpriseLeadWorkspaceViewPr
       chatSessionsRequestRef.current += 1;
       setChatSessions([]);
       setActiveChatSessionId(null);
+      setIsWorkspaceSearchOpen(false);
       return;
     }
 
     setActiveChatSessionId(null);
-    void refreshChatSessions(activeWorkspaceId);
-  }, [activeWorkspaceId, refreshChatSessions]);
+    setIsWorkspaceSearchOpen(false);
+    if (isEmbeddedCoworkMode) {
+      void coworkService.loadSessions();
+    } else {
+      void refreshChatSessions(activeWorkspaceId);
+    }
+  }, [activeWorkspaceId, isEmbeddedCoworkMode, refreshChatSessions]);
 
   useEffect(() => {
     let isCancelled = false;
@@ -278,20 +305,80 @@ export const EnterpriseLeadWorkspaceView: React.FC<EnterpriseLeadWorkspaceViewPr
     setScreen(EnterpriseLeadWorkspaceScreen.Entry);
   };
 
-  const handleInternalPageChange = (page: EnterpriseLeadWorkspaceInternalPageType): void => {
+  const prepareEmbeddedCoworkChat = useCallback((workspace: EnterpriseLeadWorkspace): void => {
+    const request = buildEnterpriseLeadCoworkHandoffRequest(workspace);
+
+    setActiveChatSessionId(null);
+    setActiveInternalPage(request.nextInternalPage);
+    onPrepareCoworkChat?.(request.draft);
+  }, [onPrepareCoworkChat]);
+
+  const handleInternalPageChange = (
+    page: EnterpriseLeadWorkspaceInternalPageType,
+    workspaceForCowork?: EnterpriseLeadWorkspace,
+  ): void => {
+    if (
+      page === EnterpriseLeadWorkspaceInternalPage.AiChat &&
+      workspaceForCowork &&
+      onPrepareCoworkChat
+    ) {
+      prepareEmbeddedCoworkChat(workspaceForCowork);
+      return;
+    }
+
     if (page === EnterpriseLeadWorkspaceInternalPage.AiChat) {
       setActiveChatSessionId(null);
     }
     setActiveInternalPage(page);
   };
 
-  const handleChatSessionSelect = (sessionId: string): void => {
+  const handleChatSessionSelect = useCallback((sessionId: string): void => {
+    if (onPrepareCoworkChat) {
+      void openEmbeddedCoworkConversationRecord({
+        sessionId,
+        setActiveSessionId: setActiveChatSessionId,
+        setActiveInternalPage,
+        loadSession: selectedSessionId => coworkService.loadSession(selectedSessionId),
+      });
+      return;
+    }
+
     setActiveChatSessionId(sessionId);
     setActiveInternalPage(EnterpriseLeadWorkspaceInternalPage.AiChat);
-  };
+  }, [onPrepareCoworkChat]);
+
+  const visibleChatSessions = useMemo(
+    () => (isEmbeddedCoworkMode && activeWorkspaceId
+      ? mapCoworkSessionsToEnterpriseLeadChatSessionSummaries(coworkSessions, activeWorkspaceId)
+      : chatSessions),
+    [activeWorkspaceId, chatSessions, coworkSessions, isEmbeddedCoworkMode],
+  );
+  const visibleActiveChatSessionId = getWorkspaceSidebarActiveChatSessionId({
+    activePage: activeInternalPage,
+    activeChatSessionId,
+  });
+
+  const handleWorkspaceSearchSelect = useCallback(
+    async (session: CoworkSessionSummary): Promise<void> => {
+      await selectWorkspaceCoworkSearchSession({
+        session,
+        closeSearch: setIsWorkspaceSearchOpen,
+        openConversationRecord: handleChatSessionSelect,
+      });
+    },
+    [handleChatSessionSelect],
+  );
 
   const handleChatSessionDelete = useCallback(
     async (sessionId: string): Promise<boolean> => {
+      if (isEmbeddedCoworkMode) {
+        const deleted = await coworkService.deleteSession(sessionId);
+        if (deleted && activeChatSessionId === sessionId) {
+          setActiveChatSessionId(null);
+        }
+        return deleted;
+      }
+
       if (!activeWorkspaceId) {
         return false;
       }
@@ -310,7 +397,7 @@ export const EnterpriseLeadWorkspaceView: React.FC<EnterpriseLeadWorkspaceViewPr
       }
       return true;
     },
-    [activeChatSessionId, activeWorkspaceId],
+    [activeChatSessionId, activeWorkspaceId, isEmbeddedCoworkMode],
   );
 
   const handleChatSessionsUpdated = (): void => {
@@ -339,7 +426,6 @@ export const EnterpriseLeadWorkspaceView: React.FC<EnterpriseLeadWorkspaceViewPr
         'enterpriseLeadWorkbenchNavCreationRecords',
       [EnterpriseLeadWorkspaceInternalPage.AgentManagement]:
         'enterpriseLeadWorkbenchNavAgentManagement',
-      [EnterpriseLeadWorkspaceInternalPage.Settings]: 'enterpriseLeadWorkbenchNavSettings',
     } satisfies Record<EnterpriseLeadWorkspaceInternalPageType, string>;
 
     return (
@@ -364,7 +450,12 @@ export const EnterpriseLeadWorkspaceView: React.FC<EnterpriseLeadWorkspaceViewPr
     workspace: EnterpriseLeadWorkspace,
   ): React.ReactNode => {
     if (page === EnterpriseLeadWorkspaceInternalPage.Workbench) {
-      return <WorkspaceStart workspace={workspace} onOpenPage={handleInternalPageChange} />;
+      return (
+        <WorkspaceStart
+          workspace={workspace}
+          onOpenPage={nextPage => handleInternalPageChange(nextPage, workspace)}
+        />
+      );
     }
 
     if (page === EnterpriseLeadWorkspaceInternalPage.AgentManagement) {
@@ -372,14 +463,7 @@ export const EnterpriseLeadWorkspaceView: React.FC<EnterpriseLeadWorkspaceViewPr
         <WorkspaceWorkbench
           workspace={workspace}
           onWorkspaceUpdated={handleWorkspaceUpdated}
-          onOpenSettings={() => setActiveInternalPage(EnterpriseLeadWorkspaceInternalPage.Settings)}
         />
-      );
-    }
-
-    if (page === EnterpriseLeadWorkspaceInternalPage.Settings) {
-      return (
-        <WorkspaceSettings workspace={workspace} onWorkspaceUpdated={handleWorkspaceUpdated} />
       );
     }
 
@@ -389,23 +473,26 @@ export const EnterpriseLeadWorkspaceView: React.FC<EnterpriseLeadWorkspaceViewPr
       );
     }
 
-    if (page === EnterpriseLeadWorkspaceInternalPage.Search) {
-      return (
-        <WorkspaceSearch
-          workspace={workspace}
-          chatSessions={chatSessions}
-          onChatSessionSelect={handleChatSessionSelect}
-        />
-      );
-    }
-
     if (page === EnterpriseLeadWorkspaceInternalPage.AiChat) {
+      if (onPrepareCoworkChat) {
+        return (
+          <CoworkView
+            onRequestAppSettings={onRequestAppSettings}
+            onShowSkills={onShowSkills}
+            onShowKits={onShowKits}
+            isSidebarCollapsed={false}
+            onNewChat={() => prepareEmbeddedCoworkChat(workspace)}
+          />
+        );
+      }
+
       return (
         <WorkspaceAiChat
           workspace={workspace}
           activeSessionId={activeChatSessionId}
           onSessionChange={setActiveChatSessionId}
           onSessionsUpdated={handleChatSessionsUpdated}
+          onWorkspaceUpdated={handleWorkspaceUpdated}
         />
       );
     }
@@ -435,19 +522,25 @@ export const EnterpriseLeadWorkspaceView: React.FC<EnterpriseLeadWorkspaceViewPr
             <WorkspaceShell
               workspace={workspace}
               activePage={activeInternalPage}
-              onPageChange={handleInternalPageChange}
+              onPageChange={page => handleInternalPageChange(page, workspace)}
               onExitWorkspace={handleExitWorkspace}
-              chatSessions={chatSessions}
-              activeChatSessionId={
-                activeInternalPage === EnterpriseLeadWorkspaceInternalPage.AiChat
-                  ? activeChatSessionId
-                  : null
-              }
+              chatSessions={visibleChatSessions}
+              activeChatSessionId={visibleActiveChatSessionId}
               onChatSessionSelect={handleChatSessionSelect}
               onChatSessionDelete={handleChatSessionDelete}
+              onSearchOpen={() => setIsWorkspaceSearchOpen(true)}
             >
               {renderWorkspaceInternalPage(activeInternalPage, workspace)}
             </WorkspaceShell>
+          )}
+          {workspace && (
+            <CoworkSearchModal
+              isOpen={isWorkspaceSearchOpen}
+              onClose={() => setIsWorkspaceSearchOpen(false)}
+              sessions={coworkSessions}
+              currentSessionId={currentCoworkSessionId}
+              onSelectSession={handleWorkspaceSearchSelect}
+            />
           )}
           {!workspace && isLoadingWorkspace && (
             <div className="flex min-h-full flex-1 items-center justify-center px-6 py-8 text-sm text-secondary">

@@ -9,18 +9,32 @@ import {
   XMarkIcon,
 } from '@heroicons/react/24/outline';
 import { ArrowUpIcon } from '@heroicons/react/24/solid';
-import { EnterpriseLeadAgentRole } from '@shared/enterpriseLeadWorkspace/constants';
+import {
+  EnterpriseLeadAgentRole,
+  EnterpriseLeadContentAgentRoles,
+} from '@shared/enterpriseLeadWorkspace/constants';
 import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
 
 import type {
   EnterpriseLeadWorkspace,
   EnterpriseLeadWorkspaceAgentBinding,
   EnterpriseLeadWorkspaceChatMessage,
-  EnterpriseLeadWorkspaceChatResearchResult,
+  EnterpriseLeadWorkspaceChatProgressEvent,
 } from '../../../shared/enterpriseLeadWorkspace/types';
 import { enterpriseLeadWorkspaceService } from '../../services/enterpriseLeadWorkspace';
 import { i18nService } from '../../services/i18n';
+import { TypingDots } from '../cowork/TypingDots';
 import { getAgentRoleLabel, getWorkspaceAgentDisplayName } from './enterpriseLeadWorkspaceUi';
+import {
+  deriveWorkspaceAiChatProcess,
+  deriveWorkspaceAiChatProcessFromProgressEvents,
+  deriveWorkspaceAiChatSuggestedActions,
+  WorkspaceAiChatProcess,
+  WorkspaceAiChatProcessStep,
+  WorkspaceAiChatProcessStepKind,
+  WorkspaceAiChatProcessStepStatus,
+  WorkspaceAiChatSuggestedAction,
+} from './workspaceAiChatProcess';
 import { isWorkspaceSettingReady } from './workspaceSettingsReadiness';
 
 interface WorkspaceAiChatProps {
@@ -28,6 +42,7 @@ interface WorkspaceAiChatProps {
   activeSessionId?: string | null;
   onSessionChange?: (sessionId: string | null) => void;
   onSessionsUpdated?: () => void;
+  onWorkspaceUpdated?: (workspace: EnterpriseLeadWorkspace) => void;
 }
 
 export interface AgentChoice {
@@ -69,25 +84,6 @@ export const getWorkspaceAiChatMessageRowClassName = (isUser: boolean, animate =
     .filter(Boolean)
     .join(' ');
 
-const getPendingDotStyle = (index: number): React.CSSProperties => ({
-  animationDelay: `${index * 120}ms`,
-  animationFillMode: 'both',
-});
-
-const getWorkspaceAiChatPendingStepClassName = (isMuted = false): string =>
-  [
-    'flex',
-    'min-h-7',
-    'items-center',
-    'gap-1.5',
-    'rounded-lg',
-    'px-2',
-    'text-xs',
-    'font-medium',
-    'leading-4',
-    isMuted ? 'bg-background/70 text-tertiary' : 'bg-primary/10 text-primary',
-  ].join(' ');
-
 const WORKSPACE_AI_CHAT_TYPEWRITER_INTERVAL_MS = 18;
 const WORKSPACE_AI_CHAT_TYPEWRITER_STEP = 2;
 
@@ -99,6 +95,14 @@ const WORKSPACE_AI_CHAT_ADJUSTMENT_REASONS = [
   'enterpriseLeadAiChatAdjustReasonTone',
   'enterpriseLeadAiChatAdjustReasonWrongAgent',
 ] as const;
+
+const WorkspaceAiChatAdjustmentApplyMode = {
+  Retry: 'retry',
+  AgentHabit: 'agent_habit',
+  WorkspaceHabit: 'workspace_habit',
+} as const;
+type WorkspaceAiChatAdjustmentApplyMode =
+  typeof WorkspaceAiChatAdjustmentApplyMode[keyof typeof WorkspaceAiChatAdjustmentApplyMode];
 
 export const getWorkspaceAiChatTypewriterText = (
   content: string,
@@ -128,6 +132,9 @@ const createLocalChatMessage = (
   createdAt,
 });
 
+const createWorkspaceAiChatProgressRequestId = (): string =>
+  `workspace-ai-chat-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
 export const buildWorkspaceAiChatRetryDraft = ({
   agentName,
   instruction,
@@ -139,6 +146,146 @@ export const buildWorkspaceAiChatRetryDraft = ({
     .t('enterpriseLeadAiChatAdjustRetryDraft')
     .replace('{agent}', agentName)
     .replace('{instruction}', instruction.trim());
+
+export const buildWorkspaceAiChatOutputPreferenceInstructions = (
+  existingInstructions: string[],
+  instruction: string,
+): string[] => Array.from(new Set([
+  ...existingInstructions.map(item => item.trim()).filter(Boolean),
+  instruction.trim(),
+].filter(Boolean)));
+
+const workspaceAiChatAgentHabitPromptPrefix = 'lobsterai-agent-output-habit';
+const workspaceAiChatAgentHabitPromptKey = 'instructions';
+
+const getWorkspaceAiChatAgentHabitPromptMarker = (end = false): string =>
+  `[[${end ? '/' : ''}${workspaceAiChatAgentHabitPromptPrefix}:${workspaceAiChatAgentHabitPromptKey}]]`;
+
+const readWorkspaceAiChatAgentHabitInstructions = (systemPrompt: string): string[] => {
+  const startMarker = getWorkspaceAiChatAgentHabitPromptMarker();
+  const endMarker = getWorkspaceAiChatAgentHabitPromptMarker(true);
+  const startIndex = systemPrompt.indexOf(startMarker);
+  if (startIndex < 0) return [];
+
+  const contentStartIndex = startIndex + startMarker.length;
+  const endIndex = systemPrompt.indexOf(endMarker, contentStartIndex);
+  if (endIndex < 0) return [];
+
+  return systemPrompt
+    .slice(contentStartIndex, endIndex)
+    .split('\n')
+    .map(line => line.match(/^-\s*(.+)$/)?.[1]?.trim() ?? '')
+    .filter(Boolean);
+};
+
+export const getWorkspaceAiChatAgentHabitInstructions = (
+  systemPrompt: string,
+): string[] => readWorkspaceAiChatAgentHabitInstructions(systemPrompt);
+
+const stripWorkspaceAiChatAgentHabitPrompt = (systemPrompt: string): string => {
+  const startMarker = getWorkspaceAiChatAgentHabitPromptMarker();
+  const endMarker = getWorkspaceAiChatAgentHabitPromptMarker(true);
+  const startIndex = systemPrompt.indexOf(startMarker);
+  if (startIndex < 0) return systemPrompt.trim();
+
+  const contentStartIndex = startIndex + startMarker.length;
+  const endIndex = systemPrompt.indexOf(endMarker, contentStartIndex);
+  if (endIndex < 0) return systemPrompt.trim();
+
+  return [
+    systemPrompt.slice(0, startIndex),
+    systemPrompt.slice(endIndex + endMarker.length),
+  ]
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+};
+
+export const buildWorkspaceAiChatAgentHabitPrompt = (
+  systemPrompt: string,
+  instruction: string,
+): string => {
+  const cleanedInstruction = instruction.trim();
+  if (!cleanedInstruction) {
+    return systemPrompt.trim();
+  }
+
+  const basePrompt = stripWorkspaceAiChatAgentHabitPrompt(systemPrompt);
+  const instructions = buildWorkspaceAiChatOutputPreferenceInstructions(
+    readWorkspaceAiChatAgentHabitInstructions(systemPrompt),
+    cleanedInstruction,
+  );
+  const habitPrompt = [
+    getWorkspaceAiChatAgentHabitPromptMarker(),
+    'Agent 执行习惯：',
+    ...instructions.map(item => `- ${item}`),
+    getWorkspaceAiChatAgentHabitPromptMarker(true),
+  ].join('\n');
+
+  return [basePrompt, habitPrompt].filter(Boolean).join('\n\n');
+};
+
+export const buildWorkspaceAiChatAgentHabitBindings = (
+  bindings: EnterpriseLeadWorkspaceAgentBinding[],
+  agentId: string,
+  instruction: string,
+): EnterpriseLeadWorkspaceAgentBinding[] =>
+  bindings.map(binding => {
+    if (binding.agentId !== agentId) {
+      return binding;
+    }
+
+    const systemPrompt = binding.overrides.systemPrompt ?? binding.systemPrompt ?? '';
+    return {
+      ...binding,
+      overrides: {
+        ...binding.overrides,
+        systemPrompt: buildWorkspaceAiChatAgentHabitPrompt(systemPrompt, instruction),
+      },
+    };
+  });
+
+export interface WorkspaceAiChatExecutionHabitSummary {
+  id: 'workspace' | 'agent';
+  count: number;
+  labelKey: string;
+}
+
+export const getWorkspaceAiChatExecutionHabitSummaries = (
+  workspace: EnterpriseLeadWorkspace,
+  selectedAgentId: string,
+): WorkspaceAiChatExecutionHabitSummary[] => {
+  const workspaceHabitCount = workspace.settings.outputPreferences?.instructions
+    .map(item => item.trim())
+    .filter(Boolean)
+    .length ?? 0;
+  const targetBindings = selectedAgentId
+    ? workspace.workspaceAgents.filter(binding => binding.agentId === selectedAgentId && binding.enabled)
+    : workspace.workspaceAgents.filter(binding => binding.enabled);
+  const agentInstructions = new Set(
+    targetBindings.flatMap(binding =>
+      readWorkspaceAiChatAgentHabitInstructions(
+        binding.overrides.systemPrompt ?? binding.systemPrompt ?? '',
+      )),
+  );
+
+  return [
+    workspaceHabitCount > 0
+      ? {
+          id: 'workspace' as const,
+          count: workspaceHabitCount,
+          labelKey: 'enterpriseLeadAiChatCapabilityWorkspaceHabits',
+        }
+      : null,
+    agentInstructions.size > 0
+      ? {
+          id: 'agent' as const,
+          count: agentInstructions.size,
+          labelKey: 'enterpriseLeadAiChatCapabilityAgentHabits',
+        }
+      : null,
+  ].filter((summary): summary is WorkspaceAiChatExecutionHabitSummary => Boolean(summary));
+};
 
 export const getSortedAgentChoices = (
   bindings: EnterpriseLeadWorkspaceAgentBinding[],
@@ -168,9 +315,14 @@ const isEnterpriseLeadAgentRole = (role: string): role is EnterpriseLeadAgentRol
   Object.values(EnterpriseLeadAgentRole).includes(role as EnterpriseLeadAgentRole);
 
 const buildDefaultWorkspaceAgentBindings = (
-  roles: EnterpriseLeadWorkspace['enabledAgentRoles'],
-): EnterpriseLeadWorkspaceAgentBinding[] =>
-  roles.filter(isEnterpriseLeadAgentRole).map((role, order) => {
+  roles: readonly string[],
+): EnterpriseLeadWorkspaceAgentBinding[] => {
+  const normalizedRoles = roles.filter(isEnterpriseLeadAgentRole);
+  const defaultRoles = normalizedRoles.length > 0
+    ? normalizedRoles
+    : [...EnterpriseLeadContentAgentRoles];
+
+  return defaultRoles.map((role, order) => {
     const metadata = getAgentRoleLabel(role);
 
     return {
@@ -184,54 +336,202 @@ const buildDefaultWorkspaceAgentBindings = (
       },
     };
   });
-
-const getResearchStatusLabelKey = (
-  status: EnterpriseLeadWorkspaceChatResearchResult['status'],
-): string => {
-  if (status === 'completed') {
-    return 'enterpriseLeadAiChatResearchCompleted';
-  }
-
-  if (status === 'failed') {
-    return 'enterpriseLeadAiChatResearchFailed';
-  }
-
-  return 'enterpriseLeadAiChatResearchSkipped';
 };
 
-const getResearchStatusClassName = (
-  status: EnterpriseLeadWorkspaceChatResearchResult['status'],
-): string => {
-  if (status === 'completed') {
+const getProcessStatusClassName = (status: WorkspaceAiChatProcessStepStatus): string => {
+  if (status === WorkspaceAiChatProcessStepStatus.Completed) {
     return 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300';
   }
 
-  if (status === 'failed') {
+  if (status === WorkspaceAiChatProcessStepStatus.Failed) {
     return 'bg-red-500/10 text-red-700 dark:text-red-300';
   }
 
-  return 'bg-slate-500/10 text-slate-600 dark:text-slate-300';
+  if (status === WorkspaceAiChatProcessStepStatus.Skipped) {
+    return 'bg-slate-500/10 text-slate-600 dark:text-slate-300';
+  }
+
+  return 'bg-primary/10 text-primary';
 };
 
-const ResearchStatusChip: React.FC<{
-  research: EnterpriseLeadWorkspaceChatResearchResult;
-}> = ({ research }) => (
-  <div className="mt-2 flex flex-wrap items-center gap-2">
-    <span
-      className={`rounded-md px-2 py-0.5 text-xs font-medium ${getResearchStatusClassName(research.status)}`}
-    >
-      {i18nService.t(getResearchStatusLabelKey(research.status))}
-    </span>
-    {research.provider ? (
-      <span className="rounded-md bg-surface-raised px-2 py-0.5 text-xs text-tertiary">
-        {research.provider}
+const getProcessStepIcon = (
+  step: WorkspaceAiChatProcessStep,
+): React.ComponentType<React.SVGProps<SVGSVGElement>> => {
+  if (step.status === WorkspaceAiChatProcessStepStatus.Failed) {
+    return ExclamationTriangleIcon;
+  }
+
+  if (step.status === WorkspaceAiChatProcessStepStatus.Completed) {
+    return CheckIcon;
+  }
+
+  if (step.kind === WorkspaceAiChatProcessStepKind.Research) {
+    return MagnifyingGlassIcon;
+  }
+
+  return SparklesIcon;
+};
+
+const WorkspaceAiChatProcessStepRow: React.FC<{
+  step: WorkspaceAiChatProcessStep;
+}> = ({ step }) => {
+  const Icon = getProcessStepIcon(step);
+
+  return (
+    <li className="flex gap-2">
+      <span
+        className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full ${getProcessStatusClassName(
+          step.status,
+        )}`}
+      >
+        <Icon className="h-3.5 w-3.5" />
       </span>
-    ) : null}
-    {research.summary ? (
-      <span className="min-w-0 text-xs leading-5 text-secondary">{research.summary}</span>
-    ) : null}
+      <span className="min-w-0 flex-1">
+        <span className="block text-xs font-medium leading-5 text-foreground">
+          {step.title ?? (step.titleKey ? i18nService.t(step.titleKey) : '')}
+          {step.agentName ? (
+            <span className="font-normal text-secondary"> · {step.agentName}</span>
+          ) : null}
+        </span>
+        <span className="block whitespace-pre-wrap break-words text-xs leading-5 text-secondary">
+          {step.detail || i18nService.t('enterpriseLeadAiChatProcessNoDetails')}
+        </span>
+      </span>
+    </li>
+  );
+};
+
+const WorkspaceAiChatProcessPanel: React.FC<{
+  id: string;
+  process: WorkspaceAiChatProcess;
+}> = ({ id, process }) => (
+  <div
+    id={id}
+    className="mt-2 rounded-lg border border-border/70 bg-surface-raised/70 px-3 py-2"
+  >
+    <p className="text-xs font-medium leading-5 text-foreground">
+      {i18nService.t('enterpriseLeadAiChatProcessTitle')}
+    </p>
+    <ol className="mt-2 space-y-2">
+      {process.steps.map(step => (
+        <WorkspaceAiChatProcessStepRow key={step.id} step={step} />
+      ))}
+    </ol>
   </div>
 );
+
+const WorkspaceAiChatProcessSummary: React.FC<{
+  process: WorkspaceAiChatProcess;
+  isExpanded: boolean;
+  panelId: string;
+  onToggle: () => void;
+}> = ({ process, isExpanded, panelId, onToggle }) => {
+  const stepCountLabel = i18nService
+    .t('enterpriseLeadAiChatProcessStepCount')
+    .replace('{count}', String(process.steps.length));
+
+  return (
+    <button
+      type="button"
+      aria-expanded={isExpanded}
+      aria-controls={panelId}
+      onClick={onToggle}
+      className="inline-flex max-w-full items-center gap-1.5 rounded-md bg-surface-raised px-2 py-0.5 font-medium text-secondary transition-colors hover:bg-background hover:text-foreground"
+    >
+      <ChevronDownIcon
+        className={`h-3.5 w-3.5 shrink-0 transition-transform ${
+          isExpanded ? 'rotate-180' : ''
+        }`}
+      />
+      <span>{i18nService.t('enterpriseLeadAiChatProcessToggle')}</span>
+      <span className="text-tertiary">·</span>
+      <span>{stepCountLabel}</span>
+      <span className="text-tertiary">·</span>
+      <span className="truncate">{i18nService.t(process.summaryKey)}</span>
+    </button>
+  );
+};
+
+const WorkspaceAiChatSuggestedActions: React.FC<{
+  actions: WorkspaceAiChatSuggestedAction[];
+  onAction: (draft: string) => void;
+}> = ({ actions, onAction }) => {
+  if (actions.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="mt-2 flex flex-wrap gap-1.5">
+      {actions.map(action => (
+        <button
+          key={action.kind}
+          type="button"
+          onClick={() => onAction(i18nService.t(action.draftKey))}
+          className="rounded-md border border-border/70 bg-surface px-2 py-1 text-xs font-medium leading-4 text-secondary transition-colors hover:border-primary/30 hover:bg-primary/10 hover:text-primary"
+        >
+          {i18nService.t(action.labelKey)}
+        </button>
+      ))}
+    </div>
+  );
+};
+
+const getWorkspaceAiChatQualityStatusKeys = (
+  message: EnterpriseLeadWorkspaceChatMessage,
+): string[] => {
+  const keys: string[] = [];
+  const agents = message.routing?.agents.length
+    ? message.routing.agents
+    : message.agent
+      ? [message.agent]
+      : [];
+  const hasRiskReview = agents.some(agent =>
+    /risk|风控|审核/i.test(`${agent.id} ${agent.name}`),
+  );
+
+  if (message.content.trim()) {
+    keys.push('enterpriseLeadAiChatQualityCopyReady');
+  }
+  if (agents.length > 1) {
+    keys.push('enterpriseLeadAiChatQualityMultiAgent');
+  }
+  if (hasRiskReview) {
+    keys.push('enterpriseLeadAiChatQualityRiskChecked');
+  }
+  if (message.research?.status === 'completed') {
+    keys.push('enterpriseLeadAiChatQualityResearchCompleted');
+  }
+  if (message.research?.status === 'failed') {
+    keys.push('enterpriseLeadAiChatQualityResearchLimited');
+  }
+
+  return Array.from(new Set(keys));
+};
+
+const WorkspaceAiChatQualityStatus: React.FC<{
+  message: EnterpriseLeadWorkspaceChatMessage;
+}> = ({ message }) => {
+  const statusKeys = getWorkspaceAiChatQualityStatusKeys(message);
+  if (statusKeys.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="mt-2 flex min-w-0 flex-wrap items-center gap-1.5 text-xs leading-5">
+      <span className="shrink-0 font-medium text-tertiary">
+        {i18nService.t('enterpriseLeadAiChatQualityLabel')}
+      </span>
+      {statusKeys.map(statusKey => (
+        <span
+          key={statusKey}
+          className="inline-flex items-center rounded-md border border-emerald-500/15 bg-emerald-500/10 px-2 py-0.5 font-medium text-emerald-700 dark:text-emerald-300"
+        >
+          {i18nService.t(statusKey)}
+        </span>
+      ))}
+    </div>
+  );
+};
 
 interface TypewriterMessageTextProps {
   content: string;
@@ -321,6 +621,7 @@ interface WorkspaceAiChatMessageRowProps {
   animate?: boolean;
   typewriter?: boolean;
   onTypewriterComplete?: () => void;
+  onSuggestedActionDraft?: (draft: string) => void;
   onAdjustAgent?: (message: EnterpriseLeadWorkspaceChatMessage) => void;
 }
 
@@ -329,15 +630,27 @@ export const WorkspaceAiChatMessageRow: React.FC<WorkspaceAiChatMessageRowProps>
   animate = true,
   typewriter = false,
   onTypewriterComplete,
+  onSuggestedActionDraft,
   onAdjustAgent,
 }) => {
   const isUser = message.role === 'user';
-  const attributedAgents = message.routing?.agents.length
-    ? message.routing.agents
-    : message.agent
-      ? [message.agent]
-      : [];
-  const attributedAgentLabel = attributedAgents.map(agent => agent.name).join(' + ');
+  const suggestedActions = useMemo(
+    () => (isUser ? [] : deriveWorkspaceAiChatSuggestedActions(message)),
+    [isUser, message],
+  );
+  const process = useMemo(
+    () => (isUser ? null : deriveWorkspaceAiChatProcess(message)),
+    [isUser, message],
+  );
+  const [isProcessExpanded, setIsProcessExpanded] = useState(process?.defaultExpanded ?? false);
+  const processPanelId = useId();
+
+  useEffect(() => {
+    setIsProcessExpanded(process?.defaultExpanded ?? false);
+  }, [process?.defaultExpanded, process?.steps.length]);
+
+  const agentLabel = process?.agentLabel;
+  const canAdjustAgent = Boolean(agentLabel && onAdjustAgent);
 
   return (
     <article className={getWorkspaceAiChatMessageRowClassName(isUser, animate)}>
@@ -351,28 +664,45 @@ export const WorkspaceAiChatMessageRow: React.FC<WorkspaceAiChatMessageRowProps>
           isActive={typewriter}
           onComplete={onTypewriterComplete}
         />
-        {!isUser && message.research ? <ResearchStatusChip research={message.research} /> : null}
-        {!isUser && attributedAgents.length > 0 ? (
-          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs leading-5 text-secondary">
-            <span className="rounded-md bg-primary/10 px-2 py-0.5 font-medium text-primary">
-              {i18nService
-                .t('enterpriseLeadAiChatUsedAgent')
-                .replace('{agent}', attributedAgentLabel)}
-            </span>
-            {message.routing?.reason ? (
-              <span className="rounded-md bg-surface-raised px-2 py-0.5 text-secondary">
-                {i18nService
-                  .t('enterpriseLeadAiChatRouteReason')
-                  .replace('{reason}', message.routing.reason)}
-              </span>
+        {!isUser && onSuggestedActionDraft ? (
+          <WorkspaceAiChatSuggestedActions
+            actions={suggestedActions}
+            onAction={onSuggestedActionDraft}
+          />
+        ) : null}
+        {!isUser ? <WorkspaceAiChatQualityStatus message={message} /> : null}
+        {!isUser && (agentLabel || process || canAdjustAgent) ? (
+          <div className="mt-2 flex flex-col gap-2 text-xs leading-5 text-secondary">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              {agentLabel ? (
+                <span className="inline-flex max-w-full items-center gap-1.5 rounded-md bg-surface-raised px-2 py-0.5 font-medium text-secondary">
+                  <SparklesIcon className="h-3.5 w-3.5 shrink-0" />
+                  <span className="truncate">
+                    {i18nService.t('enterpriseLeadAiChatUsedAgent').replace('{agent}', agentLabel)}
+                  </span>
+                </span>
+              ) : null}
+              {process ? (
+                <WorkspaceAiChatProcessSummary
+                  process={process}
+                  isExpanded={isProcessExpanded}
+                  panelId={processPanelId}
+                  onToggle={() => setIsProcessExpanded(current => !current)}
+                />
+              ) : null}
+              {canAdjustAgent ? (
+                <button
+                  type="button"
+                  onClick={() => onAdjustAgent?.(message)}
+                  className="inline-flex items-center rounded-md px-2 py-0.5 font-medium text-primary transition-colors hover:bg-primary/10"
+                >
+                  {i18nService.t('enterpriseLeadAiChatAdjustAgent')}
+                </button>
+              ) : null}
+            </div>
+            {process && isProcessExpanded ? (
+              <WorkspaceAiChatProcessPanel id={processPanelId} process={process} />
             ) : null}
-            <button
-              type="button"
-              onClick={() => onAdjustAgent?.(message)}
-              className="rounded-md px-2 py-0.5 font-medium text-secondary transition-colors hover:bg-surface-raised hover:text-foreground"
-            >
-              {i18nService.t('enterpriseLeadAiChatAdjustAgent')}
-            </button>
           </div>
         ) : null}
       </div>
@@ -385,11 +715,75 @@ export const WorkspaceAiChatAdjustmentDrawer: React.FC<{
   messageContent: string;
   onClose: () => void;
   onRetry: (draft: string) => void;
-}> = ({ agentName, messageContent, onClose, onRetry }) => {
+  onSaveAgentHabit?: (instruction: string) => Promise<void> | void;
+  onSaveWorkspaceHabit?: (instruction: string) => Promise<void> | void;
+}> = ({ agentName, messageContent, onClose, onRetry, onSaveAgentHabit, onSaveWorkspaceHabit }) => {
   const [instruction, setInstruction] = useState('');
   const [selectedReason, setSelectedReason] = useState('');
+  const [applyMode, setApplyMode] = useState<WorkspaceAiChatAdjustmentApplyMode>(
+    WorkspaceAiChatAdjustmentApplyMode.Retry,
+  );
+  const [isSavingWorkspaceHabit, setIsSavingWorkspaceHabit] = useState(false);
+  const [saveError, setSaveError] = useState('');
   const effectiveInstruction = instruction.trim() || selectedReason;
   const canRetry = effectiveInstruction.trim().length > 0;
+  const shouldSaveWorkspaceHabit =
+    applyMode === WorkspaceAiChatAdjustmentApplyMode.WorkspaceHabit && Boolean(onSaveWorkspaceHabit);
+  const shouldSaveAgentHabit =
+    applyMode === WorkspaceAiChatAdjustmentApplyMode.AgentHabit && Boolean(onSaveAgentHabit);
+  const applyOptions: Array<{
+    mode: WorkspaceAiChatAdjustmentApplyMode;
+    titleKey: string;
+    descriptionKey: string;
+  }> = [
+    {
+      mode: WorkspaceAiChatAdjustmentApplyMode.Retry,
+      titleKey: 'enterpriseLeadAiChatAdjustRetryOnly',
+      descriptionKey: 'enterpriseLeadAiChatAdjustRetryOnlyDesc',
+    },
+    ...(onSaveAgentHabit
+      ? [{
+          mode: WorkspaceAiChatAdjustmentApplyMode.AgentHabit,
+          titleKey: 'enterpriseLeadAiChatAdjustSaveAgentHabit',
+          descriptionKey: 'enterpriseLeadAiChatAdjustSaveAgentHabitDesc',
+        }]
+      : []),
+    {
+      mode: WorkspaceAiChatAdjustmentApplyMode.WorkspaceHabit,
+      titleKey: 'enterpriseLeadAiChatAdjustSaveHabit',
+      descriptionKey: 'enterpriseLeadAiChatAdjustSaveHabitDesc',
+    },
+  ];
+
+  const handleApply = async (): Promise<void> => {
+    if (!canRetry || isSavingWorkspaceHabit) return;
+
+    const trimmedInstruction = effectiveInstruction.trim();
+    const retryDraft = buildWorkspaceAiChatRetryDraft({
+      agentName,
+      instruction: trimmedInstruction,
+    });
+
+    if (!shouldSaveWorkspaceHabit && !shouldSaveAgentHabit) {
+      onRetry(retryDraft);
+      return;
+    }
+
+    setIsSavingWorkspaceHabit(true);
+    setSaveError('');
+    try {
+      if (shouldSaveAgentHabit) {
+        await onSaveAgentHabit?.(trimmedInstruction);
+      } else {
+        await onSaveWorkspaceHabit?.(trimmedInstruction);
+      }
+      onRetry(retryDraft);
+    } catch {
+      setSaveError(i18nService.t('enterpriseLeadAiChatAdjustSaveHabitFailed'));
+    } finally {
+      setIsSavingWorkspaceHabit(false);
+    }
+  };
 
   return (
     <aside
@@ -465,11 +859,46 @@ export const WorkspaceAiChatAdjustmentDrawer: React.FC<{
           <p className="text-xs font-medium text-secondary">
             {i18nService.t('enterpriseLeadAiChatAdjustApplyTo')}
           </p>
-          <p className="mt-1 text-sm font-medium text-foreground">
-            {i18nService.t('enterpriseLeadAiChatAdjustRetryOnly')}
-          </p>
+          <div className="mt-2 grid gap-2">
+            {applyOptions.map(option => {
+              const isSelected = applyMode === option.mode;
+              return (
+                <button
+                  key={option.mode}
+                  type="button"
+                  onClick={() => setApplyMode(option.mode)}
+                  className={`grid grid-cols-[auto,minmax(0,1fr)] gap-2 rounded-lg border px-3 py-2 text-left transition-colors ${
+                    isSelected
+                      ? 'border-primary/30 bg-primary/10 text-primary'
+                      : 'border-border text-secondary hover:bg-surface-raised hover:text-foreground'
+                  }`}
+                >
+                  <span
+                    className={`mt-0.5 flex h-4 w-4 items-center justify-center rounded-full border ${
+                      isSelected ? 'border-primary bg-primary text-primary-foreground' : 'border-border'
+                    }`}
+                  >
+                    {isSelected ? <CheckIcon className="h-3 w-3" /> : null}
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block text-sm font-medium">
+                      {i18nService.t(option.titleKey)}
+                    </span>
+                    <span className="mt-0.5 block text-xs leading-5 text-secondary">
+                      {i18nService.t(option.descriptionKey)}
+                    </span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
           <p className="mt-2 line-clamp-3 text-xs leading-5 text-secondary">{messageContent}</p>
         </div>
+        {saveError ? (
+          <div className="rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs leading-5 text-red-700 dark:text-red-300">
+            {saveError}
+          </div>
+        ) : null}
       </div>
 
       <div className="flex shrink-0 items-center justify-end gap-2 border-t border-border px-5 py-3">
@@ -482,19 +911,19 @@ export const WorkspaceAiChatAdjustmentDrawer: React.FC<{
         </button>
         <button
           type="button"
-          disabled={!canRetry}
+          disabled={!canRetry || isSavingWorkspaceHabit}
           onClick={() => {
-            if (!canRetry) return;
-            onRetry(
-              buildWorkspaceAiChatRetryDraft({
-                agentName,
-                instruction: effectiveInstruction,
-              }),
-            );
+            void handleApply();
           }}
           className="h-9 rounded-lg bg-primary px-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {i18nService.t('enterpriseLeadAiChatAdjustRetry')}
+          {isSavingWorkspaceHabit
+            ? i18nService.t('enterpriseLeadAiChatAdjustSavingHabit')
+            : i18nService.t(
+              shouldSaveWorkspaceHabit || shouldSaveAgentHabit
+                ? 'enterpriseLeadAiChatAdjustSaveAndRetry'
+                : 'enterpriseLeadAiChatAdjustRetry',
+            )}
         </button>
       </div>
     </aside>
@@ -503,71 +932,51 @@ export const WorkspaceAiChatAdjustmentDrawer: React.FC<{
 
 interface WorkspaceAiChatPendingRowProps {
   isResearchEnabled?: boolean;
+  progressEvents?: EnterpriseLeadWorkspaceChatProgressEvent[];
 }
 
 export const WorkspaceAiChatPendingRow: React.FC<WorkspaceAiChatPendingRowProps> = ({
-  isResearchEnabled = true,
+  progressEvents,
 }) => {
-  const steps = [
-    {
-      key: 'agent',
-      label: i18nService.t('enterpriseLeadAiChatPendingAgent'),
-      muted: false,
-    },
-    {
-      key: 'research',
-      label: i18nService.t(
-        isResearchEnabled
-          ? 'enterpriseLeadAiChatPendingResearch'
-          : 'enterpriseLeadAiChatPendingResearchSkipped',
-      ),
-      muted: !isResearchEnabled,
-    },
-    {
-      key: 'generation',
-      label: i18nService.t('enterpriseLeadAiChatPendingGenerate'),
-      muted: false,
-    },
-  ];
+  const process = useMemo(
+    () => deriveWorkspaceAiChatProcessFromProgressEvents(progressEvents),
+    [progressEvents],
+  );
+  const [isProcessExpanded, setIsProcessExpanded] = useState(process?.defaultExpanded ?? false);
+  const processPanelId = useId();
+
+  useEffect(() => {
+    setIsProcessExpanded(process?.defaultExpanded ?? false);
+  }, [process?.defaultExpanded, process?.steps.length]);
 
   return (
     <article aria-live="polite" className={getWorkspaceAiChatMessageRowClassName(false)}>
-      <div className="max-w-[min(560px,88%)] rounded-2xl px-3 py-2 text-foreground">
-        <div className="rounded-2xl bg-surface-raised px-3 py-3 text-sm leading-6 text-secondary shadow-subtle">
-          <div className="inline-flex items-center gap-2">
-            <span className="font-medium text-foreground">
+      <div className="max-w-[min(520px,88%)] px-3 py-2 text-foreground">
+        <div className="text-sm leading-6 text-secondary">
+          <div className="inline-flex items-center gap-2 text-secondary">
+            <span className="font-medium text-foreground/90">
               {i18nService.t('enterpriseLeadAiChatThinking')}
             </span>
-            <span className="flex items-center gap-1" aria-hidden="true">
-              {[0, 1, 2].map(index => (
-                <span
-                  key={index}
-                  className="h-1.5 w-1.5 rounded-full bg-secondary/70 animate-bounce motion-reduce:animate-pulse"
-                  style={getPendingDotStyle(index)}
-                />
-              ))}
-            </span>
+            <TypingDots />
           </div>
-          <ol className="mt-2 flex flex-wrap gap-1.5">
-            {steps.map((step, index) => (
-              <li key={step.key} className={getWorkspaceAiChatPendingStepClassName(step.muted)}>
-                <span
-                  className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[10px] ${
-                    step.muted ? 'bg-surface-raised text-tertiary' : 'bg-primary/15 text-primary'
-                  }`}
-                >
-                  {index + 1}
-                </span>
-                <span>{step.label}</span>
-              </li>
-            ))}
-          </ol>
+          {process ? (
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs leading-5 text-secondary">
+              <WorkspaceAiChatProcessSummary
+                process={process}
+                isExpanded={isProcessExpanded}
+                panelId={processPanelId}
+                onToggle={() => setIsProcessExpanded(current => !current)}
+              />
+            </div>
+          ) : null}
+          {process && isProcessExpanded ? (
+            <WorkspaceAiChatProcessPanel id={processPanelId} process={process} />
+          ) : null}
         </div>
       </div>
     </article>
   );
 };
-
 interface WorkspaceAiChatAgentPickerProps {
   choices: AgentChoice[];
   selectedAgentId: string;
@@ -713,15 +1122,18 @@ export const WorkspaceAiChat: React.FC<WorkspaceAiChatProps> = ({
   activeSessionId = null,
   onSessionChange,
   onSessionsUpdated,
+  onWorkspaceUpdated,
 }) => {
   const [messages, setMessages] = useState<EnterpriseLeadWorkspaceChatMessage[]>([]);
   const [draftMessage, setDraftMessage] = useState('');
   const [selectedAgentId, setSelectedAgentId] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState('');
+  const [liveProgressEvents, setLiveProgressEvents] = useState<
+    EnterpriseLeadWorkspaceChatProgressEvent[]
+  >([]);
   const [typewriterMessageId, setTypewriterMessageId] = useState<string | null>(null);
-  const [adjustingMessage, setAdjustingMessage] =
-    useState<EnterpriseLeadWorkspaceChatMessage | null>(null);
+  const [adjustingMessage, setAdjustingMessage] = useState<EnterpriseLeadWorkspaceChatMessage | null>(null);
   const requestTokenRef = useRef<WorkspaceAiChatRequestToken>({
     requestId: 0,
     workspaceId: workspace.id,
@@ -743,6 +1155,16 @@ export const WorkspaceAiChat: React.FC<WorkspaceAiChatProps> = ({
     () => isWorkspaceSettingReady(workspace.settings, 'research'),
     [workspace.settings],
   );
+  const executionHabitSummaries = useMemo(
+    () => getWorkspaceAiChatExecutionHabitSummaries(
+      {
+        ...workspace,
+        workspaceAgents: workspaceAgentBindings,
+      },
+      selectedAgentId,
+    ),
+    [selectedAgentId, workspace, workspaceAgentBindings],
+  );
 
   useEffect(() => {
     const sessionId = activeSessionId ?? null;
@@ -755,6 +1177,7 @@ export const WorkspaceAiChat: React.FC<WorkspaceAiChatProps> = ({
     setError('');
     setSelectedAgentId('');
     setIsSending(false);
+    setLiveProgressEvents([]);
     setTypewriterMessageId(null);
     setAdjustingMessage(null);
 
@@ -801,6 +1224,15 @@ export const WorkspaceAiChat: React.FC<WorkspaceAiChatProps> = ({
 
   const trimmedMessage = draftMessage.trim();
   const canSend = Boolean(trimmedMessage) && !isSending;
+  const adjustingAgentName = adjustingMessage
+    ? adjustingMessage.agent?.name
+      ?? deriveWorkspaceAiChatProcess(adjustingMessage)?.agentLabel
+      ?? i18nService.t('enterpriseLeadAiChatAgentAll')
+    : '';
+  const adjustingAgentId = adjustingMessage?.agent?.id ?? '';
+  const canSaveAdjustingAgentHabit =
+    Boolean(adjustingAgentId) &&
+    workspaceAgentBindings.some(binding => binding.agentId === adjustingAgentId);
 
   const handleSend = async (): Promise<void> => {
     const messageToSend = draftMessage.trim();
@@ -825,9 +1257,21 @@ export const WorkspaceAiChat: React.FC<WorkspaceAiChatProps> = ({
     setDraftMessage('');
     setError('');
     setIsSending(true);
+    setLiveProgressEvents([]);
+    const progressRequestId = createWorkspaceAiChatProgressRequestId();
+    const unsubscribeProgress = enterpriseLeadWorkspaceService.onChatProgress(
+      progressRequestId,
+      progressEvent => {
+        if (!isCurrentRequest()) {
+          return;
+        }
+        setLiveProgressEvents(previous => [...previous, progressEvent]);
+      },
+    );
 
     try {
       const responsePromise = enterpriseLeadWorkspaceService.chat(workspace.id, {
+        requestId: progressRequestId,
         message: messageToSend,
         sessionId: sessionId || undefined,
         targetAgentId: selectedAgentId || undefined,
@@ -863,8 +1307,10 @@ export const WorkspaceAiChat: React.FC<WorkspaceAiChatProps> = ({
         setError(i18nService.t('enterpriseLeadAiChatFailed'));
       }
     } finally {
+      unsubscribeProgress();
       if (isCurrentRequest()) {
         setIsSending(false);
+        setLiveProgressEvents([]);
       }
     }
   };
@@ -872,6 +1318,45 @@ export const WorkspaceAiChat: React.FC<WorkspaceAiChatProps> = ({
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>): void => {
     event.preventDefault();
     void handleSend();
+  };
+
+  const handleSaveWorkspaceOutputHabit = async (instruction: string): Promise<void> => {
+    const nextInstructions = buildWorkspaceAiChatOutputPreferenceInstructions(
+      workspace.settings.outputPreferences?.instructions ?? [],
+      instruction,
+    );
+    const updatedWorkspace = await enterpriseLeadWorkspaceService.updateWorkspaceSettings(
+      workspace.id,
+      {
+        settings: {
+          outputPreferences: {
+            instructions: nextInstructions,
+          },
+        },
+      },
+    );
+
+    if (!updatedWorkspace) {
+      throw new Error('workspace output preference save failed');
+    }
+
+    onWorkspaceUpdated?.(updatedWorkspace);
+  };
+
+  const handleSaveAgentOutputHabit = async (
+    agentId: string,
+    instruction: string,
+  ): Promise<void> => {
+    const updatedWorkspace = await enterpriseLeadWorkspaceService.updateWorkspaceAgents(
+      workspace.id,
+      buildWorkspaceAiChatAgentHabitBindings(workspaceAgentBindings, agentId, instruction),
+    );
+
+    if (!updatedWorkspace) {
+      throw new Error('workspace Agent output habit save failed');
+    }
+
+    onWorkspaceUpdated?.(updatedWorkspace);
   };
 
   const renderComposer = (compact = false): React.ReactElement => {
@@ -956,6 +1441,14 @@ export const WorkspaceAiChat: React.FC<WorkspaceAiChatProps> = ({
               <BookOpenIcon className="h-4 w-4 shrink-0" />
               {i18nService.t('enterpriseLeadAiChatCapabilityKnowledge')}
             </span>
+            {executionHabitSummaries.map(summary => (
+              <span key={summary.id} className={contextControlClassName}>
+                <SparklesIcon className="h-4 w-4 shrink-0" />
+                {i18nService
+                  .t(summary.labelKey)
+                  .replace('{count}', String(summary.count))}
+              </span>
+            ))}
           </div>
         </div>
       </form>
@@ -984,13 +1477,19 @@ export const WorkspaceAiChat: React.FC<WorkspaceAiChatProps> = ({
                 message={message}
                 animate={index === messages.length - 1}
                 typewriter={message.id === typewriterMessageId}
+                onSuggestedActionDraft={setDraftMessage}
                 onAdjustAgent={setAdjustingMessage}
                 onTypewriterComplete={() => {
                   setTypewriterMessageId(current => (current === message.id ? null : current));
                 }}
               />
             ))}
-            {isSending ? <WorkspaceAiChatPendingRow isResearchEnabled={isResearchEnabled} /> : null}
+            {isSending ? (
+              <WorkspaceAiChatPendingRow
+                isResearchEnabled={isResearchEnabled}
+                progressEvents={liveProgressEvents}
+              />
+            ) : null}
           </div>
         ) : (
           <div className="relative flex min-h-full w-full min-w-[320px] flex-col items-center justify-center px-6 py-10 text-center">
@@ -1024,17 +1523,30 @@ export const WorkspaceAiChat: React.FC<WorkspaceAiChatProps> = ({
         <div className="shrink-0 bg-background px-5 pb-[18px] pt-3">{renderComposer(true)}</div>
       ) : null}
 
-      {adjustingMessage?.agent ? (
+      {adjustingMessage ? (
         <WorkspaceAiChatAdjustmentDrawer
-          agentName={adjustingMessage.agent.name}
+          agentName={adjustingAgentName}
           messageContent={adjustingMessage.content}
           onClose={() => setAdjustingMessage(null)}
-          onRetry={draft => {
+          onRetry={(draft) => {
             setDraftMessage(draft);
+            if (
+              adjustingMessage.agent?.id &&
+              agentChoices.some(choice => choice.id === adjustingMessage.agent?.id)
+            ) {
+              setSelectedAgentId(adjustingMessage.agent.id);
+            }
             setAdjustingMessage(null);
           }}
+          onSaveAgentHabit={
+            canSaveAdjustingAgentHabit
+              ? instruction => handleSaveAgentOutputHabit(adjustingAgentId, instruction)
+              : undefined
+          }
+          onSaveWorkspaceHabit={handleSaveWorkspaceOutputHabit}
         />
       ) : null}
+
     </div>
   );
 };

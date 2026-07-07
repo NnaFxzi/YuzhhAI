@@ -7,7 +7,6 @@ export { WorkspaceAiChat } from './WorkspaceAiChat';
 export { WorkspaceCreationRecords } from './WorkspaceCreationRecords';
 export { WorkspaceEntryHome } from './WorkspaceEntryHome';
 export { WorkspaceKnowledgeBase } from './WorkspaceKnowledgeBase';
-export { WorkspaceSettings } from './WorkspaceSettings';
 export { WorkspaceShell } from './WorkspaceShell';
 export { WorkspaceStart } from './WorkspaceStart';
 export { WorkspaceWorkbench } from './WorkspaceWorkbench';

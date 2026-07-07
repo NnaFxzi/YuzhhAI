@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
 import { IpcChannel as ScheduledTaskIpc } from '../scheduledTask/constants';
+import type { AgentResponseContract } from '../shared/agent';
 import { AgentIpcChannel } from '../shared/agent/constants';
 import type { DomesticResearchConfig } from '../shared/agent/domesticResearch';
 import type {
@@ -24,7 +25,10 @@ import { DataMigrationIpc } from '../shared/dataMigration/constants';
 import { DialogIpc } from '../shared/dialog/constants';
 import { EnterpriseLeadWorkspaceIpc } from '../shared/enterpriseLeadWorkspace/constants';
 import type {
+  EnterpriseLeadExtractionSource,
   EnterpriseLeadWorkspaceAgentBinding,
+  EnterpriseLeadWorkspaceAgentCalibrationRequest,
+  EnterpriseLeadWorkspaceChatProgressEvent,
   EnterpriseLeadWorkspaceChatRequest,
   EnterpriseLeadWorkspaceDraft,
   EnterpriseLeadWorkspaceProfile,
@@ -206,6 +210,14 @@ contextBridge.exposeInMainWorld('electron', {
         workspaceId,
         profile,
       }),
+    updateWorkspaceSources: (
+      workspaceId: string,
+      sources: EnterpriseLeadExtractionSource[],
+    ) =>
+      ipcRenderer.invoke(EnterpriseLeadWorkspaceIpc.UpdateWorkspaceSources, {
+        workspaceId,
+        sources,
+      }),
     updateWorkspaceSettings: (
       workspaceId: string,
       settings: EnterpriseLeadWorkspaceSettingsUpdate,
@@ -232,6 +244,20 @@ contextBridge.exposeInMainWorld('electron', {
       ipcRenderer.invoke(EnterpriseLeadWorkspaceIpc.DeleteChatSession, { workspaceId, sessionId }),
     chat: (workspaceId: string, request: EnterpriseLeadWorkspaceChatRequest) =>
       ipcRenderer.invoke(EnterpriseLeadWorkspaceIpc.Chat, { workspaceId, request }),
+    onChatProgress: (
+      requestId: string,
+      callback: (event: EnterpriseLeadWorkspaceChatProgressEvent) => void,
+    ) => {
+      const handler = (_event: unknown, progressEvent: EnterpriseLeadWorkspaceChatProgressEvent) =>
+        progressEvent.requestId === requestId ? callback(progressEvent) : undefined;
+      ipcRenderer.on(EnterpriseLeadWorkspaceIpc.ChatProgress, handler);
+      return () => ipcRenderer.removeListener(EnterpriseLeadWorkspaceIpc.ChatProgress, handler);
+    },
+    testWorkspaceAgent: (
+      workspaceId: string,
+      request: EnterpriseLeadWorkspaceAgentCalibrationRequest,
+    ) =>
+      ipcRenderer.invoke(EnterpriseLeadWorkspaceIpc.TestWorkspaceAgent, { workspaceId, request }),
     runTask: (taskId: string) => ipcRenderer.invoke(EnterpriseLeadWorkspaceIpc.RunTask, taskId),
     rerunTask: (taskId: string) =>
       ipcRenderer.invoke(EnterpriseLeadWorkspaceIpc.RerunTask, { taskId }),
@@ -351,6 +377,7 @@ contextBridge.exposeInMainWorld('electron', {
       workingDirectory?: string;
       icon?: string;
       skillIds?: string[];
+      responseContract?: AgentResponseContract;
       source?: string;
       presetId?: string;
     }) => {
@@ -368,6 +395,7 @@ contextBridge.exposeInMainWorld('electron', {
         workingDirectory?: string;
         icon?: string;
         skillIds?: string[];
+        responseContract?: AgentResponseContract;
         enabled?: boolean;
         pinned?: boolean;
       },

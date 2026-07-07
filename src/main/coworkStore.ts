@@ -7,7 +7,12 @@ import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 
 import { CoworkSystemMessageKind } from '../common/coworkSystemMessages';
-import { AgentId, normalizeAgentAvatarIcon } from '../shared/agent';
+import {
+  AgentId,
+  type AgentResponseContract,
+  normalizeAgentAvatarIcon,
+  normalizeAgentResponseContract,
+} from '../shared/agent';
 import {
   COWORK_MESSAGE_PAGE_SIZE,
   COWORK_SESSION_PAGE_SIZE,
@@ -360,6 +365,7 @@ export interface Agent {
   identity: string;
   model: string;
   workingDirectory: string;
+  responseContract: AgentResponseContract;
   icon: string;
   skillIds: string[];
   enabled: boolean;
@@ -380,6 +386,7 @@ export interface CreateAgentRequest {
   identity?: string;
   model?: string;
   workingDirectory?: string;
+  responseContract?: AgentResponseContract;
   icon?: string;
   skillIds?: string[];
   source?: AgentSource;
@@ -393,6 +400,7 @@ export interface UpdateAgentRequest {
   identity?: string;
   model?: string;
   workingDirectory?: string;
+  responseContract?: AgentResponseContract;
   icon?: string;
   skillIds?: string[];
   enabled?: boolean;
@@ -2859,6 +2867,7 @@ export class CoworkStore {
       identity: string;
       model: string;
       working_directory?: string | null;
+      response_contract_json?: string | null;
       icon: string;
       skill_ids: string;
       enabled: number;
@@ -2887,6 +2896,7 @@ export class CoworkStore {
       identity: string;
       model: string;
       working_directory?: string | null;
+      response_contract_json?: string | null;
       icon: string;
       skill_ids: string;
       enabled: number;
@@ -2928,8 +2938,8 @@ export class CoworkStore {
       this.db
         .prepare(
           `
-        INSERT INTO agents (id, name, description, system_prompt, identity, model, working_directory, icon, skill_ids, enabled, is_default, source, preset_id, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, ?, ?, ?, ?)
+        INSERT INTO agents (id, name, description, system_prompt, identity, model, working_directory, response_contract_json, icon, skill_ids, enabled, is_default, source, preset_id, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, ?, ?, ?, ?)
       `,
         )
         .run(
@@ -2940,6 +2950,7 @@ export class CoworkStore {
           request.identity || '',
           request.model || '',
           request.workingDirectory || '',
+          JSON.stringify(normalizeAgentResponseContract(request.responseContract)),
           normalizeAgentAvatarIcon(request.icon),
           JSON.stringify(request.skillIds || []),
           request.source || 'custom',
@@ -2998,6 +3009,10 @@ export class CoworkStore {
     if (updates.workingDirectory !== undefined) {
       setClauses.push('working_directory = ?');
       values.push(updates.workingDirectory);
+    }
+    if (updates.responseContract !== undefined) {
+      setClauses.push('response_contract_json = ?');
+      values.push(JSON.stringify(normalizeAgentResponseContract(updates.responseContract)));
     }
     if (updates.icon !== undefined) {
       setClauses.push('icon = ?');
@@ -3059,6 +3074,7 @@ export class CoworkStore {
     identity: string;
     model: string;
     working_directory?: string | null;
+    response_contract_json?: string | null;
     icon: string;
     skill_ids: string;
     enabled: number;
@@ -3076,6 +3092,15 @@ export class CoworkStore {
     } catch {
       skillIds = [];
     }
+    let responseContractInput: unknown = null;
+    try {
+      responseContractInput = row.response_contract_json
+        ? JSON.parse(row.response_contract_json)
+        : null;
+    } catch {
+      responseContractInput = null;
+    }
+
     return {
       id: row.id,
       name: row.name,
@@ -3084,6 +3109,7 @@ export class CoworkStore {
       identity: row.identity,
       model: row.model,
       workingDirectory: row.working_directory || '',
+      responseContract: normalizeAgentResponseContract(responseContractInput),
       icon: row.icon,
       skillIds,
       enabled: Boolean(row.enabled),

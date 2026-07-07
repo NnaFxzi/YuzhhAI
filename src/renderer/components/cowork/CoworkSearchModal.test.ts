@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest';
 
 import {
+  filterSessionSearchItems,
   getCoworkSearchEmptyStateKey,
   getCoworkSearchSectionLabel,
   getNextCoworkSearchSelectionIndex,
@@ -68,5 +69,31 @@ describe('CoworkSearchModal helpers', () => {
         key: 'ArrowDown',
       }),
     ).toBe(-1);
+  });
+
+  test('filters reusable session search items by title and metadata', () => {
+    const items = [
+      {
+        id: 'workspace-chat-1',
+        title: '安装 oh-my-claudecode skill',
+        metaText: '2 条消息',
+      },
+      {
+        id: 'workspace-chat-2',
+        title: '使用 GitHub 插件',
+        metaText: '4 条消息',
+      },
+    ];
+
+    expect(filterSessionSearchItems(items, 'github').map(item => item.id)).toEqual([
+      'workspace-chat-2',
+    ]);
+    expect(filterSessionSearchItems(items, '2 条').map(item => item.id)).toEqual([
+      'workspace-chat-1',
+    ]);
+    expect(filterSessionSearchItems(items, '').map(item => item.id)).toEqual([
+      'workspace-chat-1',
+      'workspace-chat-2',
+    ]);
   });
 });

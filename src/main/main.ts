@@ -217,6 +217,7 @@ import {
   setStoreGetter,
   updateServerModelMetadata,
 } from './libs/claudeSettings';
+import { ContentKnowledgeVectorStore } from './libs/contentKnowledgeVectorStore';
 import {
   clearCopilotTokenState,
   initCopilotTokenManager,
@@ -241,6 +242,7 @@ import {
   performDataMigrationRestoreSync,
   performPendingDataMigrationRestoreSync,
 } from './libs/dataMigration/dataMigrationService';
+import { extractDocumentTextFromFile } from './libs/documentTextExtractor';
 import {
   getHtmlSharePublicBaseUrl,
   getKitStoreUrl,
@@ -1648,6 +1650,7 @@ const getEnterpriseLeadWorkspaceService = (): EnterpriseLeadWorkspaceService => 
       store: getEnterpriseLeadWorkspaceStore(),
       modelClient: createConfiguredIndustryModelClient(),
       agentProvider: getAgentManager(),
+      contentKnowledgeVectorStore: new ContentKnowledgeVectorStore(getStore().getDatabase()),
       researchClient: {
         tavilySearch: (apiKey, query, maxResults) =>
           getAgentExternalResearchService().tavilySearchWithConfig(
@@ -2571,6 +2574,7 @@ const getCoworkEngineRouter = () => {
         },
         new SubagentRunStore(getStore().getDatabase()),
         new SubagentMessageStore(getStore().getDatabase()),
+        new ContentKnowledgeVectorStore(getStore().getDatabase()),
       );
       // Wire up channel session sync for IM conversations via OpenClaw
       try {
@@ -4854,16 +4858,24 @@ if (!gotTheLock) {
     if (request.tool === 'lobsterai_industry_positioning_get_latest') {
       const packId = typeof request.args.packId === 'string' ? request.args.packId : '';
       const report = packId ? service.getLatestReport(packId, agentId) : null;
+      const fallbackPayload = report || !packId ? null : service.buildLatestToolPayload(packId, agentId);
       return {
         content: [
           {
             type: 'text',
             text: report
               ? JSON.stringify(report, null, 2)
-              : `No positioning report saved for ${packId || 'unknown pack'}.`,
+              : JSON.stringify(fallbackPayload ?? {
+                status: 'empty',
+                packId: packId || 'unknown pack',
+                message: `No positioning report saved for ${packId || 'unknown pack'}.`,
+                baselineEvidence: [],
+              }, null, 2),
           },
         ],
-        details: report ? { reportId: report.id } : undefined,
+        details: report ? { reportId: report.id } : fallbackPayload
+          ? { packId, status: fallbackPayload.status }
+          : undefined,
       };
     }
 
@@ -6100,10 +6112,14 @@ if (!gotTheLock) {
         getEnterpriseLeadWorkspaceService().deleteWorkspace(workspaceId),
       updateWorkspaceProfile: (workspaceId, profile) =>
         getEnterpriseLeadWorkspaceService().updateWorkspaceProfile(workspaceId, profile),
+      updateWorkspaceSources: (workspaceId, sources) =>
+        getEnterpriseLeadWorkspaceService().updateWorkspaceSources(workspaceId, sources),
       updateWorkspaceSettings: (workspaceId, input) =>
         getEnterpriseLeadWorkspaceService().updateWorkspaceSettings(workspaceId, input),
       updateWorkspaceAgents: (workspaceId, agents) =>
         getEnterpriseLeadWorkspaceService().updateWorkspaceAgents(workspaceId, agents),
+      testWorkspaceAgent: (workspaceId, request) =>
+        getEnterpriseLeadWorkspaceService().testWorkspaceAgent(workspaceId, request),
       listRuns: workspaceId => getEnterpriseLeadWorkspaceService().listRuns(workspaceId),
       listChatSessions: workspaceId =>
         getEnterpriseLeadWorkspaceService().listChatSessions(workspaceId),
@@ -6669,7 +6685,10 @@ if (!gotTheLock) {
 
         const coworkStoreInstance = getCoworkStore();
         const config = coworkStoreInstance.getConfig();
-        const runtimeAgent = getAgentManager().resolveRuntimeAgent(options.agentId);
+        const runtimeAgent = getAgentManager().resolveRuntimeAgentForPrompt(
+          options.agentId,
+          options.prompt,
+        );
         const systemPrompt = mergeCoworkSystemPrompt(options.systemPrompt ?? config.systemPrompt);
         const persistedSystemPrompt = containsPlanModePrompt(systemPrompt)
           ? mergeCoworkSystemPrompt(config.systemPrompt)
@@ -9944,7 +9963,6 @@ if (!gotTheLock) {
     },
   );
 
-  const MAX_READ_TEXT_FILE_BYTES = 2 * 1024 * 1024;
   ipcMain.handle(
     DialogIpc.ReadTextFile,
     async (
@@ -9956,34 +9974,22 @@ if (!gotTheLock) {
       size?: number;
       readBytes?: number;
       truncated?: boolean;
+      parser?: string;
       error?: string;
     }> => {
       try {
         if (typeof filePath !== 'string' || !filePath.trim()) {
           return { success: false, error: 'Missing file path' };
         }
-        const resolvedPath = path.resolve(filePath.trim());
-        const stat = await fs.promises.stat(resolvedPath);
-        if (!stat.isFile()) {
-          return { success: false, error: 'Not a file' };
-        }
-
-        const truncated = stat.size > MAX_READ_TEXT_FILE_BYTES;
-        const handle = await fs.promises.open(resolvedPath, 'r');
-        try {
-          const bytesToRead = Math.min(stat.size, MAX_READ_TEXT_FILE_BYTES);
-          const buffer = Buffer.alloc(bytesToRead);
-          const { bytesRead } = await handle.read(buffer, 0, bytesToRead, 0);
-          return {
-            success: true,
-            content: buffer.subarray(0, bytesRead).toString('utf8'),
-            size: stat.size,
-            readBytes: bytesRead,
-            truncated,
-          };
-        } finally {
-          await handle.close();
-        }
+        const result = await extractDocumentTextFromFile(filePath);
+        return {
+          success: true,
+          content: result.content,
+          parser: result.parser,
+          readBytes: result.readBytes,
+          size: result.size,
+          truncated: result.truncated,
+        };
       } catch (error) {
         return {
           success: false,

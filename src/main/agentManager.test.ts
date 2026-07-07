@@ -1,7 +1,13 @@
 import { describe, expect, test } from 'vitest';
 
+import {
+  AgentAnswerShape,
+  defaultAgentResponseContract,
+  normalizeAgentResponseContract,
+} from '../shared/agent';
 import { AgentManager } from './agentManager';
 import type { Agent, CoworkStore, CreateAgentRequest, UpdateAgentRequest } from './coworkStore';
+import { PRESET_AGENTS } from './presetAgents';
 
 const MARKETING_AGENT_ID = 'marketing-agent';
 
@@ -15,6 +21,7 @@ const createStoredAgent = (overrides: Partial<Agent> = {}): Agent => {
     identity: '',
     model: 'provider/model',
     workingDirectory: '/tmp/project',
+    responseContract: defaultAgentResponseContract,
     icon: '',
     skillIds: [],
     enabled: true,
@@ -39,6 +46,7 @@ const createMainAgent = (overrides: Partial<Agent> = {}): Agent => {
     identity: '',
     model: 'provider/main-model',
     workingDirectory: '/tmp/main',
+    responseContract: defaultAgentResponseContract,
     icon: '',
     skillIds: ['main-skill'],
     enabled: true,
@@ -79,6 +87,7 @@ class FakeCoworkStore {
       identity: request.identity ?? '',
       model: request.model ?? '',
       workingDirectory: request.workingDirectory ?? '',
+      responseContract: normalizeAgentResponseContract(request.responseContract),
       icon: request.icon ?? '',
       skillIds: request.skillIds ?? [],
       enabled: true,
@@ -157,6 +166,10 @@ describe('AgentManager managed preset agents', () => {
     });
     expect(marketingAgent?.systemPrompt).toContain('不采用填表方式');
     expect(marketingAgent?.systemPrompt).toContain('缺少关键信息时');
+    expect(marketingAgent?.responseContract.answerShape).toBe(AgentAnswerShape.CopyReady);
+    expect(marketingAgent?.responseContract.mustAvoid).toContain(
+      '不要编造没有提供或工具没有证据支持的硬事实',
+    );
   });
 
   test('推广agent prompt instructs memory-backed factory profile extraction and focused follow-up', () => {
@@ -196,6 +209,24 @@ describe('AgentManager managed preset agents', () => {
     expect(marketingAgent?.systemPrompt).toContain('事实保护检查');
     expect(marketingAgent?.systemPrompt).toContain('可直接复制的正文');
     expect(marketingAgent?.systemPrompt).toContain('下一步快捷改写');
+    expect(marketingAgent?.systemPrompt).toContain(
+      '先查知识库、长期记忆、工厂画像和已保存定位报告',
+    );
+    expect(marketingAgent?.systemPrompt).toContain('不要调用阻断式选择弹窗');
+    expect(marketingAgent?.systemPrompt).toContain('知识预检未命中相关业务资料');
+    expect(marketingAgent?.systemPrompt).toContain('不要假设生成');
+    expect(marketingAgent?.systemPrompt).toContain(
+      '如果长期记忆、知识库、工厂画像或定位报告已经提供产品、客户或卖点',
+    );
+    expect(marketingAgent?.systemPrompt).toContain('先输出一版可直接复制的朋友圈正文');
+    expect(marketingAgent?.systemPrompt).not.toContain(
+      '用户只说“帮我写文案”：先给 3 个方向让用户选',
+    );
+    const marketingPreset = PRESET_AGENTS.find(agent => agent.id === MARKETING_AGENT_ID);
+    expect(marketingPreset?.systemPromptEn).toContain(
+      'If long-term memory, knowledge base, factory profile, or saved positioning reports already provide product, customer, or selling-point context',
+    );
+    expect(marketingPreset?.systemPromptEn).not.toContain('offer three directions to choose from');
   });
 
   test('listAgents does not duplicate 推广agent across repeated loads', () => {
@@ -234,6 +265,7 @@ describe('AgentManager managed preset agents', () => {
     expect(marketingAgent?.systemPrompt).toContain('长期记忆');
     expect(marketingAgent?.model).toBe('provider/model');
     expect(marketingAgent?.workingDirectory).toBe('/tmp/project');
+    expect(marketingAgent?.responseContract.answerShape).toBe(AgentAnswerShape.CopyReady);
     expect(marketingAgent?.pinned).toBe(true);
     expect(marketingAgent?.pinOrder).toBe(1);
   });
@@ -279,12 +311,17 @@ describe('AgentManager managed preset agents', () => {
       manager.updateAgent(MARKETING_AGENT_ID, {
         systemPrompt: '用户改写的提示词',
         skillIds: ['custom-skill'],
+        responseContract: {
+          ...defaultAgentResponseContract,
+          answerShape: AgentAnswerShape.AnalysisThenPlan,
+        },
       }),
     ).toThrow(/System Agent definition fields are managed by LobsterAI/);
 
     expect(store.getAgent(MARKETING_AGENT_ID)).toMatchObject({
       systemPrompt: '旧版推广提示词',
       skillIds: [],
+      responseContract: defaultAgentResponseContract,
     });
   });
 
@@ -313,6 +350,37 @@ describe('AgentManager managed preset agents', () => {
       id: MARKETING_AGENT_ID,
       model: 'provider/model',
       workingDirectory: '/tmp/project',
+    });
+  });
+
+  test('resolveRuntimeAgentForPrompt auto-routes content requests from main to 推广agent', () => {
+    const store = new FakeCoworkStore([createMainAgent(), createStoredAgent({ enabled: true })]);
+    const manager = new AgentManager(store as unknown as CoworkStore);
+
+    expect(manager.resolveRuntimeAgentForPrompt('main', '帮我做 10 个小红书选题')).toMatchObject({
+      id: MARKETING_AGENT_ID,
+      model: 'provider/model',
+    });
+  });
+
+  test('resolveRuntimeAgentForPrompt respects manually selected non-main agents', () => {
+    const customAgent = createStoredAgent({
+      id: 'writer',
+      name: '写作 Agent',
+      source: 'custom',
+      presetId: '',
+      model: 'provider/writer-model',
+    });
+    const store = new FakeCoworkStore([
+      createMainAgent(),
+      createStoredAgent({ enabled: true }),
+      customAgent,
+    ]);
+    const manager = new AgentManager(store as unknown as CoworkStore);
+
+    expect(manager.resolveRuntimeAgentForPrompt('writer', '帮我做 10 个小红书选题')).toMatchObject({
+      id: 'writer',
+      model: 'provider/writer-model',
     });
   });
 });

@@ -3,11 +3,15 @@ import { ipcMain } from 'electron';
 import { EnterpriseLeadWorkspaceIpc } from '../../shared/enterpriseLeadWorkspace/constants';
 import type {
   EnterpriseLeadAgentTask,
+  EnterpriseLeadExtractionSource,
   EnterpriseLeadIpcResult,
   EnterpriseLeadPendingVersion,
   EnterpriseLeadWorkspace,
   EnterpriseLeadWorkspaceAgentBinding,
+  EnterpriseLeadWorkspaceAgentCalibrationRequest,
+  EnterpriseLeadWorkspaceAgentCalibrationResponse,
   EnterpriseLeadWorkspaceChatMessage,
+  EnterpriseLeadWorkspaceChatProgressEvent,
   EnterpriseLeadWorkspaceChatRequest,
   EnterpriseLeadWorkspaceChatResearchResult,
   EnterpriseLeadWorkspaceChatResponse,
@@ -20,6 +24,7 @@ import type {
   EnterpriseLeadWorkspaceSnapshot,
 } from '../../shared/enterpriseLeadWorkspace/types';
 import {
+  normalizeEnterpriseLeadExtractionSources,
   normalizeWorkspaceChatResearchIntent,
   normalizeWorkspaceProfile,
 } from '../../shared/enterpriseLeadWorkspace/validation';
@@ -38,6 +43,10 @@ export interface EnterpriseLeadWorkspaceHandlerDeps {
     updateWorkspaceProfile: (
       workspaceId: string,
       profile: EnterpriseLeadWorkspaceProfile,
+    ) => EnterpriseLeadWorkspace | Promise<EnterpriseLeadWorkspace>;
+    updateWorkspaceSources: (
+      workspaceId: string,
+      sources: EnterpriseLeadExtractionSource[],
     ) => EnterpriseLeadWorkspace | Promise<EnterpriseLeadWorkspace>;
     updateWorkspaceSettings: (
       workspaceId: string,
@@ -66,7 +75,14 @@ export interface EnterpriseLeadWorkspaceHandlerDeps {
     chat: (
       workspaceId: string,
       request: EnterpriseLeadWorkspaceChatRequest,
+      progressSink?: (event: EnterpriseLeadWorkspaceChatProgressEvent) => void,
     ) => EnterpriseLeadWorkspaceChatResponse | Promise<EnterpriseLeadWorkspaceChatResponse>;
+    testWorkspaceAgent: (
+      workspaceId: string,
+      request: EnterpriseLeadWorkspaceAgentCalibrationRequest,
+    ) =>
+      | EnterpriseLeadWorkspaceAgentCalibrationResponse
+      | Promise<EnterpriseLeadWorkspaceAgentCalibrationResponse>;
     createRun: (
       workspaceId: string,
       userGoal: string,
@@ -114,6 +130,13 @@ const readSettingsUpdate = (value: unknown): EnterpriseLeadWorkspaceSettingsUpda
 
 const readWorkspaceProfile = (value: unknown): EnterpriseLeadWorkspaceProfile =>
   normalizeWorkspaceProfile(value);
+
+const readWorkspaceSources = (value: unknown): EnterpriseLeadExtractionSource[] => {
+  if (!Array.isArray(value)) {
+    throw new Error('Workspace sources are required');
+  }
+  return normalizeEnterpriseLeadExtractionSources(value);
+};
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -191,6 +214,7 @@ const readChatRequest = (value: unknown): EnterpriseLeadWorkspaceChatRequest => 
 
   const input = value as {
     message?: unknown;
+    requestId?: unknown;
     sessionId?: unknown;
     targetAgentId?: unknown;
     recentMessages?: unknown;
@@ -199,6 +223,9 @@ const readChatRequest = (value: unknown): EnterpriseLeadWorkspaceChatRequest => 
     message: requireNonEmptyString(input.message, 'Message'),
   };
 
+  if (typeof input.requestId === 'string') {
+    request.requestId = input.requestId;
+  }
   if (typeof input.targetAgentId === 'string') {
     request.targetAgentId = input.targetAgentId;
   }
@@ -212,6 +239,49 @@ const readChatRequest = (value: unknown): EnterpriseLeadWorkspaceChatRequest => 
   }
 
   return request;
+};
+
+const readOptionalString = (value: unknown): string =>
+  typeof value === 'string' ? value.trim() : '';
+
+const readStringList = (value: unknown): string[] =>
+  Array.isArray(value)
+    ? Array.from(new Set(
+      value
+        .filter((item): item is string => typeof item === 'string')
+        .map(item => item.trim())
+        .filter(Boolean),
+    ))
+    : [];
+
+const readWorkspaceAgentCalibrationRequest = (
+  value: unknown,
+): EnterpriseLeadWorkspaceAgentCalibrationRequest => {
+  if (!isPlainObject(value) || !isPlainObject(value.agent) || !isPlainObject(value.example)) {
+    throw new Error('Workspace Agent calibration request is required');
+  }
+
+  return {
+    ...(typeof value.agentId === 'string' && value.agentId.trim()
+      ? { agentId: value.agentId.trim() }
+      : {}),
+    agent: {
+      name: requireNonEmptyString(value.agent.name, 'Agent name').trim(),
+      description: readOptionalString(value.agent.description),
+      identity: readOptionalString(value.agent.identity),
+      systemPrompt: readOptionalString(value.agent.systemPrompt),
+      icon: readOptionalString(value.agent.icon),
+      model: readOptionalString(value.agent.model),
+      skillIds: readStringList(value.agent.skillIds),
+    },
+    example: {
+      sampleInput: requireNonEmptyString(value.example.sampleInput, 'Example input').trim(),
+      expectedPriority: readOptionalString(value.example.expectedPriority),
+      expectedReason: readOptionalString(value.example.expectedReason),
+      expectedMissing: readOptionalString(value.example.expectedMissing),
+      expectedNextStep: readOptionalString(value.example.expectedNextStep),
+    },
+  };
 };
 
 const ok = <T>(data: T): EnterpriseLeadIpcResult<T> => ({
@@ -284,6 +354,21 @@ export function registerEnterpriseLeadWorkspaceHandlers(
         return ok(await deps.service.updateWorkspaceProfile(
           workspaceId,
           readWorkspaceProfile(input?.profile),
+        ));
+      } catch (error) {
+        return fail<EnterpriseLeadWorkspace>(error);
+      }
+    },
+  );
+
+  ipcMain.handle(
+    EnterpriseLeadWorkspaceIpc.UpdateWorkspaceSources,
+    async (_event, input: { workspaceId?: unknown; sources?: unknown }) => {
+      try {
+        const workspaceId = requireNonEmptyString(input?.workspaceId, 'Workspace id');
+        return ok(await deps.service.updateWorkspaceSources(
+          workspaceId,
+          readWorkspaceSources(input?.sources),
         ));
       } catch (error) {
         return fail<EnterpriseLeadWorkspace>(error);
@@ -368,12 +453,38 @@ export function registerEnterpriseLeadWorkspaceHandlers(
 
   ipcMain.handle(
     EnterpriseLeadWorkspaceIpc.Chat,
+    async (event, input: { workspaceId?: unknown; request?: unknown }) => {
+      try {
+        const workspaceId = requireNonEmptyString(input?.workspaceId, 'Workspace id');
+        const request = readChatRequest(input?.request);
+        const progressSink = request.requestId && event?.sender?.send
+          ? (progressEvent: EnterpriseLeadWorkspaceChatProgressEvent): void => {
+              event.sender.send(EnterpriseLeadWorkspaceIpc.ChatProgress, progressEvent);
+            }
+          : undefined;
+        const response = progressSink
+          ? await deps.service.chat(workspaceId, request, progressSink)
+          : await deps.service.chat(workspaceId, request);
+        return ok(response);
+      } catch (error) {
+        return fail<EnterpriseLeadWorkspaceChatResponse>(error);
+      }
+    },
+  );
+
+  ipcMain.handle(
+    EnterpriseLeadWorkspaceIpc.TestWorkspaceAgent,
     async (_event, input: { workspaceId?: unknown; request?: unknown }) => {
       try {
         const workspaceId = requireNonEmptyString(input?.workspaceId, 'Workspace id');
-        return ok(await deps.service.chat(workspaceId, readChatRequest(input?.request)));
+        return ok(
+          await deps.service.testWorkspaceAgent(
+            workspaceId,
+            readWorkspaceAgentCalibrationRequest(input?.request),
+          ),
+        );
       } catch (error) {
-        return fail<EnterpriseLeadWorkspaceChatResponse>(error);
+        return fail<EnterpriseLeadWorkspaceAgentCalibrationResponse>(error);
       }
     },
   );

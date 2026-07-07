@@ -1,9 +1,6 @@
 /** @type {import('tailwindcss').Config} */
 export default {
-  content: [
-    "./index.html",
-    "./src/**/*.{js,ts,jsx,tsx}",
-  ],
+  content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
   darkMode: 'class',
   theme: {
     extend: {
@@ -47,6 +44,15 @@ export default {
           '0%': { opacity: '0', transform: 'translateY(6px)' },
           '100%': { opacity: '1', transform: 'translateY(0)' },
         },
+        'knowledge-message-in': {
+          '0%': { opacity: '0', transform: 'translateY(-8px) scale(0.98)' },
+          '100%': { opacity: '1', transform: 'translateY(0) scale(1)' },
+        },
+        'knowledge-message-success-sheen': {
+          '0%': { opacity: '0', transform: 'translateX(0)' },
+          '24%': { opacity: '0.6' },
+          '100%': { opacity: '0', transform: 'translateX(430%)' },
+        },
       },
       animation: {
         'fade-in': 'fade-in 0.2s ease-out',
@@ -56,6 +62,9 @@ export default {
         shimmer: 'shimmer 1.5s infinite',
         shake: 'shake 0.4s ease-in-out',
         'message-in': 'message-in 0.25s ease-out both',
+        'knowledge-message-in': 'knowledge-message-in 180ms cubic-bezier(0.16, 1, 0.3, 1) both',
+        'knowledge-message-success-sheen':
+          'knowledge-message-success-sheen 760ms ease-out 120ms both',
       },
       transitionTimingFunction: {
         smooth: 'cubic-bezier(0.4, 0, 0.2, 1)',
@@ -109,4 +118,4 @@ export default {
     require('@tailwindcss/typography'),
     require('./src/renderer/theme/tailwind/plugin.cjs'),
   ],
-}
+};

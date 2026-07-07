@@ -4,14 +4,19 @@ import type { ExternalResearchConfig } from '../agent/externalResearch';
 import type { ProviderConfig } from '../providers';
 import type {
   EnterpriseLeadAgentRole,
+  EnterpriseLeadChatProgressPhase,
+  EnterpriseLeadChatProgressStatus,
   EnterpriseLeadContentOutputLengthPolicy,
   EnterpriseLeadContentOutputPlatformId,
   EnterpriseLeadDeliverableKind,
+  EnterpriseLeadDocumentExtractionStatus,
   EnterpriseLeadExtractionSourceKind,
+  EnterpriseLeadKnowledgeIndexStatus,
   EnterpriseLeadRiskLevel,
   EnterpriseLeadRunStatus,
   EnterpriseLeadTaskStatus,
   EnterpriseLeadTodoKind,
+  EnterpriseLeadWorkspaceAgentCalibrationCheckId,
   EnterpriseLeadWorkspaceAgentSource,
   EnterpriseLeadWorkspaceType,
 } from './constants';
@@ -27,13 +32,27 @@ export interface EnterpriseLeadWorkspaceProfile {
   prohibitedClaims: string[];
   contactRules: string[];
   missingInfo: string[];
+  confirmedKnowledgeKeys?: string[];
 }
 
 export interface EnterpriseLeadExtractionSource {
   kind: EnterpriseLeadExtractionSourceKind | string;
   label: string;
   filePath?: string;
+  fileName?: string;
+  fileSize?: number;
   text?: string;
+  summary?: string;
+  extractionStatus?: EnterpriseLeadDocumentExtractionStatus | string;
+  extractionError?: string;
+  lastExtractedAt?: string;
+  vectorIndexStatus?: EnterpriseLeadKnowledgeIndexStatus | string;
+  vectorIndexError?: string;
+  vectorIndexedAt?: string;
+  vectorChunkCount?: number;
+  vectorEmbeddingVersion?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface EnterpriseLeadWorkspaceAgentOverrides {
@@ -117,12 +136,17 @@ export interface EnterpriseLeadWorkspaceContentPlatformSettings {
   outputRules: EnterpriseLeadWorkspaceContentOutputRules;
 }
 
+export interface EnterpriseLeadWorkspaceOutputPreferences {
+  instructions: string[];
+}
+
 export interface EnterpriseLeadWorkspaceSettings {
   model: EnterpriseLeadWorkspaceModelSettings;
   skillIds: string[];
   externalResearch: ExternalResearchConfig;
   domesticResearch: DomesticResearchConfig;
   contentPlatforms: EnterpriseLeadWorkspaceContentPlatformSettings;
+  outputPreferences: EnterpriseLeadWorkspaceOutputPreferences;
 }
 
 export interface EnterpriseLeadWorkspaceSettingsUpdate {
@@ -133,6 +157,7 @@ export interface EnterpriseLeadWorkspaceSettingsUpdate {
     skillIds: string[];
     externalResearch: Partial<ExternalResearchConfig>;
     domesticResearch: Partial<DomesticResearchConfig>;
+    outputPreferences: Partial<EnterpriseLeadWorkspaceOutputPreferences>;
   }>;
 }
 
@@ -174,6 +199,18 @@ export interface EnterpriseLeadWorkspaceChatMessage {
   agent?: EnterpriseLeadWorkspaceChatAgentAttribution;
   routing?: EnterpriseLeadWorkspaceChatRouting;
   research?: EnterpriseLeadWorkspaceChatResearchResult;
+  progressEvents?: EnterpriseLeadWorkspaceChatProgressEvent[];
+}
+
+export interface EnterpriseLeadWorkspaceChatProgressEvent {
+  requestId: string;
+  stepId: string;
+  phase: EnterpriseLeadChatProgressPhase;
+  status: EnterpriseLeadChatProgressStatus;
+  title: string;
+  timestamp: number;
+  detail?: string;
+  source?: string;
 }
 
 export interface EnterpriseLeadWorkspaceChatAgentAttribution {
@@ -206,6 +243,7 @@ export interface EnterpriseLeadWorkspaceChatSession extends EnterpriseLeadWorksp
 }
 
 export interface EnterpriseLeadWorkspaceChatRequest {
+  requestId?: string;
   message: string;
   sessionId?: string;
   targetAgentId?: string;
@@ -242,6 +280,40 @@ export interface EnterpriseLeadWorkspaceChatLeadCandidate {
 export interface EnterpriseLeadWorkspaceChatResponse {
   message: EnterpriseLeadWorkspaceChatMessage;
   session?: EnterpriseLeadWorkspaceChatSession;
+}
+
+export interface EnterpriseLeadWorkspaceAgentCalibrationDraft {
+  name: string;
+  description: string;
+  identity: string;
+  systemPrompt: string;
+  icon: string;
+  model: string;
+  skillIds: string[];
+}
+
+export interface EnterpriseLeadWorkspaceAgentCalibrationExample {
+  sampleInput: string;
+  expectedPriority: string;
+  expectedReason: string;
+  expectedMissing: string;
+  expectedNextStep: string;
+}
+
+export interface EnterpriseLeadWorkspaceAgentCalibrationRequest {
+  agentId?: string;
+  agent: EnterpriseLeadWorkspaceAgentCalibrationDraft;
+  example: EnterpriseLeadWorkspaceAgentCalibrationExample;
+}
+
+export interface EnterpriseLeadWorkspaceAgentCalibrationCheck {
+  id: EnterpriseLeadWorkspaceAgentCalibrationCheckId;
+  passed: boolean;
+}
+
+export interface EnterpriseLeadWorkspaceAgentCalibrationResponse {
+  content: string;
+  checks: EnterpriseLeadWorkspaceAgentCalibrationCheck[];
 }
 
 export interface EnterpriseLeadRun {

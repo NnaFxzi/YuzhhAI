@@ -32,6 +32,7 @@ import type {
 } from '../../shared/enterpriseLeadWorkspace/types';
 import {
   buildDefaultEnterpriseLeadWorkspaceSettings,
+  normalizeEnterpriseLeadExtractionSources,
   normalizeEnterpriseLeadRunAgentSnapshot,
   normalizeEnterpriseLeadWorkspaceAgents,
   normalizeEnterpriseLeadWorkspaceSettings,
@@ -171,11 +172,12 @@ type EnterpriseLeadChatSessionRow = Omit<
 
 type EnterpriseLeadChatMessageRow = Omit<
   EnterpriseLeadWorkspaceChatMessage,
-  'agent' | 'research' | 'routing'
+  'agent' | 'research' | 'routing' | 'progressEvents'
 > & {
   agent: string | null;
   routing: string | null;
   research: string | null;
+  progressEvents: string | null;
   sequence: number;
 };
 
@@ -281,6 +283,14 @@ const mapChatMessageRow = (row: EnterpriseLeadChatMessageRow): EnterpriseLeadWor
       undefined,
     );
   }
+  if (row.progressEvents) {
+    message.progressEvents = parseJsonValue<
+      EnterpriseLeadWorkspaceChatMessage['progressEvents'] | undefined
+    >(
+      row.progressEvents,
+      undefined,
+    );
+  }
   return message;
 };
 
@@ -374,6 +384,7 @@ export class EnterpriseLeadWorkspaceStore {
         agent TEXT,
         routing TEXT,
         research TEXT,
+        progress_events TEXT,
         sequence INTEGER NOT NULL,
         created_at TEXT NOT NULL
       );
@@ -391,6 +402,7 @@ export class EnterpriseLeadWorkspaceStore {
     this.ensureWorkspaceAgentsColumn();
     this.ensureChatMessageAgentColumn();
     this.ensureChatMessageRoutingColumn();
+    this.ensureChatMessageProgressEventsColumn();
   }
 
   private ensureChatMessageAgentColumn(): void {
@@ -406,6 +418,14 @@ export class EnterpriseLeadWorkspaceStore {
     const columnNames = new Set(columns.map(column => column.name));
     if (!columnNames.has('routing')) {
       this.db.exec('ALTER TABLE enterprise_lead_chat_messages ADD COLUMN routing TEXT;');
+    }
+  }
+
+  private ensureChatMessageProgressEventsColumn(): void {
+    const columns = this.db.pragma('table_info(enterprise_lead_chat_messages)') as Array<{ name: string }>;
+    const columnNames = new Set(columns.map(column => column.name));
+    if (!columnNames.has('progress_events')) {
+      this.db.exec('ALTER TABLE enterprise_lead_chat_messages ADD COLUMN progress_events TEXT;');
     }
   }
 
@@ -715,6 +735,35 @@ export class EnterpriseLeadWorkspaceStore {
     return updated;
   }
 
+  updateWorkspaceSources(
+    workspaceId: string,
+    sources: EnterpriseLeadExtractionSource[],
+  ): EnterpriseLeadWorkspace {
+    const workspace = this.getWorkspace(workspaceId);
+    if (!workspace) {
+      throw new Error('Enterprise lead workspace not found');
+    }
+
+    const normalizedSources = normalizeEnterpriseLeadExtractionSources(sources);
+    const now = new Date().toISOString();
+
+    this.db.prepare(`
+      UPDATE enterprise_lead_workspaces
+      SET extraction_sources = ?, updated_at = ?
+      WHERE id = ?
+    `).run(
+      JSON.stringify(normalizedSources),
+      now,
+      workspace.id,
+    );
+
+    const updated = this.getWorkspace(workspace.id);
+    if (!updated) {
+      throw new Error('Enterprise lead workspace not found');
+    }
+    return updated;
+  }
+
   updateWorkspaceAgents(
     workspaceId: string,
     agents: EnterpriseLeadWorkspaceAgentBinding[],
@@ -988,6 +1037,7 @@ export class EnterpriseLeadWorkspaceStore {
         agent,
         routing,
         research,
+        progress_events as progressEvents,
         sequence,
         created_at as createdAt
       FROM enterprise_lead_chat_messages
@@ -1088,6 +1138,20 @@ export class EnterpriseLeadWorkspaceStore {
         ...(routingSteps.length > 0 ? { steps: routingSteps } : {}),
       };
     }
+    if (message.progressEvents?.length) {
+      sanitized.progressEvents = message.progressEvents.map(event => ({
+        requestId: cleanText(event.requestId),
+        stepId: cleanText(event.stepId),
+        phase: event.phase,
+        status: event.status,
+        title: cleanText(event.title),
+        timestamp: Number.isFinite(event.timestamp) ? event.timestamp : Date.now(),
+        ...(event.detail ? { detail: cleanText(event.detail) } : {}),
+        ...(event.source ? { source: cleanText(event.source) } : {}),
+      })).filter(event =>
+        event.requestId && event.stepId && event.phase && event.status && event.title,
+      );
+    }
 
     const appendTransaction = this.db.transaction(() => {
       this.db.prepare(`
@@ -1099,10 +1163,11 @@ export class EnterpriseLeadWorkspaceStore {
           agent,
           routing,
           research,
+          progress_events,
           sequence,
           created_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         sanitized.id,
         sessionId,
@@ -1111,6 +1176,7 @@ export class EnterpriseLeadWorkspaceStore {
         sanitized.agent ? JSON.stringify(sanitized.agent) : null,
         sanitized.routing ? JSON.stringify(sanitized.routing) : null,
         sanitized.research ? JSON.stringify(sanitized.research) : null,
+        sanitized.progressEvents?.length ? JSON.stringify(sanitized.progressEvents) : null,
         nextSequence,
         sanitized.createdAt,
       );

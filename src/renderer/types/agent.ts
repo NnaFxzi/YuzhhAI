@@ -1,3 +1,5 @@
+import type { AgentResponseContract } from '@shared/agent';
+
 export type AgentSource = 'custom' | 'preset';
 
 export interface Agent {
@@ -8,6 +10,7 @@ export interface Agent {
   identity: string;
   model: string;
   workingDirectory: string;
+  responseContract: AgentResponseContract;
   icon: string;
   skillIds: string[];
   enabled: boolean;
@@ -32,6 +35,7 @@ export interface PresetAgent {
   systemPrompt: string;
   systemPromptEn: string;
   skillIds: string[];
+  responseContract?: AgentResponseContract;
   installed?: boolean;
   enabled?: boolean;
 }
@@ -44,6 +48,7 @@ export interface CreateAgentRequest {
   identity?: string;
   model?: string;
   workingDirectory?: string;
+  responseContract?: AgentResponseContract;
   icon?: string;
   skillIds?: string[];
   source?: string;
@@ -57,6 +62,7 @@ export interface UpdateAgentRequest {
   identity?: string;
   model?: string;
   workingDirectory?: string;
+  responseContract?: AgentResponseContract;
   icon?: string;
   skillIds?: string[];
   enabled?: boolean;

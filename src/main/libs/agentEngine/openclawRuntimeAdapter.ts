@@ -36,10 +36,16 @@ import { MediaGenerationTool } from '../../mediaGenerationPolicy';
 import type { SubagentMessageStore } from '../../subagentMessageStore';
 import type { SubagentRunStore } from '../../subagentRunStore';
 import {
+  buildAgentKnowledgeEvidencePromptForRequest,
+  buildAgentKnowledgeFileContextPrompt,
+} from '../agentKnowledgeEvidencePrompt';
+import { sanitizeAgentVisibleOutput } from '../agentOutputSanitizer';
+import {
   AiDialogueReplyLanguage,
   AiDialogueReplySurface,
   buildAiDialogueReplyContract,
 } from '../aiDialogueReplyContract';
+import type { ContentKnowledgeRetriever } from '../contentKnowledgeRetrieval';
 import { setCoworkProxySessionId } from '../coworkOpenAICompatProxy';
 import { extractOpenClawAssistantStreamParts,extractOpenClawAssistantStreamText } from '../openclawAssistantText';
 import {
@@ -1771,6 +1777,7 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
   private readonly store: CoworkStore;
   private readonly engineManager: OpenClawEngineManager;
   private readonly options: OpenClawRuntimeAdapterOptions;
+  private readonly contentKnowledgeRetriever?: ContentKnowledgeRetriever;
   private readonly activeTurns = new Map<string, ActiveTurn>();
   private readonly sessionIdBySessionKey = new Map<string, string>();
   private readonly sessionIdByRunId = new Map<string, string>();
@@ -2064,6 +2071,23 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
       return bridge;
     } catch (error) {
       console.warn(`[CoworkTopKEvidence] failed to build evidence bridge for session ${sessionId}; continuing without it.`, error);
+      return '';
+    }
+  }
+
+  private buildKnowledgeFileContextBridge(prompt: string, agentId?: string): string {
+    try {
+      if (typeof this.engineManager.getStateDir !== 'function') {
+        return '';
+      }
+      return buildAgentKnowledgeFileContextPrompt({
+        prompt,
+        stateDir: this.engineManager.getStateDir(),
+        agentId,
+        knowledgeRetriever: this.contentKnowledgeRetriever,
+      });
+    } catch (error) {
+      console.warn('[OpenClawRuntime] failed to build knowledge file context bridge; continuing without it:', error);
       return '';
     }
   }
@@ -2868,11 +2892,13 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
     options: OpenClawRuntimeAdapterOptions = {},
     subagentRunStore?: SubagentRunStore,
     subagentMessageStore?: SubagentMessageStore,
+    contentKnowledgeRetriever?: ContentKnowledgeRetriever,
   ) {
     super();
     this.store = store;
     this.engineManager = engineManager;
     this.options = options;
+    this.contentKnowledgeRetriever = contentKnowledgeRetriever;
     this.approvalController = new OpenClawApprovalController({
       getGatewayClient: () => this.gatewayClient,
       resolveSessionId: (sessionKey) => this.resolveApprovalSessionId(sessionKey),
@@ -3998,6 +4024,8 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
     const continuityCapsuleBridge = this.buildContinuityCapsuleBridge(sessionId);
     const workspaceRehydrationBridge = await this.buildWorkspaceRehydrationBridge(sessionId);
     const topKEvidenceBridge = this.buildTopKEvidenceBridge(sessionId, prompt);
+    const knowledgeEvidencePrompt = buildAgentKnowledgeEvidencePromptForRequest(prompt);
+    const knowledgeFileContextBridge = this.buildKnowledgeFileContextBridge(prompt, agentId);
 
     if (this.bridgedSessions.has(sessionId)) {
       if (continuityCapsuleBridge) {
@@ -4011,6 +4039,12 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
       }
       if (selectedTextSection) {
         sections.push(selectedTextSection);
+      }
+      if (knowledgeEvidencePrompt) {
+        sections.push(knowledgeEvidencePrompt);
+      }
+      if (knowledgeFileContextBridge) {
+        sections.push(knowledgeFileContextBridge);
       }
       sections.push(
         buildAiDialogueReplyContract({
@@ -4078,6 +4112,12 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
     }
     if (selectedTextSection) {
       sections.push(selectedTextSection);
+    }
+    if (knowledgeEvidencePrompt) {
+      sections.push(knowledgeEvidencePrompt);
+    }
+    if (knowledgeFileContextBridge) {
+      sections.push(knowledgeFileContextBridge);
     }
     if (prompt.trim()) {
       sections.push(`[Current user request]\n${prompt}`);
@@ -5513,15 +5553,16 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
   }
 
   private reuseFinalAssistantMessage(sessionId: string, content: string): string | null {
+    const visibleContent = sanitizeAgentVisibleOutput(content);
     const session = this.store.getSession(sessionId);
     const messages = session?.messages ?? [];
-    const messageId = findReusableFinalAssistantMessageId(messages, content);
+    const messageId = findReusableFinalAssistantMessageId(messages, visibleContent);
     if (!messageId) {
       return null;
     }
 
     this.store.updateMessage(sessionId, messageId, {
-      content,
+      content: visibleContent,
       metadata: {
         isStreaming: false,
         isFinal: true,
@@ -5535,11 +5576,12 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
     turn: ActiveTurn,
     content: string,
   ): string | null {
+    const visibleContent = sanitizeAgentVisibleOutput(content);
     const session = this.store.getSession(sessionId);
     const messageId = findReusableCommittedAssistantMessageId(
       session?.messages ?? [],
       turn.lastCommittedAssistantMessageId,
-      content,
+      visibleContent,
     );
     if (!messageId) {
       return null;
@@ -5550,10 +5592,10 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
       isFinal: true,
     };
     this.store.updateMessage(sessionId, messageId, {
-      content,
+      content: visibleContent,
       metadata: finalMetadata,
     });
-    this.emit('messageUpdate', sessionId, messageId, content, finalMetadata);
+    this.emit('messageUpdate', sessionId, messageId, visibleContent, finalMetadata);
     return messageId;
   }
 
@@ -6829,15 +6871,18 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
       this.resolveTurn(sessionId);
       return;
     }
-    turn.currentText = finalText;
+    const visibleFinalText = sanitizeAgentVisibleOutput(finalText);
+    turn.currentText = visibleFinalText;
     if (wasWaitingForRecoverableFinal && finalText.trim()) {
       turn.hasRecoverableContinuationText = true;
     }
-    if (finalText && turn.currentContentBlocks.length === 0) {
-      turn.currentContentText = finalText;
-      turn.currentContentBlocks = [finalText];
+    if (visibleFinalText && turn.currentContentBlocks.length === 0) {
+      turn.currentContentText = visibleFinalText;
+      turn.currentContentBlocks = [visibleFinalText];
     }
-    const finalSegmentText = this.resolveAssistantSegmentText(turn, finalText);
+    const finalSegmentText = sanitizeAgentVisibleOutput(
+      this.resolveAssistantSegmentText(turn, visibleFinalText),
+    );
     turn.currentAssistantSegmentText = finalSegmentText;
     if (finalSegmentText) {
       this.logFirstResponseTiming(sessionId, turn, 'chat', finalSegmentText.length);
@@ -7925,7 +7970,10 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
       for (const entry of extractGatewayHistoryEntries(history.messages)) {
         const role = entry.role;
         if (role !== 'user' && role !== 'assistant') continue;
-        const text = normalizeEntryText(role, entry.text, platformFlags);
+        const normalizedText = normalizeEntryText(role, entry.text, platformFlags);
+        const text = role === 'assistant'
+          ? sanitizeAgentVisibleOutput(normalizedText)
+          : normalizedText;
         const mediaMetadata = role === 'user' ? buildGatewayMediaMetadata(entry) : undefined;
         if ((!text && !mediaMetadata) || shouldSuppressHeartbeatText(role, text)) continue;
         // Carry usage/model metadata for assistant messages and local media refs for user messages.
@@ -8191,6 +8239,7 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
       if (turn.planMode) {
         canonicalText = ensurePlanModeProposedPlanBlock(canonicalText);
       }
+      canonicalText = sanitizeAgentVisibleOutput(canonicalText);
 
       console.debug('[OpenClawRuntime] syncFinalAssistant — canonicalText.length:', canonicalText.length);
 
@@ -8204,6 +8253,7 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
       if (turn.planMode) {
         canonicalSegmentText = ensurePlanModeProposedPlanBlock(canonicalSegmentText);
       }
+      canonicalSegmentText = sanitizeAgentVisibleOutput(canonicalSegmentText);
       console.debug('[Debug:syncFinal] canonicalSegmentText length:', canonicalSegmentText.length,
         'committed.length:', turn.committedAssistantText.length,
         'segment:', canonicalSegmentText.slice(0, 80));
@@ -8293,6 +8343,7 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
       if (isDiscord) text = stripDiscordMentions(text);
       if (isQQ && role === 'user') text = stripQQBotSystemPrompt(text);
       if (isFeishu && role === 'user') text = stripFeishuSystemHeader(text);
+      if (role === 'assistant') text = sanitizeAgentVisibleOutput(text);
       const metadata = role === 'user' ? buildGatewayMediaMetadata(entry) : undefined;
       if ((text || metadata) && !shouldSuppressHeartbeatText(role, text)) {
         historyEntries.push({

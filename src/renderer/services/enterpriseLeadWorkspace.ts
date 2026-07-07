@@ -1,9 +1,13 @@
 import type {
   EnterpriseLeadAgentTask,
+  EnterpriseLeadExtractionSource,
   EnterpriseLeadIpcResult,
   EnterpriseLeadPendingVersion,
   EnterpriseLeadWorkspace,
   EnterpriseLeadWorkspaceAgentBinding,
+  EnterpriseLeadWorkspaceAgentCalibrationRequest,
+  EnterpriseLeadWorkspaceAgentCalibrationResponse,
+  EnterpriseLeadWorkspaceChatProgressEvent,
   EnterpriseLeadWorkspaceChatRequest,
   EnterpriseLeadWorkspaceChatResponse,
   EnterpriseLeadWorkspaceChatSession,
@@ -18,6 +22,10 @@ import type {
 type EnterpriseLeadWorkspaceApi = Window['electron']['enterpriseLeadWorkspace'];
 
 const LOG_PREFIX = '[EnterpriseLeadWorkspace]';
+
+export const EnterpriseLeadWorkspaceServiceError = {
+  UpdateSourcesApiUnavailable: 'update_sources_api_unavailable',
+} as const;
 
 const getApi = (): EnterpriseLeadWorkspaceApi | null =>
   window.electron?.enterpriseLeadWorkspace ?? null;
@@ -139,6 +147,17 @@ export const updateWorkspaceProfile = async (
     api => api.updateWorkspaceProfile(workspaceId, profile),
   );
 
+export const updateWorkspaceSources = async (
+  workspaceId: string,
+  sources: EnterpriseLeadExtractionSource[],
+): Promise<EnterpriseLeadWorkspace | null> =>
+  requestOrThrow<EnterpriseLeadWorkspace | null>('updateWorkspaceSources', null, api => {
+    if (typeof api.updateWorkspaceSources !== 'function') {
+      throw new Error(EnterpriseLeadWorkspaceServiceError.UpdateSourcesApiUnavailable);
+    }
+    return api.updateWorkspaceSources(workspaceId, sources);
+  });
+
 export const updateWorkspaceAgents = async (
   workspaceId: string,
   agents: EnterpriseLeadWorkspaceAgentBinding[],
@@ -218,6 +237,19 @@ export const chat = async (
     api => api.chat(workspaceId, chatRequest),
   );
 
+export const onChatProgress = (
+  requestId: string,
+  callback: (event: EnterpriseLeadWorkspaceChatProgressEvent) => void,
+): (() => void) => getApi()?.onChatProgress(requestId, callback) ?? (() => undefined);
+
+export const testWorkspaceAgent = async (
+  workspaceId: string,
+  calibrationRequest: EnterpriseLeadWorkspaceAgentCalibrationRequest,
+): Promise<EnterpriseLeadWorkspaceAgentCalibrationResponse | null> =>
+  request<EnterpriseLeadWorkspaceAgentCalibrationResponse | null>('testWorkspaceAgent', null, api =>
+    api.testWorkspaceAgent(workspaceId, calibrationRequest),
+  );
+
 export const runTask = async (taskId: string): Promise<EnterpriseLeadAgentTask | null> =>
   request<EnterpriseLeadAgentTask | null>(
     'runTask',
@@ -268,6 +300,7 @@ export const enterpriseLeadWorkspaceService = {
   createWorkspace,
   deleteWorkspace,
   updateWorkspaceProfile,
+  updateWorkspaceSources,
   updateWorkspaceSettings,
   updateWorkspaceAgents,
   listRuns,
@@ -278,6 +311,8 @@ export const enterpriseLeadWorkspaceService = {
   getChatSession,
   deleteChatSession,
   chat,
+  onChatProgress,
+  testWorkspaceAgent,
   runTask,
   rerunTask,
   createPendingVersion,

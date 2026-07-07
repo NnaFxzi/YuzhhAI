@@ -47,4 +47,23 @@ describe('PositioningService', () => {
     expect(service.buildLatestPromptContext(IndustryPackId.HeavyPackaging, 'marketing')).toContain('出口免熏蒸');
     expect(service.buildLatestPromptContext(IndustryPackId.HeavyPackaging, 'content')).toBe('');
   });
+
+  test('builds heavy-packaging baseline evidence when no positioning report exists', () => {
+    db = new Database(':memory:');
+    const store = new IndustryPackStore(db);
+    const service = new PositioningService({ store });
+
+    const payload = service.buildLatestToolPayload(IndustryPackId.HeavyPackaging, 'marketing');
+
+    expect(payload.status).toBe('baseline');
+    expect(payload.packId).toBe(IndustryPackId.HeavyPackaging);
+    expect(payload.industryLabel).toBe('重包装/工业包装');
+    expect(payload.message).toContain('No saved positioning report');
+    expect(payload.baselineEvidence.join('\n')).toContain('重型包装获客内容包');
+    expect(payload.baselineEvidence.join('\n')).toContain('重型瓦楞纸箱');
+    expect(payload.baselineEvidence.join('\n')).toContain('蜂窝纸箱');
+    expect(payload.baselineEvidence.join('\n')).toContain('替代木箱包装');
+    expect(payload.answerGuidance).toContain('不要追问用户具体行业');
+    expect(payload.answerGuidance).toContain('待验证');
+  });
 });

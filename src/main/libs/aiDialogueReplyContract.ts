@@ -40,6 +40,11 @@ const baseRules = (language: AiDialogueReplyLanguage): string[] => [
 ];
 
 const coworkRules = (): string[] => [
+  '- For content generation requests such as topics, copy, scripts, private-domain messages, sales replies, or rewrites, draft a usable first version when the latest request or retrieved knowledge contains enough business context.',
+  '- Do not use blocking choice, confirmation, or user-input dialogs for content generation clarification; search or reuse available knowledge, memory, profile, and prior positioning context before asking.',
+  '- If the content knowledge retrieval preflight says no sufficiently relevant knowledge was found, do not draft or make assumptions; ask for the missing domain, account positioning, audience, product/service, selling point, or conversion goal in plain text.',
+  '- If retrieved knowledge is sufficient and only minor details are missing, mark those details inline and put 1-2 optional follow-up questions after the draft.',
+  '- For Xiaohongshu/topic requests, include concrete titles or angles, target audience, pain point, hook, and conversion intent; avoid only asking what industry the user means.',
   '- For coding work, mention changed files, verification run, and remaining risk in the final response.',
   '- For analysis or planning, give a clear recommendation before detailed alternatives.',
   '- If tools were used, summarize outcomes rather than narrating every internal step.',

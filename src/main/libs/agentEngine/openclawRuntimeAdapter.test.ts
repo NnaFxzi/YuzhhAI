@@ -1,5 +1,8 @@
+import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 
+import Database from 'better-sqlite3';
 import { expect, test, vi } from 'vitest';
 
 vi.mock('electron', () => ({
@@ -16,7 +19,13 @@ import {
   ContextCompactionStatus,
   CoworkSystemMessageKind,
 } from '../../../common/coworkSystemMessages';
+import {
+  AgentAnswerShape,
+  defaultAgentResponseContract,
+} from '../../../shared/agent';
 import { CoworkSelectedTextSource } from '../../../shared/cowork/selectedText';
+import { ContentKnowledgeSourceType } from '../contentKnowledgeRetrieval';
+import { ContentKnowledgeVectorStore } from '../contentKnowledgeVectorStore';
 import {
   __openClawTokenProxyTestUtils,
   consumeRecentOpenClawTokenProxyQuotaError,
@@ -377,13 +386,317 @@ test('outbound prompt injects the reply contract before the current request', as
   };
   internal.bridgedSessions.add('session-1');
 
-  const prompt = await internal.buildOutboundPrompt('session-1', '帮我优化回复质量');
+  const prompt = await internal.buildOutboundPrompt('session-1', '帮我做 10 个小红书选题');
 
   expect(prompt).toContain('[LobsterAI reply contract]');
   expect(prompt).toContain('Answer in the same language as the latest user request');
+  expect(prompt).toContain('For content generation requests');
+  expect(prompt).toContain('draft a usable first version');
+  expect(prompt).toContain('avoid only asking what industry the user means');
   expect(prompt.indexOf('[LobsterAI reply contract]')).toBeLessThan(
     prompt.indexOf('[Current user request]'),
   );
+});
+
+test('outbound prompt injects knowledge evidence guidance for industry analysis requests', async () => {
+  const adapter = new OpenClawRuntimeAdapter(
+    {
+      getSession: () => null,
+      getAgent: () => null,
+    } as never,
+    {} as never,
+  );
+  const internal = adapter as unknown as {
+    bridgedSessions: Set<string>;
+    buildOutboundPrompt: (
+      sessionId: string,
+      prompt: string,
+      systemPrompt?: string,
+      agentId?: string,
+    ) => Promise<string>;
+  };
+  internal.bridgedSessions.add('session-1');
+
+  const prompt = await internal.buildOutboundPrompt('session-1', '帮我出分析当前行业的形式');
+
+  expect(prompt).toContain('[Knowledge evidence usage contract]');
+  expect(prompt).toContain('memory_search');
+  expect(prompt).toContain('lobsterai_industry_positioning_get_latest');
+  expect(prompt).toContain('不要追问用户具体行业');
+  expect(prompt).toContain('待验证');
+  expect(prompt.indexOf('[Knowledge evidence usage contract]')).toBeLessThan(
+    prompt.indexOf('[Current user request]'),
+  );
+});
+
+test('outbound prompt injects knowledge-first guidance for content production requests', async () => {
+  const adapter = new OpenClawRuntimeAdapter(
+    {
+      getSession: () => null,
+      getAgent: () => null,
+    } as never,
+    {} as never,
+  );
+  const internal = adapter as unknown as {
+    bridgedSessions: Set<string>;
+    buildOutboundPrompt: (
+      sessionId: string,
+      prompt: string,
+      systemPrompt?: string,
+      agentId?: string,
+    ) => Promise<string>;
+  };
+  internal.bridgedSessions.add('session-1');
+
+  const prompt = await internal.buildOutboundPrompt('session-1', '帮我做 10 个小红书选题');
+
+  expect(prompt).toContain('[Knowledge evidence usage contract]');
+  expect(prompt).toContain('内容生产');
+  expect(prompt).toContain('memory_search');
+  expect(prompt).toContain('lobsterai_industry_positioning_get_latest');
+  expect(prompt).toContain('不要调用阻断式选择');
+  expect(prompt).toContain('没有命中足够相关知识时，不要假设生成');
+  expect(prompt.indexOf('[Knowledge evidence usage contract]')).toBeLessThan(
+    prompt.indexOf('[Current user request]'),
+  );
+});
+
+test('outbound prompt appends matched workspace knowledge snippets for industry analysis requests', async () => {
+  const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lobsterai-knowledge-context-'));
+  const workspaceDir = path.join(stateDir, 'workspace-main');
+  fs.mkdirSync(workspaceDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(workspaceDir, 'USER.md'),
+    '用户主要关注重包装行业，产品包括重型纸箱、蜂窝纸板和替代木箱包装。',
+    'utf8',
+  );
+  fs.writeFileSync(
+    path.join(workspaceDir, 'MEMORY.md'),
+    [
+      '# User Memories',
+      '',
+      '- 目标客户包括机械设备厂，重点场景是出口运输、防潮、抗压和综合成本。',
+      '- 其他闲聊偏好。',
+    ].join('\n'),
+    'utf8',
+  );
+  const adapter = new OpenClawRuntimeAdapter(
+    {
+      getSession: () => null,
+      getAgent: () => null,
+    } as never,
+    {
+      getStateDir: () => stateDir,
+    } as never,
+  );
+  const internal = adapter as unknown as {
+    bridgedSessions: Set<string>;
+    buildOutboundPrompt: (
+      sessionId: string,
+      prompt: string,
+      systemPrompt?: string,
+      agentId?: string,
+    ) => Promise<string>;
+  };
+  internal.bridgedSessions.add('session-1');
+
+  const prompt = await internal.buildOutboundPrompt('session-1', '帮我出分析当前行业的形式');
+
+  expect(prompt).toContain('[Knowledge base context matched before answering]');
+  expect(prompt).toContain('重包装行业');
+  expect(prompt).toContain('机械设备厂');
+  expect(prompt.indexOf('[Knowledge base context matched before answering]')).toBeLessThan(
+    prompt.indexOf('[Current user request]'),
+  );
+});
+
+test('outbound prompt appends matched workspace knowledge snippets for content production requests', async () => {
+  const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lobsterai-content-context-'));
+  const workspaceDir = path.join(stateDir, 'workspace-main');
+  fs.mkdirSync(workspaceDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(workspaceDir, 'USER.md'),
+    '用户主营重型纸箱和蜂窝纸箱，主要客户是机械设备厂和汽配出口工厂。',
+    'utf8',
+  );
+  fs.writeFileSync(
+    path.join(workspaceDir, 'MEMORY.md'),
+    [
+      '# User Memories',
+      '',
+      '- 小红书内容优先围绕防破损、替代木箱、免熏蒸和包装降本做选题。',
+      '- 私域话术要像真实工厂业务员，不要像广告海报。',
+    ].join('\n'),
+    'utf8',
+  );
+  const adapter = new OpenClawRuntimeAdapter(
+    {
+      getSession: () => null,
+      getAgent: () => null,
+    } as never,
+    {
+      getStateDir: () => stateDir,
+    } as never,
+  );
+  const internal = adapter as unknown as {
+    bridgedSessions: Set<string>;
+    buildOutboundPrompt: (
+      sessionId: string,
+      prompt: string,
+      systemPrompt?: string,
+      agentId?: string,
+    ) => Promise<string>;
+  };
+  internal.bridgedSessions.add('session-1');
+
+  const prompt = await internal.buildOutboundPrompt('session-1', '帮我做 10 个小红书选题');
+
+  expect(prompt).toContain('[Knowledge base context matched before answering]');
+  expect(prompt).toContain('重型纸箱和蜂窝纸箱');
+  expect(prompt).toContain('防破损、替代木箱、免熏蒸和包装降本');
+  expect(prompt.indexOf('[Knowledge base context matched before answering]')).toBeLessThan(
+    prompt.indexOf('[Current user request]'),
+  );
+
+  fs.rmSync(stateDir, { recursive: true, force: true });
+});
+
+test('outbound prompt uses indexed workspace knowledge when agent memory files are empty', async () => {
+  const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lobsterai-indexed-knowledge-context-'));
+  const workspaceDir = path.join(stateDir, 'workspace-main');
+  fs.mkdirSync(workspaceDir, { recursive: true });
+  fs.writeFileSync(path.join(workspaceDir, 'USER.md'), '', 'utf8');
+  fs.writeFileSync(path.join(workspaceDir, 'MEMORY.md'), '', 'utf8');
+
+  const db = new Database(':memory:');
+  const vectorStore = new ContentKnowledgeVectorStore(db);
+  vectorStore.replaceSources('enterprise-workspace:factory-profile', [
+    {
+      sourceId: 'source-0',
+      sourceType: ContentKnowledgeSourceType.WorkspaceDocument,
+      label: '工厂知识库',
+      content: '工厂主要做重型纸箱、蜂窝箱、纸护角、纸托盘，可按尺寸定制，主要服务机械设备和汽配出口客户。',
+    },
+  ]);
+  const adapter = new OpenClawRuntimeAdapter(
+    {
+      getSession: () => null,
+      getAgent: () => null,
+    } as never,
+    {
+      getStateDir: () => stateDir,
+    } as never,
+    {},
+    undefined,
+    undefined,
+    vectorStore,
+  );
+  const internal = adapter as unknown as {
+    bridgedSessions: Set<string>;
+    buildOutboundPrompt: (
+      sessionId: string,
+      prompt: string,
+      systemPrompt?: string,
+      agentId?: string,
+    ) => Promise<string>;
+  };
+  internal.bridgedSessions.add('session-1');
+
+  const prompt = await internal.buildOutboundPrompt('session-1', '帮我写一条朋友圈文案');
+
+  expect(prompt).toContain('[Knowledge base context matched before answering]');
+  expect(prompt).toContain('重型纸箱、蜂窝箱、纸护角、纸托盘');
+  expect(prompt).toContain('不要说“我目前还没记住你工厂的具体情况”');
+  expect(prompt.indexOf('[Knowledge base context matched before answering]')).toBeLessThan(
+    prompt.indexOf('[Current user request]'),
+  );
+
+  db.close();
+  fs.rmSync(stateDir, { recursive: true, force: true });
+});
+
+test('outbound prompt blocks content production when no relevant workspace knowledge is found', async () => {
+  const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lobsterai-content-missing-context-'));
+  const workspaceDir = path.join(stateDir, 'workspace-main');
+  fs.mkdirSync(workspaceDir, { recursive: true });
+  fs.writeFileSync(path.join(workspaceDir, 'USER.md'), '用户偏好深色主题。', 'utf8');
+  fs.writeFileSync(path.join(workspaceDir, 'MEMORY.md'), '- 上次处理了应用更新提醒。', 'utf8');
+  const adapter = new OpenClawRuntimeAdapter(
+    {
+      getSession: () => null,
+      getAgent: () => null,
+    } as never,
+    {
+      getStateDir: () => stateDir,
+    } as never,
+  );
+  const internal = adapter as unknown as {
+    bridgedSessions: Set<string>;
+    buildOutboundPrompt: (
+      sessionId: string,
+      prompt: string,
+      systemPrompt?: string,
+      agentId?: string,
+    ) => Promise<string>;
+  };
+  internal.bridgedSessions.add('session-1');
+
+  const prompt = await internal.buildOutboundPrompt('session-1', '帮我做 10 个小红书选题');
+
+  expect(prompt).toContain('[Content knowledge retrieval preflight]');
+  expect(prompt).toContain('No sufficiently relevant knowledge was found');
+  expect(prompt).toContain('不要生成选题、脚本、文案、私域话术或销售转化内容');
+  expect(prompt).not.toContain('[Knowledge base context matched before answering]');
+  expect(prompt).not.toContain('深色主题');
+  expect(prompt.indexOf('[Content knowledge retrieval preflight]')).toBeLessThan(
+    prompt.indexOf('[Current user request]'),
+  );
+
+  fs.rmSync(stateDir, { recursive: true, force: true });
+});
+
+test('outbound prompt leaves selected agent response contracts to workspace instructions', async () => {
+  const adapter = new OpenClawRuntimeAdapter(
+    {
+      getSession: () => null,
+      getAgent: (agentId: string) => (agentId === 'marketing'
+        ? {
+          id: 'marketing',
+          name: 'Marketing',
+          responseContract: {
+            ...defaultAgentResponseContract,
+            answerShape: AgentAnswerShape.CopyReady,
+            mustInclude: ['输出可直接复制的正文'],
+            mustAvoid: ['不要编造硬事实'],
+          },
+        }
+        : null),
+    } as never,
+    {} as never,
+  );
+  const internal = adapter as unknown as {
+    bridgedSessions: Set<string>;
+    buildOutboundPrompt: (
+      sessionId: string,
+      prompt: string,
+      systemPrompt?: string,
+      agentId?: string,
+    ) => Promise<string>;
+  };
+  internal.bridgedSessions.add('session-1');
+
+  const prompt = await internal.buildOutboundPrompt(
+    'session-1',
+    '帮我写一条小红书文案',
+    undefined,
+    'marketing',
+  );
+
+  expect(prompt).not.toContain('[Agent response contract]');
+  expect(prompt).not.toContain('Answer shape: copy_ready');
+  expect(prompt).not.toContain('输出可直接复制的正文');
+  expect(prompt).not.toContain('不要编造硬事实');
+  expect(prompt).toContain('[Current user request]');
 });
 
 test('outbound prompt injects continuity capsule bridge before the current request', async () => {
@@ -1919,6 +2232,44 @@ test('incomplete plan mode output requests one hidden completion retry', async (
   } finally {
     vi.useRealTimers();
   }
+});
+
+test('chat final sanitizes internal memory diagnostics before persisting assistant output', async () => {
+  const leakyAnswer = [
+    '结论：先按重包装/工业包装行业分析。',
+    '',
+    '> ⚠️ 记忆索引当前不可用（embedding 不匹配，需运行 `openclaw memory index --force` 重建），缺少公司经营数据。',
+    '',
+    '下一步：优先验证客户场景和出口包装需求。',
+  ].join('\n');
+  const { session, store } = createReconcileStore([
+    { id: 'msg-1', type: 'user', content: '帮我出分析当前行业的形式', timestamp: 1, metadata: {} },
+    { id: 'msg-2', type: 'assistant', content: leakyAnswer, timestamp: 2, metadata: { isStreaming: true } },
+  ]);
+  session.status = 'running';
+  const adapter = new OpenClawRuntimeAdapter(store, {});
+  const sessionKey = `agent:main:lobsterai:${session.id}`;
+  const turn = createActiveTurn(session.id, sessionKey, 'run-industry-final');
+  turn.assistantMessageId = 'msg-2';
+  turn.currentText = leakyAnswer;
+  turn.currentAssistantSegmentText = leakyAnswer;
+  adapter.activeTurns.set(session.id, turn);
+  adapter.sessionIdByRunId.set('run-industry-final', session.id);
+
+  await adapter.handleChatFinal(session.id, turn, {
+    state: 'final',
+    runId: 'run-industry-final',
+    sessionKey,
+    message: { role: 'assistant', content: leakyAnswer },
+  });
+
+  const persisted = session.messages.find((message) => message.id === 'msg-2')?.content as string;
+  expect(persisted).toContain('部分历史记忆暂未读取');
+  expect(persisted).toContain('待验证');
+  expect(persisted).toContain('结论：先按重包装/工业包装行业分析。');
+  expect(persisted).toContain('下一步：优先验证客户场景和出口包装需求。');
+  expect(persisted).not.toContain('embedding');
+  expect(persisted).not.toContain('openclaw memory index --force');
 });
 
 test('incomplete final after plan recovery waits for the automatic continuation', async () => {

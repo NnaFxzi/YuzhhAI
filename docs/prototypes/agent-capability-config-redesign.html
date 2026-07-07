@@ -1,0 +1,1326 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta content="width=device-width, initial-scale=1" name="viewport">
+  <title>Agent 编辑原型</title>
+  <style>
+    :root {
+      --bg: #f5f7fb;
+      --panel: #ffffff;
+      --surface: #f8fafc;
+      --surface-strong: #eef4ff;
+      --line: #dfe5ef;
+      --line-soft: #edf1f7;
+      --text: #172033;
+      --muted: #667085;
+      --faint: #98a2b3;
+      --primary: #2f6fed;
+      --primary-soft: #e9f1ff;
+      --green: #12a474;
+      --green-soft: #e8f7f1;
+      --warning: #b7791f;
+      --warning-soft: #fff7e6;
+      --shadow: 0 24px 70px rgba(15, 23, 42, 0.16);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    button,
+    input,
+    textarea {
+      font: inherit;
+    }
+
+    button {
+      cursor: pointer;
+    }
+
+    .page {
+      min-height: 100vh;
+      padding: 32px;
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+    }
+
+    .dialog {
+      width: min(820px, 100%);
+      max-height: calc(100vh - 64px);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+    }
+
+    .dialog-header,
+    .dialog-footer {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 18px 22px;
+      border-bottom: 1px solid var(--line-soft);
+    }
+
+    .dialog-footer {
+      border-top: 1px solid var(--line-soft);
+      border-bottom: 0;
+    }
+
+    .dialog-body {
+      min-height: 0;
+      overflow: auto;
+      padding: 18px 22px 22px;
+    }
+
+    .title {
+      margin: 0;
+      font-size: 17px;
+      line-height: 24px;
+      font-weight: 700;
+      letter-spacing: 0;
+    }
+
+    .subtitle {
+      margin: 4px 0 0;
+      font-size: 13px;
+      line-height: 22px;
+      color: var(--muted);
+    }
+
+    .icon-button {
+      width: 32px;
+      height: 32px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border: 0;
+      border-radius: 8px;
+      background: transparent;
+      color: var(--muted);
+    }
+
+    .icon-button:hover {
+      background: var(--surface);
+      color: var(--text);
+    }
+
+    .section {
+      display: grid;
+      gap: 12px;
+      margin-top: 18px;
+    }
+
+    .section:first-child {
+      margin-top: 0;
+    }
+
+    .section-heading {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .section-title {
+      margin: 0;
+      font-size: 14px;
+      line-height: 20px;
+      font-weight: 700;
+    }
+
+    .section-desc {
+      margin: 3px 0 0;
+      font-size: 12px;
+      line-height: 20px;
+      color: var(--muted);
+    }
+
+    .capability-panel {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      overflow: hidden;
+    }
+
+    .setting-row {
+      display: grid;
+      grid-template-columns: 42px minmax(0, 1fr) auto;
+      gap: 12px;
+      align-items: center;
+      padding: 14px;
+      border-top: 1px solid var(--line-soft);
+    }
+
+    .setting-row:first-child {
+      border-top: 0;
+    }
+
+    .row-icon {
+      width: 36px;
+      height: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 8px;
+      background: var(--primary-soft);
+      color: var(--primary);
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .row-title {
+      font-size: 14px;
+      line-height: 20px;
+      font-weight: 700;
+    }
+
+    .row-desc {
+      margin-top: 2px;
+      font-size: 12px;
+      line-height: 20px;
+      color: var(--muted);
+    }
+
+    .select-button,
+    .secondary-button,
+    .primary-button {
+      min-height: 34px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      border-radius: 8px;
+      padding: 0 12px;
+      font-size: 12px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    .select-button,
+    .secondary-button {
+      border: 1px solid var(--line);
+      background: var(--panel);
+      color: var(--text);
+    }
+
+    .select-button:hover,
+    .secondary-button:hover {
+      background: var(--surface);
+    }
+
+    .primary-button {
+      border: 1px solid var(--primary);
+      background: var(--primary);
+      color: #fff;
+    }
+
+    .ghost-button {
+      border: 0;
+      background: transparent;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .ghost-button:hover {
+      color: var(--text);
+    }
+
+    .scope-control {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 14px 14px 68px;
+      border-top: 1px solid var(--line-soft);
+      background: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
+    }
+
+    .segmented {
+      display: inline-flex;
+      padding: 3px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface);
+    }
+
+    .segment {
+      min-height: 30px;
+      border: 0;
+      border-radius: 6px;
+      padding: 0 12px;
+      background: transparent;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .segment.active {
+      background: var(--panel);
+      color: var(--primary);
+      box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+    }
+
+    .scope-summary {
+      min-width: 0;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 20px;
+    }
+
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      min-height: 24px;
+      padding: 0 8px;
+      border-radius: 999px;
+      background: var(--green-soft);
+      color: var(--green);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .row-actions {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+
+    .skill-panel {
+      display: none;
+      border-top: 1px solid var(--line-soft);
+      background: #fbfcff;
+      padding: 14px;
+    }
+
+    .skill-panel.open {
+      display: block;
+    }
+
+    .selected-strip {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+    }
+
+    .chip-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      min-height: 26px;
+      border: 1px solid #cfe0ff;
+      border-radius: 999px;
+      background: var(--primary-soft);
+      color: var(--primary);
+      padding: 0 9px;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .toolbar {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: center;
+      margin-top: 12px;
+    }
+
+    .search {
+      position: relative;
+    }
+
+    .search svg {
+      position: absolute;
+      left: 11px;
+      top: 50%;
+      width: 15px;
+      height: 15px;
+      transform: translateY(-50%);
+      color: var(--faint);
+    }
+
+    .search input {
+      width: 100%;
+      height: 36px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      color: var(--text);
+      padding: 0 12px 0 34px;
+      outline: none;
+      font-size: 13px;
+    }
+
+    .search input:focus {
+      border-color: #adc8ff;
+      box-shadow: 0 0 0 3px rgba(47, 111, 237, 0.12);
+    }
+
+    .filter-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .filter {
+      min-height: 30px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      color: var(--muted);
+      padding: 0 10px;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .filter.active {
+      border-color: #adc8ff;
+      background: var(--primary-soft);
+      color: var(--primary);
+    }
+
+    .skill-list {
+      display: grid;
+      gap: 8px;
+      max-height: 260px;
+      overflow: auto;
+      margin-top: 12px;
+      padding-right: 4px;
+    }
+
+    .skill-item {
+      display: grid;
+      grid-template-columns: 34px minmax(0, 1fr) 22px;
+      gap: 10px;
+      align-items: center;
+      width: 100%;
+      min-height: 70px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      padding: 10px;
+      text-align: left;
+      color: var(--text);
+    }
+
+    .skill-item.selected {
+      border-color: #adc8ff;
+      background: #f7fbff;
+    }
+
+    .skill-icon {
+      width: 32px;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 8px;
+      background: var(--surface);
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 800;
+      text-transform: uppercase;
+    }
+
+    .skill-name {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 7px;
+      align-items: center;
+      font-size: 13px;
+      line-height: 20px;
+      font-weight: 700;
+    }
+
+    .badge {
+      min-height: 20px;
+      border-radius: 6px;
+      background: var(--surface);
+      color: var(--muted);
+      padding: 1px 6px;
+      font-size: 11px;
+      line-height: 18px;
+      font-weight: 700;
+    }
+
+    .skill-desc {
+      margin-top: 3px;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 18px;
+    }
+
+    .checkbox {
+      width: 20px;
+      height: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      color: transparent;
+      font-size: 13px;
+      font-weight: 900;
+    }
+
+    .skill-item.selected .checkbox {
+      border-color: var(--primary);
+      background: var(--primary);
+      color: #fff;
+    }
+
+    .empty-state {
+      display: none;
+      align-items: flex-start;
+      gap: 12px;
+      margin-top: 12px;
+      border: 1px dashed var(--line);
+      border-radius: 8px;
+      background: var(--surface);
+      padding: 18px;
+    }
+
+    .empty-state.open {
+      display: flex;
+    }
+
+    .empty-icon {
+      width: 38px;
+      height: 38px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 8px;
+      background: var(--warning-soft);
+      color: var(--warning);
+      font-weight: 800;
+    }
+
+    .empty-title {
+      font-size: 14px;
+      font-weight: 700;
+      line-height: 20px;
+    }
+
+    .empty-desc {
+      margin: 4px 0 12px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 20px;
+    }
+
+    .instruction-block {
+      display: grid;
+      gap: 12px;
+      margin-top: 16px;
+      padding: 14px;
+      border: 1px solid var(--line-soft);
+      border-radius: 8px;
+      background: var(--surface);
+    }
+
+    .instruction-title {
+      font-size: 13px;
+      line-height: 20px;
+      font-weight: 700;
+    }
+
+    .instruction-desc {
+      margin-top: 2px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 20px;
+    }
+
+    .rule-list {
+      display: grid;
+      gap: 10px;
+    }
+
+    .rule-row {
+      display: grid;
+      grid-template-columns: 142px minmax(0, 1fr);
+      gap: 14px;
+      align-items: start;
+      padding-top: 10px;
+      border-top: 1px solid var(--line-soft);
+    }
+
+    .rule-row:first-child {
+      padding-top: 0;
+      border-top: 0;
+    }
+
+    .rule-label {
+      display: block;
+      color: var(--text);
+      font-size: 13px;
+      line-height: 20px;
+      font-weight: 800;
+    }
+
+    .rule-hint {
+      margin-top: 3px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 19px;
+    }
+
+    .rule-row textarea {
+      width: 100%;
+      min-height: 74px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      color: var(--text);
+      padding: 10px 12px;
+      resize: vertical;
+      outline: none;
+      font-size: 13px;
+      line-height: 21px;
+    }
+
+    .rule-row.is-tall textarea {
+      min-height: 96px;
+    }
+
+    .example-panel {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      overflow: hidden;
+    }
+
+    .example-inner {
+      display: grid;
+      gap: 14px;
+      padding: 14px;
+    }
+
+    .example-list,
+    .example-grid {
+      display: grid;
+      gap: 12px;
+    }
+
+    .example-case {
+      display: grid;
+      gap: 12px;
+      border: 1px solid var(--line-soft);
+      border-radius: 8px;
+      background: #fbfcff;
+      padding: 12px;
+    }
+
+    .case-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .case-heading {
+      display: grid;
+      grid-template-columns: 28px minmax(0, 1fr);
+      gap: 10px;
+      align-items: start;
+    }
+
+    .case-index {
+      width: 28px;
+      height: 28px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 8px;
+      background: var(--primary-soft);
+      color: var(--primary);
+      font-size: 12px;
+      font-weight: 900;
+    }
+
+    .case-title {
+      margin: 0;
+      color: var(--text);
+      font-size: 13px;
+      line-height: 20px;
+      font-weight: 800;
+    }
+
+    .case-desc {
+      margin: 2px 0 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 19px;
+    }
+
+    .sample-card,
+    .expected-card {
+      min-width: 0;
+      border: 1px solid var(--line-soft);
+      border-radius: 8px;
+      background: var(--surface);
+      padding: 12px;
+    }
+
+    .example-card-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
+    .example-card-title h3 {
+      margin: 0;
+      color: var(--text);
+      font-size: 13px;
+      line-height: 20px;
+      font-weight: 800;
+    }
+
+    .example-card-title span {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 18px;
+    }
+
+    .example-field,
+    .output-field {
+      display: grid;
+      gap: 6px;
+      min-width: 0;
+    }
+
+    .example-field label,
+    .output-field label {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 20px;
+      font-weight: 800;
+    }
+
+    .example-field textarea,
+    .output-field textarea,
+    .output-field input {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      color: var(--text);
+      padding: 10px 12px;
+      resize: vertical;
+      outline: none;
+      font-size: 13px;
+      line-height: 21px;
+    }
+
+    .example-field textarea {
+      min-height: 126px;
+    }
+
+    .output-field input {
+      height: 38px;
+      resize: none;
+    }
+
+    .output-field textarea {
+      min-height: 64px;
+    }
+
+    .output-grid {
+      display: grid;
+      gap: 10px;
+    }
+
+    .field-note {
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 19px;
+    }
+
+    .check-card {
+      border: 1px solid var(--line-soft);
+      border-radius: 8px;
+      background: var(--surface);
+      padding: 12px;
+    }
+
+    .check-title {
+      font-size: 12px;
+      line-height: 18px;
+      font-weight: 800;
+      color: var(--text);
+    }
+
+    .check-list {
+      display: grid;
+      gap: 10px;
+      margin-top: 10px;
+    }
+
+    .check-item {
+      display: grid;
+      grid-template-columns: 18px minmax(0, 1fr);
+      gap: 8px;
+      align-items: start;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 19px;
+    }
+
+    .check-dot {
+      width: 18px;
+      height: 18px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 999px;
+      background: var(--green-soft);
+      color: var(--green);
+      font-size: 11px;
+      font-weight: 900;
+    }
+
+    .example-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+
+    .field label {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 20px;
+      font-weight: 700;
+    }
+
+    .field textarea {
+      width: 100%;
+      min-height: 112px;
+      margin-top: 6px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      color: var(--text);
+      padding: 10px 12px;
+      resize: vertical;
+      outline: none;
+      font-size: 13px;
+      line-height: 21px;
+    }
+
+    .field input {
+      width: 100%;
+      height: 38px;
+      margin-top: 6px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      color: var(--text);
+      padding: 0 12px;
+      outline: none;
+      font-size: 13px;
+    }
+
+    .field input:focus,
+    .field textarea:focus,
+    .rule-row textarea:focus,
+    .example-field textarea:focus,
+    .output-field textarea:focus,
+    .output-field input:focus {
+      border-color: #adc8ff;
+      box-shadow: 0 0 0 3px rgba(47, 111, 237, 0.12);
+    }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 96px;
+      gap: 12px;
+    }
+
+    .form-grid .wide {
+      grid-column: 1 / -1;
+    }
+
+    .prototype-switch {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .switch-button {
+      width: 40px;
+      height: 22px;
+      position: relative;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--surface);
+      padding: 0;
+    }
+
+    .switch-button::after {
+      content: "";
+      position: absolute;
+      top: 3px;
+      left: 3px;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: var(--faint);
+      transition: transform 160ms ease, background 160ms ease;
+    }
+
+    .switch-button.on {
+      background: var(--primary-soft);
+      border-color: #adc8ff;
+    }
+
+    .switch-button.on::after {
+      transform: translateX(18px);
+      background: var(--primary);
+    }
+
+    @media (max-width: 760px) {
+      .page {
+        padding: 0;
+      }
+
+      .dialog {
+        min-height: 100vh;
+        max-height: none;
+        border-radius: 0;
+        border-left: 0;
+        border-right: 0;
+      }
+
+      .setting-row {
+        grid-template-columns: 36px minmax(0, 1fr);
+      }
+
+      .setting-row .select-button {
+        grid-column: 2;
+        justify-self: flex-start;
+      }
+
+      .scope-control {
+        padding-left: 14px;
+        align-items: stretch;
+        flex-direction: column;
+      }
+
+      .toolbar {
+        grid-template-columns: 1fr;
+      }
+
+      .form-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .example-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .output-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .rule-row {
+        grid-template-columns: 1fr;
+        gap: 8px;
+      }
+
+      .example-actions {
+        justify-content: flex-start;
+      }
+
+      .check-list {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+<main class="page">
+  <section aria-labelledby="dialog-title" class="dialog">
+    <header class="dialog-header">
+      <div>
+        <h1 class="title" id="dialog-title">编辑工作区 Agent</h1>
+        <p class="subtitle">这里的修改只保存到当前工作空间，并用于新的对话和下一次任务执行。</p>
+      </div>
+      <button aria-label="关闭" class="icon-button" type="button">
+        <svg aria-hidden="true" fill="none" height="18" viewBox="0 0 24 24" width="18">
+          <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-linecap="round" stroke-width="1.8" />
+        </svg>
+      </button>
+    </header>
+
+    <div class="dialog-body">
+      <section class="section">
+        <div class="section-heading">
+          <div>
+            <h2 class="section-title">基本信息</h2>
+            <p class="section-desc">编辑这个 Agent 在当前工作空间里的名称、头像、职责说明和执行规范。</p>
+          </div>
+        </div>
+
+        <div class="capability-panel">
+          <div style="padding:14px;">
+            <div class="form-grid">
+              <div class="field">
+                <label for="agentName">Agent 名称</label>
+                <input id="agentName" value="商机雷达 Agent">
+              </div>
+              <div class="field">
+                <label for="agentIcon">图标</label>
+                <input id="agentIcon" maxlength="2" value="商">
+              </div>
+              <div class="field wide">
+                <label for="agentDesc">职责说明</label>
+                <textarea id="agentDesc">判断客户方向、采购信号、商机评分和跟进优先级。</textarea>
+              </div>
+            </div>
+
+            <div class="instruction-block">
+              <div>
+                <div class="instruction-title">执行规范</div>
+                <div class="instruction-desc">把稳定 Agent 需要遵守的做事方式写清楚，减少每次对话里的重复解释。</div>
+              </div>
+              <div class="rule-list">
+                <div class="rule-row">
+                  <div>
+                    <label class="rule-label" for="workStyle">工作方式</label>
+                    <div class="rule-hint">定义判断顺序，避免跳步和直接下结论。</div>
+                  </div>
+                  <textarea
+                    id="workStyle">先识别客户行业、采购意图和紧急程度；证据不足时列出缺失信息，不直接下结论。</textarea>
+                </div>
+                <div class="rule-row">
+                  <div>
+                    <label class="rule-label" for="inputRules">输入要求</label>
+                    <div class="rule-hint">说明哪些资料可作为判断依据。</div>
+                  </div>
+                  <textarea
+                    id="inputRules">优先使用客户行业、询盘内容、采购数量、预算范围、交期要求和历史沟通；缺少关键信息时标记为待补充。</textarea>
+                </div>
+                <div class="rule-row is-tall">
+                  <div>
+                    <label class="rule-label" for="outputFormat">输出格式</label>
+                    <div class="rule-hint">固定结构，方便阅读和后续 Agent 接力。</div>
+                  </div>
+                  <textarea id="outputFormat">客户优先级
+判断依据
+风险或缺失信息
+建议跟进动作</textarea>
+                </div>
+                <div class="rule-row">
+                  <div>
+                    <label class="rule-label" for="guardrails">边界规则</label>
+                    <div class="rule-hint">限制不能猜、不能承诺、需要人工确认的情况。</div>
+                  </div>
+                  <textarea
+                    id="guardrails">不编造客户需求，不承诺价格、交期或合作结果；需要外发或人工确认时明确标记。</textarea>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="section-heading">
+          <div>
+            <h2 class="section-title">示例与校验</h2>
+            <p class="section-desc">用典型任务检查这个 Agent 是否按固定结构回答，并遵守缺失信息和人工确认边界。</p>
+          </div>
+        </div>
+
+        <div class="example-panel">
+          <div class="example-inner">
+            <div class="example-list">
+              <div class="example-case">
+                <div class="case-header">
+                  <div class="case-heading">
+                    <span class="case-index">1</span>
+                    <div>
+                      <h3 class="case-title">高意向询盘</h3>
+                      <p class="case-desc">信息较完整，Agent 应该给出明确优先级和下一步动作。</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="example-grid">
+                  <div class="sample-card">
+                    <div class="example-card-title">
+                      <h3>示例输入</h3>
+                      <span>用户会这样提问</span>
+                    </div>
+                    <div class="example-field">
+                      <label for="sampleInputHigh">输入内容</label>
+                      <textarea
+                        id="sampleInputHigh">客户来自汽车零部件行业，询问 5000 件铝合金精密件，要求两周内交样，已提供图纸但未说明目标价格。</textarea>
+                    </div>
+                    <div class="field-note">保留真实业务表达，不需要写得像提示词。</div>
+                  </div>
+                  <div class="expected-card">
+                    <div class="example-card-title">
+                      <h3>期望输出</h3>
+                      <span>Agent 应该稳定交付</span>
+                    </div>
+                    <div class="output-grid">
+                      <div class="output-field">
+                        <label for="expectedPriorityHigh">优先级</label>
+                        <input id="expectedPriorityHigh" value="高">
+                      </div>
+                      <div class="output-field">
+                        <label for="expectedReasonHigh">判断依据</label>
+                        <textarea id="expectedReasonHigh">行业匹配，已有图纸，数量明确，交样时间具体。</textarea>
+                      </div>
+                      <div class="output-field">
+                        <label for="expectedMissingHigh">缺失信息</label>
+                        <textarea id="expectedMissingHigh">目标价格、材料牌号、验收标准仍需补充。</textarea>
+                      </div>
+                      <div class="output-field">
+                        <label for="expectedNextHigh">下一步动作</label>
+                        <textarea id="expectedNextHigh">安排技术评估图纸，并由销售确认预算和交期可行性。</textarea>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="check-card">
+                  <div class="check-title">稳定性检查</div>
+                  <div class="check-list">
+                    <div class="check-item">
+                      <span class="check-dot">1</span>
+                      <span>输出必须包含客户优先级、判断依据、缺失信息和下一步动作。</span>
+                    </div>
+                    <div class="check-item">
+                      <span class="check-dot">2</span>
+                      <span>目标价格缺失时只能标记待补充，不能自行推测。</span>
+                    </div>
+                    <div class="check-item">
+                      <span class="check-dot">3</span>
+                      <span>涉及报价、交期或承诺时提示人工确认。</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="example-actions">
+                  <button class="secondary-button" type="button">保存示例</button>
+                  <button class="primary-button" type="button">试运行</button>
+                </div>
+              </div>
+
+              <div class="example-case">
+                <div class="case-header">
+                  <div class="case-heading">
+                    <span class="case-index">2</span>
+                    <div>
+                      <h3 class="case-title">信息不足</h3>
+                      <p class="case-desc">资料不够时，Agent 应该先列待补充信息，而不是直接判断。</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="example-grid">
+                  <div class="sample-card">
+                    <div class="example-card-title">
+                      <h3>示例输入</h3>
+                      <span>用户会这样提问</span>
+                    </div>
+                    <div class="example-field">
+                      <label for="sampleInputMissing">输入内容</label>
+                      <textarea
+                        id="sampleInputMissing">客户只说“你们能做精密加工吗？大概多少钱？”未提供图纸、材料、数量、用途和交期。</textarea>
+                    </div>
+                    <div class="field-note">这个样例用来训练 Agent 不要在信息不足时猜测价格或优先级。</div>
+                  </div>
+                  <div class="expected-card">
+                    <div class="example-card-title">
+                      <h3>期望输出</h3>
+                      <span>Agent 应该稳定交付</span>
+                    </div>
+                    <div class="output-grid">
+                      <div class="output-field">
+                        <label for="expectedPriorityMissing">优先级</label>
+                        <input id="expectedPriorityMissing" value="待判断">
+                      </div>
+                      <div class="output-field">
+                        <label for="expectedReasonMissing">判断依据</label>
+                        <textarea
+                          id="expectedReasonMissing">客户表达了加工需求，但缺少图纸、材料、数量、用途和交期，暂时不能判断价值和紧急程度。</textarea>
+                      </div>
+                      <div class="output-field">
+                        <label for="expectedMissingMissing">缺失信息</label>
+                        <textarea
+                          id="expectedMissingMissing">图纸或样品照片、材料牌号、尺寸公差、采购数量、交期要求、应用场景。</textarea>
+                      </div>
+                      <div class="output-field">
+                        <label for="expectedNextMissing">下一步动作</label>
+                        <textarea
+                          id="expectedNextMissing">回复客户补充资料清单，先收集图纸、材料和数量，再进行技术评估。</textarea>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="check-card">
+                  <div class="check-title">稳定性检查</div>
+                  <div class="check-list">
+                    <div class="check-item">
+                      <span class="check-dot">1</span>
+                      <span>必须明确标记信息不足或待判断。</span>
+                    </div>
+                    <div class="check-item">
+                      <span class="check-dot">2</span>
+                      <span>不能给出价格、交期或确定优先级。</span>
+                    </div>
+                    <div class="check-item">
+                      <span class="check-dot">3</span>
+                      <span>必须给出下一步需要客户补充的资料清单。</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="example-actions">
+                  <button class="secondary-button" type="button">保存示例</button>
+                  <button class="primary-button" type="button">试运行</button>
+                </div>
+              </div>
+
+              <div class="example-case">
+                <div class="case-header">
+                  <div class="case-heading">
+                    <span class="case-index">3</span>
+                    <div>
+                      <h3 class="case-title">需要人工确认</h3>
+                      <p class="case-desc">涉及报价、交期、外发承诺时，Agent 应该主动标记人工确认。</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="example-grid">
+                  <div class="sample-card">
+                    <div class="example-card-title">
+                      <h3>示例输入</h3>
+                      <span>用户会这样提问</span>
+                    </div>
+                    <div class="example-field">
+                      <label for="sampleInputReview">输入内容</label>
+                      <textarea
+                        id="sampleInputReview">客户要求今天给正式报价，并希望承诺 7 天交货；当前只有样品照片，没有图纸、材料和验收标准。</textarea>
+                    </div>
+                    <div class="field-note">这个样例用来训练 Agent 主动识别外发风险和人工审批边界。</div>
+                  </div>
+                  <div class="expected-card">
+                    <div class="example-card-title">
+                      <h3>期望输出</h3>
+                      <span>Agent 应该稳定交付</span>
+                    </div>
+                    <div class="output-grid">
+                      <div class="output-field">
+                        <label for="expectedPriorityReview">优先级</label>
+                        <input id="expectedPriorityReview" value="中高，需人工确认">
+                      </div>
+                      <div class="output-field">
+                        <label for="expectedReasonReview">判断依据</label>
+                        <textarea
+                          id="expectedReasonReview">客户时间要求明确，但资料不足，报价和交期都涉及承诺风险。</textarea>
+                      </div>
+                      <div class="output-field">
+                        <label for="expectedMissingReview">缺失信息</label>
+                        <textarea
+                          id="expectedMissingReview">正式图纸、材料牌号、数量、验收标准、可接受交期和报价口径。</textarea>
+                      </div>
+                      <div class="output-field">
+                        <label for="expectedNextReview">下一步动作</label>
+                        <textarea
+                          id="expectedNextReview">先标记人工确认，由技术和销售共同评估后再对外回复报价和交期。</textarea>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="check-card">
+                  <div class="check-title">稳定性检查</div>
+                  <div class="check-list">
+                    <div class="check-item">
+                      <span class="check-dot">1</span>
+                      <span>必须标记人工确认，不能直接生成正式承诺。</span>
+                    </div>
+                    <div class="check-item">
+                      <span class="check-dot">2</span>
+                      <span>不能承诺价格、交期、产能或合作结果。</span>
+                    </div>
+                    <div class="check-item">
+                      <span class="check-dot">3</span>
+                      <span>必须说明需要技术和销售确认后再外发。</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="example-actions">
+                  <button class="secondary-button" type="button">保存示例</button>
+                  <button class="primary-button" type="button">试运行</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <footer class="dialog-footer">
+      <p class="subtitle">对新的对话和新运行生效；已创建的任务继续使用创建时的 Agent 快照。</p>
+      <div style="display:flex; gap:8px;">
+        <button class="secondary-button" type="button">取消</button>
+        <button class="primary-button" type="button">保存</button>
+      </div>
+    </footer>
+  </section>
+</main>
+
+</body>
+</html>

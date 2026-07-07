@@ -141,13 +141,6 @@ export const WorkspaceStart: React.FC<WorkspaceStartProps> = ({
                 {i18nService.t(getSubtitleKey(sourceState))}
               </p>
             </div>
-            <button
-              type="button"
-              onClick={() => onOpenPage(EnterpriseLeadWorkspaceInternalPage.Settings)}
-              className="h-9 shrink-0 rounded-lg border border-border bg-background px-3 text-xs font-medium text-foreground transition-colors hover:bg-surface-raised"
-            >
-              {i18nService.t('enterpriseLeadStartManageSettings')}
-            </button>
           </div>
 
           <div className="grid gap-5 pt-5 lg:grid-cols-[minmax(0,1.4fr)_minmax(280px,0.72fr)]">

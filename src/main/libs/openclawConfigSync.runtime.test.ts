@@ -2131,6 +2131,55 @@ describe('OpenClawConfigSync runtime config output', () => {
     expect(agentsMd).toContain('For every `browser` tool call, set `target="host"` explicitly.');
   });
 
+  test('writes managed user interaction policy that avoids blocking content clarification dialogs', async () => {
+    const { OpenClawConfigSync } = await import('./openclawConfigSync');
+
+    const sync = new OpenClawConfigSync({
+      engineManager: {
+        getConfigPath: () => configPath,
+        getGatewayToken: () => 'gateway-token',
+        getStateDir: () => stateDir,
+        getBaseDir: () => tmpDir,
+      } as never,
+      getCoworkConfig: () => ({
+        workingDirectory: tmpDir,
+        systemPrompt: '',
+        executionMode: 'local',
+        agentEngine: 'openclaw',
+        memoryEnabled: false,
+        memoryImplicitUpdateEnabled: false,
+        memoryLlmJudgeEnabled: false,
+        memoryGuardLevel: 'balanced',
+        memoryUserMemoriesMaxItems: 100,
+        skipMissedJobs: false,
+      }),
+      isEnterprise: () => false,
+      getPopoInstances: () => [],
+      getNeteaseBeeChanConfig: () => null,
+      getWeixinConfig: () => null,
+      getIMSettings: () => null,
+      getSkillsList: () => [],
+      getAgents: () => [],
+    } as never);
+
+    const result = sync.sync('content-user-interaction-policy');
+    expect(result.ok).toBe(true);
+
+    const agentsMdPath = path.join(stateDir, 'workspace-main', 'AGENTS.md');
+    const agentsMd = fs.readFileSync(agentsMdPath, 'utf8');
+    expect(agentsMd).toContain('Do not use `AskUserQuestion` for content-generation clarification');
+    expect(agentsMd).toContain(
+      'topics, copy, short-video scripts, private-domain messages, sales replies',
+    );
+    expect(agentsMd).toContain(
+      'search or reuse available memory, USER.md, MEMORY.md, saved positioning reports',
+    );
+    expect(agentsMd).toContain('do not draft with assumptions');
+    expect(agentsMd).toContain(
+      'Ask for the missing domain, account positioning, audience, product/service, selling point, or conversion goal as plain text',
+    );
+  });
+
   test('enables managed OpenClaw tool loop detection', async () => {
     const sync = await createSync();
 

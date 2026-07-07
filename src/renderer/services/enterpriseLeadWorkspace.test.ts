@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
 
+import {
+  EnterpriseLeadChatProgressPhase,
+  EnterpriseLeadChatProgressStatus,
+} from '../../shared/enterpriseLeadWorkspace/constants';
+import type { EnterpriseLeadWorkspaceChatProgressEvent } from '../../shared/enterpriseLeadWorkspace/types';
 import { buildDefaultEnterpriseLeadWorkspaceSettings } from '../../shared/enterpriseLeadWorkspace/validation';
 import { enterpriseLeadWorkspaceService } from './enterpriseLeadWorkspace';
 
@@ -236,5 +241,68 @@ describe('enterpriseLeadWorkspaceService', () => {
 
     expect(chat).toHaveBeenCalledWith('workspace-1', { message: '帮我写一段跟进话术' });
     expect(result?.message.content).toContain('当前空间资料');
+  });
+
+  test('subscribes to workspace chat progress through bridge', () => {
+    const cleanup = vi.fn();
+    const callback = vi.fn();
+    const onChatProgress = vi.fn(
+      (_requestId: string, _callback: (event: EnterpriseLeadWorkspaceChatProgressEvent) => void) =>
+        cleanup,
+    );
+    createWindowWithEnterpriseLeadWorkspace({ onChatProgress });
+
+    const unsubscribe = enterpriseLeadWorkspaceService.onChatProgress('request-1', callback);
+    const event = {
+      requestId: 'request-1',
+      stepId: 'routing',
+      phase: EnterpriseLeadChatProgressPhase.Routing,
+      status: EnterpriseLeadChatProgressStatus.Running,
+      title: '正在分析任务和选择 Agent',
+      timestamp: 1,
+    };
+
+    expect(onChatProgress).toHaveBeenCalledWith('request-1', callback);
+    const registeredCallback = onChatProgress.mock.calls[0]?.[1];
+    registeredCallback?.(event);
+    expect(callback).toHaveBeenCalledWith(event);
+    unsubscribe();
+    expect(cleanup).toHaveBeenCalled();
+  });
+
+  test('tests workspace Agent drafts through bridge', async () => {
+    const testWorkspaceAgent = vi.fn(async () => ({
+      success: true as const,
+      data: {
+        content: '客户优先级：高',
+        checks: [{ id: 'priority' as const, passed: true }],
+      },
+    }));
+    createWindowWithEnterpriseLeadWorkspace({ testWorkspaceAgent });
+
+    const request = {
+      agentId: 'agent-opportunity',
+      agent: {
+        name: '商机雷达 Agent',
+        description: '判断客户方向、采购信号、商机评分和跟进优先级。',
+        identity: '',
+        systemPrompt: '按固定结构输出。',
+        icon: '商',
+        model: '',
+        skillIds: [],
+      },
+      example: {
+        sampleInput: '客户来自汽车零部件行业。',
+        expectedPriority: '高',
+        expectedReason: '行业匹配。',
+        expectedMissing: '目标价格。',
+        expectedNextStep: '安排技术评估。',
+      },
+    };
+
+    const result = await enterpriseLeadWorkspaceService.testWorkspaceAgent('workspace-1', request);
+
+    expect(testWorkspaceAgent).toHaveBeenCalledWith('workspace-1', request);
+    expect(result?.content).toContain('客户优先级');
   });
 });

@@ -14,12 +14,16 @@ import {
 } from '../../shared/agent/externalResearch';
 import {
   EnterpriseLeadAgentRole,
+  EnterpriseLeadChatProgressPhase,
+  EnterpriseLeadChatProgressStatus,
   EnterpriseLeadDeliverableKind,
   EnterpriseLeadExtractionSourceKind,
+  EnterpriseLeadKnowledgeIndexStatus,
   EnterpriseLeadRiskLevel,
   EnterpriseLeadRunStatus,
   EnterpriseLeadTaskStatus,
   EnterpriseLeadTodoKind,
+  EnterpriseLeadWorkspaceAgentCalibrationCheckId,
   EnterpriseLeadWorkspaceAgentSource,
   EnterpriseLeadWorkspaceType,
 } from '../../shared/enterpriseLeadWorkspace/constants';
@@ -28,6 +32,7 @@ import type {
   EnterpriseLeadAgentTaskResult,
   EnterpriseLeadArchive,
   EnterpriseLeadDeliverable,
+  EnterpriseLeadExtractionSource,
   EnterpriseLeadPendingVersion,
   EnterpriseLeadRun,
   EnterpriseLeadTaskAgentRole,
@@ -35,8 +40,11 @@ import type {
   EnterpriseLeadTodoInput,
   EnterpriseLeadWorkspace,
   EnterpriseLeadWorkspaceAgentBinding,
+  EnterpriseLeadWorkspaceAgentCalibrationRequest,
+  EnterpriseLeadWorkspaceAgentCalibrationResponse,
   EnterpriseLeadWorkspaceChatLeadCandidate,
   EnterpriseLeadWorkspaceChatMessage,
+  EnterpriseLeadWorkspaceChatProgressEvent,
   EnterpriseLeadWorkspaceChatRequest,
   EnterpriseLeadWorkspaceChatResearchIntent,
   EnterpriseLeadWorkspaceChatResearchResult,
@@ -59,15 +67,24 @@ import {
 } from '../../shared/enterpriseLeadWorkspace/validation';
 import type { ModelClientAdapter, ModelGenerationInput } from '../industryPack/modelClientAdapter';
 import { resolveRawApiConfigFromAppConfig } from '../libs/claudeSettings';
+import {
+  CONTENT_KNOWLEDGE_EMBEDDING_VERSION,
+  type ContentKnowledgeSearchHit,
+  ContentKnowledgeSourceType,
+} from '../libs/contentKnowledgeRetrieval';
+import type { ContentKnowledgeVectorStore } from '../libs/contentKnowledgeVectorStore';
 import { parseModelJsonObject } from './modelJson';
 import {
   buildAgentChatPrompt,
   buildAgentTaskPrompt,
+  buildWorkspaceAgentCalibrationPrompt,
   buildWorkspaceChatAgentStepPrompt,
   buildWorkspaceChatResearchIntentPrompt,
   buildWorkspaceChatResponsePrompt,
   buildWorkspaceExtractionPrompt,
   type WorkspaceChatAgentPromptSummary,
+  type WorkspaceChatContentKnowledgeContext,
+  type WorkspaceChatIndustryContext,
   type WorkspaceChatLeadContext,
 } from './promptTemplates';
 import type {
@@ -84,6 +101,7 @@ interface EnterpriseLeadWorkspaceServiceOptions {
   store: EnterpriseLeadWorkspaceStore;
   modelClient: ModelClientAdapter;
   agentProvider?: EnterpriseLeadWorkspaceAgentProvider;
+  contentKnowledgeVectorStore?: ContentKnowledgeVectorStore;
   researchClient?: EnterpriseLeadWorkspaceResearchClient;
   researchTimeoutMs?: number;
 }
@@ -139,9 +157,26 @@ interface WorkspaceChatAgentStepRunInput {
   recentMessages: EnterpriseLeadWorkspaceChatMessage[];
   userMessage: string;
   recentRunOutputs: unknown[];
+  workspaceIndustryContext: WorkspaceChatIndustryContext;
   workspaceLeadContext: WorkspaceChatLeadContext;
+  workspaceContentKnowledgeContext: WorkspaceChatContentKnowledgeContext;
   research: EnterpriseLeadWorkspaceChatResearchResult;
   apiConfig?: ModelGenerationInput['apiConfig'];
+  progress?: WorkspaceChatProgressEmitter;
+}
+
+export type EnterpriseLeadWorkspaceChatProgressSink = (
+  event: EnterpriseLeadWorkspaceChatProgressEvent,
+) => void;
+
+type WorkspaceChatProgressEventInput = Omit<
+  EnterpriseLeadWorkspaceChatProgressEvent,
+  'requestId' | 'timestamp'
+>;
+
+interface WorkspaceChatProgressEmitter {
+  readonly events: EnterpriseLeadWorkspaceChatProgressEvent[];
+  emit(event: WorkspaceChatProgressEventInput): void;
 }
 
 const noopAgentProvider: EnterpriseLeadWorkspaceAgentProvider = {
@@ -175,17 +210,78 @@ const WORKSPACE_CHAT_RESEARCH_AGENT_ATTRIBUTION = {
   name: '调研助手 Agent',
 } as const;
 const WORKSPACE_CHAT_LEAD_CANDIDATE_LIMIT = 8;
+const ENTERPRISE_WORKSPACE_KNOWLEDGE_SCOPE_PREFIX = 'enterprise-workspace';
+const WORKSPACE_CONTENT_KNOWLEDGE_MAX_HITS = 6;
+const WORKSPACE_CONTENT_PRODUCTION_PATTERNS = [
+  '小红书',
+  '选题',
+  '标题',
+  '脚本',
+  '短视频',
+  '口播',
+  '分镜',
+  '文案',
+  '图文',
+  '朋友圈',
+  '私域',
+  '私聊',
+  '私信',
+  '话术',
+  '销售回复',
+  '销售话术',
+  '成交话术',
+  '转化内容',
+  '触达内容',
+  '种草',
+  '推广内容',
+  '内容策划',
+];
+
+const createWorkspaceChatProgressEmitter = (
+  requestId: string,
+  progressSink?: EnterpriseLeadWorkspaceChatProgressSink,
+): WorkspaceChatProgressEmitter => {
+  const events: EnterpriseLeadWorkspaceChatProgressEvent[] = [];
+
+  return {
+    events,
+    emit(eventInput) {
+      const event: EnterpriseLeadWorkspaceChatProgressEvent = {
+        ...eventInput,
+        requestId,
+        timestamp: Date.now(),
+      };
+      events.push(event);
+      progressSink?.(event);
+    },
+  };
+};
+
+const buildEnterpriseWorkspaceKnowledgeScopeId = (workspaceId: string): string =>
+  `${ENTERPRISE_WORKSPACE_KNOWLEDGE_SCOPE_PREFIX}:${workspaceId}`;
+
+const buildEnterpriseWorkspaceKnowledgeSourceId = (index: number): string =>
+  `source-${index}`;
+
+const buildEnterpriseWorkspaceKnowledgeSourceContent = (
+  source: EnterpriseLeadExtractionSource,
+): string => [
+  source.summary?.trim() ? `摘要：${source.summary.trim()}` : '',
+  source.text?.trim() ?? '',
+]
+  .filter(Boolean)
+  .join('\n\n');
 
 const RISK_REVIEW_MISSING_COPY_RESPONSE = [
-  '可以，我会按风控审核 Agent 来检查。',
+  '可以，我会按内容质检 Agent 来检查。',
   '',
   '请把待审宣传文案粘贴过来，最好包含标题、正文、落款和拟发布渠道。',
   '',
-  '收到后我会输出风险等级、问题句、风险原因、修改建议和可外发版本。',
+  '收到后我会输出问题句、风险原因、修改建议和更自然的可外发版本。',
 ].join('\n');
 
 const OPPORTUNITY_MISSING_CUSTOMERS_RESPONSE = [
-  '可以，我会用商机雷达 Agent 判断优先级。',
+  '可以，我会按真实客户线索来判断跟进优先级。',
   '',
   '当前工作区还没有可用于排序的客户名单。请粘贴客户列表，或先导入包含公司名、行业、地区、需求、沟通记录的线索文件。',
   '',
@@ -193,7 +289,7 @@ const OPPORTUNITY_MISSING_CUSTOMERS_RESPONSE = [
 ].join('\n');
 
 const OPPORTUNITY_RESEARCH_WITHOUT_COMPANIES_RESPONSE = [
-  '可以，我已经按商机雷达 Agent 检查了当前工作区资料和本轮调研结果。',
+  '可以，我已经检查了当前工作区资料和本轮调研结果。',
   '',
   '关键结论：未拿到具体公司名单，所以现在不能判断“这批客户谁更值得优先跟进”。我也不能把客户类型包装成真实客户来排序。',
   '',
@@ -204,43 +300,112 @@ const OPPORTUNITY_RESEARCH_WITHOUT_COMPANIES_RESPONSE = [
 
 const WORKSPACE_CHAT_AUTO_ROUTE_RULES: WorkspaceChatAutoRouteRule[] = [
   {
-    agentIds: [EnterpriseLeadAgentRole.RiskReview],
-    agentTextPatterns: ['risk_review', '风控', '审核', '风险', '夸大'],
-    messagePatterns: ['夸大', '风险', '风控', '审核', '合规', '宣传文案', '禁用表达'],
-    reason: '识别到：宣传文案/夸大风险',
-  },
-  {
-    agentIds: [EnterpriseLeadAgentRole.OpportunityRadar],
-    agentTextPatterns: ['opportunity_radar', '商机', '机会', '采购信号', '评分', '优先级'],
+    agentIds: [EnterpriseLeadAgentRole.ContentQuality],
+    agentTextPatterns: ['content_quality', '质检', '审核', '风险', '夸大', '不像 ai', 'ai 味'],
     messagePatterns: [
-      '商机',
-      '机会',
-      '采购信号',
-      '评分',
-      '优先级',
-      '优先跟进',
-      '值得优先',
-      '谁更值得',
-      '客户画像',
-      '客户方向',
+      '太像 ai',
+      '像ai',
+      '不像人写',
+      '改自然',
+      '润色',
+      '优化',
+      '质检',
+      '检查',
+      '风险',
+      '夸大',
+      '合规',
+      '禁用表达',
     ],
-    reason: '识别到：客户优先级/商机判断',
+    reason: '识别到：内容质检/改稿',
   },
   {
     agentIds: [
-      EnterpriseLeadAgentRole.ContentPlanning,
-      EnterpriseLeadAgentRole.SalesHandoff,
-      EnterpriseLeadAgentRole.RiskReview,
+      EnterpriseLeadAgentRole.ProductSellingPoint,
+      EnterpriseLeadAgentRole.ShortVideoScript,
+      EnterpriseLeadAgentRole.ContentQuality,
     ],
-    agentTextPatterns: ['content_planning', '内容', '文案', '话术', '私信', '草稿'],
-    messagePatterns: ['私信', '文案', '话术', '内容', '草稿', '小红书', '短视频', '公众号'],
-    reason: '识别到：私信/外发文案',
+    agentTextPatterns: ['short_video_script', '短视频', '脚本', '口播', '分镜'],
+    messagePatterns: [
+      '短视频',
+      '视频脚本',
+      '口播',
+      '分镜',
+      '脚本',
+      '开头',
+      '前三秒',
+      '60 秒',
+      '60秒',
+      '抖音',
+      '视频号',
+    ],
+    reason: '识别到：短视频脚本',
   },
   {
-    agentIds: [EnterpriseLeadAgentRole.SalesHandoff],
-    agentTextPatterns: ['sales_handoff', '销售', '交接', '跟进', 'sop', '异议'],
-    messagePatterns: ['销售交接', '跟进sop', '跟进 SOP', '异议处理', '销售待办'],
-    reason: '识别到：销售跟进/交接',
+    agentIds: [
+      EnterpriseLeadAgentRole.ProductSellingPoint,
+      EnterpriseLeadAgentRole.PrivateDomainConversion,
+      EnterpriseLeadAgentRole.ContentQuality,
+    ],
+    agentTextPatterns: ['private_domain_conversion', '私域', '私聊', '社群', '转化', '跟进'],
+    messagePatterns: [
+      '私域',
+      '私聊',
+      '私信',
+      '微信',
+      '社群',
+      '跟进话术',
+      '转化',
+      '成交',
+      '异议',
+      '话术',
+    ],
+    reason: '识别到：私域转化话术',
+  },
+  {
+    agentIds: [
+      EnterpriseLeadAgentRole.ProductSellingPoint,
+      EnterpriseLeadAgentRole.TopicPlanning,
+      EnterpriseLeadAgentRole.ContentQuality,
+    ],
+    agentTextPatterns: ['topic_planning', '选题', '标题', '内容主题', '系列'],
+    messagePatterns: [
+      '选题',
+      '标题',
+      '主题',
+      '内容日历',
+      '内容规划',
+      '系列',
+      '爆点',
+      '角度',
+      '内容方向',
+    ],
+    reason: '识别到：选题策划',
+  },
+  {
+    agentIds: [
+      EnterpriseLeadAgentRole.ProductSellingPoint,
+      EnterpriseLeadAgentRole.SocialCopy,
+      EnterpriseLeadAgentRole.ContentQuality,
+    ],
+    agentTextPatterns: ['social_copy', '图文', '文案', '小红书', '朋友圈', '公众号'],
+    messagePatterns: [
+      '小红书',
+      '朋友圈',
+      '公众号',
+      '海报',
+      '图文',
+      '种草',
+      '文案',
+      '推文',
+      '活动文案',
+    ],
+    reason: '识别到：图文文案',
+  },
+  {
+    agentIds: [EnterpriseLeadAgentRole.ProductSellingPoint],
+    agentTextPatterns: ['product_selling_point', '卖点', '痛点', '信任背书', '差异化'],
+    messagePatterns: ['卖点', '痛点', '优势', '差异化', '信任背书', '产品价值'],
+    reason: '识别到：产品卖点提炼',
   },
 ];
 
@@ -285,8 +450,17 @@ const getDeliverableKind = (
   role: EnterpriseLeadTaskAgentRole,
 ): EnterpriseLeadDeliverable['kind'] => {
   switch (role) {
+    case EnterpriseLeadAgentRole.ProductSellingPoint:
     case EnterpriseLeadAgentRole.ProductUnderstanding:
       return EnterpriseLeadDeliverableKind.ProductProfile;
+    case EnterpriseLeadAgentRole.TopicPlanning:
+    case EnterpriseLeadAgentRole.ShortVideoScript:
+    case EnterpriseLeadAgentRole.SocialCopy:
+      return EnterpriseLeadDeliverableKind.ContentDraft;
+    case EnterpriseLeadAgentRole.PrivateDomainConversion:
+      return EnterpriseLeadDeliverableKind.SalesHandoff;
+    case EnterpriseLeadAgentRole.ContentQuality:
+      return EnterpriseLeadDeliverableKind.RiskReview;
     case EnterpriseLeadAgentRole.OpportunityRadar:
       return EnterpriseLeadDeliverableKind.OpportunityReport;
     case EnterpriseLeadAgentRole.ContentPlanning:
@@ -324,6 +498,45 @@ const resolveWorkspaceApiConfig = (workspace: EnterpriseLeadWorkspace) =>
     providers: workspace.settings.model.providers,
   }).config ?? undefined;
 
+const normalizeCalibrationText = (value: string): string =>
+  value.toLowerCase().replace(/\s+/g, '');
+
+const includesAnyCalibrationToken = (content: string, tokens: string[]): boolean => {
+  const normalizedContent = normalizeCalibrationText(content);
+  return tokens.some(token => normalizedContent.includes(normalizeCalibrationText(token)));
+};
+
+const buildWorkspaceAgentCalibrationChecks = (
+  content: string,
+): EnterpriseLeadWorkspaceAgentCalibrationResponse['checks'] => [
+  {
+    id: EnterpriseLeadWorkspaceAgentCalibrationCheckId.Priority,
+    passed: includesAnyCalibrationToken(content, ['客户优先级', '优先级', 'priority']),
+  },
+  {
+    id: EnterpriseLeadWorkspaceAgentCalibrationCheckId.Reason,
+    passed: includesAnyCalibrationToken(content, ['判断依据', '依据', 'reason']),
+  },
+  {
+    id: EnterpriseLeadWorkspaceAgentCalibrationCheckId.Missing,
+    passed: includesAnyCalibrationToken(content, ['缺失信息', '缺失', '待补充', 'missing']),
+  },
+  {
+    id: EnterpriseLeadWorkspaceAgentCalibrationCheckId.NextStep,
+    passed: includesAnyCalibrationToken(content, ['下一步动作', '下一步', '跟进', 'next']),
+  },
+];
+
+const getResearchProgressDetail = (intent: EnterpriseLeadWorkspaceChatResearchIntent): string => {
+  if (intent.kind === 'search' || intent.kind === 'domestic_search') {
+    return intent.query;
+  }
+  if (intent.kind === 'extract') {
+    return intent.query || intent.urls.join(', ');
+  }
+  return '';
+};
+
 const buildWorkspaceChatSessionTitle = (message: string): string => {
   const compact = message.replace(/\s+/g, ' ').trim();
   if (compact.length <= WORKSPACE_CHAT_SESSION_TITLE_LIMIT) {
@@ -341,12 +554,15 @@ export class EnterpriseLeadWorkspaceService {
 
   private readonly researchClient: EnterpriseLeadWorkspaceResearchClient;
 
+  private readonly contentKnowledgeVectorStore?: ContentKnowledgeVectorStore;
+
   private readonly researchTimeoutMs: number;
 
   constructor(options: EnterpriseLeadWorkspaceServiceOptions) {
     this.store = options.store;
     this.modelClient = options.modelClient;
     this.agentProvider = options.agentProvider ?? noopAgentProvider;
+    this.contentKnowledgeVectorStore = options.contentKnowledgeVectorStore;
     this.researchClient = options.researchClient ?? noopResearchClient;
     this.researchTimeoutMs =
       options.researchTimeoutMs && options.researchTimeoutMs > 0
@@ -385,7 +601,7 @@ export class EnterpriseLeadWorkspaceService {
       ? normalizedDraft.workspaceAgents
       : buildDefaultEnterpriseLeadWorkspaceAgents(workflowRoles());
 
-    return this.store.createWorkspace({
+    const workspace = this.store.createWorkspace({
       name: normalizedDraft.name,
       type: EnterpriseLeadWorkspaceType.EnterpriseLead,
       profile: normalizedDraft.profile,
@@ -394,6 +610,13 @@ export class EnterpriseLeadWorkspaceService {
       settings: normalizedDraft.settings,
       workspaceAgents,
     });
+    if (!this.contentKnowledgeVectorStore) {
+      return workspace;
+    }
+    return this.store.updateWorkspaceSources(
+      workspace.id,
+      this.syncWorkspaceSourcesToVectorIndex(workspace.id, workspace.extractionSources),
+    );
   }
 
   deleteWorkspace(workspaceId: string): boolean {
@@ -412,6 +635,73 @@ export class EnterpriseLeadWorkspaceService {
     profile: EnterpriseLeadWorkspaceProfile,
   ): EnterpriseLeadWorkspace {
     return this.store.updateWorkspaceProfile(workspaceId, profile);
+  }
+
+  updateWorkspaceSources(
+    workspaceId: string,
+    sources: EnterpriseLeadExtractionSource[],
+  ): EnterpriseLeadWorkspace {
+    return this.store.updateWorkspaceSources(
+      workspaceId,
+      this.syncWorkspaceSourcesToVectorIndex(workspaceId, sources),
+    );
+  }
+
+  private syncWorkspaceSourcesToVectorIndex(
+    workspaceId: string,
+    sources: EnterpriseLeadExtractionSource[],
+  ): EnterpriseLeadExtractionSource[] {
+    if (!this.contentKnowledgeVectorStore) {
+      return sources;
+    }
+
+    const now = new Date().toISOString();
+    const contentSources = sources.map((source, index) => ({
+      source,
+      sourceId: buildEnterpriseWorkspaceKnowledgeSourceId(index),
+      content: buildEnterpriseWorkspaceKnowledgeSourceContent(source),
+    }));
+
+    try {
+      const syncResult = this.contentKnowledgeVectorStore.replaceSources(
+        buildEnterpriseWorkspaceKnowledgeScopeId(workspaceId),
+        contentSources
+          .filter(item => item.content.trim())
+          .map(item => ({
+            sourceId: item.sourceId,
+            sourceType: ContentKnowledgeSourceType.WorkspaceDocument,
+            label: item.source.label,
+            content: item.content,
+          })),
+      );
+      const chunkCountBySourceId = new Map(
+        syncResult.sourceResults.map(item => [item.sourceId, item.chunkCount]),
+      );
+
+      return contentSources.map((item): EnterpriseLeadExtractionSource => {
+        const chunkCount = chunkCountBySourceId.get(item.sourceId) ?? 0;
+        return {
+          ...item.source,
+          vectorChunkCount: chunkCount,
+          vectorEmbeddingVersion: CONTENT_KNOWLEDGE_EMBEDDING_VERSION,
+          vectorIndexError: undefined as string | undefined,
+          vectorIndexedAt: chunkCount > 0 ? now : undefined,
+          vectorIndexStatus: chunkCount > 0
+            ? EnterpriseLeadKnowledgeIndexStatus.Indexed
+            : EnterpriseLeadKnowledgeIndexStatus.Pending,
+        };
+      });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      return sources.map((source): EnterpriseLeadExtractionSource => ({
+        ...source,
+        vectorChunkCount: 0,
+        vectorEmbeddingVersion: CONTENT_KNOWLEDGE_EMBEDDING_VERSION,
+        vectorIndexError: errorMessage,
+        vectorIndexedAt: undefined as string | undefined,
+        vectorIndexStatus: EnterpriseLeadKnowledgeIndexStatus.Failed,
+      }));
+    }
   }
 
   updateWorkspaceAgents(
@@ -469,6 +759,7 @@ export class EnterpriseLeadWorkspaceService {
   async chat(
     workspaceId: string,
     request: EnterpriseLeadWorkspaceChatRequest,
+    progressSink?: EnterpriseLeadWorkspaceChatProgressSink,
   ): Promise<EnterpriseLeadWorkspaceChatResponse> {
     const workspace = this.store.getWorkspace(workspaceId);
     if (!workspace) {
@@ -480,6 +771,18 @@ export class EnterpriseLeadWorkspaceService {
     const recentMessages = this.sanitizeRecentMessages(workspace, request.recentMessages ?? []);
     const recentRunOutputs = this.collectRecentRunOutputs(workspace);
     const workspaceLeadContext = this.collectWorkspaceLeadContext(workspace, recentRunOutputs);
+    const workspaceIndustryContext = this.collectWorkspaceIndustryContext(
+      workspace,
+      recentRunOutputs,
+      request.message,
+    );
+    const workspaceContentKnowledgeContext = this.collectWorkspaceContentKnowledgeContext(
+      workspace,
+      request.message,
+    );
+    const progressRequestId = request.requestId?.trim() || randomUUID();
+    const progress = createWorkspaceChatProgressEmitter(progressRequestId, progressSink);
+    const emitProgress = progress.emit;
     const existingSession = request.sessionId
       ? this.store.getChatSession(workspace.id, request.sessionId)
       : null;
@@ -497,6 +800,12 @@ export class EnterpriseLeadWorkspaceService {
       createdAt: new Date().toISOString(),
     });
     const apiConfig = resolveWorkspaceApiConfig(workspace);
+    emitProgress({
+      stepId: 'routing',
+      phase: EnterpriseLeadChatProgressPhase.Routing,
+      status: EnterpriseLeadChatProgressStatus.Running,
+      title: '正在分析任务和选择 Agent',
+    });
     const intentResult = await this.modelClient.generate({
       prompt: buildWorkspaceChatResearchIntentPrompt({
         workspace,
@@ -505,7 +814,9 @@ export class EnterpriseLeadWorkspaceService {
         recentMessages,
         userMessage: request.message,
         recentRunOutputs,
+        workspaceIndustryContext,
         workspaceLeadContext,
+        workspaceContentKnowledgeContext,
       }),
       apiConfig,
       ...(manualTargetAgent?.model ? { model: manualTargetAgent.model } : {}),
@@ -517,21 +828,61 @@ export class EnterpriseLeadWorkspaceService {
       request.message,
     );
     const { targetAgent, route } = planning;
+    emitProgress({
+      stepId: 'routing',
+      phase: EnterpriseLeadChatProgressPhase.Routing,
+      status: EnterpriseLeadChatProgressStatus.Completed,
+      title: route ? '已选择 Agent' : '使用通用助手',
+      ...(route?.reason ? { detail: route.reason } : {}),
+      ...(targetAgent?.name ? { source: targetAgent.name } : {}),
+    });
     const researchIntent = this.resolveEffectiveChatResearchIntent({
       workspace,
       plannedIntent: planning.researchIntent,
-      targetAgent,
       userMessage: request.message,
     });
+    if (researchIntent.kind !== 'none' && researchIntent.kind !== 'domestic_status') {
+      emitProgress({
+        stepId: 'research',
+        phase: EnterpriseLeadChatProgressPhase.Research,
+        status: EnterpriseLeadChatProgressStatus.Running,
+        title: '正在调研公开信息',
+        detail: getResearchProgressDetail(researchIntent),
+      });
+    }
     const research = this.enrichResearchResultForChat(
       await this.executeResearch(workspace, researchIntent),
     );
+    if (researchIntent.kind !== 'none' && researchIntent.kind !== 'domestic_status') {
+      emitProgress({
+        stepId: 'research',
+        phase: EnterpriseLeadChatProgressPhase.Research,
+        status: research.status === 'failed'
+          ? EnterpriseLeadChatProgressStatus.Failed
+          : EnterpriseLeadChatProgressStatus.Completed,
+        title: research.status === 'failed' ? '调研失败' : '调研完成',
+        detail: research.summary,
+        ...(research.provider ? { source: research.provider } : {}),
+      });
+    }
     const shortcutAnswer = this.resolveShortcutChatAnswer(
       request.message,
       targetAgent,
       workspaceLeadContext,
       research,
     );
+    const shouldEmitSingleAgentProgress = Boolean(route && route.agents.length <= 1);
+    if (shouldEmitSingleAgentProgress) {
+      route?.agents.forEach(agent => {
+        emitProgress({
+          stepId: `agent:${agent.id}`,
+          phase: EnterpriseLeadChatProgressPhase.Agent,
+          status: EnterpriseLeadChatProgressStatus.Running,
+          title: `${agent.name} 正在处理`,
+          source: agent.name,
+        });
+      });
+    }
     const agentStepResults = shortcutAnswer
       ? []
       : await this.runWorkspaceChatAgentSteps({
@@ -542,13 +893,33 @@ export class EnterpriseLeadWorkspaceService {
         recentMessages,
         userMessage: request.message,
         recentRunOutputs,
+        workspaceIndustryContext,
         workspaceLeadContext,
+        workspaceContentKnowledgeContext,
         research,
         apiConfig,
+        progress,
       });
     const responseRoute = route
       ? this.withResearchAgentRoute(route, research, effectiveAgents)
       : null;
+    if (shouldEmitSingleAgentProgress) {
+      route?.agents.forEach(agent => {
+        emitProgress({
+          stepId: `agent:${agent.id}`,
+          phase: EnterpriseLeadChatProgressPhase.Agent,
+          status: EnterpriseLeadChatProgressStatus.Completed,
+          title: `${agent.name} 已完成`,
+          source: agent.name,
+        });
+      });
+    }
+    emitProgress({
+      stepId: 'synthesis',
+      phase: EnterpriseLeadChatProgressPhase.Synthesis,
+      status: EnterpriseLeadChatProgressStatus.Running,
+      title: '正在生成最终回复',
+    });
     const answerText = shortcutAnswer ?? (await this.modelClient.generate({
       prompt: buildWorkspaceChatResponsePrompt({
         workspace,
@@ -559,12 +930,26 @@ export class EnterpriseLeadWorkspaceService {
         recentMessages,
         userMessage: request.message,
         recentRunOutputs,
+        workspaceIndustryContext,
         workspaceLeadContext,
+        workspaceContentKnowledgeContext,
         researchResult: this.sanitizeResearchForPrompt(workspace, research),
       }),
       apiConfig,
       ...(targetAgent?.model ? { model: targetAgent.model } : {}),
     })).text.trim();
+    emitProgress({
+      stepId: 'synthesis',
+      phase: EnterpriseLeadChatProgressPhase.Synthesis,
+      status: EnterpriseLeadChatProgressStatus.Completed,
+      title: '最终回复已生成',
+    });
+    emitProgress({
+      stepId: 'done',
+      phase: EnterpriseLeadChatProgressPhase.Done,
+      status: EnterpriseLeadChatProgressStatus.Completed,
+      title: '处理完成',
+    });
     const assistantMessage: EnterpriseLeadWorkspaceChatMessage = {
       id: randomUUID(),
       role: 'assistant',
@@ -584,6 +969,7 @@ export class EnterpriseLeadWorkspaceService {
         }
         : {}),
       research,
+      progressEvents: progress.events,
     };
     this.store.appendChatMessage(session.id, assistantMessage);
     const persistedSession = this.store.getChatSession(workspace.id, session.id);
@@ -591,6 +977,32 @@ export class EnterpriseLeadWorkspaceService {
     return {
       message: assistantMessage,
       ...(persistedSession ? { session: persistedSession } : {}),
+    };
+  }
+
+  async testWorkspaceAgent(
+    workspaceId: string,
+    request: EnterpriseLeadWorkspaceAgentCalibrationRequest,
+  ): Promise<EnterpriseLeadWorkspaceAgentCalibrationResponse> {
+    const workspace = this.store.getWorkspace(workspaceId);
+    if (!workspace) {
+      throw new Error('Enterprise lead workspace not found');
+    }
+
+    const result = await this.modelClient.generate({
+      prompt: buildWorkspaceAgentCalibrationPrompt({
+        workspace,
+        agent: request.agent,
+        example: request.example,
+      }),
+      apiConfig: resolveWorkspaceApiConfig(workspace),
+      ...(request.agent.model.trim() ? { model: request.agent.model.trim() } : {}),
+    });
+    const content = result.text.trim();
+
+    return {
+      content,
+      checks: buildWorkspaceAgentCalibrationChecks(content),
     };
   }
 
@@ -1036,6 +1448,231 @@ export class EnterpriseLeadWorkspaceService {
     };
   }
 
+  private collectWorkspaceContentKnowledgeContext(
+    workspace: EnterpriseLeadWorkspace,
+    userMessage: string,
+  ): WorkspaceChatContentKnowledgeContext {
+    if (!this.isWorkspaceContentProductionRequest(userMessage)) {
+      return {
+        status: 'not_applicable',
+        note: '本轮不是选题、脚本、私域话术或销售转化类内容生产请求，未触发向量知识预检。',
+        hits: [],
+        missingInfo: [],
+      };
+    }
+
+    if (!this.contentKnowledgeVectorStore) {
+      if (this.hasWorkspaceContentProfileBasics(workspace)) {
+        return this.buildWorkspaceContentProfileFallbackContext(workspace);
+      }
+      return {
+        status: 'missing',
+        note: '本轮是内容生产请求，但本地向量知识库不可用。',
+        hits: [],
+        missingInfo: this.buildWorkspaceContentKnowledgeMissingInfo(workspace),
+      };
+    }
+
+    const result = this.contentKnowledgeVectorStore.search(
+      buildEnterpriseWorkspaceKnowledgeScopeId(workspace.id),
+      userMessage,
+      { maxHits: WORKSPACE_CONTENT_KNOWLEDGE_MAX_HITS },
+    );
+    const diagnostics = {
+      candidateCount: result.diagnostics.candidateCount,
+      rejectedCount: result.diagnostics.rejectedCount,
+      hitThreshold: result.diagnostics.hitThreshold,
+    };
+
+    if (!result.matched) {
+      if (this.hasWorkspaceContentProfileBasics(workspace)) {
+        return {
+          ...this.buildWorkspaceContentProfileFallbackContext(workspace),
+          diagnostics,
+        };
+      }
+      return {
+        status: 'missing',
+        note: '本轮是内容生产请求，但工作区向量知识没有足够相关命中。',
+        hits: [],
+        missingInfo: this.buildWorkspaceContentKnowledgeMissingInfo(workspace),
+        diagnostics,
+      };
+    }
+
+    return {
+      status: 'matched',
+      note: '本轮内容生产请求已命中工作区向量知识。回答时优先使用这些片段作为事实依据。',
+      hits: result.hits
+        .slice(0, WORKSPACE_CONTENT_KNOWLEDGE_MAX_HITS)
+        .map(hit => this.toWorkspaceContentKnowledgeHit(hit)),
+      missingInfo: workspace.profile.missingInfo.slice(0, 6),
+      diagnostics,
+    };
+  }
+
+  private buildWorkspaceContentProfileFallbackContext(
+    workspace: EnterpriseLeadWorkspace,
+  ): WorkspaceChatContentKnowledgeContext {
+    return {
+      status: 'profile_fallback',
+      note: '本轮是内容生产请求，向量知识未充分命中，但工作区基础画像可用。请先基于工作空间资料输出草稿，并标注待补充信息。',
+      hits: [],
+      missingInfo: this.buildWorkspaceContentKnowledgeMissingInfo(workspace),
+    };
+  }
+
+  private hasWorkspaceContentProfileBasics(workspace: EnterpriseLeadWorkspace): boolean {
+    const profile = workspace.profile;
+    const profileText = [
+      profile.companySummary,
+      ...profile.productList,
+      ...profile.productCapabilities,
+      ...profile.targetCustomers,
+      ...profile.applicationScenarios,
+      ...profile.sellingPoints,
+      ...profile.channelPreferences,
+    ].join('\n');
+    if (profileText.trim()) {
+      return true;
+    }
+
+    return workspace.extractionSources.some(source => {
+      const text = [
+        source.label,
+        source.summary,
+        source.text,
+      ].filter(Boolean).join('\n');
+      return this.isLikelyWorkspaceIndustryText(text);
+    });
+  }
+
+  private toWorkspaceContentKnowledgeHit(
+    hit: ContentKnowledgeSearchHit,
+  ): WorkspaceChatContentKnowledgeContext['hits'][number] {
+    return {
+      score: Number(hit.scores.finalScore.toFixed(3)),
+      sourceLabel: hit.chunk.sourceLabel,
+      sourceType: hit.chunk.sourceType,
+      text: hit.chunk.text.slice(0, 900),
+    };
+  }
+
+  private buildWorkspaceContentKnowledgeMissingInfo(
+    workspace: EnterpriseLeadWorkspace,
+  ): string[] {
+    return Array.from(new Set([
+      ...workspace.profile.missingInfo,
+      '领域/产品',
+      '目标人群',
+      '核心卖点',
+      '转化目标',
+      '账号定位',
+      '可引用素材或证据',
+    ])).slice(0, 8);
+  }
+
+  private isWorkspaceContentProductionRequest(userMessage: string): boolean {
+    const normalizedMessage = this.normalizeAutoRouteText(userMessage);
+    return WORKSPACE_CONTENT_PRODUCTION_PATTERNS.some(pattern =>
+      normalizedMessage.includes(this.normalizeAutoRouteText(pattern)),
+    );
+  }
+
+  private collectWorkspaceIndustryContext(
+    workspace: EnterpriseLeadWorkspace,
+    recentRunOutputs: unknown[],
+    userMessage: string,
+  ): WorkspaceChatIndustryContext {
+    if (!this.isIndustryAnalysisRequest(userMessage)) {
+      return {
+        status: 'empty',
+        industryLabel: '',
+        confidence: 'low',
+        note: '本轮不是行业态势分析请求，未激活行业证据包。',
+        evidence: [],
+        missingInfo: [],
+      };
+    }
+
+    const evidence: WorkspaceChatIndustryContext['evidence'] = [];
+    const profile = workspace.profile;
+    const profileEvidenceText = this.summarizeWorkspaceIndustryText([
+      profile.companySummary ? `企业概况：${profile.companySummary}` : '',
+      profile.productList.length ? `产品：${profile.productList.join('、')}` : '',
+      profile.productCapabilities.length
+        ? `能力：${profile.productCapabilities.join('、')}`
+        : '',
+      profile.targetCustomers.length ? `目标客户：${profile.targetCustomers.join('、')}` : '',
+      profile.applicationScenarios.length
+        ? `应用场景：${profile.applicationScenarios.join('、')}`
+        : '',
+      profile.sellingPoints.length ? `卖点：${profile.sellingPoints.join('、')}` : '',
+    ].filter(Boolean).join('\n'));
+    if (profileEvidenceText) {
+      evidence.push({
+        kind: 'workspace_profile',
+        label: '工作区企业画像',
+        text: profileEvidenceText,
+      });
+    }
+
+    workspace.extractionSources.forEach((source, index) => {
+      if (evidence.filter(item => item.kind === 'workspace_source').length >= 4) {
+        return;
+      }
+      const label = source.label.trim() || `工作区资料 ${index + 1}`;
+      const text = this.summarizeWorkspaceIndustryText(source.text || label);
+      if (!text) {
+        return;
+      }
+      evidence.push({
+        kind: 'workspace_source',
+        label,
+        text,
+      });
+    });
+
+    recentRunOutputs.forEach((output, index) => {
+      if (evidence.filter(item => item.kind === 'run_output').length >= 3) {
+        return;
+      }
+      const text = this.summarizeWorkspaceIndustryText(
+        this.summarizeResearchPayloadForPrompt(output),
+      );
+      if (!this.isLikelyWorkspaceIndustryText(text)) {
+        return;
+      }
+      evidence.push({
+        kind: 'run_output',
+        label: `最近运行输出 ${index + 1}`,
+        text,
+      });
+    });
+
+    if (evidence.length === 0) {
+      return {
+        status: 'empty',
+        industryLabel: '',
+        confidence: 'low',
+        note: '用户正在请求行业分析，但工作区缺少可识别的行业资料。',
+        evidence: [],
+        missingInfo: profile.missingInfo.slice(0, 8),
+      };
+    }
+
+    const industryLabel = this.buildWorkspaceIndustryLabel(workspace, evidence);
+    const hasSourceEvidence = evidence.some(item => item.kind === 'workspace_source');
+    return {
+      status: 'available',
+      industryLabel,
+      confidence: hasSourceEvidence ? 'high' : 'medium',
+      note: `已从工作区资料识别行业方向：${industryLabel}。回答时先基于该行业分析，缺证据的判断标记为待验证。`,
+      evidence: evidence.slice(0, 8),
+      missingInfo: profile.missingInfo.slice(0, 8),
+    };
+  }
+
   private summarizeWorkspaceLeadText(text: string): string {
     return text
       .split(/\r?\n/)
@@ -1043,6 +1680,95 @@ export class EnterpriseLeadWorkspaceService {
       .filter(Boolean)
       .join('\n')
       .slice(0, 1_800);
+  }
+
+  private summarizeWorkspaceIndustryText(text: string): string {
+    return text
+      .split(/\r?\n/)
+      .map(line => line.replace(/\s+/g, ' ').trim())
+      .filter(Boolean)
+      .join('\n')
+      .slice(0, 1_200);
+  }
+
+  private isIndustryAnalysisRequest(userMessage: string): boolean {
+    const normalizedMessage = this.normalizeAutoRouteText(userMessage);
+    if (!normalizedMessage) {
+      return false;
+    }
+
+    return [
+      '行业形势',
+      '行业形式',
+      '行业态势',
+      '行业分析',
+      '行业趋势',
+      '行业机会',
+      '市场形势',
+      '市场态势',
+      '市场趋势',
+      '竞争格局',
+      '产业趋势',
+      '分析当前行业',
+      '当前行业',
+    ].some(pattern => normalizedMessage.includes(this.normalizeAutoRouteText(pattern)));
+  }
+
+  private isLikelyWorkspaceIndustryText(text: string): boolean {
+    const normalizedText = this.normalizeAutoRouteText(text);
+    if (!normalizedText) {
+      return false;
+    }
+
+    return [
+      '行业',
+      '市场',
+      '趋势',
+      '竞争',
+      '采购',
+      '客户',
+      '产品',
+      '场景',
+      '替代',
+      '成本',
+      '需求',
+      '出口',
+      '运输',
+    ].some(pattern => normalizedText.includes(this.normalizeAutoRouteText(pattern)));
+  }
+
+  private buildWorkspaceIndustryLabel(
+    workspace: EnterpriseLeadWorkspace,
+    evidence: WorkspaceChatIndustryContext['evidence'],
+  ): string {
+    const profile = workspace.profile;
+    const combinedText = [
+      workspace.name,
+      profile.companySummary,
+      profile.productList.join(' '),
+      profile.targetCustomers.join(' '),
+      profile.applicationScenarios.join(' '),
+      profile.sellingPoints.join(' '),
+      ...evidence.map(item => `${item.label} ${item.text}`),
+    ].join(' ');
+    const normalizedText = this.normalizeAutoRouteText(combinedText);
+
+    if (normalizedText.includes('重包装') || normalizedText.includes('重包')) {
+      return '重包装';
+    }
+    if (normalizedText.includes('工业包装')) {
+      return '工业包装';
+    }
+    if (normalizedText.includes('包装')) {
+      return '包装';
+    }
+    if (profile.companySummary.trim()) {
+      return profile.companySummary.trim().slice(0, 40);
+    }
+    if (profile.productList.length > 0) {
+      return profile.productList[0].slice(0, 40);
+    }
+    return '当前工作区行业';
   }
 
   private isLikelyWorkspaceLeadText(text: string): boolean {
@@ -1120,15 +1846,16 @@ export class EnterpriseLeadWorkspaceService {
       }
 
       const companyName = this.extractCompanyName(text);
-      const kind = companyName ? 'company' : 'category';
-      const name = companyName ?? entry.title.slice(0, 80);
+      const demandSignal = this.extractDemandSignal(this.stripResearchQueryEcho(text));
+      const isConcreteCompanyLead = Boolean(companyName && demandSignal);
+      const kind = isConcreteCompanyLead ? 'company' : 'category';
+      const name = isConcreteCompanyLead ? companyName : entry.title.slice(0, 80);
       const key = `${kind}:${name}:${entry.url ?? ''}`;
       if (!name || seen.has(key)) {
         continue;
       }
       seen.add(key);
 
-      const demandSignal = this.extractDemandSignal(text);
       candidates.push({
         kind,
         name,
@@ -1136,10 +1863,12 @@ export class EnterpriseLeadWorkspaceService {
         ...(entry.title ? { sourceTitle: entry.title } : {}),
         ...(entry.url ? { sourceUrl: entry.url } : {}),
         ...(demandSignal ? { demandSignal } : {}),
-        matchReason: kind === 'company'
+        matchReason: isConcreteCompanyLead
           ? '搜索结果包含具体公司名称和客户/采购相关信号。'
-          : '搜索结果包含客户类型或行业需求方向，但没有具体公司名称。',
-        confidence: kind === 'company' ? 'high' : 'low',
+          : companyName
+            ? '搜索结果包含公司或供应商页面，但缺少采购、询价或需求信号；不能当作可排序客户。'
+            : '搜索结果包含客户类型或行业需求方向，但没有具体公司名称。',
+        confidence: isConcreteCompanyLead ? 'high' : 'low',
       });
 
       if (candidates.length >= WORKSPACE_CHAT_LEAD_CANDIDATE_LIMIT) {
@@ -1201,6 +1930,12 @@ export class EnterpriseLeadWorkspaceService {
     return typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : '';
   }
 
+  private stripResearchQueryEcho(text: string): string {
+    return text
+      .replace(/(?:页面匹配)?搜索词[:：][^。；;\n]*/g, '')
+      .replace(/(?:search\s+query|query)[:：][^。；;\n]*/gi, '');
+  }
+
   private extractCompanyName(text: string): string | null {
     const match = text.match(/[\u4e00-\u9fa5A-Za-z0-9（）()·\-]{2,50}(?:股份有限公司|集团有限公司|有限公司|集团|公司)/);
     const companyName = match?.[0]?.trim() ?? '';
@@ -1236,7 +1971,9 @@ export class EnterpriseLeadWorkspaceService {
   }
 
   private extractDemandSignal(text: string): string | null {
-    const signalMatch = text.match(/[^。；;\n]*(?:采购|询价|需求|招标|扩产|招聘|设备|自动化|钣金|机箱|支架)[^。；;\n]*/);
+    const signalMatch = text.match(
+      /[^。；;\n]*(?:采购|询价|求购|招标|中标|需求|月需求|打样|报价|寻源|找供应商|供应商征集|扩产|产线改造|设备改造|沟通记录|跟进记录)[^。；;\n]*/,
+    );
     return signalMatch?.[0]?.replace(/\s+/g, ' ').trim().slice(0, 160) ?? null;
   }
 
@@ -1245,12 +1982,15 @@ export class EnterpriseLeadWorkspaceService {
     effectiveAgents,
     targetAgent,
     route,
-    recentMessages,
-    userMessage,
-    recentRunOutputs,
-    workspaceLeadContext,
-    research,
-    apiConfig,
+  recentMessages,
+  userMessage,
+  recentRunOutputs,
+  workspaceIndustryContext,
+  workspaceLeadContext,
+  workspaceContentKnowledgeContext,
+  research,
+  apiConfig,
+    progress,
   }: WorkspaceChatAgentStepRunInput): Promise<EnterpriseLeadWorkspaceChatRouteStep[]> {
     if (!route || route.agents.length <= 1) {
       return [];
@@ -1259,7 +1999,15 @@ export class EnterpriseLeadWorkspaceService {
     const stepResults: EnterpriseLeadWorkspaceChatRouteStep[] = [];
     const routing = this.toChatRouting(route);
 
-    for (const currentAgent of route.agents) {
+    for (const [index, currentAgent] of route.agents.entries()) {
+      const progressStepId = `agent:${currentAgent.id}:${index}`;
+      progress?.emit({
+        stepId: progressStepId,
+        phase: EnterpriseLeadChatProgressPhase.Agent,
+        status: EnterpriseLeadChatProgressStatus.Running,
+        title: `${currentAgent.name} 正在处理`,
+        source: currentAgent.name,
+      });
       const result = await this.modelClient.generate({
         prompt: buildWorkspaceChatAgentStepPrompt({
           workspace,
@@ -1271,18 +2019,29 @@ export class EnterpriseLeadWorkspaceService {
           recentMessages,
           userMessage,
           recentRunOutputs,
+          workspaceIndustryContext,
           workspaceLeadContext,
+          workspaceContentKnowledgeContext,
           researchResult: this.sanitizeResearchForPrompt(workspace, research),
         }),
         apiConfig,
         ...(currentAgent.model ? { model: currentAgent.model } : {}),
+      });
+      const content = result.text.trim();
+      progress?.emit({
+        stepId: progressStepId,
+        phase: EnterpriseLeadChatProgressPhase.Agent,
+        status: EnterpriseLeadChatProgressStatus.Completed,
+        title: `${currentAgent.name} 已完成`,
+        detail: content,
+        source: currentAgent.name,
       });
       stepResults.push({
         agent: {
           id: currentAgent.id,
           name: currentAgent.name,
         },
-        content: result.text.trim(),
+        content,
       });
     }
 
@@ -1328,12 +2087,10 @@ export class EnterpriseLeadWorkspaceService {
   private resolveEffectiveChatResearchIntent({
     workspace,
     plannedIntent,
-    targetAgent,
     userMessage,
   }: {
     workspace: EnterpriseLeadWorkspace;
     plannedIntent: EnterpriseLeadWorkspaceChatResearchIntent;
-    targetAgent: WorkspaceChatAgentPromptSummary | null;
     userMessage: string;
   }): EnterpriseLeadWorkspaceChatResearchIntent {
     if (plannedIntent.kind !== 'none') {
@@ -1342,7 +2099,6 @@ export class EnterpriseLeadWorkspaceService {
 
     const autoIntent = this.resolveAutoExternalSearchResearchIntent({
       workspace,
-      targetAgent,
       userMessage,
     });
     return autoIntent ?? plannedIntent;
@@ -1350,17 +2106,15 @@ export class EnterpriseLeadWorkspaceService {
 
   private resolveAutoExternalSearchResearchIntent({
     workspace,
-    targetAgent,
     userMessage,
   }: {
     workspace: EnterpriseLeadWorkspace;
-    targetAgent: WorkspaceChatAgentPromptSummary | null;
     userMessage: string;
   }): EnterpriseLeadWorkspaceChatResearchIntent | null {
     if (!this.selectSearchProvider(workspace, 'auto')) {
       return null;
     }
-    if (!this.shouldAutoSearchForLeadOpportunity(userMessage, targetAgent)) {
+    if (!this.shouldAutoSearchForLeadOpportunity(userMessage)) {
       return null;
     }
 
@@ -1371,10 +2125,7 @@ export class EnterpriseLeadWorkspaceService {
     };
   }
 
-  private shouldAutoSearchForLeadOpportunity(
-    userMessage: string,
-    targetAgent: WorkspaceChatAgentPromptSummary | null,
-  ): boolean {
+  private shouldAutoSearchForLeadOpportunity(userMessage: string): boolean {
     const normalizedMessage = this.normalizeAutoRouteText(userMessage);
     if (!normalizedMessage) {
       return false;
@@ -1402,7 +2153,7 @@ export class EnterpriseLeadWorkspaceService {
       '判断这些客户',
     ].some(pattern => normalizedMessage.includes(this.normalizeAutoRouteText(pattern)));
 
-    return hasResearchCue || (hasOpportunityCue && Boolean(targetAgent && this.isOpportunityRadarAgent(targetAgent)));
+    return hasResearchCue || hasOpportunityCue;
   }
 
   private buildLeadOpportunitySearchQuery(
@@ -1593,12 +2344,9 @@ export class EnterpriseLeadWorkspaceService {
     workspaceLeadContext: WorkspaceChatLeadContext,
     research: EnterpriseLeadWorkspaceChatResearchResult,
   ): string | null {
-    if (!targetAgent) {
-      return null;
-    }
     if (
-      this.isOpportunityRadarAgent(targetAgent)
-      && this.isCustomerPriorityReferenceRequest(userMessage)
+      this.isCustomerPriorityReferenceRequest(userMessage)
+      && (!targetAgent || this.isOpportunityRadarAgent(targetAgent))
     ) {
       const hasConcreteWorkspaceLeads = this.hasConcreteWorkspaceLeadContext(workspaceLeadContext);
       if (research.intent.kind === 'none' && !hasConcreteWorkspaceLeads) {
@@ -1607,6 +2355,9 @@ export class EnterpriseLeadWorkspaceService {
       if (!hasConcreteWorkspaceLeads && !this.hasConcreteResearchLeadCandidates(research)) {
         return OPPORTUNITY_RESEARCH_WITHOUT_COMPANIES_RESPONSE;
       }
+    }
+    if (!targetAgent) {
+      return null;
     }
     if (
       this.isRiskReviewAgent(targetAgent)
@@ -1677,7 +2428,10 @@ export class EnterpriseLeadWorkspaceService {
   }
 
   private isRiskReviewAgent(agent: WorkspaceChatAgentPromptSummary): boolean {
-    if (agent.id === EnterpriseLeadAgentRole.RiskReview) {
+    if (
+      agent.id === EnterpriseLeadAgentRole.RiskReview ||
+      agent.id === EnterpriseLeadAgentRole.ContentQuality
+    ) {
       return true;
     }
     const searchableText = this.normalizeAutoRouteText([
@@ -1687,7 +2441,7 @@ export class EnterpriseLeadWorkspaceService {
       agent.identity,
       agent.systemPrompt,
     ].join(' '));
-    return ['risk_review', '风控', '审核', '风险'].some(pattern =>
+    return ['risk_review', 'content_quality', '风控', '审核', '风险', '质检'].some(pattern =>
       searchableText.includes(this.normalizeAutoRouteText(pattern)),
     );
   }
@@ -2161,7 +2915,8 @@ export class EnterpriseLeadWorkspaceService {
   private assertRunHasNoBlockingRiskReview(runId: string): void {
     const tasks = this.store.listTasks(runId);
     const riskTask = tasks.find(task =>
-      task.role === EnterpriseLeadAgentRole.RiskReview,
+      task.role === EnterpriseLeadAgentRole.RiskReview ||
+      task.role === EnterpriseLeadAgentRole.ContentQuality,
     ) ?? tasks.find(task => this.isDynamicRiskReviewTask(task));
     if (!riskTask) {
       if (tasks.some(task => task.workspaceAgentId || task.agentSnapshot)) {

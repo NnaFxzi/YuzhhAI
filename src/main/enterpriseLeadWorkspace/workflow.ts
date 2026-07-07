@@ -1,6 +1,7 @@
 import type { EnterpriseLeadAgentRole } from '../../shared/enterpriseLeadWorkspace/constants';
 import {
   EnterpriseLeadAgentRole as AgentRole,
+  EnterpriseLeadContentAgentRoles,
   EnterpriseLeadWorkspaceAgentSource,
 } from '../../shared/enterpriseLeadWorkspace/constants';
 import type { EnterpriseLeadWorkspaceAgentBinding } from '../../shared/enterpriseLeadWorkspace/types';
@@ -16,6 +17,67 @@ export interface EnterpriseLeadAgentMetadata {
 }
 
 export const ENTERPRISE_LEAD_AGENT_WORKFLOW: EnterpriseLeadAgentMetadata[] = [
+  {
+    role: AgentRole.ProductSellingPoint,
+    title: '产品卖点 Agent',
+    shortLabel: '卖',
+    description: '提炼产品优势、用户痛点、信任背书和差异化卖点。',
+    inputSummary: '企业资料、产品资料、目标用户、已有内容素材',
+    outputSummary: '核心卖点、用户痛点、信任背书、内容角度',
+    safetyCritical: false,
+  },
+  {
+    role: AgentRole.TopicPlanning,
+    title: '选题策划 Agent',
+    shortLabel: '题',
+    description: '生成选题、标题、爆点、内容系列和平台角度。',
+    inputSummary: '产品卖点、目标用户、平台偏好、内容目标',
+    outputSummary: '选题列表、标题方向、内容系列、推荐形式',
+    safetyCritical: false,
+  },
+  {
+    role: AgentRole.ShortVideoScript,
+    title: '短视频脚本 Agent',
+    shortLabel: '视',
+    description: '生成短视频钩子、口播脚本、分镜节奏和行动引导。',
+    inputSummary: '产品卖点、选题角度、平台偏好、目标时长',
+    outputSummary: '前三秒钩子、口播脚本、分镜建议、CTA',
+    safetyCritical: false,
+  },
+  {
+    role: AgentRole.SocialCopy,
+    title: '图文文案 Agent',
+    shortLabel: '文',
+    description: '生成朋友圈、小红书、公众号、海报和种草文案。',
+    inputSummary: '产品卖点、平台、目标用户、转化目标',
+    outputSummary: '平台文案、标题、正文、行动引导',
+    safetyCritical: false,
+  },
+  {
+    role: AgentRole.PrivateDomainConversion,
+    title: '私域转化 Agent',
+    shortLabel: '私',
+    description: '生成微信私聊、社群跟进、异议处理和成交引导话术。',
+    inputSummary: '内容成果、客户阶段、常见顾虑、跟进目标',
+    outputSummary: '私聊话术、社群话术、跟进节奏、转化 CTA',
+    safetyCritical: false,
+  },
+  {
+    role: AgentRole.ContentQuality,
+    title: '内容质检 Agent',
+    shortLabel: '检',
+    description: '检查内容是否空泛、像 AI、缺少依据或缺少转化点，并给出改稿。',
+    inputSummary: '内容草稿、平台要求、品牌语气、禁用表达',
+    outputSummary: '质检结论、问题清单、优化版本、发布提醒',
+    safetyCritical: true,
+  },
+];
+
+const ENTERPRISE_LEAD_AGENT_METADATA_BY_ROLE = new Map<EnterpriseLeadAgentRole, EnterpriseLeadAgentMetadata>(
+  ENTERPRISE_LEAD_AGENT_WORKFLOW.map(agent => [agent.role, agent]),
+);
+
+export const LEGACY_ENTERPRISE_LEAD_AGENT_WORKFLOW: EnterpriseLeadAgentMetadata[] = [
   {
     role: AgentRole.Controller,
     title: '项目总控 Agent',
@@ -105,7 +167,8 @@ const getUnknownRoleError = (role: EnterpriseLeadAgentRole): Error =>
 export const getEnterpriseLeadAgentMetadata = (
   role: EnterpriseLeadAgentRole,
 ): EnterpriseLeadAgentMetadata => {
-  const metadata = ENTERPRISE_LEAD_AGENT_WORKFLOW.find(agent => agent.role === role);
+  const metadata = ENTERPRISE_LEAD_AGENT_METADATA_BY_ROLE.get(role)
+    ?? LEGACY_ENTERPRISE_LEAD_AGENT_WORKFLOW.find(agent => agent.role === role);
 
   if (!metadata) {
     throw getUnknownRoleError(role);
@@ -132,12 +195,18 @@ const buildDefaultSystemPrompt = (agent: EnterpriseLeadAgentMetadata): string =>
   ].join('\n');
 
 export const buildDefaultEnterpriseLeadWorkspaceAgents = (
-  roles: EnterpriseLeadAgentRole[] = ENTERPRISE_LEAD_AGENT_WORKFLOW.map(agent => agent.role),
+  roles: readonly EnterpriseLeadAgentRole[] = EnterpriseLeadContentAgentRoles,
 ): EnterpriseLeadWorkspaceAgentBinding[] => {
-  const roleSet = new Set(roles);
-
-  return ENTERPRISE_LEAD_AGENT_WORKFLOW.filter(agent => roleSet.has(agent.role)).map(
-    (agent, order) => ({
+  return roles
+    .map(role => {
+      try {
+        return getEnterpriseLeadAgentMetadata(role);
+      } catch {
+        return null;
+      }
+    })
+    .filter((agent): agent is EnterpriseLeadAgentMetadata => Boolean(agent))
+    .map((agent, order) => ({
       agentId: agent.role,
       source: EnterpriseLeadWorkspaceAgentSource.SystemTemplate,
       templateId: agent.role,

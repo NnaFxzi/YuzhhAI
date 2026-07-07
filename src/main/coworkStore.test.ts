@@ -21,6 +21,7 @@ vi.mock('electron', () => ({
 import BetterSqlite3 from 'better-sqlite3';
 
 import { CoworkSystemMessageKind } from '../common/coworkSystemMessages';
+import { AgentAnswerShape, defaultAgentResponseContract } from '../shared/agent';
 import { AgentAvatarSvg, DefaultAgentAvatarIcon, encodeAgentAvatarIcon } from '../shared/agent/avatar';
 import { CoworkForkMode } from '../shared/cowork/constants';
 import { InheritSetting, SettingScope } from '../shared/cowork/layeredSettings';
@@ -104,6 +105,7 @@ function setupDb(): void {
       identity TEXT NOT NULL DEFAULT '',
       model TEXT NOT NULL DEFAULT '',
       working_directory TEXT NOT NULL DEFAULT '',
+      response_contract_json TEXT NOT NULL DEFAULT '',
       icon TEXT NOT NULL DEFAULT '',
       skill_ids TEXT NOT NULL DEFAULT '[]',
       enabled INTEGER NOT NULL DEFAULT 1,
@@ -895,6 +897,40 @@ test('agent unpinning clears pin order', () => {
 
   expect(unpinned?.pinned).toBe(false);
   expect(unpinned?.pinOrder).toBeNull();
+});
+
+test('agent CRUD persists response contracts and falls back on corrupt JSON', () => {
+  const agent = store.createAgent({
+    name: 'Copy Agent',
+    responseContract: {
+      version: 1,
+      answerShape: AgentAnswerShape.CopyReady,
+      maxClarifyingQuestions: 1,
+      askBeforeAnswering: false,
+      mustInclude: ['可直接复制的正文'],
+      mustAvoid: ['不要编造硬事实'],
+      qualityChecks: ['事实保护检查'],
+      toolUseHints: ['需要最新信息时先调研'],
+    },
+  });
+
+  expect(agent.responseContract.answerShape).toBe(AgentAnswerShape.CopyReady);
+  expect(store.getAgent(agent.id)?.responseContract.mustInclude).toEqual(['可直接复制的正文']);
+
+  const updated = store.updateAgent(agent.id, {
+    responseContract: {
+      ...agent.responseContract,
+      maxClarifyingQuestions: 99,
+      mustAvoid: ['不要编造价格和交期'],
+    },
+  });
+
+  expect(updated?.responseContract.maxClarifyingQuestions).toBe(3);
+  expect(updated?.responseContract.mustAvoid).toEqual(['不要编造价格和交期']);
+
+  db.prepare('UPDATE agents SET response_contract_json = ? WHERE id = ?').run('{broken', agent.id);
+
+  expect(store.getAgent(agent.id)?.responseContract).toEqual(defaultAgentResponseContract);
 });
 
 test('getConfig defaults skipMissedJobs to true when config is missing', () => {

@@ -5,6 +5,12 @@ export type EnterpriseLeadWorkspaceType =
   typeof EnterpriseLeadWorkspaceType[keyof typeof EnterpriseLeadWorkspaceType];
 
 export const EnterpriseLeadAgentRole = {
+  ProductSellingPoint: 'product_selling_point',
+  TopicPlanning: 'topic_planning',
+  ShortVideoScript: 'short_video_script',
+  SocialCopy: 'social_copy',
+  PrivateDomainConversion: 'private_domain_conversion',
+  ContentQuality: 'content_quality',
   Controller: 'controller',
   ProductUnderstanding: 'product_understanding',
   OpportunityRadar: 'opportunity_radar',
@@ -18,12 +24,50 @@ export const EnterpriseLeadAgentRole = {
 export type EnterpriseLeadAgentRole =
   typeof EnterpriseLeadAgentRole[keyof typeof EnterpriseLeadAgentRole];
 
+export const EnterpriseLeadContentAgentRoles = [
+  EnterpriseLeadAgentRole.ProductSellingPoint,
+  EnterpriseLeadAgentRole.TopicPlanning,
+  EnterpriseLeadAgentRole.ShortVideoScript,
+  EnterpriseLeadAgentRole.SocialCopy,
+  EnterpriseLeadAgentRole.PrivateDomainConversion,
+  EnterpriseLeadAgentRole.ContentQuality,
+] as const;
+
 export const EnterpriseLeadWorkspaceAgentSource = {
   SystemTemplate: 'system_template',
   WorkspaceCreated: 'workspace_created',
 } as const;
 export type EnterpriseLeadWorkspaceAgentSource =
   (typeof EnterpriseLeadWorkspaceAgentSource)[keyof typeof EnterpriseLeadWorkspaceAgentSource];
+
+export const EnterpriseLeadWorkspaceAgentCalibrationCheckId = {
+  Priority: 'priority',
+  Reason: 'reason',
+  Missing: 'missing',
+  NextStep: 'next_step',
+} as const;
+export type EnterpriseLeadWorkspaceAgentCalibrationCheckId =
+  (typeof EnterpriseLeadWorkspaceAgentCalibrationCheckId)[keyof typeof EnterpriseLeadWorkspaceAgentCalibrationCheckId];
+
+export const EnterpriseLeadChatProgressPhase = {
+  Routing: 'routing',
+  Research: 'research',
+  Agent: 'agent',
+  Tool: 'tool',
+  Synthesis: 'synthesis',
+  Done: 'done',
+  Error: 'error',
+} as const;
+export type EnterpriseLeadChatProgressPhase =
+  (typeof EnterpriseLeadChatProgressPhase)[keyof typeof EnterpriseLeadChatProgressPhase];
+
+export const EnterpriseLeadChatProgressStatus = {
+  Running: 'running',
+  Completed: 'completed',
+  Failed: 'failed',
+} as const;
+export type EnterpriseLeadChatProgressStatus =
+  (typeof EnterpriseLeadChatProgressStatus)[keyof typeof EnterpriseLeadChatProgressStatus];
 
 export const EnterpriseLeadRunStatus = {
   Draft: 'draft',
@@ -92,6 +136,24 @@ export const EnterpriseLeadExtractionSourceKind = {
 } as const;
 export type EnterpriseLeadExtractionSourceKind =
   typeof EnterpriseLeadExtractionSourceKind[keyof typeof EnterpriseLeadExtractionSourceKind];
+
+export const EnterpriseLeadDocumentExtractionStatus = {
+  Pending: 'pending',
+  Extracting: 'extracting',
+  Extracted: 'extracted',
+  Failed: 'failed',
+} as const;
+export type EnterpriseLeadDocumentExtractionStatus =
+  (typeof EnterpriseLeadDocumentExtractionStatus)[keyof typeof EnterpriseLeadDocumentExtractionStatus];
+
+export const EnterpriseLeadKnowledgeIndexStatus = {
+  Pending: 'pending',
+  Indexing: 'indexing',
+  Indexed: 'indexed',
+  Failed: 'failed',
+} as const;
+export type EnterpriseLeadKnowledgeIndexStatus =
+  (typeof EnterpriseLeadKnowledgeIndexStatus)[keyof typeof EnterpriseLeadKnowledgeIndexStatus];
 
 export const EnterpriseLeadSkillCapabilityId = {
   DocumentParsing: 'documentParsing',
@@ -184,6 +246,7 @@ export const EnterpriseLeadWorkspaceIpc = {
   ListWorkspaces: 'enterpriseLeadWorkspace:workspaces:list',
   GetWorkspace: 'enterpriseLeadWorkspace:workspaces:get',
   UpdateWorkspaceProfile: 'enterpriseLeadWorkspace:workspaces:updateProfile',
+  UpdateWorkspaceSources: 'enterpriseLeadWorkspace:workspaces:updateSources',
   UpdateWorkspaceSettings: 'enterpriseLeadWorkspace:workspaces:updateSettings',
   UpdateWorkspaceAgents: 'enterpriseLeadWorkspace:workspaces:updateAgents',
   ExtractDraft: 'enterpriseLeadWorkspace:drafts:extract',
@@ -197,6 +260,8 @@ export const EnterpriseLeadWorkspaceIpc = {
   GetChatSession: 'enterpriseLeadWorkspace:chatSessions:get',
   DeleteChatSession: 'enterpriseLeadWorkspace:chatSessions:delete',
   Chat: 'enterpriseLeadWorkspace:chat:send',
+  ChatProgress: 'enterpriseLeadWorkspace:chat:progress',
+  TestWorkspaceAgent: 'enterpriseLeadWorkspace:agents:test',
   RunTask: 'enterpriseLeadWorkspace:tasks:run',
   RerunTask: 'enterpriseLeadWorkspace:tasks:rerun',
   CreatePendingVersion: 'enterpriseLeadWorkspace:tasks:createPendingVersion',

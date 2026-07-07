@@ -30,6 +30,7 @@ import {
 } from './constants';
 import type {
   EnterpriseLeadAgentTaskResult,
+  EnterpriseLeadExtractionSource,
   EnterpriseLeadRiskReviewOutput,
   EnterpriseLeadTodoInput,
   EnterpriseLeadWorkspaceAgentBinding,
@@ -48,6 +49,7 @@ import type {
 
 export const MAX_WORKSPACE_CHAT_QUERY_LENGTH = 500;
 export const MAX_WORKSPACE_CHAT_EXTRACT_URLS = 10;
+const MAX_WORKSPACE_OUTPUT_PREFERENCE_INSTRUCTIONS = 12;
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -663,6 +665,20 @@ const legacyContentPlatformSettingsFromPlatforms = (
   return normalizeContentPlatformSettings(settings);
 };
 
+const normalizeOutputPreferences = (
+  value: unknown,
+  fallback?: EnterpriseLeadWorkspaceSettings['outputPreferences'],
+): EnterpriseLeadWorkspaceSettings['outputPreferences'] => {
+  const record = readRecord(value);
+  const base = fallback ?? { instructions: [] };
+
+  return {
+    instructions: hasOwn(record, 'instructions')
+      ? cleanTextList(record.instructions).slice(0, MAX_WORKSPACE_OUTPUT_PREFERENCE_INSTRUCTIONS)
+      : cleanTextList(base.instructions).slice(0, MAX_WORKSPACE_OUTPUT_PREFERENCE_INSTRUCTIONS),
+  };
+};
+
 const mergeExternalResearchConfigInput = (
   value: unknown,
   fallback: EnterpriseLeadWorkspaceSettings['externalResearch'],
@@ -712,6 +728,7 @@ const mergeDomesticResearchConfigInput = (
 
 export function normalizeWorkspaceProfile(value: unknown): EnterpriseLeadWorkspaceProfile {
   const record = readRecord(value);
+  const confirmedKnowledgeKeys = cleanTextList(record.confirmedKnowledgeKeys);
   return {
     ...defaultProfile(),
     companySummary: cleanText(record.companySummary),
@@ -724,6 +741,7 @@ export function normalizeWorkspaceProfile(value: unknown): EnterpriseLeadWorkspa
     prohibitedClaims: cleanTextList(record.prohibitedClaims),
     contactRules: cleanTextList(record.contactRules),
     missingInfo: cleanTextList(record.missingInfo),
+    ...(confirmedKnowledgeKeys.length > 0 ? { confirmedKnowledgeKeys } : {}),
   };
 }
 
@@ -738,6 +756,9 @@ export function buildDefaultEnterpriseLeadWorkspaceSettings(): EnterpriseLeadWor
     externalResearch: buildDefaultExternalResearchConfig(AgentExternalResearchMode.Override),
     domesticResearch: buildDefaultDomesticResearchConfig(),
     contentPlatforms: buildDefaultContentPlatformSettings(),
+    outputPreferences: {
+      instructions: [],
+    },
   };
 }
 
@@ -754,7 +775,8 @@ export function normalizeEnterpriseLeadWorkspaceSettings(
     || Array.isArray(record.skillIds)
     || isRecord(record.externalResearch)
     || isRecord(record.domesticResearch)
-    || hasNewContentPlatformsShape;
+    || hasNewContentPlatformsShape
+    || isRecord(record.outputPreferences);
   const legacyModel = parseLegacyModelRef(record.modelRef);
 
   return {
@@ -784,6 +806,9 @@ export function normalizeEnterpriseLeadWorkspaceSettings(
       : hasNewShape
         ? normalizeContentPlatformSettings(fallback.contentPlatforms)
         : legacyContentPlatformSettingsFromPlatforms(record.contentPlatforms),
+    outputPreferences: hasNewShape && hasOwn(record, 'outputPreferences')
+      ? normalizeOutputPreferences(record.outputPreferences, fallback.outputPreferences)
+      : normalizeOutputPreferences(fallback.outputPreferences),
   };
 }
 
@@ -813,6 +838,51 @@ export function normalizeEnterpriseLeadWorkspaceSettingsUpdate(
   return normalized;
 }
 
+export function normalizeEnterpriseLeadExtractionSource(
+  value: unknown,
+): EnterpriseLeadExtractionSource {
+  const record = readRecord(value);
+  const kind = cleanText(record.kind) || EnterpriseLeadExtractionSourceKind.Manual;
+  const label = cleanText(record.label) ||
+    cleanText(record.filePath) ||
+    cleanText(record.text).slice(0, 40) ||
+    '未命名资料';
+
+  return {
+    kind,
+    label,
+    filePath: cleanOptionalText(record.filePath),
+    fileName: cleanOptionalText(record.fileName),
+    fileSize: readPositiveNumber(record.fileSize),
+    text: cleanOptionalText(record.text),
+    summary: cleanOptionalText(record.summary),
+    extractionStatus: cleanOptionalText(record.extractionStatus),
+    extractionError: cleanOptionalText(record.extractionError),
+    lastExtractedAt: cleanOptionalText(record.lastExtractedAt),
+    vectorIndexStatus: cleanOptionalText(record.vectorIndexStatus),
+    vectorIndexError: cleanOptionalText(record.vectorIndexError),
+    vectorIndexedAt: cleanOptionalText(record.vectorIndexedAt),
+    vectorChunkCount: typeof record.vectorChunkCount === 'number' &&
+      Number.isFinite(record.vectorChunkCount) &&
+      record.vectorChunkCount >= 0
+      ? Math.floor(record.vectorChunkCount)
+      : undefined,
+    vectorEmbeddingVersion: cleanOptionalText(record.vectorEmbeddingVersion),
+    createdAt: cleanOptionalText(record.createdAt),
+    updatedAt: cleanOptionalText(record.updatedAt),
+  };
+}
+
+export function normalizeEnterpriseLeadExtractionSources(
+  value: unknown,
+): EnterpriseLeadExtractionSource[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.map(normalizeEnterpriseLeadExtractionSource);
+}
+
 export function normalizeWorkspaceDraftInput(value: unknown): EnterpriseLeadWorkspaceDraft {
   const record = readRecord(value);
   const name = cleanText(record.name);
@@ -830,6 +900,8 @@ export function normalizeWorkspaceDraftInput(value: unknown): EnterpriseLeadWork
       label: cleanText(source.label) || '用户输入',
       filePath: cleanText(source.filePath) || undefined,
       text: cleanText(source.text) || undefined,
+      createdAt: cleanText(source.createdAt) || undefined,
+      updatedAt: cleanText(source.updatedAt) || undefined,
     },
     enabledAgentRoles: Object.values(EnterpriseLeadAgentRole),
     workspaceAgents: normalizeEnterpriseLeadWorkspaceAgents(record.workspaceAgents),

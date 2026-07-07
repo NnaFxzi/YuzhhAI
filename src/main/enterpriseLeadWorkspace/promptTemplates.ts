@@ -6,6 +6,8 @@ import {
 import type {
   EnterpriseLeadAgentTask,
   EnterpriseLeadWorkspace,
+  EnterpriseLeadWorkspaceAgentCalibrationDraft,
+  EnterpriseLeadWorkspaceAgentCalibrationExample,
   EnterpriseLeadWorkspaceChatMessage,
   EnterpriseLeadWorkspaceChatResearchResult,
   EnterpriseLeadWorkspaceChatRouteStep,
@@ -56,6 +58,36 @@ export interface WorkspaceChatLeadContext {
   }>;
 }
 
+export interface WorkspaceChatIndustryContext {
+  status: 'available' | 'empty';
+  industryLabel: string;
+  confidence: 'high' | 'medium' | 'low';
+  note: string;
+  evidence: Array<{
+    kind: 'workspace_profile' | 'workspace_source' | 'run_output';
+    label: string;
+    text: string;
+  }>;
+  missingInfo: string[];
+}
+
+export interface WorkspaceChatContentKnowledgeContext {
+  status: 'matched' | 'profile_fallback' | 'missing' | 'not_applicable';
+  note: string;
+  hits: Array<{
+    sourceLabel: string;
+    sourceType: string;
+    text: string;
+    score: number;
+  }>;
+  missingInfo: string[];
+  diagnostics?: {
+    candidateCount: number;
+    rejectedCount: number;
+    hitThreshold: number;
+  };
+}
+
 interface WorkspaceChatPromptBaseInput {
   workspace: EnterpriseLeadWorkspace;
   effectiveAgents: WorkspaceChatAgentPromptSummary[];
@@ -65,6 +97,8 @@ interface WorkspaceChatPromptBaseInput {
   userMessage: string;
   recentRunOutputs?: unknown[];
   workspaceLeadContext?: WorkspaceChatLeadContext;
+  workspaceIndustryContext?: WorkspaceChatIndustryContext;
+  workspaceContentKnowledgeContext?: WorkspaceChatContentKnowledgeContext;
 }
 
 type WorkspaceChatResearchIntentPromptInput = WorkspaceChatPromptBaseInput;
@@ -80,6 +114,12 @@ interface WorkspaceChatAgentStepPromptInput extends WorkspaceChatPromptBaseInput
   researchResult: EnterpriseLeadWorkspaceChatResearchResult;
 }
 
+interface WorkspaceAgentCalibrationPromptInput {
+  workspace: EnterpriseLeadWorkspace;
+  agent: EnterpriseLeadWorkspaceAgentCalibrationDraft;
+  example: EnterpriseLeadWorkspaceAgentCalibrationExample;
+}
+
 const stringify = (value: unknown): string => JSON.stringify(value, null, 2);
 
 const buildEnterpriseLeadReplyContract = (): string =>
@@ -88,11 +128,90 @@ const buildEnterpriseLeadReplyContract = (): string =>
     language: AiDialogueReplyLanguage.Zh,
   });
 
+const buildContentProductionOutputSection = (): string => [
+  '内容生产交付规范：',
+  '- 优先输出可直接复制使用的成品，不要只给思路或建议。',
+  '- 信息不足时先给可用草稿，并用「[待补充：...]」标出缺口；不要只反问用户。',
+  '- B2B/获客内容必须围绕目标客户场景、痛点、证据、信任背书和清晰 CTA。',
+  '- 选题类输出标题/角度/目标人群/痛点/钩子/转化点，避免只有标题列表。',
+  '- 短视频脚本输出前三秒钩子、口播台词、画面或分镜节奏、字幕提示和 CTA。',
+  '- 图文文案输出标题备选、正文、配图或封面建议、评论/私信引导和发布提醒。',
+  '- 私域或销售转化输出破冰句、价值承接、需求确认、异议回应、下一步动作和跟进节奏。',
+  '- 内容质检输出问题清单、修改理由、优化版本和发布前提醒；重点去空泛、去 AI 味、去夸张承诺。',
+].join('\n');
+
 const emptyWorkspaceLeadContext = (): WorkspaceChatLeadContext => ({
   status: 'empty',
   note: '没有检测到可用于客户排序的具体客户名单或线索。',
   sources: [],
 });
+
+const emptyWorkspaceIndustryContext = (): WorkspaceChatIndustryContext => ({
+  status: 'empty',
+  industryLabel: '',
+  confidence: 'low',
+  note: '没有检测到足够的工作区行业证据。',
+  evidence: [],
+  missingInfo: [],
+});
+
+const emptyWorkspaceContentKnowledgeContext = (): WorkspaceChatContentKnowledgeContext => ({
+  status: 'not_applicable',
+  note: '本轮不是选题、脚本、私域话术或销售转化类内容生产请求，未触发向量知识预检。',
+  hits: [],
+  missingInfo: [],
+});
+
+const buildIndustryAnalysisInstructionSection = (
+  workspaceIndustryContext?: WorkspaceChatIndustryContext,
+): string => {
+  if (!workspaceIndustryContext || workspaceIndustryContext.status !== 'available') {
+    return '';
+  }
+
+  return [
+    '行业态势分析要求：',
+    '- 工作区行业证据包已识别当前行业时，不要追问用户属于什么行业；先按证据包识别的行业输出。',
+    '- 必须基于证据包、工作空间资料和研究结果分析；没有证据的判断标记为“待验证”。',
+    '- 固定结构：一句话判断、行业现状、客户采购逻辑、竞争格局、对本公司的影响、获客机会、风险与不确定性、下一步动作。',
+  ].join('\n');
+};
+
+const buildWorkspaceContentKnowledgeInstructionSection = (
+  workspaceContentKnowledgeContext?: WorkspaceChatContentKnowledgeContext,
+): string => {
+  if (!workspaceContentKnowledgeContext) {
+    return '';
+  }
+  if (workspaceContentKnowledgeContext.status === 'matched') {
+    return [
+      '工作区向量知识使用要求：',
+      '- 本轮内容生产请求已命中工作区向量知识；优先使用“工作区向量知识命中包”中的片段作为事实依据。',
+      '- 只能把命中片段、工作空间资料或研究结果中出现的信息当成事实；不能把未命中的资料当成事实。',
+      '- 可以基于命中事实做选题、脚本、私域话术和销售转化表达，但产品、客户、卖点、案例、价格、承诺必须有依据。',
+      '- 如果命中包或当前工作空间资料已经包含工厂、产品、客户或卖点信息，不要说“没有存过你们工厂的具体资料”，不要重复询问已经出现在命中包里的产品、客户或卖点。',
+      '- 面对朋友圈文案、图文文案、短视频脚本、选题或私域话术这类短内容请求，先输出一版可直接使用的成品草稿；需要补充的信息放在草稿后，用 1-2 个问题追问。',
+    ].join('\n');
+  }
+  if (workspaceContentKnowledgeContext.status === 'profile_fallback') {
+    return [
+      '工作区向量知识使用要求：',
+      '- 本轮内容生产请求没有命中足够相关的向量片段，但工作区基础画像可用；请基于当前工作空间资料先输出一版可直接使用的草稿。',
+      '- 缺失的产品细节、客户行业、案例、数据、价格、认证或交付承诺用「[待补充：...]」标注，不要虚构。',
+      '- 不要只追问用户；草稿后最多补 1-2 个最关键问题，帮助用户继续完善。',
+      '- 如果当前工作空间资料已经包含工厂、产品、客户或卖点信息，不要说“没有存过你们工厂的具体资料”，不要重复询问已经出现的产品、客户或卖点。',
+    ].join('\n');
+  }
+  if (workspaceContentKnowledgeContext.status === 'missing') {
+    return [
+      '工作区向量知识使用要求：',
+      '- 本轮是内容生产请求，但工作区向量知识没有足够相关命中；这条规则优先级高于“内容生产交付规范”。',
+      '- 不要直接生成选题、脚本、私域话术或销售转化内容，不要用行业常识或猜测补齐业务事实。',
+      '- 先说明缺少哪些业务信息，并给出最小补充清单：领域/产品、目标人群、核心卖点、转化目标、账号定位、可引用素材或证据。',
+    ].join('\n');
+  }
+  return '';
+};
 
 const isEnterpriseLeadAgentRole = (value: string): value is EnterpriseLeadAgentRole =>
   Object.values(EnterpriseLeadAgentRole).includes(value as EnterpriseLeadAgentRole);
@@ -169,6 +288,18 @@ const toPromptExternalResearchSettings = (workspace: EnterpriseLeadWorkspace) =>
   ),
 });
 
+const buildWorkspaceOutputPreferenceSection = (workspace: EnterpriseLeadWorkspace): string => {
+  const instructions = workspace.settings.outputPreferences?.instructions ?? [];
+  if (!instructions.length) {
+    return '';
+  }
+
+  return [
+    '空间输出习惯：',
+    ...instructions.map(instruction => `- ${instruction}`),
+  ].join('\n');
+};
+
 const getAgentTaskPromptMetadata = (
   task: EnterpriseLeadAgentTask,
 ): {
@@ -243,6 +374,7 @@ const toPromptWorkspace = (workspace: EnterpriseLeadWorkspace) => ({
     },
     domesticResearch: workspace.settings.domesticResearch,
     contentPlatforms: toPromptContentPlatformSettings(workspace.settings.contentPlatforms),
+    outputPreferences: workspace.settings.outputPreferences,
   },
   recentRunId: workspace.recentRunId,
   createdAt: workspace.createdAt,
@@ -427,6 +559,8 @@ export function buildWorkspaceChatResearchIntentPrompt({
   userMessage,
   recentRunOutputs = [],
   workspaceLeadContext,
+  workspaceIndustryContext,
+  workspaceContentKnowledgeContext,
 }: WorkspaceChatResearchIntentPromptInput): string {
   return [
     '你是企业获客工作空间的研究意图判断助手。',
@@ -467,10 +601,17 @@ export function buildWorkspaceChatResearchIntentPrompt({
       externalResearch: toPromptExternalResearchSettings(workspace),
       domesticResearch: workspace.settings.domesticResearch,
       contentPlatforms: toPromptContentPlatformSettings(workspace.settings.contentPlatforms),
+      outputPreferences: workspace.settings.outputPreferences,
     }),
     '',
     '工作区可用线索：',
     stringify(workspaceLeadContext ?? emptyWorkspaceLeadContext()),
+    '',
+    '工作区行业证据包：',
+    stringify(workspaceIndustryContext ?? emptyWorkspaceIndustryContext()),
+    '',
+    '工作区向量知识命中包：',
+    stringify(workspaceContentKnowledgeContext ?? emptyWorkspaceContentKnowledgeContext()),
     '',
     '当前工作空间内 Agents：',
     stringify(effectiveAgents),
@@ -501,6 +642,8 @@ export function buildWorkspaceChatAgentStepPrompt({
   recentRunOutputs = [],
   researchResult,
   workspaceLeadContext,
+  workspaceIndustryContext,
+  workspaceContentKnowledgeContext,
 }: WorkspaceChatAgentStepPromptInput): string {
   return [
     `当前执行 Agent：${currentAgent.name}`,
@@ -516,6 +659,10 @@ export function buildWorkspaceChatAgentStepPrompt({
     '',
     '回复质量规则：',
     buildEnterpriseLeadReplyContract(),
+    buildContentProductionOutputSection(),
+    buildWorkspaceOutputPreferenceSection(workspace),
+    buildIndustryAnalysisInstructionSection(workspaceIndustryContext),
+    buildWorkspaceContentKnowledgeInstructionSection(workspaceContentKnowledgeContext),
     '',
     '输出要求：',
     '- 用中文输出。',
@@ -534,10 +681,17 @@ export function buildWorkspaceChatAgentStepPrompt({
       externalResearch: toPromptExternalResearchSettings(workspace),
       domesticResearch: workspace.settings.domesticResearch,
       contentPlatforms: toPromptContentPlatformSettings(workspace.settings.contentPlatforms),
+      outputPreferences: workspace.settings.outputPreferences,
     }),
     '',
     '工作区可用线索：',
     stringify(workspaceLeadContext ?? emptyWorkspaceLeadContext()),
+    '',
+    '工作区行业证据包：',
+    stringify(workspaceIndustryContext ?? emptyWorkspaceIndustryContext()),
+    '',
+    '工作区向量知识命中包：',
+    stringify(workspaceContentKnowledgeContext ?? emptyWorkspaceContentKnowledgeContext()),
     '',
     '当前工作空间内 Agents：',
     stringify(effectiveAgents),
@@ -578,6 +732,8 @@ export function buildWorkspaceChatResponsePrompt({
   recentRunOutputs = [],
   researchResult,
   workspaceLeadContext,
+  workspaceIndustryContext,
+  workspaceContentKnowledgeContext,
 }: WorkspaceChatResponsePromptInput): string {
   return [
     targetAgent
@@ -591,6 +747,10 @@ export function buildWorkspaceChatResponsePrompt({
     '',
     '回复质量规则：',
     buildEnterpriseLeadReplyContract(),
+    buildContentProductionOutputSection(),
+    buildWorkspaceOutputPreferenceSection(workspace),
+    buildIndustryAnalysisInstructionSection(workspaceIndustryContext),
+    buildWorkspaceContentKnowledgeInstructionSection(workspaceContentKnowledgeContext),
     '',
     '回答要求：',
     '- 用中文自然回答，不输出 JSON。',
@@ -599,6 +759,8 @@ export function buildWorkspaceChatResponsePrompt({
     '- 涉及客户线索、商机评分或跟进优先级时，不得输出“模拟客户”“模拟线索”或虚构客户名单。',
     '- 只能基于工作区可用线索或研究结果中的真实公司、真实页面、真实公开信号做排序；证据不足时不要把客户类别包装成具体客户。',
     '- 如果研究结果只包含行业类别、关键词或泛化方向，必须明确说明“未拿到具体公司名单”，然后输出可跟进客户类型、继续调研建议和需要用户补充的信息。',
+    '- 如果本轮已经执行过研究（研究结果 status 为 completed/failed），不要再询问用户是否需要授权搜索；直接基于结果给出结论、缺口和下一步。',
+    '- 没有真实公司名单时，不要用客户类型优先级表代替客户名单排序；客户类型只能作为开发方向或下一步调研方向。',
     '- 如涉及外发内容，只能生成草稿或审批建议。',
     targetAgent
       ? '- 当前已经选中目标 Agent，请直接按这个 Agent 的职责完成，不再让用户手动切换。'
@@ -619,10 +781,17 @@ export function buildWorkspaceChatResponsePrompt({
       externalResearch: toPromptExternalResearchSettings(workspace),
       domesticResearch: workspace.settings.domesticResearch,
       contentPlatforms: toPromptContentPlatformSettings(workspace.settings.contentPlatforms),
+      outputPreferences: workspace.settings.outputPreferences,
     }),
     '',
     '工作区可用线索：',
     stringify(workspaceLeadContext ?? emptyWorkspaceLeadContext()),
+    '',
+    '工作区行业证据包：',
+    stringify(workspaceIndustryContext ?? emptyWorkspaceIndustryContext()),
+    '',
+    '工作区向量知识命中包：',
+    stringify(workspaceContentKnowledgeContext ?? emptyWorkspaceContentKnowledgeContext()),
     '',
     '当前工作空间内 Agents：',
     stringify(effectiveAgents),
@@ -647,5 +816,48 @@ export function buildWorkspaceChatResponsePrompt({
     '',
     '用户本轮消息：',
     userMessage,
+  ].join('\n');
+}
+
+export function buildWorkspaceAgentCalibrationPrompt({
+  workspace,
+  agent,
+  example,
+}: WorkspaceAgentCalibrationPromptInput): string {
+  return [
+    '你正在试运行一个企业获客工作空间 Agent 草稿。',
+    '这次试运行只用于校验当前编辑内容，不得修改外部系统，不得写入真实任务，不得声称已经联系客户。',
+    '',
+    '安全边界：',
+    buildChatSafetySection(),
+    '- 不得编造客户、联系人、认证、价格、交付、产能、案例或成本降低等事实。',
+    '- 信息不足时必须明确列出缺失信息，不得自行补全关键事实。',
+    '',
+    '回复质量规则：',
+    buildEnterpriseLeadReplyContract(),
+    '',
+    '输出要求：',
+    '- 用中文自然回答，不输出 JSON。',
+    '- 必须按固定结构输出：客户优先级、判断依据、缺失信息、下一步动作。',
+    '- 如果示例涉及报价、交期、承诺、外发内容或合作结果，必须提示人工确认。',
+    '',
+    '当前 Agent 草稿：',
+    stringify(agent),
+    '',
+    '当前工作空间资料：',
+    stringify(toPromptWorkspace(workspace)),
+    '',
+    '示例输入：',
+    example.sampleInput,
+    '',
+    '期望输出参考：',
+    stringify({
+      priority: example.expectedPriority,
+      reason: example.expectedReason,
+      missing: example.expectedMissing,
+      nextStep: example.expectedNextStep,
+    }),
+    '',
+    '请直接输出这个 Agent 面对“示例输入”时应该交付给用户的回答。',
   ].join('\n');
 }

@@ -1,6 +1,9 @@
 import { expect, test } from 'vitest';
 
-import { resolvePromptAgentSelectorState } from './promptAgentOptions';
+import {
+  resolvePromptAgentSelectorState,
+  shouldDisplayPromptAgentContext,
+} from './promptAgentOptions';
 
 const makeAgent = (id: string, enabled = true) => ({
   id,
@@ -20,14 +23,14 @@ test('hides the prompt agent selector when only the default main agent exists', 
   expect(state.currentAgentForDisplay).toBeNull();
 });
 
-test('shows the default main option and user-created agents in the prompt agent selector', () => {
+test('hides the prompt agent selector on the default main agent even when user agents exist', () => {
   const state = resolvePromptAgentSelectorState({
     agents: [makeAgent('main'), makeAgent('writer'), makeAgent('researcher')],
     currentAgentId: 'main',
   });
 
-  expect(state.shouldShowAgentSelector).toBe(true);
-  expect(state.agentOptions.map((agent) => agent.id)).toEqual(['main', 'writer', 'researcher']);
+  expect(state.shouldShowAgentSelector).toBe(false);
+  expect(state.agentOptions.map(agent => agent.id)).toEqual(['main', 'writer', 'researcher']);
   expect(state.currentAgentForDisplay).toBeNull();
 });
 
@@ -52,4 +55,10 @@ test('keeps the selected custom agent visible even when it is disabled', () => {
   expect(state.shouldShowAgentSelector).toBe(true);
   expect(state.agentOptions.map((agent) => agent.id)).toEqual(['main', 'writer']);
   expect(state.currentAgentForDisplay?.id).toBe('writer');
+});
+
+test('shows read-only agent context only for non-default agents', () => {
+  expect(shouldDisplayPromptAgentContext('main')).toBe(false);
+  expect(shouldDisplayPromptAgentContext('')).toBe(false);
+  expect(shouldDisplayPromptAgentContext('writer')).toBe(true);
 });

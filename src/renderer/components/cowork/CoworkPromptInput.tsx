@@ -96,7 +96,10 @@ import {
   resolveMediaMentionTrigger,
 } from './mediaMentionUtils';
 import MediaModelPicker from './MediaModelPicker';
-import { resolvePromptAgentSelectorState } from './promptAgentOptions';
+import {
+  resolvePromptAgentSelectorState,
+  shouldDisplayPromptAgentContext,
+} from './promptAgentOptions';
 import {
   getAttachmentAnalyticsParams,
   getKitAnalyticsParams,
@@ -1959,6 +1962,7 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
     icon: '',
     enabled: true,
   };
+  const shouldShowReadOnlyAgentContext = shouldDisplayPromptAgentContext(readOnlyContextAgentId);
   const readOnlyContextAgentName = getAgentDisplayName(readOnlyContextAgentForDisplay);
   const readOnlyContextAgentLabel = truncateDisplayText(readOnlyContextAgentName, ContextLabelMaxLength.Agent);
 
@@ -2371,52 +2375,57 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
       </div>
     );
 
-  const readOnlyContextRow = isLarge && showReadOnlyContext && !useHomeContextLayout ? (
-    <div className="mt-2 grid min-h-7 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 px-4">
-      <div ref={readOnlyContextGroupRef} className="flex min-w-0 items-center gap-1">
-        <button
-          type="button"
-          onClick={handleOpenWorkingDirectory}
-          disabled={!hasWorkingDirectory}
-          className={`flex h-7 items-center rounded-lg text-[13px] text-secondary transition-colors ${
-            hasWorkingDirectory ? 'hover:bg-background/80 hover:text-foreground' : 'cursor-default'
-          } ${
-            isReadOnlyContextCompact
-              ? 'w-7 flex-none justify-center'
-              : 'min-w-0 max-w-[260px] shrink gap-1.5 px-2'
-          }`}
-          title={workingDirectory || i18nService.t('noFolderSelected')}
-          aria-label={i18nService.t('coworkOpenFolder')}
-        >
-          <FolderIcon className="h-4 w-4 shrink-0" />
-          {!isReadOnlyContextCompact && (
-            <span className="min-w-0 truncate">
-              {truncatePath(workingDirectory, ContextLabelMaxLength.Folder)}
-            </span>
-          )}
-        </button>
-        <div
-          className={`flex h-7 items-center rounded-lg text-[13px] text-secondary ${
-            isReadOnlyContextCompact
-              ? 'w-7 flex-none justify-center'
-              : 'min-w-0 max-w-[220px] shrink gap-1.5 px-2'
-          }`}
-          title={`${i18nService.t('coworkCurrentAgent')}: ${readOnlyContextAgentName}`}
-        >
-          <AgentContextAvatar agent={readOnlyContextAgentForDisplay} />
-          {!isReadOnlyContextCompact && (
-            <span className="min-w-0 truncate">{readOnlyContextAgentLabel}</span>
+  const readOnlyContextRow =
+    isLarge && showReadOnlyContext && !useHomeContextLayout ? (
+      <div className="mt-2 grid min-h-7 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 px-4">
+        <div ref={readOnlyContextGroupRef} className="flex min-w-0 items-center gap-1">
+          <button
+            type="button"
+            onClick={handleOpenWorkingDirectory}
+            disabled={!hasWorkingDirectory}
+            className={`flex h-7 items-center rounded-lg text-[13px] text-secondary transition-colors ${
+              hasWorkingDirectory
+                ? 'hover:bg-background/80 hover:text-foreground'
+                : 'cursor-default'
+            } ${
+              isReadOnlyContextCompact
+                ? 'w-7 flex-none justify-center'
+                : 'min-w-0 max-w-[260px] shrink gap-1.5 px-2'
+            }`}
+            title={workingDirectory || i18nService.t('noFolderSelected')}
+            aria-label={i18nService.t('coworkOpenFolder')}
+          >
+            <FolderIcon className="h-4 w-4 shrink-0" />
+            {!isReadOnlyContextCompact && (
+              <span className="min-w-0 truncate">
+                {truncatePath(workingDirectory, ContextLabelMaxLength.Folder)}
+              </span>
+            )}
+          </button>
+          {shouldShowReadOnlyAgentContext && (
+            <div
+              className={`flex h-7 items-center rounded-lg text-[13px] text-secondary ${
+                isReadOnlyContextCompact
+                  ? 'w-7 flex-none justify-center'
+                  : 'min-w-0 max-w-[220px] shrink gap-1.5 px-2'
+              }`}
+              title={`${i18nService.t('coworkCurrentAgent')}: ${readOnlyContextAgentName}`}
+            >
+              <AgentContextAvatar agent={readOnlyContextAgentForDisplay} />
+              {!isReadOnlyContextCompact && (
+                <span className="min-w-0 truncate">{readOnlyContextAgentLabel}</span>
+              )}
+            </div>
           )}
         </div>
+        {readOnlyContextTrailingText && (
+          <span className="pointer-events-none min-w-0 max-w-full select-none truncate text-center text-[13px] text-muted opacity-85">
+            {readOnlyContextTrailingText}
+          </span>
+        )}
+        <div aria-hidden="true" />
       </div>
-      {readOnlyContextTrailingText && (
-        <span className="pointer-events-none min-w-0 max-w-full select-none truncate text-center text-[13px] text-muted opacity-85">
-          {readOnlyContextTrailingText}
-        </span>
-      )}
-      <div aria-hidden="true" />
-    </div>
-  ) : null;
+    ) : null;
 
   const voiceQuotaLimitSeconds = asrQuota.limitSecondsToday
     ?? (isAsrSubscribed ? DEFAULT_SUBSCRIBED_ASR_LIMIT_SECONDS : DEFAULT_FREE_ASR_LIMIT_SECONDS);

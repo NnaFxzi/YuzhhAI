@@ -401,6 +401,30 @@ const App: React.FC = () => {
     }, 0);
   }, [dispatch]);
 
+  const handlePrepareEnterpriseLeadCoworkChat = useCallback(
+    (draft: string) => {
+      dispatch(setActiveKitIds([]));
+      coworkService.clearSession({ restoreAgentSkills: true });
+      dispatch(clearSelection());
+      dispatch(
+        setDraftCollaborationMode({
+          draftKey: '__home__',
+          mode: CoworkCollaborationMode.Default,
+        }),
+      );
+      dispatch(setDraftPrompt({ sessionId: '__home__', draft }));
+      dispatch(setDraftKitIds({ draftKey: '__home__', kitIds: [] }));
+      window.setTimeout(() => {
+        window.dispatchEvent(
+          new CustomEvent(CoworkUiEvent.FocusInput, {
+            detail: { resetCollaborationMode: true, text: draft },
+          }),
+        );
+      }, 0);
+    },
+    [dispatch],
+  );
+
   const handleToggleSidebar = useCallback(() => {
     setIsSidebarCollapsed((prev) => !prev);
   }, []);
@@ -1090,7 +1114,10 @@ const App: React.FC = () => {
                 onToggleSidebar={handleToggleSidebar}
                 onShellModeChange={setEnterpriseLeadWorkspaceShellMode}
                 updateBadge={viewSidebarCollapsed ? updateBadge : null}
-                onRequestAppSettings={() => handleShowSettings()}
+                onRequestAppSettings={handleShowSettings}
+                onPrepareCoworkChat={handlePrepareEnterpriseLeadCoworkChat}
+                onShowSkills={handleShowSkills}
+                onShowKits={handleShowKits}
               />
             ) : mainView === 'kits' ? (
               <KitsView

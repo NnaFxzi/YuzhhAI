@@ -459,6 +459,12 @@ export class SqliteStore {
         this.db.exec('ALTER TABLE agents ADD COLUMN pin_order INTEGER;');
         this.didRunMigration = true;
       }
+      if (!agentColNames.includes('response_contract_json')) {
+        this.db.exec(
+          "ALTER TABLE agents ADD COLUMN response_contract_json TEXT NOT NULL DEFAULT '';",
+        );
+        this.didRunMigration = true;
+      }
     } catch {
       // Column already exists or migration not needed.
     }

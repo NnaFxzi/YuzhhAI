@@ -16,6 +16,14 @@ const SEARCH_DEBOUNCE_MS = 180;
 const TASK_SEARCH_ANALYTICS_SOURCE = 'home_task_search';
 const SEARCH_RESULTS_LIST_ID = 'cowork-search-results';
 
+export interface SessionSearchItem {
+  id: string;
+  title: string;
+  metaText?: string;
+  isCurrent?: boolean;
+  isRunning?: boolean;
+}
+
 type CoworkSearchSectionLabelKey = 'searchRecentTasks' | 'searchResultsWithCount';
 
 interface CoworkSearchSectionLabel {
@@ -72,6 +80,18 @@ export const getNextCoworkSearchSelectionIndex = (options: {
   return currentIndex;
 };
 
+export const filterSessionSearchItems = (
+  items: SessionSearchItem[],
+  query: string,
+): SessionSearchItem[] => {
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) return items;
+
+  return items.filter(item =>
+    `${item.title} ${item.metaText ?? ''}`.toLowerCase().includes(normalizedQuery),
+  );
+};
+
 const formatSearchLabel = (label: CoworkSearchSectionLabel): string => {
   let text = i18nService.t(label.key);
   Object.entries(label.replacements).forEach(([key, value]) => {
@@ -125,6 +145,220 @@ const mergeUniqueSessions = (
   return result;
 };
 
+interface SessionSearchModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  searchQuery: string;
+  onSearchQueryChange: (query: string) => void;
+  items: SessionSearchItem[];
+  onSelectItem: (item: SessionSearchItem) => void | Promise<void>;
+  title: string;
+  placeholder: string;
+  sectionLabel: string;
+  emptyText: string;
+  loadingText: string;
+  errorText?: string;
+  isLoading?: boolean;
+  resultListId?: string;
+  resultIdPrefix?: string;
+}
+
+export const SessionSearchModal: React.FC<SessionSearchModalProps> = ({
+  isOpen,
+  onClose,
+  searchQuery,
+  onSearchQueryChange,
+  items,
+  onSelectItem,
+  title,
+  placeholder,
+  sectionLabel,
+  emptyText,
+  loadingText,
+  errorText,
+  isLoading = false,
+  resultListId = SEARCH_RESULTS_LIST_ID,
+  resultIdPrefix = 'session-search-result',
+}) => {
+  const [selectedIndex, setSelectedIndex] = useState(-1);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const resultButtonRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const selectedItem = selectedIndex >= 0 ? items[selectedIndex] : undefined;
+  const selectedResultId = selectedItem ? `${resultIdPrefix}-${selectedItem.id}` : undefined;
+
+  useEffect(() => {
+    if (!isOpen) {
+      setSelectedIndex(-1);
+      return;
+    }
+
+    requestAnimationFrame(() => {
+      searchInputRef.current?.focus();
+      searchInputRef.current?.select();
+    });
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setSelectedIndex(items.length > 0 ? 0 : -1);
+  }, [items.length, isOpen, searchQuery]);
+
+  useEffect(() => {
+    if (!isOpen || selectedIndex < 0) return;
+    resultButtonRefs.current[selectedIndex]?.scrollIntoView({ block: 'nearest' });
+  }, [isOpen, selectedIndex]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        onClose();
+      }
+    };
+    document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [isOpen, onClose]);
+
+  const handleInputKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (
+      event.key === 'ArrowDown' ||
+      event.key === 'ArrowUp' ||
+      event.key === 'Home' ||
+      event.key === 'End'
+    ) {
+      event.preventDefault();
+      setSelectedIndex(currentIndex =>
+        getNextCoworkSearchSelectionIndex({
+          currentIndex,
+          resultCount: items.length,
+          key: event.key,
+        }),
+      );
+      return;
+    }
+
+    if (event.key === 'Enter') {
+      const item = items[selectedIndex];
+      if (!item) return;
+      event.preventDefault();
+      void onSelectItem(item);
+    }
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <Modal
+      onClose={onClose}
+      overlayClassName="fixed inset-0 z-50 flex items-start justify-center bg-black/10 px-6 pt-[18vh] backdrop-blur-[1px] dark:bg-black/30"
+      className="modal-content w-full max-w-[520px] overflow-hidden rounded-[18px] border border-border bg-white shadow-modal dark:bg-surface"
+    >
+      <div role="dialog" aria-modal="true" aria-label={title}>
+        <div className="flex items-center justify-between gap-3 px-4 pb-2 pt-4">
+          <div className="min-w-0 text-base font-semibold text-foreground">{title}</div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label={i18nService.t('close')}
+            title={i18nService.t('close')}
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-secondary transition-colors hover:bg-black/[0.04] hover:text-foreground dark:hover:bg-white/[0.06]"
+          >
+            <XMarkIcon className="h-5 w-5" />
+          </button>
+        </div>
+        <div className="px-4 pb-3">
+          <input
+            ref={searchInputRef}
+            type="search"
+            value={searchQuery}
+            onChange={event => onSearchQueryChange(event.target.value)}
+            onKeyDown={handleInputKeyDown}
+            placeholder={placeholder}
+            aria-label={title}
+            aria-controls={resultListId}
+            aria-activedescendant={selectedResultId}
+            className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[13px] text-foreground placeholder-secondary outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
+          />
+        </div>
+        <div className="px-2 pb-2">
+          <div className="px-2 pb-1 text-[12px] text-secondary">{sectionLabel}</div>
+          <div
+            id={resultListId}
+            role="listbox"
+            aria-label={sectionLabel}
+            className="max-h-[320px] overflow-y-auto"
+          >
+            {items.length === 0 ? (
+              <div className="py-10 text-center text-sm text-secondary">
+                {isLoading ? loadingText : errorText || emptyText}
+              </div>
+            ) : (
+              items.map((item, index) => {
+                const isKeyboardSelected = index === selectedIndex;
+                return (
+                  <button
+                    key={item.id}
+                    id={`${resultIdPrefix}-${item.id}`}
+                    ref={element => {
+                      resultButtonRefs.current[index] = element;
+                    }}
+                    type="button"
+                    role="option"
+                    aria-selected={isKeyboardSelected}
+                    onClick={() => void onSelectItem(item)}
+                    onMouseEnter={() => setSelectedIndex(index)}
+                    className={`group flex h-8 w-full items-center gap-2 rounded-lg px-2 text-left text-[13px] transition-colors ${
+                      isKeyboardSelected
+                        ? 'bg-primary/10 text-foreground'
+                        : item.isCurrent
+                          ? 'bg-black/[0.06] text-foreground dark:bg-white/[0.07]'
+                          : 'text-secondary hover:bg-black/[0.04] hover:text-foreground dark:hover:bg-white/[0.06]'
+                    }`}
+                  >
+                    {item.isRunning && (
+                      <span
+                        className="inline-flex h-3 w-3 shrink-0 items-center justify-center"
+                        title={i18nService.t('myAgentSidebarRunning')}
+                        aria-label={i18nService.t('myAgentSidebarRunning')}
+                      >
+                        <svg
+                          className="h-3 w-3 animate-spin text-primary"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                        >
+                          <circle
+                            className="opacity-25"
+                            cx="12"
+                            cy="12"
+                            r="10"
+                            stroke="currentColor"
+                            strokeWidth="4"
+                          />
+                          <path
+                            className="opacity-75"
+                            fill="currentColor"
+                            d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
+                          />
+                        </svg>
+                      </span>
+                    )}
+                    <span className="min-w-0 flex-1 truncate font-medium">{item.title}</span>
+                    {item.metaText && (
+                      <span className="max-w-[136px] shrink-0 truncate text-[12px] text-secondary/75">
+                        {item.metaText}
+                      </span>
+                    )}
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </div>
+      </div>
+    </Modal>
+  );
+};
+
 interface CoworkSearchModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -148,9 +382,6 @@ const CoworkSearchModal: React.FC<CoworkSearchModalProps> = ({
   const [recentSessions, setRecentSessions] = useState<CoworkSessionSummary[]>(sessions);
   const [isLoading, setIsLoading] = useState(false);
   const [searchError, setSearchError] = useState('');
-  const [selectedIndex, setSelectedIndex] = useState(-1);
-  const searchInputRef = useRef<HTMLInputElement>(null);
-  const resultButtonRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const requestIdRef = useRef(0);
   const reportedOpenRef = useRef(false);
   const reportedEmptyResultKeyRef = useRef<string | null>(null);
@@ -186,10 +417,20 @@ const CoworkSearchModal: React.FC<CoworkSearchModalProps> = ({
     resultCount: displayedSessions.length,
   });
   const emptyStateKey = getCoworkSearchEmptyStateKey({ hasQuery });
-  const selectedSession = selectedIndex >= 0 ? displayedSessions[selectedIndex] : undefined;
-  const selectedResultId = selectedSession
-    ? `cowork-search-result-${selectedSession.id}`
-    : undefined;
+  const displayedSearchItems = useMemo<SessionSearchItem[]>(
+    () =>
+      displayedSessions.map(session => {
+        const agentName = agentNameBySessionId.get(session.id) ?? getSessionAgentId(session);
+        return {
+          id: session.id,
+          title: session.title,
+          metaText: agentName,
+          isCurrent: session.id === currentSessionId,
+          isRunning: session.status === CoworkSessionStatusValue.Running,
+        };
+      }),
+    [agentNameBySessionId, currentSessionId, displayedSessions],
+  );
 
   useEffect(() => {
     if (isOpen) {
@@ -200,17 +441,12 @@ const CoworkSearchModal: React.FC<CoworkSearchModalProps> = ({
           resultCount: sessions.length,
         });
       }
-      requestAnimationFrame(() => {
-        searchInputRef.current?.focus();
-        searchInputRef.current?.select();
-      });
       return;
     }
     setSearchQuery('');
     setDebouncedSearchQuery('');
     setSearchResultQuery('');
     setSearchError('');
-    setSelectedIndex(-1);
     reportedOpenRef.current = false;
     reportedEmptyResultKeyRef.current = null;
   }, [isOpen, sessions.length]);
@@ -221,7 +457,6 @@ const CoworkSearchModal: React.FC<CoworkSearchModalProps> = ({
       setRecentSessions(sessions);
       setSearchResultQuery('');
       setSearchError('');
-      setSelectedIndex(-1);
     }
   }, [isOpen, sessions]);
 
@@ -264,31 +499,6 @@ const CoworkSearchModal: React.FC<CoworkSearchModalProps> = ({
       });
   }, [debouncedSearchQuery, isOpen]);
 
-  useEffect(() => {
-    if (!isOpen) return;
-    setSelectedIndex(displayedSessions.length > 0 ? 0 : -1);
-  }, [displayedSessions.length, isOpen, searchQuery, searchResultQuery]);
-
-  useEffect(() => {
-    if (!isOpen || selectedIndex < 0) return;
-    resultButtonRefs.current[selectedIndex]?.scrollIntoView({ block: 'nearest' });
-  }, [isOpen, selectedIndex]);
-
-  useEffect(() => {
-    if (!isOpen) return;
-    const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        reportTaskSearchAction('close', {
-          hasQuery: searchQuery.trim().length > 0,
-          resultCount: displayedSessions.length,
-        });
-        onClose();
-      }
-    };
-    document.addEventListener('keydown', handleEscape);
-    return () => document.removeEventListener('keydown', handleEscape);
-  }, [displayedSessions.length, isOpen, onClose, searchQuery]);
-
   const handleSelectSession = async (session: CoworkSessionSummary) => {
     reportTaskSearchAction('select_result', {
       agentType: getSessionAgentType(session),
@@ -301,38 +511,18 @@ const CoworkSearchModal: React.FC<CoworkSearchModalProps> = ({
     onClose();
   };
 
+  const handleSelectSearchItem = async (item: SessionSearchItem) => {
+    const session = displayedSessions.find(candidate => candidate.id === item.id);
+    if (!session) return;
+    await handleSelectSession(session);
+  };
+
   const handleClose = () => {
     reportTaskSearchAction('close', {
       hasQuery: searchQuery.trim().length > 0,
       resultCount: displayedSessions.length,
     });
     onClose();
-  };
-
-  const handleInputKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
-    if (
-      event.key === 'ArrowDown' ||
-      event.key === 'ArrowUp' ||
-      event.key === 'Home' ||
-      event.key === 'End'
-    ) {
-      event.preventDefault();
-      setSelectedIndex(currentIndex =>
-        getNextCoworkSearchSelectionIndex({
-          currentIndex,
-          resultCount: displayedSessions.length,
-          key: event.key,
-        }),
-      );
-      return;
-    }
-
-    if (event.key === 'Enter') {
-      const session = displayedSessions[selectedIndex];
-      if (!session) return;
-      event.preventDefault();
-      void handleSelectSession(session);
-    }
   };
 
   useEffect(() => {
@@ -349,124 +539,23 @@ const CoworkSearchModal: React.FC<CoworkSearchModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <Modal
+    <SessionSearchModal
+      isOpen={isOpen}
       onClose={handleClose}
-      overlayClassName="fixed inset-0 z-50 flex items-start justify-center bg-black/10 px-6 pt-[18vh] backdrop-blur-[1px] dark:bg-black/30"
-      className="modal-content w-full max-w-[520px] overflow-hidden rounded-[18px] border border-border bg-white shadow-modal dark:bg-surface"
-    >
-      <div role="dialog" aria-modal="true" aria-label={i18nService.t('search')}>
-        <div className="flex items-center justify-between gap-3 px-4 pb-2 pt-4">
-          <div className="min-w-0 text-base font-semibold text-foreground">
-            {i18nService.t('search')}
-          </div>
-          <button
-            type="button"
-            onClick={handleClose}
-            aria-label={i18nService.t('close')}
-            title={i18nService.t('close')}
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-secondary transition-colors hover:bg-black/[0.04] hover:text-foreground dark:hover:bg-white/[0.06]"
-          >
-            <XMarkIcon className="h-5 w-5" />
-          </button>
-        </div>
-        <div className="px-4 pb-3">
-          <input
-            ref={searchInputRef}
-            type="search"
-            value={searchQuery}
-            onChange={event => setSearchQuery(event.target.value)}
-            onKeyDown={handleInputKeyDown}
-            placeholder={i18nService.t('searchConversations')}
-            aria-label={i18nService.t('search')}
-            aria-controls={SEARCH_RESULTS_LIST_ID}
-            aria-activedescendant={selectedResultId}
-            className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[13px] text-foreground placeholder-secondary outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20"
-          />
-        </div>
-        <div className="px-2 pb-2">
-          <div className="px-2 pb-1 text-[12px] text-secondary">
-            {formatSearchLabel(sectionLabel)}
-          </div>
-          <div
-            id={SEARCH_RESULTS_LIST_ID}
-            role="listbox"
-            aria-label={formatSearchLabel(sectionLabel)}
-            className="max-h-[320px] overflow-y-auto"
-          >
-            {displayedSessions.length === 0 ? (
-              <div className="py-10 text-center text-sm text-secondary">
-                {isLoading
-                  ? i18nService.t('loading')
-                  : searchError
-                    ? i18nService.t('searchLoadFailed')
-                    : i18nService.t(emptyStateKey)}
-              </div>
-            ) : (
-              displayedSessions.map((session, index) => {
-                const agentName =
-                  agentNameBySessionId.get(session.id) ?? getSessionAgentId(session);
-                const isCurrentSession = session.id === currentSessionId;
-                const isKeyboardSelected = index === selectedIndex;
-                const isRunning = session.status === CoworkSessionStatusValue.Running;
-                return (
-                  <button
-                    key={session.id}
-                    id={`cowork-search-result-${session.id}`}
-                    ref={element => {
-                      resultButtonRefs.current[index] = element;
-                    }}
-                    type="button"
-                    role="option"
-                    aria-selected={isKeyboardSelected}
-                    onClick={() => void handleSelectSession(session)}
-                    onMouseEnter={() => setSelectedIndex(index)}
-                    className={`group flex h-8 w-full items-center gap-2 rounded-lg px-2 text-left text-[13px] transition-colors ${
-                      isKeyboardSelected
-                        ? 'bg-primary/10 text-foreground'
-                        : isCurrentSession
-                          ? 'bg-black/[0.06] text-foreground dark:bg-white/[0.07]'
-                          : 'text-secondary hover:bg-black/[0.04] hover:text-foreground dark:hover:bg-white/[0.06]'
-                    }`}
-                  >
-                    {isRunning && (
-                      <span
-                        className="inline-flex h-3 w-3 shrink-0 items-center justify-center"
-                        title={i18nService.t('myAgentSidebarRunning')}
-                        aria-label={i18nService.t('myAgentSidebarRunning')}
-                      >
-                        <svg
-                          className="h-3 w-3 animate-spin text-primary"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                        >
-                          <circle
-                            className="opacity-25"
-                            cx="12"
-                            cy="12"
-                            r="10"
-                            stroke="currentColor"
-                            strokeWidth="4"
-                          />
-                          <path
-                            className="opacity-75"
-                            fill="currentColor"
-                            d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
-                          />
-                        </svg>
-                      </span>
-                    )}
-                    <span className="min-w-0 flex-1 truncate font-medium">{session.title}</span>
-                    <span className="max-w-[136px] shrink-0 truncate text-[12px] text-secondary/75">
-                      {agentName}
-                    </span>
-                  </button>
-                );
-              })
-            )}
-          </div>
-        </div>
-      </div>
-    </Modal>
+      searchQuery={searchQuery}
+      onSearchQueryChange={setSearchQuery}
+      items={displayedSearchItems}
+      onSelectItem={handleSelectSearchItem}
+      title={i18nService.t('search')}
+      placeholder={i18nService.t('searchConversations')}
+      sectionLabel={formatSearchLabel(sectionLabel)}
+      emptyText={i18nService.t(emptyStateKey)}
+      loadingText={i18nService.t('loading')}
+      errorText={searchError ? i18nService.t('searchLoadFailed') : undefined}
+      isLoading={isLoading}
+      resultListId={SEARCH_RESULTS_LIST_ID}
+      resultIdPrefix="cowork-search-result"
+    />
   );
 };
 

@@ -1,5 +1,7 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 
+import type { AgentResponseContract } from '../../../shared/agent';
+
 interface AgentSummary {
   id: string;
   name: string;
@@ -7,6 +9,7 @@ interface AgentSummary {
   icon: string;
   model: string;
   workingDirectory: string;
+  responseContract?: AgentResponseContract;
   enabled: boolean;
   pinned: boolean;
   pinOrder?: number | null;

@@ -1,0 +1,2135 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta content="width=device-width, initial-scale=1" name="viewport">
+  <title>知识库简洁版原型</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --app-bg: #f4f6fa;
+      --panel: #ffffff;
+      --panel-soft: #f8fafd;
+      --surface: #f2f5f9;
+      --line: #dfe6ef;
+      --line-soft: #edf1f6;
+      --ink: #151b2a;
+      --text: #30394a;
+      --muted: #647084;
+      --faint: #8d98aa;
+      --primary: #2f6fed;
+      --primary-soft: #eaf2ff;
+      --primary-line: #cdddfb;
+      --green: #0d9f72;
+      --green-soft: #e7f7f1;
+      --amber: #b7791f;
+      --amber-soft: #fff5df;
+      --red: #d43f3a;
+      --red-soft: #fff0ef;
+      --violet: #6655d9;
+      --violet-soft: #f0eeff;
+      --shadow: 0 22px 64px rgba(20, 31, 50, 0.12);
+      --small-shadow: 0 12px 30px rgba(20, 31, 50, 0.08);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      min-height: 100%;
+    }
+
+    body {
+      margin: 0;
+      background: var(--app-bg);
+      color: var(--ink);
+    }
+
+    button,
+    input,
+    select {
+      font: inherit;
+    }
+
+    button {
+      cursor: pointer;
+    }
+
+    svg {
+      width: 17px;
+      height: 17px;
+      stroke-width: 1.85;
+    }
+
+    .page {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 28px;
+    }
+
+    .app {
+      width: min(1360px, 100%);
+      height: min(840px, calc(100vh - 56px));
+      min-height: 680px;
+      display: grid;
+      grid-template-columns: 224px minmax(0, 1fr);
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+    }
+
+    .sidebar {
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      border-right: 1px solid var(--line);
+      background: #fbfcff;
+      padding: 14px 12px;
+    }
+
+    .brand {
+      display: grid;
+      grid-template-columns: 34px minmax(0, 1fr);
+      align-items: center;
+      gap: 9px;
+      padding: 3px 4px 16px;
+      border-bottom: 1px solid var(--line-soft);
+      margin-bottom: 12px;
+    }
+
+    .brand-mark {
+      width: 34px;
+      height: 34px;
+      display: grid;
+      place-items: center;
+      border-radius: 8px;
+      background: var(--primary);
+      color: #ffffff;
+      font-weight: 760;
+      letter-spacing: 0;
+    }
+
+    .brand-title {
+      min-width: 0;
+      color: var(--ink);
+      font-size: 14px;
+      font-weight: 760;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .brand-subtitle {
+      margin-top: 2px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .nav {
+      display: grid;
+      gap: 3px;
+      padding: 0;
+    }
+
+    .nav-item,
+    .toolbar-button,
+    .primary-button,
+    .compact-button,
+    .icon-button,
+    .secondary-button,
+    .doc-row,
+    .knowledge-row,
+    .segment-button {
+      border: 0;
+      background: transparent;
+      color: inherit;
+      outline: 0;
+    }
+
+    .nav-item {
+      position: relative;
+      height: 36px;
+      display: grid;
+      grid-template-columns: 26px minmax(0, 1fr);
+      align-items: center;
+      gap: 8px;
+      border-radius: 7px;
+      padding: 0 8px;
+      color: var(--muted);
+      text-align: left;
+      font-size: 13px;
+      font-weight: 650;
+      transition: background 150ms ease, color 150ms ease;
+    }
+
+    .nav-item:hover {
+      background: var(--surface);
+      color: var(--ink);
+    }
+
+    .nav-item.is-active {
+      background: var(--primary-soft);
+      color: var(--ink);
+      box-shadow: inset 0 0 0 1px rgba(47, 111, 237, 0.12);
+    }
+
+    .nav-item.is-active::before {
+      content: "";
+      position: absolute;
+      left: 5px;
+      top: 8px;
+      bottom: 8px;
+      width: 2px;
+      border-radius: 999px;
+      background: var(--primary);
+    }
+
+    .icon {
+      width: 26px;
+      height: 26px;
+      display: grid;
+      place-items: center;
+      color: var(--faint);
+    }
+
+    .nav-item.is-active .icon {
+      color: var(--primary);
+    }
+
+    .label {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .sidebar-card {
+      margin-top: 16px;
+      padding-top: 14px;
+      border-top: 1px solid var(--line-soft);
+    }
+
+    .sidebar-title {
+      padding: 0 4px 8px;
+      color: var(--text);
+      font-size: 12px;
+      font-weight: 760;
+    }
+
+    .mini-status {
+      display: grid;
+      gap: 8px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      padding: 10px;
+    }
+
+    .mini-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 8px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 17px;
+    }
+
+    .mini-row b {
+      color: var(--ink);
+    }
+
+    .main {
+      min-width: 0;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      background: var(--panel);
+    }
+
+    .topbar {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 24px;
+      padding: 22px 24px 16px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .eyebrow {
+      margin: 0;
+      color: var(--primary);
+      font-size: 12px;
+      line-height: 18px;
+      font-weight: 760;
+    }
+
+    h1 {
+      margin: 3px 0 0;
+      color: var(--ink);
+      font-size: 23px;
+      line-height: 31px;
+      font-weight: 760;
+      letter-spacing: 0;
+    }
+
+    .subtitle {
+      max-width: 720px;
+      margin: 6px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 20px;
+    }
+
+    .top-actions {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+
+    .toolbar-button,
+    .primary-button,
+    .compact-button {
+      height: 34px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      border-radius: 7px;
+      padding: 0 11px;
+      font-size: 13px;
+      font-weight: 680;
+      transition: background 150ms ease, border-color 150ms ease, color 150ms ease;
+    }
+
+    .toolbar-button,
+    .compact-button {
+      border: 1px solid var(--line);
+      background: var(--panel);
+      color: var(--text);
+    }
+
+    .toolbar-button:hover,
+    .compact-button:hover {
+      background: var(--surface);
+      color: var(--ink);
+    }
+
+    .primary-button {
+      background: var(--primary);
+      color: #ffffff;
+    }
+
+    .primary-button:hover {
+      background: #255fce;
+    }
+
+    .compact-button {
+      height: 30px;
+      padding: 0 9px;
+      font-size: 12px;
+    }
+
+    .secondary-button {
+      height: 36px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: var(--panel);
+      color: var(--text);
+      padding: 0 12px;
+      font-size: 13px;
+      font-weight: 680;
+    }
+
+    .summary-strip {
+      flex: 0 0 auto;
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      border-bottom: 1px solid var(--line);
+      background: var(--panel-soft);
+    }
+
+    .summary-cell {
+      min-width: 0;
+      padding: 12px 18px;
+      border-right: 1px solid var(--line);
+    }
+
+    .summary-cell:last-child {
+      border-right: 0;
+    }
+
+    .summary-label {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 17px;
+      font-weight: 650;
+    }
+
+    .summary-value {
+      margin-top: 4px;
+      color: var(--ink);
+      font-size: 22px;
+      line-height: 28px;
+      font-weight: 780;
+      letter-spacing: 0;
+    }
+
+    .summary-note {
+      margin-top: 2px;
+      color: var(--faint);
+      font-size: 12px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .workspace {
+      min-height: 0;
+      flex: 1;
+      display: grid;
+      grid-template-columns: minmax(420px, 0.95fr) minmax(460px, 1.05fr);
+      gap: 0;
+      overflow: hidden;
+      background: #fcfdff;
+    }
+
+    .panel {
+      min-width: 0;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      background: var(--panel);
+    }
+
+    .panel + .panel {
+      border-left: 1px solid var(--line);
+    }
+
+    .panel-header {
+      min-height: 60px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .panel-title {
+      margin: 0;
+      color: var(--ink);
+      font-size: 15px;
+      line-height: 21px;
+      font-weight: 760;
+    }
+
+    .panel-subtitle {
+      margin-top: 2px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 17px;
+    }
+
+    .panel-actions {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+
+    .filters {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 126px;
+      gap: 8px;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--line);
+      background: var(--panel);
+    }
+
+    .filters.three {
+      grid-template-columns: minmax(0, 1fr) 116px 116px;
+    }
+
+    .search-box {
+      min-width: 0;
+      height: 36px;
+      display: grid;
+      grid-template-columns: 20px minmax(0, 1fr);
+      align-items: center;
+      gap: 8px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface);
+      padding: 0 10px;
+      color: var(--muted);
+    }
+
+    .search-box input,
+    .filters select {
+      min-width: 0;
+      width: 100%;
+      border: 0;
+      outline: 0;
+      background: transparent;
+      color: var(--text);
+      font-size: 13px;
+    }
+
+    .filters select {
+      height: 36px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      padding: 0 9px;
+    }
+
+    .segment {
+      display: flex;
+      gap: 4px;
+      padding: 10px 16px 0;
+      background: var(--panel);
+    }
+
+    .segment-button {
+      height: 30px;
+      border-radius: 7px;
+      padding: 0 10px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 720;
+      transition: background 150ms ease, color 150ms ease;
+    }
+
+    .segment-button:hover,
+    .segment-button.is-active {
+      background: var(--primary-soft);
+      color: var(--primary);
+    }
+
+    .list {
+      min-height: 0;
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px 16px 16px;
+    }
+
+    .doc-row,
+    .knowledge-row {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      padding: 12px;
+      text-align: left;
+      transition: border-color 150ms ease, background 150ms ease, box-shadow 150ms ease;
+    }
+
+    .doc-row + .doc-row,
+    .knowledge-row + .knowledge-row {
+      margin-top: 8px;
+    }
+
+    .doc-row {
+      display: grid;
+      grid-template-columns: 38px minmax(0, 1fr) auto;
+      align-items: start;
+      gap: 12px;
+    }
+
+    .doc-row:hover,
+    .doc-row.is-active,
+    .knowledge-row:hover,
+    .knowledge-row.is-active {
+      border-color: var(--primary-line);
+      background: #fbfdff;
+      box-shadow: var(--small-shadow);
+    }
+
+    .doc-row.is-active,
+    .knowledge-row.is-active {
+      box-shadow: inset 3px 0 0 var(--primary), var(--small-shadow);
+    }
+
+    .doc-icon {
+      width: 38px;
+      height: 38px;
+      display: grid;
+      place-items: center;
+      border-radius: 8px;
+      background: var(--primary-soft);
+      color: var(--primary);
+      font-size: 12px;
+      font-weight: 780;
+    }
+
+    .row-title {
+      margin: 0;
+      color: var(--ink);
+      font-size: 14px;
+      line-height: 20px;
+      font-weight: 760;
+    }
+
+    .row-desc {
+      margin: 5px 0 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 18px;
+      display: -webkit-box;
+      overflow: hidden;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
+    }
+
+    .row-meta {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px;
+      margin-top: 10px;
+    }
+
+    .doc-side {
+      min-width: 96px;
+      display: grid;
+      justify-items: end;
+      gap: 8px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 17px;
+      font-weight: 700;
+    }
+
+    .knowledge-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 12px;
+    }
+
+    .knowledge-side {
+      min-width: 82px;
+      display: grid;
+      justify-items: end;
+      align-content: start;
+      gap: 8px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      border-radius: 999px;
+      padding: 3px 8px;
+      font-size: 11px;
+      line-height: 15px;
+      font-weight: 720;
+      white-space: nowrap;
+    }
+
+    .badge.blue {
+      background: var(--primary-soft);
+      color: var(--primary);
+    }
+
+    .badge.green {
+      background: var(--green-soft);
+      color: var(--green);
+    }
+
+    .badge.amber {
+      background: var(--amber-soft);
+      color: var(--amber);
+    }
+
+    .badge.red {
+      background: var(--red-soft);
+      color: var(--red);
+    }
+
+    .badge.violet {
+      background: var(--violet-soft);
+      color: var(--violet);
+    }
+
+    .source-line {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 18px;
+    }
+
+    .source-line strong {
+      color: var(--text);
+      font-weight: 720;
+    }
+
+    .detail-card {
+      margin: 0 16px 16px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel-soft);
+      padding: 12px;
+    }
+
+    .detail-kicker {
+      margin: 0 0 7px;
+      color: var(--primary);
+      font-size: 12px;
+      line-height: 17px;
+      font-weight: 760;
+    }
+
+    .detail-text {
+      margin: 0;
+      color: var(--text);
+      font-size: 12px;
+      line-height: 19px;
+    }
+
+    .detail-grid {
+      display: grid;
+      grid-template-columns: 72px minmax(0, 1fr);
+      gap: 7px 10px;
+      margin-top: 10px;
+      color: var(--text);
+      font-size: 12px;
+      line-height: 18px;
+    }
+
+    .detail-grid span:nth-child(odd) {
+      color: var(--faint);
+      font-weight: 680;
+    }
+
+    .danger-button {
+      border-color: rgba(212, 63, 58, 0.22);
+      background: var(--red-soft);
+      color: var(--red);
+    }
+
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 50;
+      display: none;
+      place-items: center;
+      background: rgba(15, 23, 42, 0.34);
+      padding: 24px;
+    }
+
+    .modal-backdrop.is-open {
+      display: grid;
+    }
+
+    .modal {
+      width: min(980px, 100%);
+      max-height: min(760px, calc(100vh - 48px));
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--panel);
+      box-shadow: 0 30px 90px rgba(15, 23, 42, 0.28);
+    }
+
+    .modal-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 18px 20px 14px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .modal-title {
+      margin: 0;
+      color: var(--ink);
+      font-size: 18px;
+      line-height: 25px;
+      font-weight: 780;
+    }
+
+    .modal-subtitle {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 20px;
+    }
+
+    .icon-button {
+      width: 32px;
+      height: 32px;
+      display: grid;
+      place-items: center;
+      border-radius: 7px;
+      color: var(--muted);
+      font-size: 22px;
+      line-height: 1;
+    }
+
+    .icon-button:hover {
+      background: var(--surface);
+      color: var(--ink);
+    }
+
+    .modal-body {
+      min-height: 0;
+      flex: 1 1 auto;
+      overflow: hidden;
+      padding: 0;
+    }
+
+    .document-modal-layout {
+      min-height: 0;
+      height: 100%;
+      display: grid;
+      grid-template-columns: 320px minmax(0, 1fr);
+    }
+
+    .document-side {
+      min-width: 0;
+      min-height: 0;
+      overflow-y: auto;
+      border-right: 1px solid var(--line);
+      background: var(--panel-soft);
+      padding: 18px;
+    }
+
+    .preview-pane {
+      min-width: 0;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      background: var(--panel);
+    }
+
+    .upload-zone {
+      width: 100%;
+      display: grid;
+      place-items: center;
+      min-height: 132px;
+      border: 1px dashed var(--primary-line);
+      border-radius: 10px;
+      background: #f7fbff;
+      color: var(--text);
+      text-align: center;
+      padding: 20px;
+    }
+
+    .upload-zone:hover {
+      border-color: var(--primary);
+      background: #f2f7ff;
+    }
+
+    .upload-zone svg {
+      width: 28px;
+      height: 28px;
+      color: var(--primary);
+    }
+
+    .upload-title {
+      display: block;
+      margin-top: 8px;
+      color: var(--ink);
+      font-size: 14px;
+      font-weight: 760;
+    }
+
+    .upload-subtitle {
+      display: block;
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 18px;
+    }
+
+    .file-card {
+      margin-top: 12px;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      background: var(--panel);
+      padding: 12px;
+    }
+
+    .file-card-top {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .file-name {
+      min-width: 0;
+      color: var(--ink);
+      font-size: 13px;
+      line-height: 18px;
+      font-weight: 760;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .file-meta {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 18px;
+    }
+
+    .source-lock {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      margin-top: 10px;
+      border-top: 1px solid var(--line-soft);
+      padding-top: 10px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 18px;
+    }
+
+    .status-pill {
+      flex: 0 0 auto;
+      border-radius: 7px;
+      background: var(--green-soft);
+      color: var(--green);
+      padding: 4px 7px;
+      font-size: 12px;
+      line-height: 16px;
+      font-weight: 760;
+      white-space: nowrap;
+    }
+
+    .document-side .form-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 13px;
+      margin-top: 16px;
+    }
+
+    .form-field {
+      min-width: 0;
+      display: grid;
+      gap: 7px;
+    }
+
+    .form-field.full {
+      grid-column: 1 / -1;
+    }
+
+    .form-label {
+      color: var(--text);
+      font-size: 12px;
+      line-height: 17px;
+      font-weight: 720;
+    }
+
+    .form-input,
+    .form-select,
+    .form-textarea {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      color: var(--ink);
+      outline: 0;
+      font-size: 13px;
+      transition: border-color 150ms ease, box-shadow 150ms ease;
+    }
+
+    .form-input,
+    .form-select {
+      height: 38px;
+      padding: 0 10px;
+    }
+
+    .form-textarea {
+      min-height: 82px;
+      resize: vertical;
+      padding: 9px 10px;
+      line-height: 20px;
+    }
+
+    .form-input:focus,
+    .form-select:focus,
+    .form-textarea:focus {
+      border-color: var(--primary-line);
+      box-shadow: 0 0 0 3px rgba(47, 111, 237, 0.12);
+    }
+
+    .extract-option {
+      display: grid;
+      grid-template-columns: 18px minmax(0, 1fr);
+      gap: 9px;
+      margin-top: 16px;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      background: var(--panel-soft);
+      padding: 11px 12px;
+      color: var(--text);
+      font-size: 13px;
+      line-height: 19px;
+    }
+
+    .extract-option input {
+      width: 16px;
+      height: 16px;
+      margin-top: 2px;
+      accent-color: var(--primary);
+    }
+
+    .extract-option strong {
+      display: block;
+      color: var(--ink);
+      font-size: 13px;
+    }
+
+    .extract-option span {
+      display: block;
+      margin-top: 2px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .preview-header {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+      border-bottom: 1px solid var(--line);
+      padding: 16px 18px 12px;
+    }
+
+    .preview-title {
+      margin: 0;
+      color: var(--ink);
+      font-size: 15px;
+      line-height: 21px;
+      font-weight: 780;
+    }
+
+    .preview-subtitle {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 18px;
+    }
+
+    .preview-actions {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 7px;
+    }
+
+    .preview-toolbar {
+      flex: 0 0 auto;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 10px;
+      border-bottom: 1px solid var(--line-soft);
+      padding: 12px 18px;
+      background: var(--panel-soft);
+    }
+
+    .preview-search {
+      min-width: 0;
+      height: 36px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      padding: 0 10px;
+      color: var(--muted);
+    }
+
+    .preview-search input {
+      min-width: 0;
+      flex: 1;
+      border: 0;
+      background: transparent;
+      color: var(--ink);
+      outline: 0;
+      font-size: 13px;
+    }
+
+    .preview-stats {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--muted);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    .preview-content {
+      min-height: 0;
+      flex: 1;
+      overflow: auto;
+      padding: 0 18px 18px;
+      background: linear-gradient(#ffffff 30%, rgba(255, 255, 255, 0)) top / 100% 26px no-repeat,
+      linear-gradient(rgba(255, 255, 255, 0), #ffffff 70%) bottom / 100% 26px no-repeat;
+    }
+
+    .preview-document {
+      margin: 16px 0 0;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      background: #ffffff;
+      padding: 16px;
+      color: var(--text);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      font-size: 12px;
+      line-height: 20px;
+      white-space: pre-wrap;
+    }
+
+    .preview-content.is-collapsed .preview-document {
+      max-height: 410px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .preview-content.is-collapsed .preview-document::after {
+      content: "";
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: 86px;
+      background: linear-gradient(rgba(255, 255, 255, 0), #ffffff);
+      pointer-events: none;
+    }
+
+    .summary-editor {
+      display: none;
+      margin: 0 18px 16px;
+      border: 1px solid var(--primary-line);
+      border-radius: 9px;
+      background: #f7fbff;
+      padding: 12px;
+    }
+
+    .summary-editor.is-open {
+      display: block;
+    }
+
+    .summary-editor-title {
+      margin: 0 0 8px;
+      color: var(--ink);
+      font-size: 13px;
+      line-height: 18px;
+      font-weight: 760;
+    }
+
+    .modal-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 14px 20px;
+      border-top: 1px solid var(--line);
+      background: var(--panel-soft);
+    }
+
+    .footer-note {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 18px;
+    }
+
+    .footer-actions {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+
+    .workspace {
+      padding: 16px;
+      display: flex;
+      grid-template-columns: none;
+    }
+
+    .table-shell {
+      min-width: 0;
+      min-height: 0;
+      width: 100%;
+      display: flex;
+      flex: 1;
+      flex-direction: column;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--panel);
+    }
+
+    .table-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 14px 16px 0;
+    }
+
+    .table-tabs {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface);
+      padding: 3px;
+    }
+
+    .table-tab {
+      height: 32px;
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      border: 0;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--muted);
+      padding: 0 11px;
+      font-size: 13px;
+      font-weight: 740;
+    }
+
+    .table-tab.is-active {
+      background: var(--panel);
+      color: var(--primary);
+      box-shadow: 0 1px 4px rgba(20, 31, 50, 0.08);
+    }
+
+    .tab-panel {
+      min-height: 0;
+      flex: 1;
+      display: none;
+      flex-direction: column;
+    }
+
+    .tab-panel.is-active {
+      display: flex;
+    }
+
+    .table-wrap {
+      min-height: 0;
+      flex: 1;
+      overflow: auto;
+      padding: 0 16px 16px;
+    }
+
+    .data-table {
+      width: 100%;
+      min-width: 860px;
+      border-collapse: separate;
+      border-spacing: 0;
+      font-size: 13px;
+    }
+
+    .data-table th {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      height: 38px;
+      border-bottom: 1px solid var(--line);
+      background: var(--panel);
+      color: var(--muted);
+      padding: 0 10px;
+      text-align: left;
+      font-size: 12px;
+      font-weight: 760;
+      white-space: nowrap;
+    }
+
+    .data-table td {
+      border-bottom: 1px solid var(--line-soft);
+      color: var(--text);
+      padding: 12px 10px;
+      vertical-align: middle;
+    }
+
+    .data-table tbody tr {
+      transition: background 150ms ease;
+    }
+
+    .data-table tbody tr:hover td {
+      background: #fbfdff;
+    }
+
+    .data-table tr.is-selected td {
+      border-top: 1px solid var(--primary-line);
+      border-bottom: 1px solid var(--primary-line);
+      background: #f5f9ff;
+    }
+
+    .data-table tr.is-selected td:first-child {
+      position: relative;
+      border-left: 1px solid var(--primary-line);
+      border-radius: 8px 0 0 8px;
+    }
+
+    .data-table tr.is-selected td:first-child::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 12px;
+      bottom: 12px;
+      width: 3px;
+      border-radius: 999px;
+      background: var(--primary);
+    }
+
+    .data-table tr.is-selected td:last-child {
+      border-right: 1px solid var(--primary-line);
+      border-radius: 0 8px 8px 0;
+    }
+
+    .table-title {
+      color: var(--ink);
+      font-weight: 760;
+      line-height: 19px;
+    }
+
+    .table-subtitle {
+      margin-top: 3px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 17px;
+    }
+
+    .table-actions {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 6px;
+      white-space: nowrap;
+    }
+
+    .inline-button {
+      height: 28px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--panel);
+      color: var(--text);
+      padding: 0 8px;
+      font-size: 12px;
+      font-weight: 680;
+    }
+
+    .inline-button.primary {
+      border-color: transparent;
+      background: var(--primary-soft);
+      color: var(--primary);
+    }
+
+    @media (max-width: 1100px) {
+      .app {
+        height: auto;
+        min-height: calc(100vh - 40px);
+        grid-template-columns: 1fr;
+      }
+
+      .sidebar {
+        display: none;
+      }
+
+      .workspace,
+      .summary-strip {
+        grid-template-columns: 1fr;
+      }
+
+      .panel + .panel {
+        border-left: 0;
+        border-top: 1px solid var(--line);
+      }
+
+      .workspace {
+        overflow: visible;
+      }
+
+      .table-shell {
+        overflow: visible;
+      }
+
+      .list {
+        max-height: none;
+        overflow: visible;
+      }
+    }
+
+    @media (max-width: 720px) {
+      .page {
+        padding: 0;
+      }
+
+      .app {
+        border-radius: 0;
+        border-left: 0;
+        border-right: 0;
+      }
+
+      .topbar,
+      .panel-header {
+        align-items: stretch;
+        flex-direction: column;
+      }
+
+      .top-actions,
+      .panel-actions {
+        justify-content: flex-start;
+      }
+
+      .table-top {
+        align-items: stretch;
+        flex-direction: column;
+      }
+
+      .table-tabs {
+        width: 100%;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+      }
+
+      .table-tab {
+        justify-content: center;
+      }
+
+      .filters,
+      .filters.three {
+        grid-template-columns: 1fr;
+      }
+
+      .doc-row,
+      .knowledge-row {
+        grid-template-columns: 1fr;
+      }
+
+      .doc-side,
+      .knowledge-side {
+        justify-items: start;
+      }
+
+      .form-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .document-modal-layout {
+        grid-template-columns: 1fr;
+      }
+
+      .document-side {
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .preview-toolbar {
+        grid-template-columns: 1fr;
+      }
+
+      .modal-backdrop {
+        padding: 12px;
+      }
+    }
+  </style>
+</head>
+<body>
+<svg aria-hidden="true" style="position:absolute;width:0;height:0;overflow:hidden">
+  <symbol id="icon-dashboard" viewBox="0 0 24 24">
+    <path
+      d="M3.5 6.5A1.5 1.5 0 0 1 5 5h4.5A1.5 1.5 0 0 1 11 6.5v3A1.5 1.5 0 0 1 9.5 11H5a1.5 1.5 0 0 1-1.5-1.5v-3ZM14 7.5A1.5 1.5 0 0 1 15.5 6H19a1.5 1.5 0 0 1 1.5 1.5V17a1.5 1.5 0 0 1-1.5 1.5h-3.5A1.5 1.5 0 0 1 14 17V7.5ZM4.5 15A1.5 1.5 0 0 1 6 13.5h3.5A1.5 1.5 0 0 1 11 15v2A1.5 1.5 0 0 1 9.5 18.5H6A1.5 1.5 0 0 1 4.5 17v-2Z"
+      fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" />
+  </symbol>
+  <symbol id="icon-book" viewBox="0 0 24 24">
+    <path
+      d="M4 5.2c2.8-.7 5-.2 7 1.5v13c-2-1.7-4.2-2.2-7-1.5v-13ZM20 5.2c-2.8-.7-5-.2-7 1.5v13c2-1.7 4.2-2.2 7-1.5v-13Z"
+      fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" />
+  </symbol>
+  <symbol id="icon-chat" viewBox="0 0 24 24">
+    <path
+      d="M5.5 5.5h9A3.5 3.5 0 0 1 18 9v3.2a3.5 3.5 0 0 1-3.5 3.5H11l-4.2 3.1v-3.1H5.5A3.5 3.5 0 0 1 2 12.2V9a3.5 3.5 0 0 1 3.5-3.5ZM18 9.2h.5A3.5 3.5 0 0 1 22 12.7v2.1a3.5 3.5 0 0 1-3.5 3.5h-.8V21l-3.2-2.7H12"
+      fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" />
+  </symbol>
+  <symbol id="icon-search" viewBox="0 0 24 24">
+    <path d="M10.8 18.1a7.3 7.3 0 1 0 0-14.6 7.3 7.3 0 0 0 0 14.6ZM16.2 16.2 21 21" fill="none" stroke="currentColor"
+          stroke-linecap="round" stroke-linejoin="round" />
+  </symbol>
+  <symbol id="icon-team" viewBox="0 0 24 24">
+    <path
+      d="M12 12.2a3.7 3.7 0 1 0 0-7.4 3.7 3.7 0 0 0 0 7.4ZM5 19.2a7.2 7.2 0 0 1 14 0M4.4 12a2.7 2.7 0 0 0 0-5.3M2.3 18.2a5.5 5.5 0 0 1 4.2-4.7M19.6 12a2.7 2.7 0 0 1 0-5.3M21.7 18.2a5.5 5.5 0 0 0-4.2-4.7"
+      fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" />
+  </symbol>
+  <symbol id="icon-settings" viewBox="0 0 24 24">
+    <path
+      d="M10.4 3.5h3.2l.6 2.2c.5.2 1 .4 1.5.7l2.1-1.1 2.2 2.2-1.1 2.1c.3.5.5 1 .7 1.5l2.2.6v3.2l-2.2.6c-.2.5-.4 1-.7 1.5l1.1 2.1-2.2 2.2-2.1-1.1c-.5.3-1 .5-1.5.7l-.6 2.2h-3.2l-.6-2.2c-.5-.2-1-.4-1.5-.7l-2.1 1.1L4 19.1 5.1 17c-.3-.5-.5-1-.7-1.5l-2.2-.6v-3.2l2.2-.6c.2-.5.4-1 .7-1.5L4 7.5l2.2-2.2 2.1 1.1c.5-.3 1-.5 1.5-.7l.6-2.2ZM12 15.4a3.4 3.4 0 1 0 0-6.8 3.4 3.4 0 0 0 0 6.8Z"
+      fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" />
+  </symbol>
+  <symbol id="icon-file" viewBox="0 0 24 24">
+    <path d="M6.5 5.5h7L18 10v8.5h-11.5v-13ZM13.5 5.5V10H18M9 13h6M9 16h6" fill="none" stroke="currentColor"
+          stroke-linecap="round" stroke-linejoin="round" />
+  </symbol>
+  <symbol id="icon-spark" viewBox="0 0 24 24">
+    <path
+      d="M12 3.8 13.8 9 19 10.8 13.8 12.6 12 17.8 10.2 12.6 5 10.8 10.2 9 12 3.8ZM18.5 15.5l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8.8-2.2Z"
+      fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" />
+  </symbol>
+  <symbol id="icon-check" viewBox="0 0 24 24">
+    <path d="m5 12.8 4.1 4L19 7" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" />
+  </symbol>
+  <symbol id="icon-warning" viewBox="0 0 24 24">
+    <path
+      d="M10.6 4.8 3.4 17.4A1.8 1.8 0 0 0 5 20h14a1.8 1.8 0 0 0 1.6-2.6L13.4 4.8a1.6 1.6 0 0 0-2.8 0ZM12 9v4M12 16.5h.01"
+      fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" />
+  </symbol>
+  <symbol id="icon-refresh" viewBox="0 0 24 24">
+    <path d="M20 6.5v5h-5M4 17.5v-5h5M18.6 10.2A6.8 6.8 0 0 0 6.2 7.4L4 12.5M5.4 13.8a6.8 6.8 0 0 0 12.4 2.8L20 11.5"
+          fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" />
+  </symbol>
+  <symbol id="icon-plus" viewBox="0 0 24 24">
+    <path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-linecap="round" />
+  </symbol>
+  <symbol id="icon-edit" viewBox="0 0 24 24">
+    <path d="M4.5 19.5h4l10-10a2.1 2.1 0 0 0-3-3l-10 10-1 3ZM14.8 7.2l2.9 2.9" fill="none" stroke="currentColor"
+          stroke-linecap="round" stroke-linejoin="round" />
+  </symbol>
+  <symbol id="icon-trash" viewBox="0 0 24 24">
+    <path d="M9 4.5h6M4.5 7h15M9.5 10v7M14.5 10v7M6.5 7l1 12.2A2 2 0 0 0 9.5 21h5a2 2 0 0 0 2-1.8l1-12.2" fill="none"
+          stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" />
+  </symbol>
+</svg>
+
+<main class="page">
+  <section aria-label="知识库简洁版原型" class="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">知</div>
+        <div>
+          <div class="brand-title">华南重包获客空间</div>
+          <div class="brand-subtitle">企业获客工作台</div>
+        </div>
+      </div>
+
+      <nav aria-label="工作区导航" class="nav">
+        <button class="nav-item" type="button">
+          <span class="icon"><svg><use href="#icon-dashboard" /></svg></span>
+          <span class="label">工作台</span>
+        </button>
+        <button class="nav-item" type="button">
+          <span class="icon"><svg><use href="#icon-chat" /></svg></span>
+          <span class="label">新对话</span>
+        </button>
+        <button class="nav-item" type="button">
+          <span class="icon"><svg><use href="#icon-search" /></svg></span>
+          <span class="label">搜索</span>
+        </button>
+        <button class="nav-item is-active" type="button">
+          <span class="icon"><svg><use href="#icon-book" /></svg></span>
+          <span class="label">知识库</span>
+        </button>
+        <button class="nav-item" type="button">
+          <span class="icon"><svg><use href="#icon-team" /></svg></span>
+          <span class="label">Agent 团队</span>
+        </button>
+        <button class="nav-item" type="button">
+          <span class="icon"><svg><use href="#icon-settings" /></svg></span>
+          <span class="label">空间设置</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-card">
+        <div class="sidebar-title">当前知识库</div>
+        <div class="mini-status">
+          <div class="mini-row">
+            <span>文档</span>
+            <b>42</b>
+          </div>
+          <div class="mini-row">
+            <span>AI 知识</span>
+            <b>156</b>
+          </div>
+          <div class="mini-row">
+            <span>待确认</span>
+            <b>12</b>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <section class="main">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">知识库</p>
+          <h1>管理文档，查看 AI 提取的知识</h1>
+          <p class="subtitle">文档库给人阅读和维护；AI 从文档中提取可被 Agent 使用的事实、规则和卖点，并标明来源。</p>
+        </div>
+        <div class="top-actions">
+          <button class="toolbar-button" type="button">
+            <svg>
+              <use href="#icon-refresh" />
+            </svg>
+            同步
+          </button>
+          <button class="primary-button" data-open-add-document type="button">
+            <svg>
+              <use href="#icon-plus" />
+            </svg>
+            添加文档
+          </button>
+        </div>
+      </header>
+
+      <section aria-label="知识库概览" class="summary-strip">
+        <div class="summary-cell">
+          <div class="summary-label">文档库</div>
+          <div class="summary-value">42</div>
+          <div class="summary-note">原始资料，可阅读管理</div>
+        </div>
+        <div class="summary-cell">
+          <div class="summary-label">AI 已提取知识</div>
+          <div class="summary-value">156</div>
+          <div class="summary-note">事实、规则、卖点</div>
+        </div>
+        <div class="summary-cell">
+          <div class="summary-label">待确认</div>
+          <div class="summary-value">12</div>
+          <div class="summary-note">需要人工审核</div>
+        </div>
+        <div class="summary-cell">
+          <div class="summary-label">引用过</div>
+          <div class="summary-value">47</div>
+          <div class="summary-note">近 7 天 Agent 使用次数</div>
+        </div>
+      </section>
+
+      <div class="workspace">
+        <section aria-label="知识库表格视图" class="table-shell">
+          <div class="table-top">
+            <div>
+              <h2 class="panel-title" id="active-table-title">文档库</h2>
+              <div class="panel-subtitle" id="active-table-subtitle">管理原始资料，AI 会从这些文档中提取知识。</div>
+            </div>
+            <div aria-label="知识库视图切换" class="table-tabs" role="tablist">
+              <button aria-selected="true" class="table-tab is-active" data-tab="documents" role="tab" type="button">
+                <svg>
+                  <use href="#icon-file" />
+                </svg>
+                文档库
+              </button>
+              <button aria-selected="false" class="table-tab" data-tab="knowledge" role="tab" type="button">
+                <svg>
+                  <use href="#icon-spark" />
+                </svg>
+                AI 知识
+              </button>
+            </div>
+          </div>
+
+          <section aria-label="文档库管理" class="tab-panel is-active" data-panel="documents">
+            <div class="filters three">
+              <label class="search-box">
+                <svg>
+                  <use href="#icon-search" />
+                </svg>
+                <input placeholder="搜索文档" type="search" value="">
+              </label>
+              <select aria-label="文档类型">
+                <option>全部类型</option>
+                <option>PDF</option>
+                <option>Word</option>
+                <option>Excel</option>
+                <option>网页</option>
+              </select>
+              <select aria-label="提取状态">
+                <option>全部状态</option>
+                <option>已提取</option>
+                <option>待提取</option>
+                <option>需重新提取</option>
+              </select>
+            </div>
+
+            <div class="table-wrap">
+              <table class="data-table">
+                <thead>
+                <tr>
+                  <th>文档</th>
+                  <th>类型</th>
+                  <th>状态</th>
+                  <th>AI 提取</th>
+                  <th>更新时间</th>
+                  <th>操作</th>
+                </tr>
+                </thead>
+                <tbody>
+                <tr class="is-selected">
+                  <td>
+                    <div class="table-title">重型包装产品手册 2026.pdf</div>
+                    <div class="table-subtitle">产品线、适用行业、交付边界、包装材料说明</div>
+                  </td>
+                  <td><span class="badge blue">PDF</span></td>
+                  <td><span class="badge green">已提取</span></td>
+                  <td>18 条知识，4 条待确认</td>
+                  <td>今天 14:32</td>
+                  <td>
+                    <div class="table-actions">
+                      <button class="inline-button primary" type="button">打开</button>
+                      <button class="inline-button" type="button">重新提取</button>
+                    </div>
+                  </td>
+                </tr>
+                <tr>
+                  <td>
+                    <div class="table-title">华南线索复盘.xlsx</div>
+                    <div class="table-subtitle">客户行业、触达结果、异议类型和优先级备注</div>
+                  </td>
+                  <td><span class="badge blue">Excel</span></td>
+                  <td><span class="badge green">已提取</span></td>
+                  <td>23 条知识，19 条已确认</td>
+                  <td>昨天 18:04</td>
+                  <td>
+                    <div class="table-actions">
+                      <button class="inline-button primary" type="button">打开</button>
+                      <button class="inline-button" type="button">查看知识</button>
+                    </div>
+                  </td>
+                </tr>
+                <tr>
+                  <td>
+                    <div class="table-title">销售外呼话术与禁止承诺.docx</div>
+                    <div class="table-subtitle">电话、私信和邮件触达中的可用表达与禁止表达</div>
+                  </td>
+                  <td><span class="badge blue">Word</span></td>
+                  <td><span class="badge amber">需重新提取</span></td>
+                  <td>12 条知识，1 处冲突</td>
+                  <td>3 天前</td>
+                  <td>
+                    <div class="table-actions">
+                      <button class="inline-button primary" type="button">打开</button>
+                      <button class="inline-button" type="button">重新提取</button>
+                    </div>
+                  </td>
+                </tr>
+                <tr>
+                  <td>
+                    <div class="table-title">竞品包装方案公开页</div>
+                    <div class="table-subtitle">外部网页资料，用于对比竞品能力和规避夸大承诺</div>
+                  </td>
+                  <td><span class="badge blue">网页</span></td>
+                  <td><span class="badge amber">待提取</span></td>
+                  <td>排队中</td>
+                  <td>今天 10:31</td>
+                  <td>
+                    <div class="table-actions">
+                      <button class="inline-button primary" type="button">打开</button>
+                      <button class="inline-button" type="button">开始提取</button>
+                    </div>
+                  </td>
+                </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section aria-label="AI 已提取知识" class="tab-panel" data-panel="knowledge">
+            <div aria-label="知识状态" class="segment" role="tablist">
+              <button class="segment-button is-active" type="button">全部</button>
+              <button class="segment-button" type="button">待确认</button>
+              <button class="segment-button" type="button">已确认</button>
+              <button class="segment-button" type="button">有风险</button>
+            </div>
+
+            <div class="filters three">
+              <label class="search-box">
+                <svg>
+                  <use href="#icon-search" />
+                </svg>
+                <input placeholder="搜索 AI 提取的知识" type="search" value="">
+              </label>
+              <select aria-label="知识分类">
+                <option>全部分类</option>
+                <option>产品能力</option>
+                <option>目标客户</option>
+                <option>触达规则</option>
+              </select>
+              <select aria-label="引用状态">
+                <option>全部引用</option>
+                <option>被引用过</option>
+                <option>未引用</option>
+              </select>
+            </div>
+
+            <div class="table-wrap">
+              <table class="data-table">
+                <thead>
+                <tr>
+                  <th>知识</th>
+                  <th>分类</th>
+                  <th>状态</th>
+                  <th>来源</th>
+                  <th>引用</th>
+                  <th>操作</th>
+                </tr>
+                </thead>
+                <tbody>
+                <tr class="is-selected">
+                  <td>
+                    <div class="table-title">支持纸箱、木箱和复合材料包装方案</div>
+                    <div class="table-subtitle">内容策划 Agent 可在生成私信和邮件时引用</div>
+                  </td>
+                  <td><span class="badge blue">产品能力</span></td>
+                  <td><span class="badge green">已确认</span></td>
+                  <td>产品手册第 4 页</td>
+                  <td>8 次</td>
+                  <td>
+                    <div class="table-actions">
+                      <button class="inline-button primary" type="button">查看来源</button>
+                      <button class="inline-button" type="button">编辑</button>
+                    </div>
+                  </td>
+                </tr>
+                <tr>
+                  <td>
+                    <div class="table-title">不得承诺固定 7 天完成交付</div>
+                    <div class="table-subtitle">风险复核 Agent 用于检查外发文案中的交付承诺</div>
+                  </td>
+                  <td><span class="badge blue">触达规则</span></td>
+                  <td><span class="badge amber">待确认</span></td>
+                  <td>产品手册第 12 页</td>
+                  <td>未正式引用</td>
+                  <td>
+                    <div class="table-actions">
+                      <button class="inline-button primary" type="button">确认</button>
+                      <button class="inline-button" type="button">查看来源</button>
+                    </div>
+                  </td>
+                </tr>
+                <tr>
+                  <td>
+                    <div class="table-title">华南自动化设备厂可作为优先客户</div>
+                    <div class="table-subtitle">商机雷达 Agent 可在线索筛选时提高权重</div>
+                  </td>
+                  <td><span class="badge blue">目标客户</span></td>
+                  <td><span class="badge green">已确认</span></td>
+                  <td>华南线索复盘.xlsx</td>
+                  <td>12 次</td>
+                  <td>
+                    <div class="table-actions">
+                      <button class="inline-button primary" type="button">查看来源</button>
+                      <button class="inline-button" type="button">编辑</button>
+                    </div>
+                  </td>
+                </tr>
+                <tr>
+                  <td>
+                    <div class="table-title">运输破损控制可作为首轮触达卖点</div>
+                    <div class="table-subtitle">跨文档总结，需要确认是否适用于所有行业</div>
+                  </td>
+                  <td><span class="badge blue">卖点话术</span></td>
+                  <td><span class="badge amber">待确认</span></td>
+                  <td>产品手册第 8 页、线索复盘</td>
+                  <td>未正式引用</td>
+                  <td>
+                    <div class="table-actions">
+                      <button class="inline-button primary" type="button">确认</button>
+                      <button class="inline-button" type="button">编辑</button>
+                    </div>
+                  </td>
+                </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+      </div>
+    </section>
+  </section>
+</main>
+<div aria-hidden="false" class="modal-backdrop is-open" id="add-document-modal">
+  <section aria-labelledby="add-document-title" aria-modal="true" class="modal" role="dialog">
+    <header class="modal-header">
+      <div>
+        <h2 class="modal-title" id="add-document-title">编辑文档</h2>
+        <div class="modal-subtitle">左侧维护文档信息，右侧预览正文；AI 提取结果会保留来源和确认状态。</div>
+      </div>
+      <button aria-label="关闭" class="icon-button" data-close-add-document type="button">&times;</button>
+    </header>
+
+    <div class="modal-body">
+      <div class="document-modal-layout">
+        <aside aria-label="文档信息" class="document-side">
+          <button class="upload-zone" type="button">
+              <span>
+                <svg><use href="#icon-file" /></svg>
+                <span class="upload-title">更换文件</span>
+                <span class="upload-subtitle">选择本地文件后，系统会记录来源；不需要手写路径。</span>
+              </span>
+          </button>
+
+          <div class="file-card">
+            <div class="file-card-top">
+              <div class="file-name">工厂资料.txt</div>
+              <span class="status-pill">已读取内容</span>
+            </div>
+            <div class="file-meta">本地文件 · 128 KB · 2026年7月7日 08:09</div>
+            <div class="source-lock">
+              <svg>
+                <use href="#icon-file" />
+              </svg>
+              来源由系统记录，用户只维护文档名称和备注。
+            </div>
+          </div>
+
+          <div class="form-grid">
+            <label class="form-field">
+              <span class="form-label">文档名称</span>
+              <input class="form-input" type="text" value="工厂资料">
+            </label>
+
+            <label class="form-field">
+              <span class="form-label">文档分类</span>
+              <select class="form-select">
+                <option>公司资料</option>
+                <option>产品资料</option>
+                <option>客户与线索</option>
+                <option>话术与规则</option>
+              </select>
+            </label>
+
+            <label class="form-field">
+              <span class="form-label">管理备注</span>
+              <textarea class="form-textarea" placeholder="例如：用于公司画像、产品能力和销售规则提取。">用于公司画像、产品能力、服务区域和销售规则提取。</textarea>
+            </label>
+          </div>
+
+          <label class="extract-option">
+            <input checked type="checkbox">
+            <span>
+                <strong>保存后立即提取 AI 知识</strong>
+                <span>AI 会读取右侧正文，提取事实、规则、卖点和证据片段。</span>
+              </span>
+          </label>
+        </aside>
+
+        <section aria-label="文档内容预览" class="preview-pane">
+          <div class="preview-header">
+            <div>
+              <h3 class="preview-title">文档内容预览</h3>
+              <div class="preview-subtitle">正文用于 AI 提取；默认只读，避免误把整篇文档当成备注来编辑。</div>
+            </div>
+            <div class="preview-actions">
+              <button class="compact-button" id="copy-preview" type="button">复制内容</button>
+              <button class="compact-button" id="toggle-summary" type="button">编辑摘要</button>
+              <button class="compact-button" id="toggle-preview" type="button">展开全文</button>
+            </div>
+          </div>
+
+          <div class="preview-toolbar">
+            <label class="preview-search">
+              <svg>
+                <use href="#icon-search" />
+              </svg>
+              <input placeholder="搜索正文，例如：月产能、联系方式、OEM" type="search">
+            </label>
+            <div class="preview-stats">
+              <span class="badge green">已提取 44 条知识</span>
+              <span>约 4,800 字</span>
+            </div>
+          </div>
+
+          <div class="summary-editor" id="summary-editor">
+            <p class="summary-editor-title">人工摘要</p>
+            <textarea class="form-textarea" placeholder="补充给 AI 或团队看的摘要。">源头工厂，支持精密金属加工、OEM/ODM 定制、批量生产和出口包装。</textarea>
+          </div>
+
+          <div class="preview-content is-collapsed" id="preview-content">
+              <pre class="preview-document" id="document-preview">工厂基本信息
+工厂名称：杭州启盛精密制造有限公司
+工厂简称：启盛制造
+成立时间：2016年
+企业类型：生产制造型企业
+工厂性质：源头工厂、支持 OEM/ODM 定制
+所属行业：金属制品加工、机械零部件、五金配件、工业设备配套件
+注册地址：浙江省杭州市萧山区经济技术开发区启航路 88 号
+生产地址：浙江省杭州市萧山区临浦镇智能制造产业园 B 区 3 号厂房
+厂房面积：约 12,000 平方米
+员工人数：约 180 人
+生产线数量：6 条标准化生产线
+月产能：约 80 万件标准件，定制件按项目排期
+经营模式：来图加工、来样加工、批量生产、代工贴牌、定制开发
+
+联系方式
+联系人：李经理
+联系电话：138-0000-0000
+座机电话：0571-0000-0000
+商务邮箱：sales@example.com
+售后邮箱：service@example.com
+工作时间：周一至周六 08:30-18:00
+工厂接待：支持预约验厂、视频看厂、样品寄送、线上会议沟通
+
+地理位置与服务区域
+工厂位于杭州市萧山区，靠近杭州绕城高速、萧山国际机场及华东主要物流干线，适合面向长三角及全国客户进行快速生产和发货。
+主要服务区域：浙江、江苏、上海、安徽、福建、山东、广东、湖北、湖南、四川、重庆、河南、河北等国内主要工业城市。
+出口区域：东南亚、中东、欧洲、北美、南美等地区，支持外贸包装、英文标签、出口装箱要求及第三方验货。
+
+主营业务
+1. 精密五金零部件加工
+承接不锈钢、铝合金、碳钢、铜件等材料的切割、冲压、折弯、焊接、打磨、表面处理及装配业务。
+
+2. 机械设备配套件生产
+为自动化设备、包装机械、物流设备、农业机械、环保设备、工程机械等行业提供结构件、支架、连接件、固定件、外壳件及非标配件。
+
+3. OEM/ODM 定制加工
+支持客户提供图纸、样品或设计需求，工厂可协助完成结构优化、材料建议、工艺评估、打样确认、批量生产和包装交付。
+
+主要商品信息
+产品一：精密金属支架
+材质：不锈钢、碳钢、铝合金
+工艺：激光切割、折弯、焊接、打磨、喷塑
+适用场景：设备安装、墙面固定、机械连接、工程配套
+
+产品二：钣金外壳/设备机箱
+材质：冷轧板、不锈钢板、铝板
+工艺：切割、冲孔、折弯、焊接、喷涂、丝印
+适用行业：自动化设备、电气控制、仪器仪表、通信设备
+
+生产能力
+核心设备：激光切割机、数控折弯机、冲床、CNC 加工中心、焊接设备、自动喷涂线、打磨抛光设备、攻牙机、钻床、检测设备等。
+生产流程：需求沟通 → 图纸确认 → 报价 → 打样 → 样品确认 → 批量生产 → 品质检测 → 包装发货 → 售后跟进。
+质量控制：原材料入库检验、首件确认、过程巡检、成品抽检、出货检验。
+支持文件：材质证明、检测报告、装箱清单、产品合格证、出口资料等。
+
+工厂优势
+启盛制造专注于精密金属加工和工业配套件生产，具备从图纸评估、样品开发、批量制造到成品交付的一站式服务能力。适合长期合作型客户，尤其适合有稳定订单、定制需求、品质要求和交期要求的品牌商、设备厂及贸易公司。
+
+合作方式
+可接受合作类型：来图加工、来样定制、OEM 代工、ODM 开发、长期供货、项目制生产、跨境电商供货。
+报价所需资料：产品图纸、样品照片、尺寸规格、材质要求、数量、表面处理、包装方式、交货地址及是否需要开票。
+付款方式：样品订单全款生产；批量订单通常为 30% 预付款，70% 出货前结清，具体可协商。</pre>
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <footer class="modal-footer">
+      <div class="footer-note">保存后进入文档库；右侧正文用于 AI 提取，人工摘要仅作为辅助说明。</div>
+      <div class="footer-actions">
+        <button class="secondary-button" data-close-add-document type="button">取消</button>
+        <button class="primary-button" data-close-add-document type="button">
+          <svg>
+            <use href="#icon-plus" />
+          </svg>
+          保存并提取
+        </button>
+      </div>
+    </footer>
+  </section>
+</div>
+<script>
+  const tableCopy = {
+    documents: {
+      title: '文档库',
+      subtitle: '管理原始资料，AI 会从这些文档中提取知识。',
+    },
+    knowledge: {
+      title: 'AI 已提取的知识',
+      subtitle: '查看 AI 从文档中总结出的事实、规则和卖点。',
+    },
+  };
+
+  document.querySelectorAll('.table-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      const target = tab.dataset.tab;
+      document.querySelectorAll('.table-tab').forEach(item => {
+        const active = item === tab;
+        item.classList.toggle('is-active', active);
+        item.setAttribute('aria-selected', String(active));
+      });
+      document.querySelectorAll('.tab-panel').forEach(panel => {
+        panel.classList.toggle('is-active', panel.dataset.panel === target);
+      });
+      document.getElementById('active-table-title').textContent = tableCopy[target].title;
+      document.getElementById('active-table-subtitle').textContent = tableCopy[target].subtitle;
+    });
+  });
+
+  const addDocumentModal = document.getElementById('add-document-modal');
+
+  const openAddDocumentModal = () => {
+    addDocumentModal.classList.add('is-open');
+    addDocumentModal.setAttribute('aria-hidden', 'false');
+  };
+
+  const closeAddDocumentModal = () => {
+    addDocumentModal.classList.remove('is-open');
+    addDocumentModal.setAttribute('aria-hidden', 'true');
+  };
+
+  document.querySelectorAll('[data-open-add-document]').forEach(button => {
+    button.addEventListener('click', openAddDocumentModal);
+  });
+
+  document.querySelectorAll('[data-close-add-document]').forEach(button => {
+    button.addEventListener('click', closeAddDocumentModal);
+  });
+
+  addDocumentModal.addEventListener('click', event => {
+    if (event.target === addDocumentModal) {
+      closeAddDocumentModal();
+    }
+  });
+
+  const previewContent = document.getElementById('preview-content');
+  const togglePreview = document.getElementById('toggle-preview');
+  const summaryEditor = document.getElementById('summary-editor');
+  const toggleSummary = document.getElementById('toggle-summary');
+  const copyPreview = document.getElementById('copy-preview');
+  const documentPreview = document.getElementById('document-preview');
+
+  togglePreview?.addEventListener('click', () => {
+    const collapsed = previewContent.classList.toggle('is-collapsed');
+    togglePreview.textContent = collapsed ? '展开全文' : '收起全文';
+  });
+
+  toggleSummary?.addEventListener('click', () => {
+    const isOpen = summaryEditor.classList.toggle('is-open');
+    toggleSummary.textContent = isOpen ? '收起摘要' : '编辑摘要';
+  });
+
+  copyPreview?.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(documentPreview.textContent.trim());
+      copyPreview.textContent = '已复制';
+    } catch {
+      copyPreview.textContent = '复制失败';
+    }
+    window.setTimeout(() => {
+      copyPreview.textContent = '复制内容';
+    }, 1400);
+  });
+
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && addDocumentModal.classList.contains('is-open')) {
+      closeAddDocumentModal();
+    }
+  });
+</script>
+</body>
+</html>

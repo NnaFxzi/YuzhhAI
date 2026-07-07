@@ -35,6 +35,7 @@ import {
 } from './messageDisplayUtils';
 import ThinkingBlock from './ThinkingBlock';
 import ToolCallGroup from './ToolCallGroup';
+import { TypingDots } from './TypingDots';
 
 const encodeLocalPathForUrl = (filePath: string): string => {
   return filePath
@@ -112,16 +113,6 @@ const ContextCompactionDivider: React.FC<{ label: string; active?: boolean }> = 
       )}
     </div>
     <div className="h-px min-w-0 flex-1 bg-border" />
-  </div>
-);
-
-// ── TypingDots ───────────────────────────────────────────────────────────────
-
-const TypingDots: React.FC = () => (
-  <div className="flex items-center space-x-1.5 py-1">
-    <div className="w-2 h-2 rounded-full bg-primary animate-bounce" style={{ animationDelay: '0ms' }} />
-    <div className="w-2 h-2 rounded-full bg-primary animate-bounce" style={{ animationDelay: '150ms' }} />
-    <div className="w-2 h-2 rounded-full bg-primary animate-bounce" style={{ animationDelay: '300ms' }} />
   </div>
 );
 

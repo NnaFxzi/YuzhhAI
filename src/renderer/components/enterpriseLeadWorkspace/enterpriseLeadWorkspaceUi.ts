@@ -410,7 +410,6 @@ export const EnterpriseLeadWorkbenchNavItem = {
   KnowledgeBase: 'knowledge_base',
   CreationRecords: 'creation_records',
   AgentManagement: 'agent_management',
-  Settings: 'settings',
 } as const;
 export type EnterpriseLeadWorkbenchNavItem =
   typeof EnterpriseLeadWorkbenchNavItem[keyof typeof EnterpriseLeadWorkbenchNavItem];
@@ -426,7 +425,6 @@ export const EnterpriseLeadWorkbenchNavIcon = {
   Knowledge: 'knowledge',
   Records: 'records',
   Agents: 'agents',
-  Settings: 'settings',
 } as const;
 export type EnterpriseLeadWorkbenchNavIcon =
   typeof EnterpriseLeadWorkbenchNavIcon[keyof typeof EnterpriseLeadWorkbenchNavIcon];
@@ -580,6 +578,60 @@ export const getWorkspaceAgentDisplayName = (
 ): string => getEffectiveWorkspaceAgent(binding, globalAgent).name;
 
 const AGENT_ROLE_LABELS: Record<EnterpriseLeadAgentRoleType, AgentRoleLabelMetadata> = {
+  [EnterpriseLeadAgentRole.ProductSellingPoint]: {
+    role: EnterpriseLeadAgentRole.ProductSellingPoint,
+    titleKey: 'enterpriseLeadAgentRoleProductSellingPointTitle',
+    shortLabelKey: 'enterpriseLeadAgentRoleProductSellingPointShortLabel',
+    descriptionKey: 'enterpriseLeadAgentRoleProductSellingPointDescription',
+    inputKey: 'enterpriseLeadAgentRoleProductSellingPointInput',
+    outputKey: 'enterpriseLeadAgentRoleProductSellingPointOutput',
+    safetyCritical: false,
+  },
+  [EnterpriseLeadAgentRole.TopicPlanning]: {
+    role: EnterpriseLeadAgentRole.TopicPlanning,
+    titleKey: 'enterpriseLeadAgentRoleTopicPlanningTitle',
+    shortLabelKey: 'enterpriseLeadAgentRoleTopicPlanningShortLabel',
+    descriptionKey: 'enterpriseLeadAgentRoleTopicPlanningDescription',
+    inputKey: 'enterpriseLeadAgentRoleTopicPlanningInput',
+    outputKey: 'enterpriseLeadAgentRoleTopicPlanningOutput',
+    safetyCritical: false,
+  },
+  [EnterpriseLeadAgentRole.ShortVideoScript]: {
+    role: EnterpriseLeadAgentRole.ShortVideoScript,
+    titleKey: 'enterpriseLeadAgentRoleShortVideoScriptTitle',
+    shortLabelKey: 'enterpriseLeadAgentRoleShortVideoScriptShortLabel',
+    descriptionKey: 'enterpriseLeadAgentRoleShortVideoScriptDescription',
+    inputKey: 'enterpriseLeadAgentRoleShortVideoScriptInput',
+    outputKey: 'enterpriseLeadAgentRoleShortVideoScriptOutput',
+    safetyCritical: false,
+  },
+  [EnterpriseLeadAgentRole.SocialCopy]: {
+    role: EnterpriseLeadAgentRole.SocialCopy,
+    titleKey: 'enterpriseLeadAgentRoleSocialCopyTitle',
+    shortLabelKey: 'enterpriseLeadAgentRoleSocialCopyShortLabel',
+    descriptionKey: 'enterpriseLeadAgentRoleSocialCopyDescription',
+    inputKey: 'enterpriseLeadAgentRoleSocialCopyInput',
+    outputKey: 'enterpriseLeadAgentRoleSocialCopyOutput',
+    safetyCritical: false,
+  },
+  [EnterpriseLeadAgentRole.PrivateDomainConversion]: {
+    role: EnterpriseLeadAgentRole.PrivateDomainConversion,
+    titleKey: 'enterpriseLeadAgentRolePrivateDomainConversionTitle',
+    shortLabelKey: 'enterpriseLeadAgentRolePrivateDomainConversionShortLabel',
+    descriptionKey: 'enterpriseLeadAgentRolePrivateDomainConversionDescription',
+    inputKey: 'enterpriseLeadAgentRolePrivateDomainConversionInput',
+    outputKey: 'enterpriseLeadAgentRolePrivateDomainConversionOutput',
+    safetyCritical: false,
+  },
+  [EnterpriseLeadAgentRole.ContentQuality]: {
+    role: EnterpriseLeadAgentRole.ContentQuality,
+    titleKey: 'enterpriseLeadAgentRoleContentQualityTitle',
+    shortLabelKey: 'enterpriseLeadAgentRoleContentQualityShortLabel',
+    descriptionKey: 'enterpriseLeadAgentRoleContentQualityDescription',
+    inputKey: 'enterpriseLeadAgentRoleContentQualityInput',
+    outputKey: 'enterpriseLeadAgentRoleContentQualityOutput',
+    safetyCritical: true,
+  },
   [EnterpriseLeadAgentRole.Controller]: {
     role: EnterpriseLeadAgentRole.Controller,
     titleKey: 'enterpriseLeadAgentRoleControllerTitle',
@@ -706,76 +758,50 @@ const WORKBENCH_SIDEBAR_ITEMS: WorkbenchSidebarItem[] = [
     icon: EnterpriseLeadWorkbenchNavIcon.Agents,
     labelKey: 'enterpriseLeadWorkbenchNavAgentManagement',
   },
-  {
-    id: EnterpriseLeadWorkbenchNavItem.Settings,
-    icon: EnterpriseLeadWorkbenchNavIcon.Settings,
-    labelKey: 'enterpriseLeadWorkbenchNavSettings',
-  },
 ];
 
 const WORKBENCH_AGENT_ITEMS: WorkbenchAgentItem[] = [
   {
-    role: EnterpriseLeadAgentRole.Controller,
-    roleLabelKey: 'enterpriseLeadWorkbenchAgentControllerRole',
-    capabilitySummaryKey: 'enterpriseLeadWorkbenchAgentControllerCapabilitySummary',
-    accentClassName: 'border-orange-500 bg-orange-50/45 dark:bg-orange-950/20',
-    accentTextClassName: 'text-orange-700 dark:text-orange-300',
-  },
-  {
-    role: EnterpriseLeadAgentRole.ProductUnderstanding,
-    roleLabelKey: 'enterpriseLeadWorkbenchAgentProductUnderstandingRole',
-    capabilitySummaryKey: 'enterpriseLeadWorkbenchAgentProductUnderstandingCapabilitySummary',
+    role: EnterpriseLeadAgentRole.ProductSellingPoint,
+    roleLabelKey: 'enterpriseLeadWorkbenchAgentProductSellingPointRole',
+    capabilitySummaryKey: 'enterpriseLeadWorkbenchAgentProductSellingPointCapabilitySummary',
     accentClassName: 'border-emerald-500 bg-emerald-50/55 dark:bg-emerald-950/20',
     accentTextClassName: 'text-emerald-700 dark:text-emerald-300',
   },
   {
-    role: EnterpriseLeadAgentRole.OpportunityRadar,
-    roleLabelKey: 'enterpriseLeadWorkbenchAgentOpportunityRadarRole',
-    capabilitySummaryKey: 'enterpriseLeadWorkbenchAgentOpportunityRadarCapabilitySummary',
+    role: EnterpriseLeadAgentRole.TopicPlanning,
+    roleLabelKey: 'enterpriseLeadWorkbenchAgentTopicPlanningRole',
+    capabilitySummaryKey: 'enterpriseLeadWorkbenchAgentTopicPlanningCapabilitySummary',
     accentClassName: 'border-blue-500 bg-blue-50/55 dark:bg-blue-950/20',
     accentTextClassName: 'text-blue-700 dark:text-blue-300',
   },
   {
-    role: EnterpriseLeadAgentRole.ContentPlanning,
-    roleLabelKey: 'enterpriseLeadWorkbenchAgentContentPlanningRole',
-    capabilitySummaryKey: 'enterpriseLeadWorkbenchAgentContentPlanningCapabilitySummary',
+    role: EnterpriseLeadAgentRole.ShortVideoScript,
+    roleLabelKey: 'enterpriseLeadWorkbenchAgentShortVideoScriptRole',
+    capabilitySummaryKey: 'enterpriseLeadWorkbenchAgentShortVideoScriptCapabilitySummary',
     accentClassName: 'border-orange-500 bg-orange-50/45 dark:bg-orange-950/20',
     accentTextClassName: 'text-orange-700 dark:text-orange-300',
   },
   {
-    role: EnterpriseLeadAgentRole.SocialOperation,
-    roleLabelKey: 'enterpriseLeadWorkbenchAgentSocialOperationRole',
-    capabilitySummaryKey: 'enterpriseLeadWorkbenchAgentSocialOperationCapabilitySummary',
+    role: EnterpriseLeadAgentRole.SocialCopy,
+    roleLabelKey: 'enterpriseLeadWorkbenchAgentSocialCopyRole',
+    capabilitySummaryKey: 'enterpriseLeadWorkbenchAgentSocialCopyCapabilitySummary',
     accentClassName: 'border-purple-500 bg-purple-50/55 dark:bg-purple-950/20',
     accentTextClassName: 'text-purple-700 dark:text-purple-300',
   },
   {
-    role: EnterpriseLeadAgentRole.SalesHandoff,
-    roleLabelKey: 'enterpriseLeadWorkbenchAgentSalesHandoffRole',
-    capabilitySummaryKey: 'enterpriseLeadWorkbenchAgentSalesHandoffCapabilitySummary',
+    role: EnterpriseLeadAgentRole.PrivateDomainConversion,
+    roleLabelKey: 'enterpriseLeadWorkbenchAgentPrivateDomainConversionRole',
+    capabilitySummaryKey: 'enterpriseLeadWorkbenchAgentPrivateDomainConversionCapabilitySummary',
     accentClassName: 'border-indigo-500 bg-indigo-50/55 dark:bg-indigo-950/20',
     accentTextClassName: 'text-indigo-700 dark:text-indigo-300',
   },
   {
-    role: EnterpriseLeadAgentRole.RiskReview,
-    roleLabelKey: 'enterpriseLeadWorkbenchAgentRiskReviewRole',
-    capabilitySummaryKey: 'enterpriseLeadWorkbenchAgentRiskReviewCapabilitySummary',
+    role: EnterpriseLeadAgentRole.ContentQuality,
+    roleLabelKey: 'enterpriseLeadWorkbenchAgentContentQualityRole',
+    capabilitySummaryKey: 'enterpriseLeadWorkbenchAgentContentQualityCapabilitySummary',
     accentClassName: 'border-red-500 bg-red-50/50 dark:bg-red-950/20',
     accentTextClassName: 'text-red-700 dark:text-red-300',
-  },
-  {
-    role: EnterpriseLeadAgentRole.ProjectSummary,
-    roleLabelKey: 'enterpriseLeadWorkbenchAgentProjectSummaryRole',
-    capabilitySummaryKey: 'enterpriseLeadWorkbenchAgentProjectSummaryCapabilitySummary',
-    accentClassName: 'border-slate-400 bg-slate-50/60 dark:bg-slate-900/25',
-    accentTextClassName: 'text-slate-700 dark:text-slate-300',
-  },
-  {
-    role: EnterpriseLeadAgentRole.ProjectArchive,
-    roleLabelKey: 'enterpriseLeadWorkbenchAgentProjectArchiveRole',
-    capabilitySummaryKey: 'enterpriseLeadWorkbenchAgentProjectArchiveCapabilitySummary',
-    accentClassName: 'border-slate-400 bg-slate-50/60 dark:bg-slate-900/25',
-    accentTextClassName: 'text-slate-700 dark:text-slate-300',
   },
 ];
 
@@ -904,8 +930,8 @@ const WORKBENCH_CONFIG_SECTIONS: WorkbenchConfigSection[] = [
 
 const WORKBENCH_LAYOUT_SPEC: WorkbenchLayoutSpec = {
   minimumContentWidth: 1168,
-  sidebarWidth: 196,
-  expandedSidebarWidth: 196,
+  sidebarWidth: 292,
+  expandedSidebarWidth: 292,
   collapsedSidebarWidth: 76,
   agentPanelMinWidth: 552,
   configPanelMinWidth: 388,
@@ -1064,13 +1090,18 @@ export const getWorkspaceKnowledgeSections = (
         return [];
       }
 
-      return [{
-        id: `source-${index}`,
-        kind: EnterpriseLeadKnowledgeItemKind.Source,
-        text: label,
-        secondaryText: cleanText(source.filePath ?? '') || undefined,
-        metaText: cleanText(source.kind),
-      }];
+      return [
+        {
+          id: `source-${index}`,
+          kind: EnterpriseLeadKnowledgeItemKind.Source,
+          text: label,
+          secondaryText:
+            cleanText(source.fileName ?? '') || cleanText(source.filePath ?? '') || undefined,
+          metaText: cleanText(source.kind),
+          createdAt: source.createdAt ?? workspace.createdAt,
+          updatedAt: source.updatedAt ?? workspace.updatedAt,
+        },
+      ];
     });
   const deliverableItems: WorkspaceKnowledgeItem[] = sortByRecentTimestamp(
     snapshot?.deliverables ?? [],
@@ -1484,12 +1515,6 @@ export const getWorkspaceStartReadiness = (
       statusKey: hasRules
         ? 'enterpriseLeadStartReadinessReady'
         : 'enterpriseLeadStartReadinessOptional',
-    },
-    {
-      id: 'settings',
-      labelKey: 'enterpriseLeadStartReadinessSettings',
-      status: EnterpriseLeadWorkspaceStartReadinessStatus.Optional,
-      statusKey: 'enterpriseLeadStartReadinessOptional',
     },
   ];
 };

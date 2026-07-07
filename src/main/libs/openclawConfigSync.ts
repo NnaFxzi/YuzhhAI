@@ -4,7 +4,7 @@ import fs from 'fs';
 import path from 'path';
 
 import { buildScheduledTaskEnginePrompt } from '../../scheduledTask/enginePrompt';
-import { AgentId, DefaultAgentProfile } from '../../shared/agent';
+import { AgentId, DefaultAgentProfile, defaultAgentResponseContract } from '../../shared/agent';
 import { RuntimeBrand } from '../../shared/branding/constants';
 import {
   BrowserNetworkMode,
@@ -60,17 +60,18 @@ import {
   resolveManagedSessionModelTarget,
   resolveQualifiedAgentModelRef,
 } from './openclawAgentModels';
+import { buildAgentWorkspaceSystemPrompt } from './openclawAgentWorkspacePrompt';
 import { parseChannelSessionKey } from './openclawChannelSessionSync';
 import { OpenClawConfigImpact } from './openclawConfigImpact';
 import type { OpenClawEngineManager } from './openclawEngineManager';
-import { getMainAgentWorkspacePath, readBootstrapFile } from './openclawMemoryFile';
-import { resolveOpenClawCatalogModelMaxTokens } from './openclawModelCatalog';
 import {
   findBundledExtensionsDir,
   findThirdPartyExtensionsDir,
   hasBundledOpenClawExtension,
   resolveOpenClawExtensionPluginId,
 } from './openclawLocalExtensions';
+import { getMainAgentWorkspacePath, readBootstrapFile } from './openclawMemoryFile';
+import { resolveOpenClawCatalogModelMaxTokens } from './openclawModelCatalog';
 import { getOpenClawTokenProxyPort } from './openclawTokenProxy';
 import { isSystemProxyEnabled } from './systemProxy';
 
@@ -340,6 +341,9 @@ const MANAGED_EXEC_SAFETY_PROMPT = [
   '- When you need the user to make a choice between multiple options (e.g. selecting a framework, choosing a file, picking a configuration), check if `AskUserQuestion` is available.',
   '- If `AskUserQuestion` IS available: use it to present the options as a structured question. Use `multiSelect: true` when the user can pick more than one option.',
   '- If `AskUserQuestion` is NOT available: ask via plain text instead.',
+  '- Do not use `AskUserQuestion` for content-generation clarification, including topics, copy, short-video scripts, private-domain messages, sales replies, rewrites, or platform drafts.',
+  '- For content-generation clarification, search or reuse available memory, USER.md, MEMORY.md, saved positioning reports, workspace knowledge, and the latest user prompt first.',
+  '- If content context is still incomplete after retrieval, do not draft with assumptions. Ask for the missing domain, account positioning, audience, product/service, selling point, or conversion goal as plain text.',
   '',
   '### General Commands',
   '- For ALL commands (ls, git, cd, kill, chmod, curl, etc.), execute them directly WITHOUT asking for confirmation.',
@@ -3005,6 +3009,7 @@ export class OpenClawConfigSync {
         identity: '',
         model: '',
         workingDirectory: '',
+        responseContract: defaultAgentResponseContract,
         icon: '',
         skillIds: [],
         enabled: true,
@@ -3459,10 +3464,11 @@ export class OpenClawConfigSync {
       try {
         ensureDir(agentWorkspace);
 
+        const agentSystemPrompt = buildAgentWorkspaceSystemPrompt(agent);
+
         // Sync SOUL.md — agent's system prompt
         const soulPath = path.join(agentWorkspace, 'SOUL.md');
-        const soulContent = (agent.systemPrompt || '').trim();
-        this.syncFileIfChanged(soulPath, soulContent ? `${soulContent}\n` : '');
+        this.syncFileIfChanged(soulPath, agentSystemPrompt ? `${agentSystemPrompt}\n` : '');
 
         // Sync IDENTITY.md — agent's identity description
         const identityPath = path.join(agentWorkspace, 'IDENTITY.md');
@@ -3476,7 +3482,7 @@ export class OpenClawConfigSync {
         // Sync AGENTS.md for this agent (reuse same logic as main agent)
         this.syncAgentsMd(agentWorkspace, {
           ...coworkConfig,
-          systemPrompt: agent.systemPrompt || '',
+          systemPrompt: agentSystemPrompt,
         });
 
         // Ensure memory directory exists

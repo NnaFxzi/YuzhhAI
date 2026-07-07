@@ -1,3 +1,4 @@
+import { AgentAnswerShape, defaultAgentResponseContract } from '@shared/agent';
 import { buildDefaultDomesticResearchConfig } from '@shared/agent/domesticResearch';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
@@ -15,6 +16,7 @@ const makeAgent = (overrides: Partial<Agent> = {}): Agent => ({
   identity: '',
   model: '',
   workingDirectory: '',
+  responseContract: defaultAgentResponseContract,
   icon: '',
   skillIds: [],
   enabled: true,
@@ -98,6 +100,52 @@ describe('agentService.updateAgent', () => {
 
     // Active skills should remain untouched since skillIds was not in the update
     expect(store.getState().skill.activeSkillIds).toEqual(['user-selected-skill']);
+  });
+
+  test('stores the response contract returned by the main process', async () => {
+    store.dispatch(
+      setAgents([
+        {
+          id: 'agent-1',
+          name: 'Agent 1',
+          description: '',
+          icon: '',
+          model: '',
+          workingDirectory: '',
+          enabled: true,
+          pinned: false,
+          pinOrder: null,
+          isDefault: false,
+          source: 'custom',
+          skillIds: [],
+        },
+      ]),
+    );
+
+    (globalThis as { window?: unknown }).window = {
+      electron: {
+        agents: {
+          update: vi.fn().mockResolvedValue(
+            makeAgent({
+              responseContract: {
+                ...defaultAgentResponseContract,
+                answerShape: AgentAnswerShape.CopyReady,
+                mustAvoid: ['不要编造硬事实'],
+              },
+            }),
+          ),
+        },
+      },
+    };
+
+    await agentService.updateAgent('agent-1', { model: 'new-model' });
+
+    expect(store.getState().agent.agents[0].responseContract?.answerShape).toBe(
+      AgentAnswerShape.CopyReady,
+    );
+    expect(store.getState().agent.agents[0].responseContract?.mustAvoid).toEqual([
+      '不要编造硬事实',
+    ]);
   });
 
   test('does not replace active skills when another agent is saved', async () => {

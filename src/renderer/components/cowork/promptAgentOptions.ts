@@ -16,6 +16,9 @@ export interface PromptAgentSelectorState {
   shouldShowAgentSelector: boolean;
 }
 
+export const shouldDisplayPromptAgentContext = (agentId?: string | null): boolean =>
+  Boolean(agentId?.trim()) && !isDefaultAgentId(agentId);
+
 export function resolvePromptAgentSelectorState({
   agents,
   currentAgentId,
@@ -45,6 +48,6 @@ export function resolvePromptAgentSelectorState({
   return {
     agentOptions,
     currentAgentForDisplay: currentCustomAgent,
-    shouldShowAgentSelector: agentOptions.length > 0,
+    shouldShowAgentSelector: Boolean(currentCustomAgent) && agentOptions.length > 0,
   };
 }

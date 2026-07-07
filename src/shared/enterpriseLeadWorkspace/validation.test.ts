@@ -118,9 +118,12 @@ describe('enterprise lead workspace validation', () => {
       variablePlaceholders: ['客户名', '行业', '痛点', '卖点'],
       archiveOutputs: true,
     });
+    expect(settings.outputPreferences).toEqual({
+      instructions: [],
+    });
   });
 
-  test('normalizes workspace provider, skill, external research, and domestic platform settings', () => {
+  test('normalizes workspace provider, skill, output preference, external research, and domestic platform settings', () => {
     const settings = normalizeEnterpriseLeadWorkspaceSettings({
       model: {
         defaultModel: ' gpt-4.1 ',
@@ -181,6 +184,14 @@ describe('enterprise lead workspace validation', () => {
           archiveOutputs: false,
         },
       },
+      outputPreferences: {
+        instructions: [
+          ' 输出时先给结论，再给依据 ',
+          '',
+          '输出时先给结论，再给依据',
+          ' 保留原文证据链接 ',
+        ],
+      },
     });
 
     expect(settings.model.defaultModel).toBe('gpt-4.1');
@@ -218,6 +229,10 @@ describe('enterprise lead workspace validation', () => {
       variablePlaceholders: ['客户名', '行业'],
       archiveOutputs: false,
     });
+    expect(settings.outputPreferences.instructions).toEqual([
+      '输出时先给结论，再给依据',
+      '保留原文证据链接',
+    ]);
   });
 
   test('migrates legacy workbench settings into the new independent settings shape', () => {
@@ -288,6 +303,26 @@ describe('enterprise lead workspace validation', () => {
       baseUrl: 'https://api.moonshot.cn/v1',
     }));
     expect(update.settings?.skillIds).toEqual(['docx', 'web-search']);
+  });
+
+  test('preserves existing output preferences during partial settings updates', () => {
+    const current = normalizeEnterpriseLeadWorkspaceSettings({
+      outputPreferences: {
+        instructions: ['输出时先给结论，再给依据'],
+      },
+    });
+
+    const update = normalizeEnterpriseLeadWorkspaceSettingsUpdate({
+      settings: {
+        model: {
+          defaultModel: 'gpt-4.1',
+        },
+      },
+    }, current);
+
+    expect(update.settings?.outputPreferences.instructions).toEqual([
+      '输出时先给结论，再给依据',
+    ]);
   });
 
   test('preserves custom enabled agent role strings during settings updates', () => {

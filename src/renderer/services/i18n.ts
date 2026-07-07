@@ -1287,6 +1287,7 @@ const translations: Record<LanguageType, Record<string, string>> = {
     agentIMBoundToOther: '→ {agent}',
     agentIMBindHint: '选择此 Agent 响应的 IM 渠道',
     agentCreateFailed: '创建 Agent 失败',
+    agentGlobalCreateUnavailable: '全局只支持添加系统 Agent；自定义 Agent 请在工作空间内创建。',
     agentSaveSuccess: 'Agent 设置已保存',
     agentSaveFeedbackSeparator: '。',
     agentSaveFailed: '保存 Agent 设置失败',
@@ -2882,6 +2883,41 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadNoDeliverables: '暂无成果输出。',
     enterpriseLeadNoArchives: '暂无归档记录。',
     enterpriseLeadArchived: '已归档',
+    enterpriseLeadAgentRoleProductSellingPointTitle: '产品卖点 Agent',
+    enterpriseLeadAgentRoleProductSellingPointShortLabel: '卖',
+    enterpriseLeadAgentRoleProductSellingPointDescription:
+      '提炼产品优势、用户痛点、信任背书和差异化卖点。',
+    enterpriseLeadAgentRoleProductSellingPointInput: '企业资料、产品资料、目标用户、已有内容素材',
+    enterpriseLeadAgentRoleProductSellingPointOutput: '核心卖点、用户痛点、信任背书、内容角度',
+    enterpriseLeadAgentRoleTopicPlanningTitle: '选题策划 Agent',
+    enterpriseLeadAgentRoleTopicPlanningShortLabel: '题',
+    enterpriseLeadAgentRoleTopicPlanningDescription: '生成选题、标题、爆点、内容系列和平台角度。',
+    enterpriseLeadAgentRoleTopicPlanningInput: '产品卖点、目标用户、平台偏好、内容目标',
+    enterpriseLeadAgentRoleTopicPlanningOutput: '选题列表、标题方向、内容系列、推荐形式',
+    enterpriseLeadAgentRoleShortVideoScriptTitle: '短视频脚本 Agent',
+    enterpriseLeadAgentRoleShortVideoScriptShortLabel: '视',
+    enterpriseLeadAgentRoleShortVideoScriptDescription:
+      '生成短视频钩子、口播脚本、分镜节奏和行动引导。',
+    enterpriseLeadAgentRoleShortVideoScriptInput: '产品卖点、选题角度、平台偏好、目标时长',
+    enterpriseLeadAgentRoleShortVideoScriptOutput: '前三秒钩子、口播脚本、分镜建议、CTA',
+    enterpriseLeadAgentRoleSocialCopyTitle: '图文文案 Agent',
+    enterpriseLeadAgentRoleSocialCopyShortLabel: '文',
+    enterpriseLeadAgentRoleSocialCopyDescription:
+      '生成朋友圈、小红书、公众号、海报和种草文案。',
+    enterpriseLeadAgentRoleSocialCopyInput: '产品卖点、平台、目标用户、转化目标',
+    enterpriseLeadAgentRoleSocialCopyOutput: '平台文案、标题、正文、行动引导',
+    enterpriseLeadAgentRolePrivateDomainConversionTitle: '私域转化 Agent',
+    enterpriseLeadAgentRolePrivateDomainConversionShortLabel: '私',
+    enterpriseLeadAgentRolePrivateDomainConversionDescription:
+      '生成微信私聊、社群跟进、异议处理和成交引导话术。',
+    enterpriseLeadAgentRolePrivateDomainConversionInput: '内容成果、客户阶段、常见顾虑、跟进目标',
+    enterpriseLeadAgentRolePrivateDomainConversionOutput: '私聊话术、社群话术、跟进节奏、转化 CTA',
+    enterpriseLeadAgentRoleContentQualityTitle: '内容质检 Agent',
+    enterpriseLeadAgentRoleContentQualityShortLabel: '检',
+    enterpriseLeadAgentRoleContentQualityDescription:
+      '检查内容是否空泛、像 AI、缺少依据或缺少转化点，并给出改稿。',
+    enterpriseLeadAgentRoleContentQualityInput: '内容草稿、平台要求、品牌语气、禁用表达',
+    enterpriseLeadAgentRoleContentQualityOutput: '质检结论、问题清单、优化版本、发布提醒',
     enterpriseLeadAgentRoleControllerTitle: '项目总控 Agent',
     enterpriseLeadAgentRoleControllerShortLabel: '总',
     enterpriseLeadAgentRoleControllerDescription: '理解目标、拆解任务、调度专业 Agent、汇总状态。',
@@ -2977,8 +3013,23 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadWorkspacePagePreparingTitle: '页面准备中',
     enterpriseLeadWorkspacePagePreparingDescription:
       '该页面将在后续任务中接入完整能力，当前先保留稳定入口。',
+    enterpriseLeadCoworkDraftPromptHeader: '企业获客工作台上下文',
+    enterpriseLeadCoworkDraftPromptIntro: '当前工作区：{name}',
+    enterpriseLeadCoworkDraftPromptCompanySummary: '企业概况',
+    enterpriseLeadCoworkDraftPromptProducts: '产品/服务',
+    enterpriseLeadCoworkDraftPromptCapabilities: '产品能力',
+    enterpriseLeadCoworkDraftPromptTargetCustomers: '目标客户',
+    enterpriseLeadCoworkDraftPromptScenarios: '应用场景',
+    enterpriseLeadCoworkDraftPromptSellingPoints: '核心卖点',
+    enterpriseLeadCoworkDraftPromptContactRules: '触达规则',
+    enterpriseLeadCoworkDraftPromptProhibitedClaims: '禁止表述',
+    enterpriseLeadCoworkDraftPromptMissingValue: '未填写',
+    enterpriseLeadCoworkDraftPromptLabelSeparator: '：',
+    enterpriseLeadCoworkDraftPromptListSeparator: '、',
+    enterpriseLeadCoworkDraftPromptAsk: '请基于以上企业获客工作台上下文继续帮我推进。',
     enterpriseLeadWorkspaceSearchDescription: '搜索当前空间的对话、画像、来源和 Agent 配置。',
     enterpriseLeadWorkspaceSearchInputLabel: '搜索当前空间',
+    enterpriseLeadWorkspaceChatSearchPlaceholder: '搜索当前空间对话...',
     enterpriseLeadWorkspaceSearchPlaceholder: '搜索对话、产品、客户、来源、规则或 Agent',
     enterpriseLeadWorkspaceSearchResultCount: '{count} 条结果',
     enterpriseLeadWorkspaceSearchScope: '范围：当前空间对话与资料',
@@ -2996,6 +3047,7 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadWorkspaceSearchAgentFallback: '当前空间 Agent。',
     enterpriseLeadWorkspaceSidebarConversationRecords: '对话记录',
     enterpriseLeadWorkspaceSidebarConversations: '对话',
+    enterpriseLeadWorkspaceSidebarNoConversations: '暂无对话',
     enterpriseLeadWorkspaceDeleteConversation: '删除对话',
     enterpriseLeadWorkspaceDeleteConversationAria: '删除对话 {title}',
     enterpriseLeadWorkspaceDeleteConversationTitle: '删除「{title}」？',
@@ -3035,7 +3087,7 @@ const translations: Record<LanguageType, Record<string, string>> = {
       '例如：帮我调研 20 家自动化设备厂，并生成适合销售直接发送的第一版私信',
     enterpriseLeadAiChatSend: '发送',
     enterpriseLeadAiChatSending: '发送中...',
-    enterpriseLeadAiChatThinking: '正在处理',
+    enterpriseLeadAiChatThinking: '正在思考',
     enterpriseLeadAiChatPendingAgent: '正在选择 Agent',
     enterpriseLeadAiChatPendingResearch: '正在调研',
     enterpriseLeadAiChatPendingResearchSkipped: '跳过调研',
@@ -3045,19 +3097,57 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadAiChatAgentAutoDesc: '自动判断任务需要的 Agent',
     enterpriseLeadAiChatAgentSpecificDesc: '指定一个专属角色处理这条消息',
     enterpriseLeadAiChatInputLabel: '对话消息',
-    enterpriseLeadAiChatAgentAll: '自动',
+    enterpriseLeadAiChatAgentAll: '自动团队',
     enterpriseLeadAiChatAddContext: '添加上下文',
     enterpriseLeadAiChatCapabilityLabel: '本空间能力',
     enterpriseLeadAiChatCapabilityAgents: '{count} 个 Agent',
     enterpriseLeadAiChatCapabilityResearchEnabled: '允许调研',
     enterpriseLeadAiChatCapabilityResearchDisabled: '调研未配置',
     enterpriseLeadAiChatCapabilityKnowledge: '引用知识库',
+    enterpriseLeadAiChatCapabilityWorkspaceHabits: '空间习惯 {count} 条',
+    enterpriseLeadAiChatCapabilityAgentHabits: 'Agent 习惯 {count} 条',
     enterpriseLeadAiChatUserRole: '我',
     enterpriseLeadAiChatAssistantRole: '助手',
     enterpriseLeadAiChatEmpty: '还没有对话。选择目标 Agent 后发送第一条消息。',
     enterpriseLeadAiChatResearchSkipped: '未调研',
     enterpriseLeadAiChatResearchCompleted: '调研完成',
     enterpriseLeadAiChatResearchFailed: '调研失败',
+    enterpriseLeadAiChatProcessToggle: '过程',
+    enterpriseLeadAiChatProcessTitle: '处理过程',
+    enterpriseLeadAiChatProcessStepCount: '{count} 步',
+    enterpriseLeadAiChatProcessStepRouting: '理解任务',
+    enterpriseLeadAiChatProcessStepResearch: '调研',
+    enterpriseLeadAiChatProcessStepAgent: 'Agent 协作',
+    enterpriseLeadAiChatProcessStepAnswer: '生成答案',
+    enterpriseLeadAiChatProcessResearchCompleted: '调研完成',
+    enterpriseLeadAiChatProcessResearchFailed: '调研失败',
+    enterpriseLeadAiChatProcessResearchSkipped: '跳过调研',
+    enterpriseLeadAiChatProcessResearchPending: '等待调研',
+    enterpriseLeadAiChatProcessReady: '已完成',
+    enterpriseLeadAiChatProcessNoDetails: '暂无更多细节',
+    enterpriseLeadAiChatQualityLabel: '输出状态',
+    enterpriseLeadAiChatQualityCopyReady: '可直接复制',
+    enterpriseLeadAiChatQualityMultiAgent: '多 Agent 整合',
+    enterpriseLeadAiChatQualityRiskChecked: '风控已检查',
+    enterpriseLeadAiChatQualityResearchCompleted: '调研已完成',
+    enterpriseLeadAiChatQualityResearchLimited: '调研受限',
+    enterpriseLeadAiChatSuggestedContinueSearch: '继续搜索真实公司',
+    enterpriseLeadAiChatSuggestedScorePastedList: '粘贴客户名单后评分',
+    enterpriseLeadAiChatSuggestedBuildScreeningSheet: '生成客户筛选表',
+    enterpriseLeadAiChatSuggestedRetryResearch: '重试调研',
+    enterpriseLeadAiChatSuggestedRankCandidates: '按优先级排序',
+    enterpriseLeadAiChatSuggestedDraftFollowUp: '生成跟进话术',
+    enterpriseLeadAiChatSuggestedContinueSearchDraft:
+      '继续搜索真实公司，并只保留有采购/扩产/招标/询价信号的客户。',
+    enterpriseLeadAiChatSuggestedScorePastedListDraft:
+      '我会粘贴客户名单，请按匹配度、需求强度、成交可能性给出优先级。',
+    enterpriseLeadAiChatSuggestedBuildScreeningSheetDraft:
+      '生成一个客户筛选表，包含公司、行业、需求信号、来源、优先级和跟进建议。',
+    enterpriseLeadAiChatSuggestedRetryResearchDraft:
+      '重试调研，并只保留有明确来源和需求信号的客户。',
+    enterpriseLeadAiChatSuggestedRankCandidatesDraft:
+      '按优先级排序这些客户，并说明每个客户的跟进理由。',
+    enterpriseLeadAiChatSuggestedDraftFollowUpDraft: '基于这些客户生成第一轮销售跟进话术。',
     enterpriseLeadAiChatFailed: 'AI 对话失败，请稍后重试。',
     enterpriseLeadAiChatUsedAgent: '使用了 {agent}',
     enterpriseLeadAiChatRouteReason: '因为{reason}',
@@ -3073,7 +3163,15 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadAiChatAdjustInstructionPlaceholder: '例如：补充客户行业、证据来源和下一步动作。',
     enterpriseLeadAiChatAdjustApplyTo: '应用范围',
     enterpriseLeadAiChatAdjustRetryOnly: '仅本次重试',
+    enterpriseLeadAiChatAdjustRetryOnlyDesc: '只生成一条修正指令，不改变空间习惯。',
+    enterpriseLeadAiChatAdjustSaveAgentHabit: '保存到这个 Agent 的执行习惯',
+    enterpriseLeadAiChatAdjustSaveAgentHabitDesc: '之后这个 Agent 在本空间回答时都会参考。',
+    enterpriseLeadAiChatAdjustSaveHabit: '保存为本空间输出习惯',
+    enterpriseLeadAiChatAdjustSaveHabitDesc: '之后本空间的 Agent 回答都会参考这条要求。',
     enterpriseLeadAiChatAdjustRetry: '重新回答',
+    enterpriseLeadAiChatAdjustSaveAndRetry: '保存并重新回答',
+    enterpriseLeadAiChatAdjustSavingHabit: '正在保存',
+    enterpriseLeadAiChatAdjustSaveHabitFailed: '保存输出习惯失败，请稍后重试。',
     enterpriseLeadAiChatAdjustRetryDraft: '请让{agent} 按以下调整重新回答上一条：\n\n{instruction}',
     enterpriseLeadKnowledgeReadOnly: '只读知识',
     enterpriseLeadKnowledgeLoadFailed: '最近任务资料加载失败，已先显示工作区画像。',
@@ -3105,25 +3203,79 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadKnowledgeKindSource: '来源',
     enterpriseLeadKnowledgeKindDeliverable: '成果',
     enterpriseLeadKnowledgeKindArchive: '归档',
+    enterpriseLeadKnowledgePageTitle: '管理文档，查看 AI 提取的知识',
     enterpriseLeadKnowledgeMaintenanceSubtitle:
-      '维护当前空间会被 AI 对话、工作台 Agent 和任务成果引用的公司资料与规则。',
+      '文档库给人阅读和维护；AI 从文档中提取可被 Agent 使用的事实、规则和卖点，并标明来源。',
     enterpriseLeadKnowledgeSyncSources: '同步来源',
-    enterpriseLeadKnowledgeSourcesSynced: '已同步来源，当前版本会优先使用已确认的空间资料。',
+    enterpriseLeadKnowledgeSyncDocuments: '同步文档',
+    enterpriseLeadKnowledgeSourcesSynced: '已同步文档来源，并更新向量检索库。',
     enterpriseLeadKnowledgeMaintainCompany: '维护公司资料',
     enterpriseLeadKnowledgeAddContent: '添加内容',
+    enterpriseLeadKnowledgeAddDocument: '添加文档',
     enterpriseLeadKnowledgeEditableMetric: '可维护资料',
     enterpriseLeadKnowledgeCategoryMetric: '知识分类',
     enterpriseLeadKnowledgeMissingMetric: '待补充信息',
     enterpriseLeadKnowledgeReadonlyMetric: '只读上下文',
+    enterpriseLeadKnowledgeDocumentMetric: '文档库',
+    enterpriseLeadKnowledgeAiKnowledgeMetric: 'AI 已提取知识',
+    enterpriseLeadKnowledgePendingMetric: '待确认',
+    enterpriseLeadKnowledgeReferencedMetric: '来源上下文',
+    enterpriseLeadKnowledgeDocumentLibraryTitle: '文档库',
+    enterpriseLeadKnowledgeAiKnowledgeTitle: 'AI 知识',
+    enterpriseLeadKnowledgeDocumentLibrarySubtitle: '管理原始资料，AI 会从这些文档中提取知识。',
+    enterpriseLeadKnowledgeAiKnowledgeSubtitle:
+      '查看 AI 已提取的事实、规则和卖点，确认后可供 Agent 使用。',
     enterpriseLeadKnowledgeCategories: '分类',
     enterpriseLeadKnowledgeWorkspaceOnly: '只在当前空间生效',
     enterpriseLeadKnowledgeSearchPlaceholder: '搜索产品、客户、规则、来源',
+    enterpriseLeadKnowledgeDocumentSearchPlaceholder: '搜索文档',
+    enterpriseLeadKnowledgeKnowledgeSearchPlaceholder: '搜索知识、来源、分类',
     enterpriseLeadKnowledgeFilterAll: '全部状态',
     enterpriseLeadKnowledgeFilterEditable: '可维护',
     enterpriseLeadKnowledgeFilterReadonly: '只读',
+    enterpriseLeadKnowledgeDocumentStatusAll: '全部状态',
+    enterpriseLeadKnowledgeDocumentStatusPending: '待提取',
+    enterpriseLeadKnowledgeDocumentStatusExtracting: '提取中',
+    enterpriseLeadKnowledgeDocumentStatusExtracted: '已提取',
+    enterpriseLeadKnowledgeDocumentStatusFailed: '提取失败',
+    enterpriseLeadKnowledgeVectorStatusPending: '待入库',
+    enterpriseLeadKnowledgeVectorStatusIndexing: '入库中',
+    enterpriseLeadKnowledgeVectorStatusIndexed: '已入库',
+    enterpriseLeadKnowledgeVectorStatusFailed: '入库失败',
     enterpriseLeadKnowledgeItemUnit: '条',
     enterpriseLeadKnowledgeStatusEditable: '可维护',
+    enterpriseLeadKnowledgeStatusPendingConfirmation: '待确认',
+    enterpriseLeadKnowledgeStatusConfirmed: '已确认',
     enterpriseLeadKnowledgeStatusReadonly: '只读',
+    enterpriseLeadKnowledgeTableDocument: '文档',
+    enterpriseLeadKnowledgeTableKnowledge: '知识',
+    enterpriseLeadKnowledgeTableMeta: '分类 / 状态',
+    enterpriseLeadKnowledgeTableType: '类型',
+    enterpriseLeadKnowledgeTableCategory: '分类',
+    enterpriseLeadKnowledgeTableStatus: '状态',
+    enterpriseLeadKnowledgeTableAiExtract: 'AI 提取',
+    enterpriseLeadKnowledgeTableVectorIndex: '向量入库',
+    enterpriseLeadKnowledgeTableSource: '来源',
+    enterpriseLeadKnowledgeTableUsage: '使用范围',
+    enterpriseLeadKnowledgeTableUpdated: '更新时间',
+    enterpriseLeadKnowledgeTableActions: '操作',
+    enterpriseLeadKnowledgeDocumentExtractedText: '已生成可用知识',
+    enterpriseLeadKnowledgeDocumentPendingExtractText: '等待开始提取',
+    enterpriseLeadKnowledgeDocumentExtractingText: '正在提取 AI 知识',
+    enterpriseLeadKnowledgeDocumentFailedExtractText: '提取失败，可重新提取',
+    enterpriseLeadKnowledgeVectorIndexedText: '可检索切片 {count} 个',
+    enterpriseLeadKnowledgeVectorPendingText: '等待可检索正文',
+    enterpriseLeadKnowledgeVectorIndexingText: '正在写入向量库',
+    enterpriseLeadKnowledgeVectorFailedText: '向量入库失败',
+    enterpriseLeadKnowledgeMessageSuccessLabel: '成功',
+    enterpriseLeadKnowledgeMessageFailureLabel: '失败',
+    enterpriseLeadKnowledgeMessageExceptionLabel: '异常',
+    enterpriseLeadKnowledgeUnknownTime: '未知',
+    enterpriseLeadKnowledgeViewKnowledge: '查看知识',
+    enterpriseLeadKnowledgePreviewDocument: '预览文档',
+    enterpriseLeadKnowledgeReextract: '重新提取',
+    enterpriseLeadKnowledgeReextractQueued: '已加入重新提取队列。',
+    enterpriseLeadKnowledgeDocumentEmpty: '暂无文档。添加文档后，AI 会从中提取可用知识。',
     enterpriseLeadKnowledgeNoMatches: '没有匹配的知识。可以换个关键词，或添加一条新内容。',
     enterpriseLeadKnowledgeDetailTitle: '详情',
     enterpriseLeadKnowledgeDetailScope: '范围',
@@ -3133,6 +3285,9 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadKnowledgeSourceGenerated: '来源 / 任务结果',
     enterpriseLeadKnowledgeUsageEditable: 'AI 对话和工作台 Agent 会读取这条资料。',
     enterpriseLeadKnowledgeUsageReadonly: '这条内容来自来源资料或任务结果，本轮先作为只读上下文。',
+    enterpriseLeadKnowledgeUsageAgentReadable: 'Agent 可用',
+    enterpriseLeadKnowledgeUsagePendingConfirm: '确认后可用',
+    enterpriseLeadKnowledgeUsageSourceReadable: '仅作为来源线索',
     enterpriseLeadKnowledgeSuggestedAction: '建议动作',
     enterpriseLeadKnowledgeSuggestedEditable:
       '可以直接编辑、归档或确认入库，保存后会更新当前空间资料。',
@@ -3140,11 +3295,71 @@ const translations: Record<LanguageType, Record<string, string>> = {
       '如需长期维护，建议复制关键信息后添加为公司资料或手动知识。',
     enterpriseLeadKnowledgeArchiveAction: '归档',
     enterpriseLeadKnowledgeConfirmAction: '确认入库',
+    enterpriseLeadKnowledgeConfirmCompactAction: '确认',
     enterpriseLeadKnowledgeNoSelection: '选择一条知识后查看详情和维护动作。',
     enterpriseLeadKnowledgeCompanyModalTitle: '维护公司资料',
+    enterpriseLeadKnowledgeCompanyGroupOverview: '基础资料',
+    enterpriseLeadKnowledgeCompanyGroupProducts: '产品能力',
+    enterpriseLeadKnowledgeCompanyGroupCustomers: '客户场景',
+    enterpriseLeadKnowledgeCompanyGroupSelling: '销售资料',
+    enterpriseLeadKnowledgeCompanyGroupRules: '规则与缺口',
+    enterpriseLeadKnowledgeCompanyEditorHint:
+      '左侧选择一类资料，右侧只编辑当前内容，避免所有字段混在一起。',
+    enterpriseLeadKnowledgeCompanyFieldEditHint:
+      '多条内容按行维护；保存后会写回当前空间资料。',
+    enterpriseLeadKnowledgeCompanyFieldStats: '{count} 条内容',
+    enterpriseLeadKnowledgeCompanyFieldEmpty: '暂无内容',
     enterpriseLeadKnowledgeEditModalTitle: '编辑知识内容',
     enterpriseLeadKnowledgeAddModalTitle: '添加知识内容',
+    enterpriseLeadKnowledgeAddDocumentModalTitle: '添加文档',
+    enterpriseLeadKnowledgeEditDocumentModalTitle: '编辑文档',
+    enterpriseLeadKnowledgePreviewDocumentModalTitle: '预览文档',
+    enterpriseLeadKnowledgePreviewDocumentModalSubtitle:
+      '只读查看原始资料；AI 知识和重新提取作为次级动作保留在这里。',
+    enterpriseLeadKnowledgeEditDocumentModalSubtitle:
+      '快速维护文档名称、摘要和来源信息。',
+    enterpriseLeadKnowledgeAddDocumentModalSubtitle:
+      '维护文档信息和提取设置；完整正文在预览文档中查看。',
     enterpriseLeadKnowledgeModalSubtitle: '保存后只影响当前空间，不会改变其他空间。',
+    enterpriseLeadKnowledgeUploadTitle: '上传或登记一份资料',
+    enterpriseLeadKnowledgeUploadSubtitle: '选择本地文件后，系统会记录来源；不需要手写路径。',
+    enterpriseLeadKnowledgeSelectDocumentFile: '选择文件',
+    enterpriseLeadKnowledgeChangeDocumentFile: '更换文件',
+    enterpriseLeadKnowledgeDocumentSourceManaged: '来源由系统记录',
+    enterpriseLeadKnowledgeDocumentNameField: '文档名称',
+    enterpriseLeadKnowledgeDocumentCategoryField: '来源地址 / 路径',
+    enterpriseLeadKnowledgeDocumentSourceTypeField: '来源类型',
+    enterpriseLeadKnowledgeDocumentNoteField: '备注',
+    enterpriseLeadKnowledgeDocumentContentField: '可提取内容 / 备注',
+    enterpriseLeadKnowledgeDocumentContentPlaceholder:
+      '文本文件会自动读取内容；如文件无法读取，可在这里补充摘要或粘贴需要提取的内容。',
+    enterpriseLeadKnowledgeDocumentSummaryField: '人工摘要',
+    enterpriseLeadKnowledgeDocumentSummaryPlaceholder:
+      '补充给团队或 AI 看的摘要，例如适用场景、重点章节、提取目的。',
+    enterpriseLeadKnowledgeDocumentPreviewTitle: '文档内容预览',
+    enterpriseLeadKnowledgeDocumentPreviewSubtitle:
+      '正文用于 AI 提取；默认只读，避免误把整篇文档当成备注来编辑。',
+    enterpriseLeadKnowledgeExpandDocument: '展开全文',
+    enterpriseLeadKnowledgeCollapseDocument: '收起全文',
+    enterpriseLeadKnowledgeDocumentPreviewSearchPlaceholder:
+      '搜索正文，例如：月产能、联系方式、OEM',
+    enterpriseLeadKnowledgeDocumentPreviewExtractedBadge: '可用于提取',
+    enterpriseLeadKnowledgeDocumentPreviewStats: '约 {count} 字',
+    enterpriseLeadKnowledgeDocumentPreviewMatches: '命中 {count} 处',
+    enterpriseLeadKnowledgeDocumentPreviewEmpty:
+      '选择可读取的文本文件后，这里会显示正文预览；不可读取的文件仍可保存为来源资料。',
+    enterpriseLeadKnowledgeDocumentContentStatusTitle: '正文状态',
+    enterpriseLeadKnowledgeDocumentContentStatusEmpty: '暂无可提取正文',
+    enterpriseLeadKnowledgeDocumentTypeAuto: '自动识别',
+    enterpriseLeadKnowledgeDocumentTypeManual: '手动录入',
+    enterpriseLeadKnowledgeDocumentTypeConversation: '对话输入',
+    enterpriseLeadKnowledgeDocumentTypeFile: '本地文件',
+    enterpriseLeadKnowledgeDocumentTypeWeb: '网页链接',
+    enterpriseLeadKnowledgeDocumentTypeBlank: '空白资料',
+    enterpriseLeadKnowledgeDocumentTypeUnknown: '其他来源',
+    enterpriseLeadKnowledgeExtractAfterAdd: '保存后立即提取 AI 知识',
+    enterpriseLeadKnowledgeExtractAfterAddDesc:
+      'AI 会读取文档内容，提取事实、规则、卖点和证据片段。',
     enterpriseLeadKnowledgeCompanySummaryField: '公司介绍',
     enterpriseLeadKnowledgeProductListField: '产品列表',
     enterpriseLeadKnowledgeProductCapabilitiesField: '产品与能力',
@@ -3159,10 +3374,42 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadKnowledgeContentField: '正文',
     enterpriseLeadKnowledgeContentPlaceholder: '写入这条知识的事实、限制和适用场景。',
     enterpriseLeadKnowledgeModalHint: '多条内容请换行输入；保存后会写回当前空间资料。',
+    enterpriseLeadKnowledgeDocumentModalHint: '保存后会先进入文档库，提取结果会出现在 AI 知识表。',
+    enterpriseLeadKnowledgePreviewDocumentModalHint:
+      '预览不会修改文档；需要调整来源、摘要或类型时请使用编辑。',
+    enterpriseLeadKnowledgeAddAndExtract: '添加并提取',
+    enterpriseLeadKnowledgeSaveDocument: '保存文档',
+    enterpriseLeadKnowledgeUpdateDocument: '保存文档',
     enterpriseLeadKnowledgeSaveAction: '保存到知识库',
     enterpriseLeadKnowledgeSaveFailed: '保存失败，请稍后重试。',
+    enterpriseLeadKnowledgeUnexpectedError: '操作异常，请刷新后重试。',
     enterpriseLeadKnowledgeEmptyContentError: '请先填写知识内容。',
+    enterpriseLeadKnowledgeDocumentNameRequired: '请先填写文档名称。',
+    enterpriseLeadKnowledgeDocumentFileRequired: '请先选择要上传的文件。',
+    enterpriseLeadKnowledgeDocumentExtractTextRequired:
+      '当前文档没有可读取内容，无法立即提取。请上传文本文件，或在内容区补充可提取文本。',
+    enterpriseLeadKnowledgeDocumentMissingError: '没有找到这份文档，请刷新后重试。',
+    enterpriseLeadKnowledgeDocumentApiUnavailable:
+      '文档保存能力尚未加载，请重启应用后再试。',
     enterpriseLeadKnowledgeCompanySaved: '公司资料已更新。',
+    enterpriseLeadKnowledgeDocumentAdded: '文档已保存到文档库，当前状态为待提取。',
+    enterpriseLeadKnowledgeDocumentUpdated: '文档已更新。',
+    enterpriseLeadKnowledgeDocumentExtractStarted: '已开始提取 AI 知识。',
+    enterpriseLeadKnowledgeDocumentExtracted: 'AI 知识已提取并写入知识库。',
+    enterpriseLeadKnowledgeDocumentAddedAndExtracted: '文档已保存，AI 知识已提取。',
+    enterpriseLeadKnowledgeDocumentUpdatedAndExtracted: '文档已更新，AI 知识已重新提取。',
+    enterpriseLeadKnowledgeDocumentExtractFailed:
+      'AI 知识提取失败，请检查文档内容后重试。',
+    enterpriseLeadKnowledgeDocumentDeleted: '文档已删除。',
+    enterpriseLeadKnowledgeDeleteDocumentConfirm: '确定删除这份文档吗？相关 AI 知识不会自动删除。',
+    enterpriseLeadKnowledgeStartExtract: '开始提取',
+    enterpriseLeadKnowledgeChooseDocumentFile: '选择知识库文档',
+    enterpriseLeadKnowledgeFileSelectionUnavailable: '当前环境无法选择文件。',
+    enterpriseLeadKnowledgeFileSelectionFailed: '文件选择失败，请重试。',
+    enterpriseLeadKnowledgeFileTextTruncated: '文件内容较长，已读取前半部分用于提取。',
+    enterpriseLeadKnowledgeFileReadFailed: '文件内容读取失败，已保留文件来源。',
+    enterpriseLeadKnowledgeFileReadUnsupported:
+      '该文件类型暂不能直接读取内容，可保存后稍后处理或补充摘要。',
     enterpriseLeadKnowledgeItemAdded: '知识已添加到当前空间。',
     enterpriseLeadKnowledgeItemUpdated: '知识已更新。',
     enterpriseLeadKnowledgeItemArchived: '已归档，不再作为默认资料显示。',
@@ -3218,8 +3465,8 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadWorkbenchModeAgents: 'Agent 团队',
     enterpriseLeadWorkbenchAgentManagementTitle: 'Agent 团队',
     enterpriseLeadWorkbenchAgentManagementDesc:
-      '管理当前工作空间中会参与执行的 Agent 团队；名称、职责、提示词、模型和技能只在本空间生效。',
-    enterpriseLeadWorkbenchAgentCount: '9 个 Agent',
+      '管理当前工作空间中会提升选题、脚本、文案和私域转化质量的 Agent 团队；名称、职责、提示词、模型和技能只在本空间生效。',
+    enterpriseLeadWorkbenchAgentCount: '6 个内容 Agent',
     enterpriseLeadWorkbenchWorkspaceAgentCount: '{count} 个工作区 Agent',
     enterpriseLeadWorkbenchSystemAgentsTitle: '系统 Agent 模板',
     enterpriseLeadWorkbenchSystemAgentsDesc:
@@ -3342,12 +3589,122 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadWorkbenchOpenSkillSettingsAria: '打开 Agent 技能空间设置',
     enterpriseLeadWorkbenchClearSkillLimit: '清空技能限制',
     enterpriseLeadWorkbenchEditorBasicInfo: '基本信息',
+    enterpriseLeadWorkbenchEditorBasicInfoDesc:
+      '编辑这个 Agent 在当前工作空间里的名称、头像、职责说明和执行规范。',
     enterpriseLeadWorkbenchEditorExecution: '执行设定',
     enterpriseLeadWorkbenchEditorCapabilities: '能力配置',
     enterpriseLeadWorkbenchEditorAdvanced: '高级设置',
     enterpriseLeadWorkbenchEditorAdvancedDesc: '身份和系统提示词适合需要精调 Agent 行为时再打开。',
     enterpriseLeadWorkbenchExpandAdvancedSettings: '展开高级设置',
     enterpriseLeadWorkbenchCollapseAdvancedSettings: '收起高级设置',
+    enterpriseLeadWorkbenchStabilityTitle: '执行规范',
+    enterpriseLeadWorkbenchStabilityDesc:
+      '把稳定 Agent 需要遵守的做事方式写清楚，减少每次对话里的重复解释。',
+    enterpriseLeadWorkbenchStabilityWorkStyle: '工作方式',
+    enterpriseLeadWorkbenchStabilityWorkStyleHint: '定义判断顺序，避免跳步和直接下结论。',
+    enterpriseLeadWorkbenchStabilityWorkStyleDefault:
+      '先识别客户行业、采购意图和紧急程度；证据不足时列出缺失信息，不直接下结论。',
+    enterpriseLeadWorkbenchStabilityInputRequirements: '输入要求',
+    enterpriseLeadWorkbenchStabilityInputRequirementsHint: '说明哪些资料可作为判断依据。',
+    enterpriseLeadWorkbenchStabilityInputRequirementsDefault:
+      '优先使用客户行业、询盘内容、采购数量、预算范围、交期要求和历史沟通；缺少关键信息时标记为待补充。',
+    enterpriseLeadWorkbenchStabilityOutputFormat: '输出格式',
+    enterpriseLeadWorkbenchStabilityOutputFormatHint:
+      '固定结构，方便阅读和后续 Agent 接力。',
+    enterpriseLeadWorkbenchStabilityOutputFormatDefault:
+      '客户优先级\n判断依据\n风险或缺失信息\n建议跟进动作',
+    enterpriseLeadWorkbenchStabilityGuardrails: '边界规则',
+    enterpriseLeadWorkbenchStabilityGuardrailsHint:
+      '限制不能猜、不能承诺、需要人工确认的情况。',
+    enterpriseLeadWorkbenchStabilityGuardrailsDefault:
+      '不编造客户需求，不承诺价格、交期或合作结果；需要外发或人工确认时明确标记。',
+    enterpriseLeadWorkbenchStabilityPromptTitle: '# Agent 稳定执行规范',
+    enterpriseLeadWorkbenchCalibrationPromptTitle: '# Agent 校准示例',
+    enterpriseLeadWorkbenchCalibrationTitle: '示例与校验',
+    enterpriseLeadWorkbenchCalibrationDesc:
+      '用典型任务检查这个 Agent 是否按固定结构回答，并遵守缺失信息和人工确认边界。',
+    enterpriseLeadWorkbenchCalibrationSampleTitle: '示例输入',
+    enterpriseLeadWorkbenchCalibrationSampleHint: '用户会这样提问',
+    enterpriseLeadWorkbenchCalibrationInputContent: '输入内容',
+    enterpriseLeadWorkbenchCalibrationExpectedTitle: '期望输出',
+    enterpriseLeadWorkbenchCalibrationExpectedHint: 'Agent 应该稳定交付',
+    enterpriseLeadWorkbenchCalibrationExpectedPriority: '优先级',
+    enterpriseLeadWorkbenchCalibrationExpectedReason: '判断依据',
+    enterpriseLeadWorkbenchCalibrationExpectedMissing: '缺失信息',
+    enterpriseLeadWorkbenchCalibrationExpectedNextStep: '下一步动作',
+    enterpriseLeadWorkbenchCalibrationChecksTitle: '稳定性检查',
+    enterpriseLeadWorkbenchCalibrationSaveExample: '保存示例',
+    enterpriseLeadWorkbenchCalibrationRunExample: '试运行',
+    enterpriseLeadWorkbenchCalibrationRunningShort: '运行中',
+    enterpriseLeadWorkbenchCalibrationRunning: '正在用当前 Agent 草稿试运行这个示例...',
+    enterpriseLeadWorkbenchCalibrationFailed: '试运行失败，请检查模型配置后重试。',
+    enterpriseLeadWorkbenchCalibrationResultTitle: '试运行结果',
+    enterpriseLeadWorkbenchCalibrationCheckPriority: '优先级',
+    enterpriseLeadWorkbenchCalibrationCheckReason: '判断依据',
+    enterpriseLeadWorkbenchCalibrationCheckMissing: '缺失信息',
+    enterpriseLeadWorkbenchCalibrationCheckNextStep: '下一步动作',
+    enterpriseLeadWorkbenchCalibrationCheckPassed: '已包含',
+    enterpriseLeadWorkbenchCalibrationCheckNeedsReview: '需检查',
+    enterpriseLeadWorkbenchCalibrationHighIntentTitle: '高意向询盘',
+    enterpriseLeadWorkbenchCalibrationHighIntentDesc:
+      '信息较完整，Agent 应该给出明确优先级和下一步动作。',
+    enterpriseLeadWorkbenchCalibrationHighIntentSample:
+      '客户来自汽车零部件行业，询问 5000 件铝合金精密件，要求两周内交样，已提供图纸但未说明目标价格。',
+    enterpriseLeadWorkbenchCalibrationHighIntentNote:
+      '保留真实业务表达，不需要写得像提示词。',
+    enterpriseLeadWorkbenchCalibrationHighIntentPriority: '高',
+    enterpriseLeadWorkbenchCalibrationHighIntentReason:
+      '行业匹配，已有图纸，数量明确，交样时间具体。',
+    enterpriseLeadWorkbenchCalibrationHighIntentMissing:
+      '目标价格、材料牌号、验收标准仍需补充。',
+    enterpriseLeadWorkbenchCalibrationHighIntentNextStep:
+      '安排技术评估图纸，并由销售确认预算和交期可行性。',
+    enterpriseLeadWorkbenchCalibrationHighIntentCheck1:
+      '输出必须包含客户优先级、判断依据、缺失信息和下一步动作。',
+    enterpriseLeadWorkbenchCalibrationHighIntentCheck2:
+      '目标价格缺失时只能标记待补充，不能自行推测。',
+    enterpriseLeadWorkbenchCalibrationHighIntentCheck3:
+      '涉及报价、交期或承诺时提示人工确认。',
+    enterpriseLeadWorkbenchCalibrationMissingInfoTitle: '信息不足',
+    enterpriseLeadWorkbenchCalibrationMissingInfoDesc:
+      '资料不够时，Agent 应该先列待补充信息，而不是直接判断。',
+    enterpriseLeadWorkbenchCalibrationMissingInfoSample:
+      '客户只说“你们能做精密加工吗？大概多少钱？”未提供图纸、材料、数量、用途和交期。',
+    enterpriseLeadWorkbenchCalibrationMissingInfoNote:
+      '这个样例用来训练 Agent 不要在信息不足时猜测价格或优先级。',
+    enterpriseLeadWorkbenchCalibrationMissingInfoPriority: '待判断',
+    enterpriseLeadWorkbenchCalibrationMissingInfoReason:
+      '客户表达了加工需求，但缺少图纸、材料、数量、用途和交期，暂时不能判断价值和紧急程度。',
+    enterpriseLeadWorkbenchCalibrationMissingInfoMissing:
+      '图纸或样品照片、材料牌号、尺寸公差、采购数量、交期要求、应用场景。',
+    enterpriseLeadWorkbenchCalibrationMissingInfoNextStep:
+      '回复客户补充资料清单，先收集图纸、材料和数量，再进行技术评估。',
+    enterpriseLeadWorkbenchCalibrationMissingInfoCheck1:
+      '必须明确标记信息不足或待判断。',
+    enterpriseLeadWorkbenchCalibrationMissingInfoCheck2:
+      '不能给出价格、交期或确定优先级。',
+    enterpriseLeadWorkbenchCalibrationMissingInfoCheck3:
+      '必须给出下一步需要客户补充的资料清单。',
+    enterpriseLeadWorkbenchCalibrationManualReviewTitle: '需要人工确认',
+    enterpriseLeadWorkbenchCalibrationManualReviewDesc:
+      '涉及报价、交期、外发承诺时，Agent 应该主动标记人工确认。',
+    enterpriseLeadWorkbenchCalibrationManualReviewSample:
+      '客户要求今天给正式报价，并希望承诺 7 天交货；当前只有样品照片，没有图纸、材料和验收标准。',
+    enterpriseLeadWorkbenchCalibrationManualReviewNote:
+      '这个样例用来训练 Agent 主动识别外发风险和人工审批边界。',
+    enterpriseLeadWorkbenchCalibrationManualReviewPriority: '中高，需人工确认',
+    enterpriseLeadWorkbenchCalibrationManualReviewReason:
+      '客户时间要求明确，但资料不足，报价和交期都涉及承诺风险。',
+    enterpriseLeadWorkbenchCalibrationManualReviewMissing:
+      '正式图纸、材料牌号、数量、验收标准、可接受交期和报价口径。',
+    enterpriseLeadWorkbenchCalibrationManualReviewNextStep:
+      '先标记人工确认，由技术和销售共同评估后再对外回复报价和交期。',
+    enterpriseLeadWorkbenchCalibrationManualReviewCheck1:
+      '必须标记人工确认，不能直接生成正式承诺。',
+    enterpriseLeadWorkbenchCalibrationManualReviewCheck2:
+      '不能承诺价格、交期、产能或合作结果。',
+    enterpriseLeadWorkbenchCalibrationManualReviewCheck3:
+      '必须说明需要技术和销售确认后再外发。',
     enterpriseLeadWorkbenchAgentChat: '对话',
     enterpriseLeadWorkbenchAgentEdit: '编辑',
     enterpriseLeadWorkbenchAgentEnabled: '已启用',
@@ -3363,7 +3720,37 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadWorkbenchModelDesc: '配置该空间运行 Agent 工作流时使用的大模型厂商信息。',
     enterpriseLeadWorkbenchUseDefaultModel: '使用模型设置中的默认模型',
     enterpriseLeadWorkbenchSettingsQuickDesc:
-      '完成下面 3 步就可以开始使用。高级模型、技能和平台细节都先收起来，避免一上来就填很多表单。',
+      '这里先确认空间能否开始处理客户线索。模型、技能、调研和投递细节可以在高级设置里再调整。',
+    enterpriseLeadWorkbenchReadinessReadyTitle: '推荐配置已就绪',
+    enterpriseLeadWorkbenchReadinessNeedsSetupTitle: '基础配置待补齐',
+    enterpriseLeadWorkbenchReadinessCanStart: '可开始任务',
+    enterpriseLeadWorkbenchReadinessReadyDesc:
+      '当前空间可以开始处理客户线索；需要联网调研或投递渠道时，再补充对应授权。',
+    enterpriseLeadWorkbenchReadinessNeedsSetupDesc:
+      '先补齐默认模型和空间能力，之后就能开始运行空间任务。',
+    enterpriseLeadWorkbenchReadinessAdvancedHint: '高级项已收起',
+    enterpriseLeadWorkbenchBasicsTitle: '基础配置',
+    enterpriseLeadWorkbenchBasicsDesc: '只保留开始任务前必须确认的信息。',
+    enterpriseLeadWorkbenchBasicModelTitle: '默认模型',
+    enterpriseLeadWorkbenchBasicModelDesc: '更换模型和连接测试在高级模型设置里处理。',
+    enterpriseLeadWorkbenchBasicSkillTitle: '空间能力',
+    enterpriseLeadWorkbenchBasicSkillDesc:
+      '当前包含 {count} 个技能，可在技能明细里手动调整。',
+    enterpriseLeadWorkbenchBasicResearchTitle: '联网调研',
+    enterpriseLeadWorkbenchBasicResearchDesc:
+      '默认不强制接入外部服务；需要网页资料时再开启。',
+    enterpriseLeadWorkbenchBasicOutputTitle: '输出目标',
+    enterpriseLeadWorkbenchBasicOutputDesc: '投递渠道和风控规则在高级设置中调整。',
+    enterpriseLeadWorkbenchResearchNoExternalReady: '无需联网授权也可开始',
+    enterpriseLeadWorkbenchResearchNoExternalDesc:
+      '先使用本地资料和粘贴链接，后续再接入搜索或抓取。',
+    enterpriseLeadWorkbenchResearchConnectedDesc:
+      '服务商已启用，API Key 可在外部调研服务商中维护。',
+    enterpriseLeadWorkbenchResearchNeedsKeyDesc:
+      '已选择联网方式，API Key 可稍后在高级设置中补充。',
+    enterpriseLeadWorkbenchAdvancedSettingsTitle: '高级设置',
+    enterpriseLeadWorkbenchAdvancedSettingsDesc:
+      '模型密钥、技能明细、调研来源和内容投递都放在这里，按需要打开。',
     enterpriseLeadWorkbenchQuickSetupTitle: '快速设置',
     enterpriseLeadWorkbenchQuickSetupDesc:
       '按顺序完成即可运行空间任务。系统会先使用推荐值，后续再细调。',
@@ -3379,8 +3766,9 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadWorkbenchQuickSkillsSelected: '个技能已选',
     enterpriseLeadWorkbenchQuickSkillsPending: '待保存',
     enterpriseLeadWorkbenchQuickResearchOptional: '可稍后补',
-    enterpriseLeadWorkbenchQuickSaveDockTitle: '完成快速设置后即可开始任务',
-    enterpriseLeadWorkbenchQuickSaveDockDesc: '当前只需要保存能力包选择；调研 Key 可以之后补。',
+    enterpriseLeadWorkbenchQuickSaveDockTitle: '保存基础配置',
+    enterpriseLeadWorkbenchQuickSaveDockDesc:
+      '联网 Key 和投递细节可以之后在高级设置里补充。',
     enterpriseLeadWorkbenchSkillPresetAcquisitionContent: '获客内容包',
     enterpriseLeadWorkbenchSkillPresetAcquisitionContentDesc: '调研、选题、销售话术、风控审核。',
     enterpriseLeadWorkbenchSkillPresetResearchAnalysis: '调研分析包',
@@ -3444,6 +3832,18 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadWorkbenchStatusConfigured: '已配',
     enterpriseLeadWorkbenchStatusUnconfigured: '未配',
     enterpriseLeadWorkbenchStatusAdd: '添加',
+    enterpriseLeadWorkbenchAgentProductSellingPointRole: '卖点提炼',
+    enterpriseLeadWorkbenchAgentProductSellingPointCapabilitySummary: '痛点 / 背书 / 差异化',
+    enterpriseLeadWorkbenchAgentTopicPlanningRole: '选题策划',
+    enterpriseLeadWorkbenchAgentTopicPlanningCapabilitySummary: '标题 / 爆点 / 内容系列',
+    enterpriseLeadWorkbenchAgentShortVideoScriptRole: '短视频脚本',
+    enterpriseLeadWorkbenchAgentShortVideoScriptCapabilitySummary: '钩子 / 口播 / 分镜',
+    enterpriseLeadWorkbenchAgentSocialCopyRole: '图文文案',
+    enterpriseLeadWorkbenchAgentSocialCopyCapabilitySummary: '小红书 / 朋友圈 / 海报',
+    enterpriseLeadWorkbenchAgentPrivateDomainConversionRole: '私域转化',
+    enterpriseLeadWorkbenchAgentPrivateDomainConversionCapabilitySummary: '私聊 / 社群 / 成交话术',
+    enterpriseLeadWorkbenchAgentContentQualityRole: '内容质检',
+    enterpriseLeadWorkbenchAgentContentQualityCapabilitySummary: '去 AI 味 / 风险 / 转化点',
     enterpriseLeadWorkbenchAgentControllerRole: '拆解与调度',
     enterpriseLeadWorkbenchAgentControllerCapabilitySummary: '总控 / 流程 / 汇总',
     enterpriseLeadWorkbenchAgentProductUnderstandingRole: '画像与卖点',
@@ -4935,6 +5335,7 @@ const translations: Record<LanguageType, Record<string, string>> = {
     agentIMBoundToOther: '→ {agent}',
     agentIMBindHint: 'Select IM channels this Agent responds to',
     agentCreateFailed: 'Failed to create Agent',
+    agentGlobalCreateUnavailable: 'Global agents only support system Agents. Create custom Agents inside a workspace.',
     agentSaveSuccess: 'Agent settings saved',
     agentSaveFeedbackSeparator: '. ',
     agentSaveFailed: 'Failed to save Agent settings',
@@ -6637,6 +7038,53 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadNoDeliverables: 'No deliverables yet.',
     enterpriseLeadNoArchives: 'No archives yet.',
     enterpriseLeadArchived: 'Archived',
+    enterpriseLeadAgentRoleProductSellingPointTitle: 'Product Selling Point Agent',
+    enterpriseLeadAgentRoleProductSellingPointShortLabel: 'SELL',
+    enterpriseLeadAgentRoleProductSellingPointDescription:
+      'Extracts product strengths, user pains, trust signals, and differentiation.',
+    enterpriseLeadAgentRoleProductSellingPointInput:
+      'Company material, product material, target users, existing content material',
+    enterpriseLeadAgentRoleProductSellingPointOutput:
+      'Core selling points, user pains, trust signals, content angles',
+    enterpriseLeadAgentRoleTopicPlanningTitle: 'Topic Planning Agent',
+    enterpriseLeadAgentRoleTopicPlanningShortLabel: 'TOP',
+    enterpriseLeadAgentRoleTopicPlanningDescription:
+      'Generates topics, titles, hooks, content series, and platform angles.',
+    enterpriseLeadAgentRoleTopicPlanningInput:
+      'Product selling points, target users, platform preference, content goal',
+    enterpriseLeadAgentRoleTopicPlanningOutput:
+      'Topic list, title directions, content series, recommended formats',
+    enterpriseLeadAgentRoleShortVideoScriptTitle: 'Short Video Script Agent',
+    enterpriseLeadAgentRoleShortVideoScriptShortLabel: 'VID',
+    enterpriseLeadAgentRoleShortVideoScriptDescription:
+      'Creates short-video hooks, spoken scripts, scene beats, and calls to action.',
+    enterpriseLeadAgentRoleShortVideoScriptInput:
+      'Product selling points, topic angle, platform preference, target duration',
+    enterpriseLeadAgentRoleShortVideoScriptOutput:
+      'First-three-second hook, spoken script, shot suggestions, CTA',
+    enterpriseLeadAgentRoleSocialCopyTitle: 'Social Copy Agent',
+    enterpriseLeadAgentRoleSocialCopyShortLabel: 'COPY',
+    enterpriseLeadAgentRoleSocialCopyDescription:
+      'Creates WeChat Moments, Xiaohongshu, official-account, poster, and seeding copy.',
+    enterpriseLeadAgentRoleSocialCopyInput:
+      'Product selling points, platform, target users, conversion goal',
+    enterpriseLeadAgentRoleSocialCopyOutput: 'Platform copy, title, body, action prompt',
+    enterpriseLeadAgentRolePrivateDomainConversionTitle: 'Private-Domain Conversion Agent',
+    enterpriseLeadAgentRolePrivateDomainConversionShortLabel: 'DM',
+    enterpriseLeadAgentRolePrivateDomainConversionDescription:
+      'Creates WeChat DM, community follow-up, objection handling, and conversion scripts.',
+    enterpriseLeadAgentRolePrivateDomainConversionInput:
+      'Content result, customer stage, common concerns, follow-up goal',
+    enterpriseLeadAgentRolePrivateDomainConversionOutput:
+      'DM scripts, community scripts, follow-up rhythm, conversion CTA',
+    enterpriseLeadAgentRoleContentQualityTitle: 'Content Quality Agent',
+    enterpriseLeadAgentRoleContentQualityShortLabel: 'QA',
+    enterpriseLeadAgentRoleContentQualityDescription:
+      'Checks whether content is generic, AI-like, unsupported, or missing conversion points, then rewrites it.',
+    enterpriseLeadAgentRoleContentQualityInput:
+      'Content draft, platform requirements, brand tone, prohibited expressions',
+    enterpriseLeadAgentRoleContentQualityOutput:
+      'Quality review, issue list, optimized version, publishing reminders',
     enterpriseLeadAgentRoleControllerTitle: 'Controller Agent',
     enterpriseLeadAgentRoleControllerShortLabel: 'CTL',
     enterpriseLeadAgentRoleControllerDescription:
@@ -6758,9 +7206,25 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadWorkspacePagePreparingTitle: 'Page in preparation',
     enterpriseLeadWorkspacePagePreparingDescription:
       'This page will receive its full workflow in a later task. The stable entry point is available now.',
+    enterpriseLeadCoworkDraftPromptHeader: 'Enterprise lead workspace context',
+    enterpriseLeadCoworkDraftPromptIntro: 'Current workspace: {name}',
+    enterpriseLeadCoworkDraftPromptCompanySummary: 'Company summary',
+    enterpriseLeadCoworkDraftPromptProducts: 'Products/services',
+    enterpriseLeadCoworkDraftPromptCapabilities: 'Product capabilities',
+    enterpriseLeadCoworkDraftPromptTargetCustomers: 'Target customers',
+    enterpriseLeadCoworkDraftPromptScenarios: 'Application scenarios',
+    enterpriseLeadCoworkDraftPromptSellingPoints: 'Core selling points',
+    enterpriseLeadCoworkDraftPromptContactRules: 'Outreach rules',
+    enterpriseLeadCoworkDraftPromptProhibitedClaims: 'Prohibited claims',
+    enterpriseLeadCoworkDraftPromptMissingValue: 'Not filled in',
+    enterpriseLeadCoworkDraftPromptLabelSeparator: ': ',
+    enterpriseLeadCoworkDraftPromptListSeparator: ', ',
+    enterpriseLeadCoworkDraftPromptAsk:
+      'Please continue based on the enterprise lead workspace context above.',
     enterpriseLeadWorkspaceSearchDescription:
       'Search this workspace conversations, profile, sources, and Agent configuration.',
     enterpriseLeadWorkspaceSearchInputLabel: 'Search current workspace',
+    enterpriseLeadWorkspaceChatSearchPlaceholder: 'Search workspace conversations...',
     enterpriseLeadWorkspaceSearchPlaceholder:
       'Search conversations, products, customers, sources, rules, or Agents',
     enterpriseLeadWorkspaceSearchResultCount: '{count} results',
@@ -6780,6 +7244,7 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadWorkspaceSearchAgentFallback: 'Current workspace Agent.',
     enterpriseLeadWorkspaceSidebarConversationRecords: 'Conversation records',
     enterpriseLeadWorkspaceSidebarConversations: 'Conversations',
+    enterpriseLeadWorkspaceSidebarNoConversations: 'No conversations yet',
     enterpriseLeadWorkspaceDeleteConversation: 'Delete conversation',
     enterpriseLeadWorkspaceDeleteConversationAria: 'Delete conversation {title}',
     enterpriseLeadWorkspaceDeleteConversationTitle: 'Delete "{title}"?',
@@ -6821,7 +7286,7 @@ const translations: Record<LanguageType, Record<string, string>> = {
       'Example: research 20 automation equipment factories and draft the first sales message',
     enterpriseLeadAiChatSend: 'Send',
     enterpriseLeadAiChatSending: 'Sending...',
-    enterpriseLeadAiChatThinking: 'Working',
+    enterpriseLeadAiChatThinking: 'Thinking',
     enterpriseLeadAiChatPendingAgent: 'Choosing Agent',
     enterpriseLeadAiChatPendingResearch: 'Researching',
     enterpriseLeadAiChatPendingResearchSkipped: 'Skipping research',
@@ -6831,13 +7296,15 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadAiChatAgentAutoDesc: 'Automatically choose the Agent this task needs',
     enterpriseLeadAiChatAgentSpecificDesc: 'Route this message to a dedicated role',
     enterpriseLeadAiChatInputLabel: 'Chat message',
-    enterpriseLeadAiChatAgentAll: 'Auto',
+    enterpriseLeadAiChatAgentAll: 'Auto Team',
     enterpriseLeadAiChatAddContext: 'Add context',
     enterpriseLeadAiChatCapabilityLabel: 'Workspace abilities',
     enterpriseLeadAiChatCapabilityAgents: '{count} Agents',
     enterpriseLeadAiChatCapabilityResearchEnabled: 'Research allowed',
     enterpriseLeadAiChatCapabilityResearchDisabled: 'Research not configured',
     enterpriseLeadAiChatCapabilityKnowledge: 'Use knowledge base',
+    enterpriseLeadAiChatCapabilityWorkspaceHabits: '{count} workspace habits',
+    enterpriseLeadAiChatCapabilityAgentHabits: '{count} Agent habits',
     enterpriseLeadAiChatUserRole: 'Me',
     enterpriseLeadAiChatAssistantRole: 'Assistant',
     enterpriseLeadAiChatEmpty:
@@ -6845,6 +7312,43 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadAiChatResearchSkipped: 'Research skipped',
     enterpriseLeadAiChatResearchCompleted: 'Research completed',
     enterpriseLeadAiChatResearchFailed: 'Research failed',
+    enterpriseLeadAiChatProcessToggle: 'Process',
+    enterpriseLeadAiChatProcessTitle: 'Process',
+    enterpriseLeadAiChatProcessStepCount: '{count} steps',
+    enterpriseLeadAiChatProcessStepRouting: 'Understand task',
+    enterpriseLeadAiChatProcessStepResearch: 'Research',
+    enterpriseLeadAiChatProcessStepAgent: 'Agent collaboration',
+    enterpriseLeadAiChatProcessStepAnswer: 'Write answer',
+    enterpriseLeadAiChatProcessResearchCompleted: 'Research completed',
+    enterpriseLeadAiChatProcessResearchFailed: 'Research failed',
+    enterpriseLeadAiChatProcessResearchSkipped: 'Research skipped',
+    enterpriseLeadAiChatProcessResearchPending: 'Research pending',
+    enterpriseLeadAiChatProcessReady: 'Completed',
+    enterpriseLeadAiChatProcessNoDetails: 'No extra details',
+    enterpriseLeadAiChatQualityLabel: 'Output status',
+    enterpriseLeadAiChatQualityCopyReady: 'Copy-ready',
+    enterpriseLeadAiChatQualityMultiAgent: 'Multi-Agent synthesis',
+    enterpriseLeadAiChatQualityRiskChecked: 'Risk checked',
+    enterpriseLeadAiChatQualityResearchCompleted: 'Research completed',
+    enterpriseLeadAiChatQualityResearchLimited: 'Research limited',
+    enterpriseLeadAiChatSuggestedContinueSearch: 'Search real companies',
+    enterpriseLeadAiChatSuggestedScorePastedList: 'Score pasted list',
+    enterpriseLeadAiChatSuggestedBuildScreeningSheet: 'Build screening sheet',
+    enterpriseLeadAiChatSuggestedRetryResearch: 'Retry research',
+    enterpriseLeadAiChatSuggestedRankCandidates: 'Rank by priority',
+    enterpriseLeadAiChatSuggestedDraftFollowUp: 'Draft follow-up',
+    enterpriseLeadAiChatSuggestedContinueSearchDraft:
+      'Continue searching for real companies and keep only customers with procurement, expansion, tender, or RFQ signals.',
+    enterpriseLeadAiChatSuggestedScorePastedListDraft:
+      'I will paste a customer list. Please score each lead by fit, demand strength, and likelihood to close.',
+    enterpriseLeadAiChatSuggestedBuildScreeningSheetDraft:
+      'Generate a customer screening table with company, industry, demand signal, source, priority, and follow-up suggestion.',
+    enterpriseLeadAiChatSuggestedRetryResearchDraft:
+      'Retry the research and keep only customers with clear sources and demand signals.',
+    enterpriseLeadAiChatSuggestedRankCandidatesDraft:
+      'Rank these customers by priority and explain the follow-up reason for each one.',
+    enterpriseLeadAiChatSuggestedDraftFollowUpDraft:
+      'Draft the first sales follow-up message for these customers.',
     enterpriseLeadAiChatFailed: 'AI chat failed. Try again later.',
     enterpriseLeadAiChatUsedAgent: 'Used {agent}',
     enterpriseLeadAiChatRouteReason: 'Because {reason}',
@@ -6861,7 +7365,19 @@ const translations: Record<LanguageType, Record<string, string>> = {
       'Example: include customer industries, evidence sources, and next steps.',
     enterpriseLeadAiChatAdjustApplyTo: 'Apply to',
     enterpriseLeadAiChatAdjustRetryOnly: 'Retry this answer only',
+    enterpriseLeadAiChatAdjustRetryOnlyDesc:
+      'Creates one correction prompt without changing this workspace.',
+    enterpriseLeadAiChatAdjustSaveAgentHabit: 'Save to this Agent execution habit',
+    enterpriseLeadAiChatAdjustSaveAgentHabitDesc:
+      'Future answers from this Agent in this workspace will follow it.',
+    enterpriseLeadAiChatAdjustSaveHabit: 'Save as workspace output habit',
+    enterpriseLeadAiChatAdjustSaveHabitDesc:
+      'Future Agent answers in this workspace will follow this preference.',
     enterpriseLeadAiChatAdjustRetry: 'Retry answer',
+    enterpriseLeadAiChatAdjustSaveAndRetry: 'Save and retry',
+    enterpriseLeadAiChatAdjustSavingHabit: 'Saving',
+    enterpriseLeadAiChatAdjustSaveHabitFailed:
+      'Could not save the output habit. Try again later.',
     enterpriseLeadAiChatAdjustRetryDraft:
       'Ask {agent} to retry the previous answer with this adjustment:\n\n{instruction}',
     enterpriseLeadKnowledgeReadOnly: 'Read-only knowledge',
@@ -6895,26 +7411,82 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadKnowledgeKindSource: 'Source',
     enterpriseLeadKnowledgeKindDeliverable: 'Deliverable',
     enterpriseLeadKnowledgeKindArchive: 'Archive',
+    enterpriseLeadKnowledgePageTitle: 'Manage documents and review AI extracted knowledge',
     enterpriseLeadKnowledgeMaintenanceSubtitle:
-      'Maintain the company material and rules used by workspace AI chat, Agents, and task outputs.',
+      'The document library is for people to read and maintain. AI extracts Agent-ready facts, rules, and selling points from those documents with source context.',
     enterpriseLeadKnowledgeSyncSources: 'Sync sources',
+    enterpriseLeadKnowledgeSyncDocuments: 'Sync documents',
     enterpriseLeadKnowledgeSourcesSynced:
-      'Sources synced. Confirmed workspace material will be prioritized.',
+      'Document sources synced and the vector search library was updated.',
     enterpriseLeadKnowledgeMaintainCompany: 'Maintain company material',
     enterpriseLeadKnowledgeAddContent: 'Add content',
+    enterpriseLeadKnowledgeAddDocument: 'Add document',
     enterpriseLeadKnowledgeEditableMetric: 'Maintainable material',
     enterpriseLeadKnowledgeCategoryMetric: 'Knowledge categories',
     enterpriseLeadKnowledgeMissingMetric: 'Missing info',
     enterpriseLeadKnowledgeReadonlyMetric: 'Read-only context',
+    enterpriseLeadKnowledgeDocumentMetric: 'Document library',
+    enterpriseLeadKnowledgeAiKnowledgeMetric: 'AI extracted knowledge',
+    enterpriseLeadKnowledgePendingMetric: 'Pending review',
+    enterpriseLeadKnowledgeReferencedMetric: 'Source context',
+    enterpriseLeadKnowledgeDocumentLibraryTitle: 'Document library',
+    enterpriseLeadKnowledgeAiKnowledgeTitle: 'AI knowledge',
+    enterpriseLeadKnowledgeDocumentLibrarySubtitle:
+      'Manage original materials. AI extracts knowledge from these documents.',
+    enterpriseLeadKnowledgeAiKnowledgeSubtitle:
+      'Review extracted facts, rules, and selling points before Agents use them.',
     enterpriseLeadKnowledgeCategories: 'Categories',
     enterpriseLeadKnowledgeWorkspaceOnly: 'Only applies to this workspace',
     enterpriseLeadKnowledgeSearchPlaceholder: 'Search products, customers, rules, sources',
+    enterpriseLeadKnowledgeDocumentSearchPlaceholder: 'Search documents',
+    enterpriseLeadKnowledgeKnowledgeSearchPlaceholder: 'Search knowledge, sources, categories',
     enterpriseLeadKnowledgeFilterAll: 'All statuses',
     enterpriseLeadKnowledgeFilterEditable: 'Maintainable',
     enterpriseLeadKnowledgeFilterReadonly: 'Read-only',
+    enterpriseLeadKnowledgeDocumentStatusAll: 'All statuses',
+    enterpriseLeadKnowledgeDocumentStatusPending: 'Pending extraction',
+    enterpriseLeadKnowledgeDocumentStatusExtracting: 'Extracting',
+    enterpriseLeadKnowledgeDocumentStatusExtracted: 'Extracted',
+    enterpriseLeadKnowledgeDocumentStatusFailed: 'Extraction failed',
+    enterpriseLeadKnowledgeVectorStatusPending: 'Pending index',
+    enterpriseLeadKnowledgeVectorStatusIndexing: 'Indexing',
+    enterpriseLeadKnowledgeVectorStatusIndexed: 'Indexed',
+    enterpriseLeadKnowledgeVectorStatusFailed: 'Index failed',
     enterpriseLeadKnowledgeItemUnit: 'items',
     enterpriseLeadKnowledgeStatusEditable: 'Maintainable',
+    enterpriseLeadKnowledgeStatusPendingConfirmation: 'Pending',
+    enterpriseLeadKnowledgeStatusConfirmed: 'Confirmed',
     enterpriseLeadKnowledgeStatusReadonly: 'Read-only',
+    enterpriseLeadKnowledgeTableDocument: 'Document',
+    enterpriseLeadKnowledgeTableKnowledge: 'Knowledge',
+    enterpriseLeadKnowledgeTableMeta: 'Category / status',
+    enterpriseLeadKnowledgeTableType: 'Type',
+    enterpriseLeadKnowledgeTableCategory: 'Category',
+    enterpriseLeadKnowledgeTableStatus: 'Status',
+    enterpriseLeadKnowledgeTableAiExtract: 'AI extraction',
+    enterpriseLeadKnowledgeTableVectorIndex: 'Vector index',
+    enterpriseLeadKnowledgeTableSource: 'Source',
+    enterpriseLeadKnowledgeTableUsage: 'Usage scope',
+    enterpriseLeadKnowledgeTableUpdated: 'Updated',
+    enterpriseLeadKnowledgeTableActions: 'Actions',
+    enterpriseLeadKnowledgeDocumentExtractedText: 'Usable knowledge generated',
+    enterpriseLeadKnowledgeDocumentPendingExtractText: 'Waiting to extract',
+    enterpriseLeadKnowledgeDocumentExtractingText: 'Extracting AI knowledge',
+    enterpriseLeadKnowledgeDocumentFailedExtractText: 'Extraction failed. Try again.',
+    enterpriseLeadKnowledgeVectorIndexedText: '{count} searchable chunks',
+    enterpriseLeadKnowledgeVectorPendingText: 'Waiting for readable body',
+    enterpriseLeadKnowledgeVectorIndexingText: 'Writing to vector index',
+    enterpriseLeadKnowledgeVectorFailedText: 'Vector indexing failed',
+    enterpriseLeadKnowledgeMessageSuccessLabel: 'Success',
+    enterpriseLeadKnowledgeMessageFailureLabel: 'Failed',
+    enterpriseLeadKnowledgeMessageExceptionLabel: 'Exception',
+    enterpriseLeadKnowledgeUnknownTime: 'Unknown',
+    enterpriseLeadKnowledgeViewKnowledge: 'View knowledge',
+    enterpriseLeadKnowledgePreviewDocument: 'Preview document',
+    enterpriseLeadKnowledgeReextract: 'Re-extract',
+    enterpriseLeadKnowledgeReextractQueued: 'Added to the re-extraction queue.',
+    enterpriseLeadKnowledgeDocumentEmpty:
+      'No documents yet. Add documents and AI will extract usable knowledge.',
     enterpriseLeadKnowledgeNoMatches:
       'No matching knowledge. Try another keyword or add new content.',
     enterpriseLeadKnowledgeDetailTitle: 'Details',
@@ -6926,6 +7498,9 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadKnowledgeUsageEditable: 'AI chat and workspace Agents can read this material.',
     enterpriseLeadKnowledgeUsageReadonly:
       'This comes from source material or task output and is read-only in this pass.',
+    enterpriseLeadKnowledgeUsageAgentReadable: 'Available to Agents',
+    enterpriseLeadKnowledgeUsagePendingConfirm: 'Available after confirmation',
+    enterpriseLeadKnowledgeUsageSourceReadable: 'Source clue only',
     enterpriseLeadKnowledgeSuggestedAction: 'Suggested action',
     enterpriseLeadKnowledgeSuggestedEditable:
       'Edit, archive, or confirm it. Saving updates the current workspace material.',
@@ -6933,13 +7508,74 @@ const translations: Record<LanguageType, Record<string, string>> = {
       'To maintain it long term, copy the key facts into company material or manual knowledge.',
     enterpriseLeadKnowledgeArchiveAction: 'Archive',
     enterpriseLeadKnowledgeConfirmAction: 'Confirm',
+    enterpriseLeadKnowledgeConfirmCompactAction: 'Confirm',
     enterpriseLeadKnowledgeNoSelection:
       'Select one knowledge item to see details and maintenance actions.',
     enterpriseLeadKnowledgeCompanyModalTitle: 'Maintain company material',
+    enterpriseLeadKnowledgeCompanyGroupOverview: 'Basics',
+    enterpriseLeadKnowledgeCompanyGroupProducts: 'Products',
+    enterpriseLeadKnowledgeCompanyGroupCustomers: 'Customers',
+    enterpriseLeadKnowledgeCompanyGroupSelling: 'Sales material',
+    enterpriseLeadKnowledgeCompanyGroupRules: 'Rules and gaps',
+    enterpriseLeadKnowledgeCompanyEditorHint:
+      'Choose one material group on the left and edit only that content on the right.',
+    enterpriseLeadKnowledgeCompanyFieldEditHint:
+      'Keep one item per line. Saving writes it back to this workspace material.',
+    enterpriseLeadKnowledgeCompanyFieldStats: '{count} items',
+    enterpriseLeadKnowledgeCompanyFieldEmpty: 'Empty',
     enterpriseLeadKnowledgeEditModalTitle: 'Edit knowledge content',
     enterpriseLeadKnowledgeAddModalTitle: 'Add knowledge content',
+    enterpriseLeadKnowledgeAddDocumentModalTitle: 'Add document',
+    enterpriseLeadKnowledgeEditDocumentModalTitle: 'Edit document',
+    enterpriseLeadKnowledgePreviewDocumentModalTitle: 'Preview document',
+    enterpriseLeadKnowledgePreviewDocumentModalSubtitle:
+      'Review the original material without editing. AI knowledge and re-extraction stay here as secondary actions.',
+    enterpriseLeadKnowledgeEditDocumentModalSubtitle:
+      'Quickly maintain the document name, summary, and source information.',
+    enterpriseLeadKnowledgeAddDocumentModalSubtitle:
+      'Maintain document details and extraction settings. Open preview document to read the full body.',
     enterpriseLeadKnowledgeModalSubtitle:
       'Saving only affects this workspace and will not change other spaces.',
+    enterpriseLeadKnowledgeUploadTitle: 'Upload or register material',
+    enterpriseLeadKnowledgeUploadSubtitle:
+      'Choose a local file and the system records the source. No path typing is needed.',
+    enterpriseLeadKnowledgeSelectDocumentFile: 'Choose file',
+    enterpriseLeadKnowledgeChangeDocumentFile: 'Change file',
+    enterpriseLeadKnowledgeDocumentSourceManaged: 'Source recorded by system',
+    enterpriseLeadKnowledgeDocumentNameField: 'Document name',
+    enterpriseLeadKnowledgeDocumentCategoryField: 'Source URL / path',
+    enterpriseLeadKnowledgeDocumentSourceTypeField: 'Source type',
+    enterpriseLeadKnowledgeDocumentNoteField: 'Notes',
+    enterpriseLeadKnowledgeDocumentContentField: 'Extractable content / notes',
+    enterpriseLeadKnowledgeDocumentContentPlaceholder:
+      'Text files are read automatically. If the file cannot be read, add a summary or paste content to extract here.',
+    enterpriseLeadKnowledgeDocumentSummaryField: 'Human summary',
+    enterpriseLeadKnowledgeDocumentSummaryPlaceholder:
+      'Add a summary for the team or AI, such as usage, key sections, or extraction intent.',
+    enterpriseLeadKnowledgeDocumentPreviewTitle: 'Document content preview',
+    enterpriseLeadKnowledgeDocumentPreviewSubtitle:
+      'The body is used for AI extraction and stays read-only by default, so the whole document is not mistaken for notes.',
+    enterpriseLeadKnowledgeExpandDocument: 'Expand full text',
+    enterpriseLeadKnowledgeCollapseDocument: 'Collapse full text',
+    enterpriseLeadKnowledgeDocumentPreviewSearchPlaceholder:
+      'Search body text, for example: capacity, contacts, OEM',
+    enterpriseLeadKnowledgeDocumentPreviewExtractedBadge: 'Ready to extract',
+    enterpriseLeadKnowledgeDocumentPreviewStats: 'About {count} chars',
+    enterpriseLeadKnowledgeDocumentPreviewMatches: '{count} matches',
+    enterpriseLeadKnowledgeDocumentPreviewEmpty:
+      'Choose a readable text file to preview its body here. Unreadable files can still be saved as source material.',
+    enterpriseLeadKnowledgeDocumentContentStatusTitle: 'Body status',
+    enterpriseLeadKnowledgeDocumentContentStatusEmpty: 'No extractable body',
+    enterpriseLeadKnowledgeDocumentTypeAuto: 'Auto-detect',
+    enterpriseLeadKnowledgeDocumentTypeManual: 'Manual entry',
+    enterpriseLeadKnowledgeDocumentTypeConversation: 'Chat input',
+    enterpriseLeadKnowledgeDocumentTypeFile: 'Local file',
+    enterpriseLeadKnowledgeDocumentTypeWeb: 'Web page',
+    enterpriseLeadKnowledgeDocumentTypeBlank: 'Blank material',
+    enterpriseLeadKnowledgeDocumentTypeUnknown: 'Other source',
+    enterpriseLeadKnowledgeExtractAfterAdd: 'Extract AI knowledge after saving',
+    enterpriseLeadKnowledgeExtractAfterAddDesc:
+      'AI reads the document and extracts facts, rules, selling points, and evidence snippets.',
     enterpriseLeadKnowledgeCompanySummaryField: 'Company intro',
     enterpriseLeadKnowledgeProductListField: 'Product list',
     enterpriseLeadKnowledgeProductCapabilitiesField: 'Products and capabilities',
@@ -6956,10 +7592,51 @@ const translations: Record<LanguageType, Record<string, string>> = {
       'Write the facts, limits, and applicable scenarios for this knowledge.',
     enterpriseLeadKnowledgeModalHint:
       'Enter multiple items on separate lines. Saving writes back to this workspace material.',
+    enterpriseLeadKnowledgeDocumentModalHint:
+      'After saving, it appears in the document library and extraction results appear in AI knowledge.',
+    enterpriseLeadKnowledgePreviewDocumentModalHint:
+      'Previewing does not change the document. Use edit to change source, summary, or type.',
+    enterpriseLeadKnowledgeAddAndExtract: 'Add and extract',
+    enterpriseLeadKnowledgeSaveDocument: 'Save document',
+    enterpriseLeadKnowledgeUpdateDocument: 'Save document',
     enterpriseLeadKnowledgeSaveAction: 'Save to knowledge base',
     enterpriseLeadKnowledgeSaveFailed: 'Save failed. Try again later.',
+    enterpriseLeadKnowledgeUnexpectedError: 'Unexpected operation error. Refresh and try again.',
     enterpriseLeadKnowledgeEmptyContentError: 'Enter knowledge content first.',
+    enterpriseLeadKnowledgeDocumentNameRequired: 'Enter a document name first.',
+    enterpriseLeadKnowledgeDocumentFileRequired: 'Choose a file to upload first.',
+    enterpriseLeadKnowledgeDocumentExtractTextRequired:
+      'This document has no readable content, so it cannot be extracted now. Upload a text file or add extractable text.',
+    enterpriseLeadKnowledgeDocumentMissingError: 'Document not found. Refresh and try again.',
+    enterpriseLeadKnowledgeDocumentApiUnavailable:
+      'Document saving is not loaded yet. Restart the app and try again.',
     enterpriseLeadKnowledgeCompanySaved: 'Company material updated.',
+    enterpriseLeadKnowledgeDocumentAdded:
+      'Document saved to the library and marked pending extraction.',
+    enterpriseLeadKnowledgeDocumentUpdated: 'Document updated.',
+    enterpriseLeadKnowledgeDocumentExtractStarted: 'Started extracting AI knowledge.',
+    enterpriseLeadKnowledgeDocumentExtracted:
+      'AI knowledge extracted and saved to the knowledge base.',
+    enterpriseLeadKnowledgeDocumentAddedAndExtracted:
+      'Document saved and AI knowledge extracted.',
+    enterpriseLeadKnowledgeDocumentUpdatedAndExtracted:
+      'Document updated and AI knowledge re-extracted.',
+    enterpriseLeadKnowledgeDocumentExtractFailed:
+      'AI knowledge extraction failed. Check the document content and try again.',
+    enterpriseLeadKnowledgeDocumentDeleted: 'Document deleted.',
+    enterpriseLeadKnowledgeDeleteDocumentConfirm:
+      'Delete this document? Related AI knowledge will not be deleted automatically.',
+    enterpriseLeadKnowledgeStartExtract: 'Start extraction',
+    enterpriseLeadKnowledgeChooseDocumentFile: 'Choose knowledge base document',
+    enterpriseLeadKnowledgeFileSelectionUnavailable:
+      'File selection is unavailable in this environment.',
+    enterpriseLeadKnowledgeFileSelectionFailed: 'File selection failed. Try again.',
+    enterpriseLeadKnowledgeFileTextTruncated:
+      'The file is long, so only the first part was read for extraction.',
+    enterpriseLeadKnowledgeFileReadFailed:
+      'Failed to read file content. The file source was kept.',
+    enterpriseLeadKnowledgeFileReadUnsupported:
+      'This file type cannot be read directly yet. Save it for later or add a summary.',
     enterpriseLeadKnowledgeItemAdded: 'Knowledge added to this workspace.',
     enterpriseLeadKnowledgeItemUpdated: 'Knowledge updated.',
     enterpriseLeadKnowledgeItemArchived: 'Archived and hidden from default material.',
@@ -7017,8 +7694,8 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadWorkbenchModeAgents: 'Agent team',
     enterpriseLeadWorkbenchAgentManagementTitle: 'Agent team',
     enterpriseLeadWorkbenchAgentManagementDesc:
-      'Manage the Agents that can act in this workspace. Names, responsibilities, prompts, models, and skills apply only here.',
-    enterpriseLeadWorkbenchAgentCount: '9 Agents',
+      'Manage the Agents that improve topics, scripts, copy, and private-domain conversion quality in this workspace. Names, responsibilities, prompts, models, and skills apply only here.',
+    enterpriseLeadWorkbenchAgentCount: '6 content Agents',
     enterpriseLeadWorkbenchWorkspaceAgentCount: '{count} workspace Agents',
     enterpriseLeadWorkbenchSystemAgentsTitle: 'System Agent templates',
     enterpriseLeadWorkbenchSystemAgentsDesc:
@@ -7151,6 +7828,8 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadWorkbenchOpenSkillSettingsAria: 'Open workspace settings for Agent skills',
     enterpriseLeadWorkbenchClearSkillLimit: 'Clear skill limit',
     enterpriseLeadWorkbenchEditorBasicInfo: 'Basic info',
+    enterpriseLeadWorkbenchEditorBasicInfoDesc:
+      'Edit this Agent name, avatar, responsibility, and execution rules in the current workspace.',
     enterpriseLeadWorkbenchEditorExecution: 'Execution settings',
     enterpriseLeadWorkbenchEditorCapabilities: 'Capabilities',
     enterpriseLeadWorkbenchEditorAdvanced: 'Advanced settings',
@@ -7158,6 +7837,116 @@ const translations: Record<LanguageType, Record<string, string>> = {
       'Identity and system prompt are for fine-tuning Agent behavior when needed.',
     enterpriseLeadWorkbenchExpandAdvancedSettings: 'Expand advanced settings',
     enterpriseLeadWorkbenchCollapseAdvancedSettings: 'Collapse advanced settings',
+    enterpriseLeadWorkbenchStabilityTitle: 'Execution rules',
+    enterpriseLeadWorkbenchStabilityDesc:
+      'Write down how this stable Agent should work so each chat needs less repeated explanation.',
+    enterpriseLeadWorkbenchStabilityWorkStyle: 'Working method',
+    enterpriseLeadWorkbenchStabilityWorkStyleHint:
+      'Define the judgment order so the Agent does not skip steps or jump to conclusions.',
+    enterpriseLeadWorkbenchStabilityWorkStyleDefault:
+      'Identify the customer industry, purchase intent, and urgency first. If evidence is missing, list missing information before reaching a conclusion.',
+    enterpriseLeadWorkbenchStabilityInputRequirements: 'Input requirements',
+    enterpriseLeadWorkbenchStabilityInputRequirementsHint:
+      'Define which material can be used as evidence.',
+    enterpriseLeadWorkbenchStabilityInputRequirementsDefault:
+      'Prioritize customer industry, inquiry content, purchase quantity, budget range, delivery requirements, and conversation history. Mark missing key information as pending.',
+    enterpriseLeadWorkbenchStabilityOutputFormat: 'Output format',
+    enterpriseLeadWorkbenchStabilityOutputFormatHint:
+      'Keep the structure fixed for reading and downstream Agent handoff.',
+    enterpriseLeadWorkbenchStabilityOutputFormatDefault:
+      'Customer priority\nReasoning\nRisk or missing information\nRecommended next action',
+    enterpriseLeadWorkbenchStabilityGuardrails: 'Boundary rules',
+    enterpriseLeadWorkbenchStabilityGuardrailsHint:
+      'Limit guessing, promises, and cases that need human confirmation.',
+    enterpriseLeadWorkbenchStabilityGuardrailsDefault:
+      'Do not invent customer requirements or promise pricing, delivery, or cooperation results. Clearly mark any external reply or human confirmation need.',
+    enterpriseLeadWorkbenchStabilityPromptTitle: '# Agent stable execution rules',
+    enterpriseLeadWorkbenchCalibrationPromptTitle: '# Agent calibration examples',
+    enterpriseLeadWorkbenchCalibrationTitle: 'Examples and checks',
+    enterpriseLeadWorkbenchCalibrationDesc:
+      'Use typical tasks to check whether this Agent answers in a fixed structure and respects missing information and human confirmation boundaries.',
+    enterpriseLeadWorkbenchCalibrationSampleTitle: 'Example input',
+    enterpriseLeadWorkbenchCalibrationSampleHint: 'How the user may ask',
+    enterpriseLeadWorkbenchCalibrationInputContent: 'Input content',
+    enterpriseLeadWorkbenchCalibrationExpectedTitle: 'Expected output',
+    enterpriseLeadWorkbenchCalibrationExpectedHint: 'What the Agent should deliver consistently',
+    enterpriseLeadWorkbenchCalibrationExpectedPriority: 'Priority',
+    enterpriseLeadWorkbenchCalibrationExpectedReason: 'Reasoning',
+    enterpriseLeadWorkbenchCalibrationExpectedMissing: 'Missing information',
+    enterpriseLeadWorkbenchCalibrationExpectedNextStep: 'Next action',
+    enterpriseLeadWorkbenchCalibrationChecksTitle: 'Stability checks',
+    enterpriseLeadWorkbenchCalibrationSaveExample: 'Save example',
+    enterpriseLeadWorkbenchCalibrationRunExample: 'Test run',
+    enterpriseLeadWorkbenchCalibrationRunningShort: 'Running',
+    enterpriseLeadWorkbenchCalibrationRunning: 'Testing this example with the current Agent draft...',
+    enterpriseLeadWorkbenchCalibrationFailed: 'Test run failed. Check the model configuration and try again.',
+    enterpriseLeadWorkbenchCalibrationResultTitle: 'Test run result',
+    enterpriseLeadWorkbenchCalibrationCheckPriority: 'Priority',
+    enterpriseLeadWorkbenchCalibrationCheckReason: 'Reasoning',
+    enterpriseLeadWorkbenchCalibrationCheckMissing: 'Missing info',
+    enterpriseLeadWorkbenchCalibrationCheckNextStep: 'Next action',
+    enterpriseLeadWorkbenchCalibrationCheckPassed: 'Included',
+    enterpriseLeadWorkbenchCalibrationCheckNeedsReview: 'Review',
+    enterpriseLeadWorkbenchCalibrationHighIntentTitle: 'High-intent inquiry',
+    enterpriseLeadWorkbenchCalibrationHighIntentDesc:
+      'Information is relatively complete, so the Agent should provide a clear priority and next action.',
+    enterpriseLeadWorkbenchCalibrationHighIntentSample:
+      'A customer from the automotive parts industry asks for 5,000 aluminum precision parts, needs samples within two weeks, and has provided drawings but no target price.',
+    enterpriseLeadWorkbenchCalibrationHighIntentNote:
+      'Keep the wording realistic. It does not need to sound like a prompt.',
+    enterpriseLeadWorkbenchCalibrationHighIntentPriority: 'High',
+    enterpriseLeadWorkbenchCalibrationHighIntentReason:
+      'Industry matches, drawings are available, quantity is clear, and sample timing is specific.',
+    enterpriseLeadWorkbenchCalibrationHighIntentMissing:
+      'Target price, material grade, and acceptance standard still need to be confirmed.',
+    enterpriseLeadWorkbenchCalibrationHighIntentNextStep:
+      'Arrange technical drawing review and ask sales to confirm budget and delivery feasibility.',
+    enterpriseLeadWorkbenchCalibrationHighIntentCheck1:
+      'Output must include customer priority, reasoning, missing information, and next action.',
+    enterpriseLeadWorkbenchCalibrationHighIntentCheck2:
+      'If target price is missing, only mark it as pending. Do not infer it.',
+    enterpriseLeadWorkbenchCalibrationHighIntentCheck3:
+      'Flag human confirmation for pricing, delivery, or commitments.',
+    enterpriseLeadWorkbenchCalibrationMissingInfoTitle: 'Insufficient information',
+    enterpriseLeadWorkbenchCalibrationMissingInfoDesc:
+      'When material is insufficient, the Agent should list what is missing before judging.',
+    enterpriseLeadWorkbenchCalibrationMissingInfoSample:
+      'The customer only asks, “Can you do precision machining? Roughly how much?” without drawings, material, quantity, use case, or delivery timing.',
+    enterpriseLeadWorkbenchCalibrationMissingInfoNote:
+      'This example trains the Agent not to guess pricing or priority when information is missing.',
+    enterpriseLeadWorkbenchCalibrationMissingInfoPriority: 'Pending judgment',
+    enterpriseLeadWorkbenchCalibrationMissingInfoReason:
+      'The customer has expressed a machining need, but drawings, material, quantity, use case, and delivery timing are missing.',
+    enterpriseLeadWorkbenchCalibrationMissingInfoMissing:
+      'Drawing or sample photo, material grade, tolerance, purchase quantity, delivery requirement, and application scenario.',
+    enterpriseLeadWorkbenchCalibrationMissingInfoNextStep:
+      'Reply with a material checklist and collect drawings, material, and quantity before technical review.',
+    enterpriseLeadWorkbenchCalibrationMissingInfoCheck1:
+      'Must clearly mark insufficient information or pending judgment.',
+    enterpriseLeadWorkbenchCalibrationMissingInfoCheck2:
+      'Must not provide price, delivery, or a definite priority.',
+    enterpriseLeadWorkbenchCalibrationMissingInfoCheck3:
+      'Must provide the next list of information to ask the customer for.',
+    enterpriseLeadWorkbenchCalibrationManualReviewTitle: 'Needs human confirmation',
+    enterpriseLeadWorkbenchCalibrationManualReviewDesc:
+      'For pricing, delivery, or external commitments, the Agent should actively mark human confirmation.',
+    enterpriseLeadWorkbenchCalibrationManualReviewSample:
+      'The customer asks for a formal quote today and wants a 7-day delivery promise. Only sample photos are available, with no drawings, material, or acceptance standard.',
+    enterpriseLeadWorkbenchCalibrationManualReviewNote:
+      'This example trains the Agent to recognize external-reply risk and approval boundaries.',
+    enterpriseLeadWorkbenchCalibrationManualReviewPriority: 'Medium-high, needs human confirmation',
+    enterpriseLeadWorkbenchCalibrationManualReviewReason:
+      'The customer has a clear timing requirement, but missing material makes pricing and delivery commitments risky.',
+    enterpriseLeadWorkbenchCalibrationManualReviewMissing:
+      'Formal drawings, material grade, quantity, acceptance standard, acceptable delivery time, and quotation basis.',
+    enterpriseLeadWorkbenchCalibrationManualReviewNextStep:
+      'Mark human confirmation first. Technical and sales teams should review before replying with quote or delivery.',
+    enterpriseLeadWorkbenchCalibrationManualReviewCheck1:
+      'Must mark human confirmation and must not generate a formal commitment directly.',
+    enterpriseLeadWorkbenchCalibrationManualReviewCheck2:
+      'Must not promise price, delivery, capacity, or cooperation results.',
+    enterpriseLeadWorkbenchCalibrationManualReviewCheck3:
+      'Must state that technical and sales confirmation is needed before external reply.',
     enterpriseLeadWorkbenchAgentChat: 'Chat',
     enterpriseLeadWorkbenchAgentEdit: 'Edit',
     enterpriseLeadWorkbenchAgentEnabled: 'Enabled',
@@ -7174,7 +7963,39 @@ const translations: Record<LanguageType, Record<string, string>> = {
       'Configure the model provider information used by this workspace Agent workflow.',
     enterpriseLeadWorkbenchUseDefaultModel: 'Use the default model from settings',
     enterpriseLeadWorkbenchSettingsQuickDesc:
-      'Finish these 3 steps to start using the workspace. Advanced model, skill, and platform details stay tucked away until needed.',
+      'Confirm whether this workspace can start handling customer leads. Model, skill, research, and delivery details can be tuned in advanced settings.',
+    enterpriseLeadWorkbenchReadinessReadyTitle: 'Recommended setup is ready',
+    enterpriseLeadWorkbenchReadinessNeedsSetupTitle: 'Basic setup needs attention',
+    enterpriseLeadWorkbenchReadinessCanStart: 'Ready to start',
+    enterpriseLeadWorkbenchReadinessReadyDesc:
+      'This workspace can start handling customer leads now; add research or delivery credentials later when needed.',
+    enterpriseLeadWorkbenchReadinessNeedsSetupDesc:
+      'Complete the default model and workspace capability before running workspace tasks.',
+    enterpriseLeadWorkbenchReadinessAdvancedHint: 'Advanced items are tucked away',
+    enterpriseLeadWorkbenchBasicsTitle: 'Basic configuration',
+    enterpriseLeadWorkbenchBasicsDesc: 'Only the information needed before starting tasks is shown here.',
+    enterpriseLeadWorkbenchBasicModelTitle: 'Default model',
+    enterpriseLeadWorkbenchBasicModelDesc:
+      'Change models and test connections in advanced model settings.',
+    enterpriseLeadWorkbenchBasicSkillTitle: 'Workspace capability',
+    enterpriseLeadWorkbenchBasicSkillDesc:
+      '{count} skills are included now; adjust them manually in skill details.',
+    enterpriseLeadWorkbenchBasicResearchTitle: 'Online research',
+    enterpriseLeadWorkbenchBasicResearchDesc:
+      'External services are optional by default; enable them when web material is needed.',
+    enterpriseLeadWorkbenchBasicOutputTitle: 'Output target',
+    enterpriseLeadWorkbenchBasicOutputDesc:
+      'Delivery channels and risk rules can be adjusted in advanced settings.',
+    enterpriseLeadWorkbenchResearchNoExternalReady: 'Can start without online credentials',
+    enterpriseLeadWorkbenchResearchNoExternalDesc:
+      'Use local material and pasted links first; add search or crawling later.',
+    enterpriseLeadWorkbenchResearchConnectedDesc:
+      'A provider is enabled. Maintain its API key under external research providers.',
+    enterpriseLeadWorkbenchResearchNeedsKeyDesc:
+      'An online mode is selected. Add the API key later in advanced settings.',
+    enterpriseLeadWorkbenchAdvancedSettingsTitle: 'Advanced settings',
+    enterpriseLeadWorkbenchAdvancedSettingsDesc:
+      'Model keys, skill details, research sources, and content delivery live here. Open only what you need.',
     enterpriseLeadWorkbenchQuickSetupTitle: 'Quick setup',
     enterpriseLeadWorkbenchQuickSetupDesc:
       'Complete these in order to run workspace tasks. Recommended defaults are used first, and you can tune details later.',
@@ -7190,9 +8011,9 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadWorkbenchQuickSkillsSelected: 'skills selected',
     enterpriseLeadWorkbenchQuickSkillsPending: 'Pending save',
     enterpriseLeadWorkbenchQuickResearchOptional: 'Can add later',
-    enterpriseLeadWorkbenchQuickSaveDockTitle: 'Finish quick setup to start tasks',
+    enterpriseLeadWorkbenchQuickSaveDockTitle: 'Save basic configuration',
     enterpriseLeadWorkbenchQuickSaveDockDesc:
-      'Save the capability pack now; research keys can be added later.',
+      'Research keys and delivery details can be added later in advanced settings.',
     enterpriseLeadWorkbenchSkillPresetAcquisitionContent: 'Lead content pack',
     enterpriseLeadWorkbenchSkillPresetAcquisitionContentDesc:
       'Research, topics, sales copy, and risk review.',
@@ -7265,6 +8086,20 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadWorkbenchStatusConfigured: 'Set',
     enterpriseLeadWorkbenchStatusUnconfigured: 'Unset',
     enterpriseLeadWorkbenchStatusAdd: 'Add',
+    enterpriseLeadWorkbenchAgentProductSellingPointRole: 'Selling point extraction',
+    enterpriseLeadWorkbenchAgentProductSellingPointCapabilitySummary:
+      'Pains / proof / differentiation',
+    enterpriseLeadWorkbenchAgentTopicPlanningRole: 'Topic planning',
+    enterpriseLeadWorkbenchAgentTopicPlanningCapabilitySummary: 'Titles / hooks / series',
+    enterpriseLeadWorkbenchAgentShortVideoScriptRole: 'Short-video scripts',
+    enterpriseLeadWorkbenchAgentShortVideoScriptCapabilitySummary: 'Hooks / oral script / shots',
+    enterpriseLeadWorkbenchAgentSocialCopyRole: 'Social copy',
+    enterpriseLeadWorkbenchAgentSocialCopyCapabilitySummary: 'Xiaohongshu / Moments / posters',
+    enterpriseLeadWorkbenchAgentPrivateDomainConversionRole: 'Private-domain conversion',
+    enterpriseLeadWorkbenchAgentPrivateDomainConversionCapabilitySummary:
+      'DM / community / close scripts',
+    enterpriseLeadWorkbenchAgentContentQualityRole: 'Content quality',
+    enterpriseLeadWorkbenchAgentContentQualityCapabilitySummary: 'Naturalness / risk / CTA',
     enterpriseLeadWorkbenchAgentControllerRole: 'Planning and orchestration',
     enterpriseLeadWorkbenchAgentControllerCapabilitySummary: 'Controller / flow / summary',
     enterpriseLeadWorkbenchAgentProductUnderstandingRole: 'Profile and selling points',

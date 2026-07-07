@@ -1,4 +1,5 @@
-import { AgentId } from '../shared/agent';
+import { AgentId, normalizeAgentResponseContract } from '../shared/agent';
+import { ManagedPresetAgentId } from '../shared/agent/managedPresetAgents';
 import type { Agent, CoworkStore, CreateAgentRequest, UpdateAgentRequest } from './coworkStore';
 import {
   AUTO_INSTALLED_PRESET_AGENT_IDS,
@@ -23,9 +24,52 @@ const SYSTEM_AGENT_RUNTIME_UPDATE_KEYS = new Set<keyof UpdateAgentRequest>([
   'enabled',
   'pinned',
 ]);
+const CONTENT_AUTO_ROUTE_PATTERNS = [
+  '小红书',
+  '朋友圈',
+  '公众号',
+  '微信群',
+  '社群',
+  '私域',
+  '私聊',
+  '私信',
+  '话术',
+  '销售回复',
+  '销售话术',
+  '推广文案',
+  '营销文案',
+  '活动文案',
+  '海报文案',
+  '种草',
+  '选题',
+  '短视频',
+  '口播',
+  '分镜',
+  '抖音',
+  '视频号',
+  '改自然',
+  '去ai味',
+  'ai味',
+  '润色',
+  '改写',
+];
 
 const isSystemAgent = (agent: Agent): boolean =>
   agent.id === AgentId.Main || agent.isDefault || agent.source === 'preset';
+
+const normalizeAutoRouteText = (value: string): string =>
+  value.replace(/\s+/g, '').trim().toLowerCase();
+
+const isContentAutoRouteRequest = (prompt: string): boolean => {
+  const normalizedPrompt = normalizeAutoRouteText(prompt);
+  if (!normalizedPrompt) {
+    return false;
+  }
+
+  return CONTENT_AUTO_ROUTE_PATTERNS.some(pattern =>
+    normalizedPrompt.includes(normalizeAutoRouteText(pattern)),
+  );
+};
 
 const getSystemAgentDefinitionUpdateKeys = (updates: UpdateAgentRequest): string[] =>
   Object.keys(updates).filter(
@@ -68,6 +112,15 @@ export class AgentManager {
     }
 
     return this.getAgent(AgentId.Main) ?? this.getDefaultAgent();
+  }
+
+  resolveRuntimeAgentForPrompt(agentId: string | undefined, prompt: string): Agent {
+    const runtimeAgent = this.resolveRuntimeAgent(agentId);
+    if (runtimeAgent.id !== AgentId.Main || !isContentAutoRouteRequest(prompt)) {
+      return runtimeAgent;
+    }
+
+    return this.resolveRuntimeAgent(ManagedPresetAgentId.Marketing);
   }
 
   createAgent(_request: CreateAgentRequest, _defaultModel?: string): Agent {
@@ -181,6 +234,7 @@ export class AgentManager {
       systemPrompt: request.systemPrompt,
       icon: request.icon,
       skillIds: request.skillIds,
+      responseContract: normalizeAgentResponseContract(request.responseContract),
     };
 
     const shouldUpdate =
@@ -189,7 +243,9 @@ export class AgentManager {
       existing.identity !== updates.identity ||
       existing.systemPrompt !== updates.systemPrompt ||
       existing.icon !== updates.icon ||
-      JSON.stringify(existing.skillIds) !== JSON.stringify(updates.skillIds);
+      JSON.stringify(existing.skillIds) !== JSON.stringify(updates.skillIds) ||
+      JSON.stringify(normalizeAgentResponseContract(existing.responseContract)) !==
+        JSON.stringify(updates.responseContract);
 
     if (shouldUpdate) {
       this.store.updateAgent(existing.id, updates);

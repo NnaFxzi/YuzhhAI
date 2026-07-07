@@ -1,4 +1,4 @@
-import { AgentId } from '@shared/agent';
+import { AgentId, type AgentResponseContract } from '@shared/agent';
 import type {
   DomesticResearchConfig,
   DomesticResearchStatusMap,
@@ -54,6 +54,7 @@ const toAgentSummary = (agent: Agent) => ({
   icon: agent.icon,
   model: agent.model ?? '',
   workingDirectory: agent.workingDirectory ?? '',
+  responseContract: agent.responseContract,
   enabled: agent.enabled,
   pinned: agent.pinned ?? false,
   pinOrder: agent.pinOrder ?? null,
@@ -88,6 +89,7 @@ class AgentService {
     identity?: string;
     model?: string;
     workingDirectory?: string;
+    responseContract?: AgentResponseContract;
     icon?: string;
     skillIds?: string[];
   }): Promise<Agent | null> {
@@ -104,36 +106,43 @@ class AgentService {
     }
   }
 
-  async updateAgent(id: string, updates: {
-    name?: string;
-    description?: string;
-    systemPrompt?: string;
-    identity?: string;
-    model?: string;
-    workingDirectory?: string;
-    icon?: string;
-    skillIds?: string[];
-    enabled?: boolean;
-    pinned?: boolean;
-  }): Promise<Agent | null> {
+  async updateAgent(
+    id: string,
+    updates: {
+      name?: string;
+      description?: string;
+      systemPrompt?: string;
+      identity?: string;
+      model?: string;
+      workingDirectory?: string;
+      responseContract?: AgentResponseContract;
+      icon?: string;
+      skillIds?: string[];
+      enabled?: boolean;
+      pinned?: boolean;
+    },
+  ): Promise<Agent | null> {
     try {
       const agent = await window.electron?.agents?.update(id, updates);
       if (agent) {
         const skillIds = agent.skillIds ?? [];
-        store.dispatch(updateAgentAction({
-          id: agent.id,
-          updates: {
-            name: agent.name,
-            description: agent.description,
-            icon: agent.icon,
-            model: agent.model ?? '',
-            workingDirectory: agent.workingDirectory ?? '',
-            enabled: agent.enabled,
-            pinned: agent.pinned ?? false,
-            pinOrder: agent.pinOrder ?? null,
-            skillIds,
-          },
-        }));
+        store.dispatch(
+          updateAgentAction({
+            id: agent.id,
+            updates: {
+              name: agent.name,
+              description: agent.description,
+              icon: agent.icon,
+              model: agent.model ?? '',
+              workingDirectory: agent.workingDirectory ?? '',
+              responseContract: agent.responseContract,
+              enabled: agent.enabled,
+              pinned: agent.pinned ?? false,
+              pinOrder: agent.pinOrder ?? null,
+              skillIds,
+            },
+          }),
+        );
         // Only sync active skills when skillIds were explicitly updated,
         // to avoid clearing user's temporary skill selection on unrelated
         // updates (e.g. model change).
@@ -149,9 +158,11 @@ class AgentService {
     }
   }
 
-  async getExternalResearchSettings(agentId?: string): Promise<ExternalResearchSettingsPayload | null> {
+  async getExternalResearchSettings(
+    agentId?: string,
+  ): Promise<ExternalResearchSettingsPayload | null> {
     try {
-      return await window.electron?.agents?.getExternalResearchSettings(agentId) ?? null;
+      return (await window.electron?.agents?.getExternalResearchSettings(agentId)) ?? null;
     } catch (error) {
       console.error('Failed to load external research settings:', error);
       return null;
@@ -167,16 +178,18 @@ class AgentService {
         console.error('External research settings save bridge is unavailable.');
         return null;
       }
-      return await window.electron.agents.saveExternalResearchSettings(agentId, config) ?? null;
+      return (await window.electron.agents.saveExternalResearchSettings(agentId, config)) ?? null;
     } catch (error) {
       console.error('Failed to save external research settings:', error);
       return null;
     }
   }
 
-  async getDomesticResearchSettings(agentId: string): Promise<DomesticResearchSettingsPayload | null> {
+  async getDomesticResearchSettings(
+    agentId: string,
+  ): Promise<DomesticResearchSettingsPayload | null> {
     try {
-      return await window.electron?.agents?.getDomesticResearchSettings(agentId) ?? null;
+      return (await window.electron?.agents?.getDomesticResearchSettings(agentId)) ?? null;
     } catch (error) {
       console.error('Failed to load domestic research settings:', error);
       return null;
@@ -188,7 +201,7 @@ class AgentService {
     config: DomesticResearchConfig,
   ): Promise<DomesticResearchConfig | null> {
     try {
-      return await window.electron?.agents?.saveDomesticResearchSettings(agentId, config) ?? null;
+      return (await window.electron?.agents?.saveDomesticResearchSettings(agentId, config)) ?? null;
     } catch (error) {
       console.error('Failed to save domestic research settings:', error);
       return null;
@@ -199,8 +212,12 @@ class AgentService {
     input: ExternalResearchProviderTestInput,
   ): Promise<{ ok: boolean; message: string }> {
     try {
-      return await window.electron?.agents?.testExternalResearchProvider(input)
-        ?? { ok: false, message: 'Connection test failed.' };
+      return (
+        (await window.electron?.agents?.testExternalResearchProvider(input)) ?? {
+          ok: false,
+          message: 'Connection test failed.',
+        }
+      );
     } catch (error) {
       console.error('Failed to test external research provider:', error);
       return { ok: false, message: 'Connection test failed.' };
@@ -281,7 +298,7 @@ class AgentService {
   switchAgent(agentId: string): void {
     store.dispatch(setCurrentAgentId(agentId));
     store.dispatch(clearCurrentSession());
-    const agent = store.getState().agent.agents.find((a) => a.id === agentId);
+    const agent = store.getState().agent.agents.find(a => a.id === agentId);
     if (agent?.skillIds?.length) {
       store.dispatch(setActiveSkillIds(agent.skillIds));
     } else {
