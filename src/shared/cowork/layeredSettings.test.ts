@@ -56,6 +56,27 @@ describe('resolveLayeredCoworkSettings', () => {
     expect(resolved.sources.defaultModel).toBe(SettingScope.Agent);
   });
 
+  test('keeps skill selection owned by workspace when agent and session provide skills', () => {
+    const resolved = resolveLayeredCoworkSettings({
+      global: globalLayer,
+      workspace: {
+        scope: SettingScope.Workspace,
+        values: { skillIds: ['workspace-skill'] },
+      },
+      agent: {
+        scope: SettingScope.Agent,
+        values: { skillIds: ['agent-skill'] },
+      },
+      session: {
+        scope: SettingScope.Session,
+        values: { skillIds: ['session-skill'] },
+      },
+    });
+
+    expect(resolved.values.skillIds).toEqual(['workspace-skill']);
+    expect(resolved.sources.skillIds).toBe(SettingScope.Workspace);
+  });
+
   test('uses session snapshot before all mutable layers', () => {
     const resolved = resolveLayeredCoworkSettings({
       global: globalLayer,

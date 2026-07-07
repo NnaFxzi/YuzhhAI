@@ -42,9 +42,7 @@ type EnterpriseLeadWorkspaceTable =
   | 'enterprise_lead_workspaces'
   | 'enterprise_lead_runs'
   | 'enterprise_lead_agent_tasks'
-  | 'enterprise_lead_pending_versions'
-  | 'enterprise_lead_chat_sessions'
-  | 'enterprise_lead_chat_messages';
+  | 'enterprise_lead_pending_versions';
 
 const readTableCount = (
   database: Database.Database,
@@ -103,156 +101,6 @@ describe('EnterpriseLeadWorkspaceStore', () => {
     expect(store.listWorkspaces()).toEqual([workspace]);
   });
 
-  test('persists workspace chat sessions and messages per workspace', () => {
-    setupStore();
-    const workspace = store.createWorkspace({
-      name: '华南重包获客工作台',
-      type: EnterpriseLeadWorkspaceType.EnterpriseLead,
-      profile,
-      extractionSources: [],
-      enabledAgentRoles: [EnterpriseLeadAgentRole.ContentPlanning],
-    });
-    const otherWorkspace = store.createWorkspace({
-      name: '华东精密件获客工作台',
-      type: EnterpriseLeadWorkspaceType.EnterpriseLead,
-      profile,
-      extractionSources: [],
-      enabledAgentRoles: [EnterpriseLeadAgentRole.SalesHandoff],
-    });
-
-    const session = store.createChatSession({
-      workspaceId: workspace.id,
-      title: '安装 oh-my-claudecode skill',
-    });
-    store.appendChatMessage(session.id, {
-      id: 'user-1',
-      role: 'user',
-      content: '安装 oh-my-claudecode skill',
-      createdAt: '2026-07-04T08:00:00.000Z',
-    });
-    store.appendChatMessage(session.id, {
-      id: 'assistant-1',
-      role: 'assistant',
-      content: '可以，我来帮你安装。',
-      createdAt: '2026-07-04T08:01:00.000Z',
-      agent: {
-        id: 'agent-content',
-        name: '内容策划 Agent',
-      },
-      routing: {
-        reason: '识别到：私信/外发文案',
-        agents: [
-          {
-            id: 'agent-content',
-            name: '内容策划 Agent',
-          },
-          {
-            id: 'agent-sales',
-            name: '销售交接 Agent',
-          },
-        ],
-      },
-    });
-
-    expect(store.listChatSessions(workspace.id)).toEqual([
-      {
-        id: session.id,
-        workspaceId: workspace.id,
-        title: '安装 oh-my-claudecode skill',
-        createdAt: session.createdAt,
-        updatedAt: '2026-07-04T08:01:00.000Z',
-        messageCount: 2,
-      },
-    ]);
-    expect(store.listChatSessions(otherWorkspace.id)).toEqual([]);
-    expect(store.getChatSession(workspace.id, session.id)?.messages).toMatchObject([
-      {
-        role: 'user',
-        content: '安装 oh-my-claudecode skill',
-      },
-      {
-        role: 'assistant',
-        content: '可以，我来帮你安装。',
-        agent: {
-          id: 'agent-content',
-          name: '内容策划 Agent',
-        },
-        routing: {
-          reason: '识别到：私信/外发文案',
-          agents: [
-            {
-              id: 'agent-content',
-              name: '内容策划 Agent',
-            },
-            {
-              id: 'agent-sales',
-              name: '销售交接 Agent',
-            },
-          ],
-        },
-      },
-    ]);
-    expect(store.getChatSession(otherWorkspace.id, session.id)).toBeNull();
-  });
-
-  test('deletes one workspace chat session with its messages only', () => {
-    setupStore();
-    const workspace = store.createWorkspace({
-      name: '华南重包获客工作台',
-      type: EnterpriseLeadWorkspaceType.EnterpriseLead,
-      profile,
-      extractionSources: [],
-      enabledAgentRoles: [EnterpriseLeadAgentRole.ContentPlanning],
-    });
-    const otherWorkspace = store.createWorkspace({
-      name: '华东精密件获客工作台',
-      type: EnterpriseLeadWorkspaceType.EnterpriseLead,
-      profile,
-      extractionSources: [],
-      enabledAgentRoles: [EnterpriseLeadAgentRole.SalesHandoff],
-    });
-    const deletedSession = store.createChatSession({
-      workspaceId: workspace.id,
-      title: '删除我',
-    });
-    const retainedSession = store.createChatSession({
-      workspaceId: workspace.id,
-      title: '保留我',
-    });
-    const otherSession = store.createChatSession({
-      workspaceId: otherWorkspace.id,
-      title: '别的空间',
-    });
-
-    store.appendChatMessage(deletedSession.id, {
-      id: 'delete-user-1',
-      role: 'user',
-      content: '删除这条',
-      createdAt: '2026-07-04T08:00:00.000Z',
-    });
-    store.appendChatMessage(retainedSession.id, {
-      id: 'retain-user-1',
-      role: 'user',
-      content: '保留这条',
-      createdAt: '2026-07-04T08:01:00.000Z',
-    });
-    store.appendChatMessage(otherSession.id, {
-      id: 'other-user-1',
-      role: 'user',
-      content: '别的空间消息',
-      createdAt: '2026-07-04T08:02:00.000Z',
-    });
-
-    expect(store.deleteChatSession(workspace.id, deletedSession.id)).toBe(true);
-
-    expect(store.getChatSession(workspace.id, deletedSession.id)).toBeNull();
-    expect(store.getChatSession(workspace.id, retainedSession.id)?.messages).toHaveLength(1);
-    expect(store.getChatSession(otherWorkspace.id, otherSession.id)?.messages).toHaveLength(1);
-    expect(store.deleteChatSession(otherWorkspace.id, retainedSession.id)).toBe(false);
-    expect(readTableCount(db!, 'enterprise_lead_chat_sessions')).toBe(2);
-    expect(readTableCount(db!, 'enterprise_lead_chat_messages')).toBe(2);
-  });
-
   test('deletes a workspace with its runs, tasks, and pending versions', () => {
     setupStore();
     const workspace = store.createWorkspace({
@@ -280,17 +128,6 @@ describe('EnterpriseLeadWorkspaceStore', () => {
       roles: [EnterpriseLeadAgentRole.SalesHandoff],
     });
     const task = store.listTasks(run.id)[0];
-    const chatSession = store.createChatSession({
-      workspaceId: workspace.id,
-      title: '安装 skill',
-    });
-    store.appendChatMessage(chatSession.id, {
-      id: 'chat-user-1',
-      role: 'user',
-      content: '安装 skill',
-      createdAt: '2026-07-04T08:00:00.000Z',
-    });
-
     store.createPendingVersion({
       taskId: task.id,
       userMessage: '改成更短的销售私信',
@@ -327,8 +164,6 @@ describe('EnterpriseLeadWorkspaceStore', () => {
     expect(readTableCount(db!, 'enterprise_lead_runs')).toBe(1);
     expect(readTableCount(db!, 'enterprise_lead_agent_tasks')).toBe(1);
     expect(readTableCount(db!, 'enterprise_lead_pending_versions')).toBe(0);
-    expect(readTableCount(db!, 'enterprise_lead_chat_sessions')).toBe(0);
-    expect(readTableCount(db!, 'enterprise_lead_chat_messages')).toBe(0);
   });
 
   test('creates and lists workspaces with normalized workspace agent bindings', () => {

@@ -410,6 +410,7 @@ export const EnterpriseLeadWorkbenchNavItem = {
   KnowledgeBase: 'knowledge_base',
   CreationRecords: 'creation_records',
   AgentManagement: 'agent_management',
+  Settings: 'settings',
 } as const;
 export type EnterpriseLeadWorkbenchNavItem =
   typeof EnterpriseLeadWorkbenchNavItem[keyof typeof EnterpriseLeadWorkbenchNavItem];
@@ -425,6 +426,7 @@ export const EnterpriseLeadWorkbenchNavIcon = {
   Knowledge: 'knowledge',
   Records: 'records',
   Agents: 'agents',
+  Settings: 'settings',
 } as const;
 export type EnterpriseLeadWorkbenchNavIcon =
   typeof EnterpriseLeadWorkbenchNavIcon[keyof typeof EnterpriseLeadWorkbenchNavIcon];
@@ -528,7 +530,7 @@ export interface WorkspaceOperationToken {
 
 export type WorkspaceAgentTemplate = Pick<
   EnterpriseLeadWorkspaceAgentBinding['overrides'],
-  'name' | 'description' | 'identity' | 'systemPrompt' | 'icon' | 'model' | 'skillIds'
+  'name' | 'description' | 'identity' | 'systemPrompt' | 'icon' | 'model'
 > & {
   id: string;
   enabled?: boolean;
@@ -560,12 +562,14 @@ export const getEffectiveWorkspaceAgent = (
   return {
     id: binding.agentId,
     name: overrideName || fallbackName,
-    description: overrides.description?.trim() || binding.description || globalAgent?.description || '',
+    description:
+      overrides.description?.trim() || binding.description || globalAgent?.description || '',
     identity: overrides.identity?.trim() || binding.identity || globalAgent?.identity || '',
-    systemPrompt: overrides.systemPrompt?.trim() || binding.systemPrompt || globalAgent?.systemPrompt || '',
+    systemPrompt:
+      overrides.systemPrompt?.trim() || binding.systemPrompt || globalAgent?.systemPrompt || '',
     icon: overrides.icon?.trim() || binding.icon || globalAgent?.icon || '',
     model: overrides.model?.trim() || binding.model || globalAgent?.model || '',
-    skillIds: overrides.skillIds ?? binding.skillIds ?? globalAgent?.skillIds ?? [],
+    skillIds: [],
     enabled: binding.enabled,
     order: binding.order,
     missing: false,
@@ -757,6 +761,11 @@ const WORKBENCH_SIDEBAR_ITEMS: WorkbenchSidebarItem[] = [
     id: EnterpriseLeadWorkbenchNavItem.AgentManagement,
     icon: EnterpriseLeadWorkbenchNavIcon.Agents,
     labelKey: 'enterpriseLeadWorkbenchNavAgentManagement',
+  },
+  {
+    id: EnterpriseLeadWorkbenchNavItem.Settings,
+    icon: EnterpriseLeadWorkbenchNavIcon.Settings,
+    labelKey: 'enterpriseLeadWorkbenchNavSettings',
   },
 ];
 

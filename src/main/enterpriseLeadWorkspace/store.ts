@@ -21,10 +21,6 @@ import type {
   EnterpriseLeadTodoInput,
   EnterpriseLeadWorkspace,
   EnterpriseLeadWorkspaceAgentBinding,
-  EnterpriseLeadWorkspaceChatMessage,
-  EnterpriseLeadWorkspaceChatResearchResult,
-  EnterpriseLeadWorkspaceChatSession,
-  EnterpriseLeadWorkspaceChatSessionSummary,
   EnterpriseLeadWorkspaceProfile,
   EnterpriseLeadWorkspaceRunAgentSnapshot,
   EnterpriseLeadWorkspaceSettings,
@@ -98,11 +94,6 @@ export interface CreateEnterpriseLeadPendingVersionInput {
   handoffContext: Record<string, unknown>;
 }
 
-export interface CreateEnterpriseLeadChatSessionInput {
-  workspaceId: string;
-  title: string;
-}
-
 export interface UpdateEnterpriseLeadRunProgressInput {
   runId: string;
   status: EnterpriseLeadRunStatus;
@@ -161,24 +152,6 @@ type EnterpriseLeadPendingVersionRow = Omit<
   todos: string;
   risks: string;
   handoffContext: string;
-};
-
-type EnterpriseLeadChatSessionRow = Omit<
-  EnterpriseLeadWorkspaceChatSessionSummary,
-  'messageCount'
-> & {
-  messageCount: number;
-};
-
-type EnterpriseLeadChatMessageRow = Omit<
-  EnterpriseLeadWorkspaceChatMessage,
-  'agent' | 'research' | 'routing' | 'progressEvents'
-> & {
-  agent: string | null;
-  routing: string | null;
-  research: string | null;
-  progressEvents: string | null;
-  sequence: number;
 };
 
 const parseJsonValue = <T>(value: string, fallback: T): T => {
@@ -258,42 +231,6 @@ const mapPendingVersionRow = (row: EnterpriseLeadPendingVersionRow): EnterpriseL
   handoffContext: parseJsonValue(row.handoffContext, {}),
 });
 
-const mapChatMessageRow = (row: EnterpriseLeadChatMessageRow): EnterpriseLeadWorkspaceChatMessage => {
-  const message: EnterpriseLeadWorkspaceChatMessage = {
-    id: row.id,
-    role: row.role,
-    content: row.content,
-    createdAt: row.createdAt,
-  };
-  if (row.research) {
-    message.research = parseJsonValue<EnterpriseLeadWorkspaceChatResearchResult | undefined>(
-      row.research,
-      undefined,
-    );
-  }
-  if (row.agent) {
-    message.agent = parseJsonValue<EnterpriseLeadWorkspaceChatMessage['agent'] | undefined>(
-      row.agent,
-      undefined,
-    );
-  }
-  if (row.routing) {
-    message.routing = parseJsonValue<EnterpriseLeadWorkspaceChatMessage['routing'] | undefined>(
-      row.routing,
-      undefined,
-    );
-  }
-  if (row.progressEvents) {
-    message.progressEvents = parseJsonValue<
-      EnterpriseLeadWorkspaceChatMessage['progressEvents'] | undefined
-    >(
-      row.progressEvents,
-      undefined,
-    );
-  }
-  return message;
-};
-
 export class EnterpriseLeadWorkspaceStore {
   constructor(private readonly db: Database.Database) {
     this.initialize();
@@ -367,66 +304,12 @@ export class EnterpriseLeadWorkspaceStore {
         created_at TEXT NOT NULL,
         applied_at TEXT
       );
-
-      CREATE TABLE IF NOT EXISTS enterprise_lead_chat_sessions (
-        id TEXT PRIMARY KEY,
-        workspace_id TEXT NOT NULL,
-        title TEXT NOT NULL,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL
-      );
-
-      CREATE TABLE IF NOT EXISTS enterprise_lead_chat_messages (
-        id TEXT PRIMARY KEY,
-        session_id TEXT NOT NULL,
-        role TEXT NOT NULL,
-        content TEXT NOT NULL,
-        agent TEXT,
-        routing TEXT,
-        research TEXT,
-        progress_events TEXT,
-        sequence INTEGER NOT NULL,
-        created_at TEXT NOT NULL
-      );
-
-      CREATE INDEX IF NOT EXISTS idx_enterprise_lead_chat_sessions_workspace_updated
-      ON enterprise_lead_chat_sessions(workspace_id, updated_at DESC);
-
-      CREATE INDEX IF NOT EXISTS idx_enterprise_lead_chat_messages_session_sequence
-      ON enterprise_lead_chat_messages(session_id, sequence);
     `);
     this.ensureRunArchiveColumns();
     this.ensureAgentTaskSequenceColumn();
     this.ensureAgentTaskAgentColumns();
     this.ensureWorkspaceSettingsColumn();
     this.ensureWorkspaceAgentsColumn();
-    this.ensureChatMessageAgentColumn();
-    this.ensureChatMessageRoutingColumn();
-    this.ensureChatMessageProgressEventsColumn();
-  }
-
-  private ensureChatMessageAgentColumn(): void {
-    const columns = this.db.pragma('table_info(enterprise_lead_chat_messages)') as Array<{ name: string }>;
-    const columnNames = new Set(columns.map(column => column.name));
-    if (!columnNames.has('agent')) {
-      this.db.exec('ALTER TABLE enterprise_lead_chat_messages ADD COLUMN agent TEXT;');
-    }
-  }
-
-  private ensureChatMessageRoutingColumn(): void {
-    const columns = this.db.pragma('table_info(enterprise_lead_chat_messages)') as Array<{ name: string }>;
-    const columnNames = new Set(columns.map(column => column.name));
-    if (!columnNames.has('routing')) {
-      this.db.exec('ALTER TABLE enterprise_lead_chat_messages ADD COLUMN routing TEXT;');
-    }
-  }
-
-  private ensureChatMessageProgressEventsColumn(): void {
-    const columns = this.db.pragma('table_info(enterprise_lead_chat_messages)') as Array<{ name: string }>;
-    const columnNames = new Set(columns.map(column => column.name));
-    if (!columnNames.has('progress_events')) {
-      this.db.exec('ALTER TABLE enterprise_lead_chat_messages ADD COLUMN progress_events TEXT;');
-    }
   }
 
   private ensureAgentTaskAgentColumns(): void {
@@ -626,20 +509,6 @@ export class EnterpriseLeadWorkspaceStore {
 
   deleteWorkspace(workspaceId: string): boolean {
     const deleteTransaction = this.db.transaction(() => {
-      this.db.prepare(`
-        DELETE FROM enterprise_lead_chat_messages
-        WHERE session_id IN (
-          SELECT id
-          FROM enterprise_lead_chat_sessions
-          WHERE workspace_id = ?
-        )
-      `).run(workspaceId);
-
-      this.db.prepare(`
-        DELETE FROM enterprise_lead_chat_sessions
-        WHERE workspace_id = ?
-      `).run(workspaceId);
-
       this.db.prepare(`
         DELETE FROM enterprise_lead_pending_versions
         WHERE workspace_id = ?
@@ -950,246 +819,6 @@ export class EnterpriseLeadWorkspaceStore {
     `).all(workspaceId) as EnterpriseLeadRunRow[];
 
     return rows.map(mapRunRow);
-  }
-
-  createChatSession(input: CreateEnterpriseLeadChatSessionInput): EnterpriseLeadWorkspaceChatSessionSummary {
-    const workspace = this.getWorkspace(input.workspaceId);
-    if (!workspace) {
-      throw new Error('Enterprise lead workspace not found');
-    }
-
-    const now = new Date().toISOString();
-    const session: EnterpriseLeadWorkspaceChatSessionSummary = {
-      id: randomUUID(),
-      workspaceId: workspace.id,
-      title: cleanText(input.title) || 'New chat',
-      createdAt: now,
-      updatedAt: now,
-      messageCount: 0,
-    };
-
-    this.db.prepare(`
-      INSERT INTO enterprise_lead_chat_sessions (
-        id,
-        workspace_id,
-        title,
-        created_at,
-        updated_at
-      )
-      VALUES (?, ?, ?, ?, ?)
-    `).run(
-      session.id,
-      session.workspaceId,
-      session.title,
-      session.createdAt,
-      session.updatedAt,
-    );
-
-    return session;
-  }
-
-  listChatSessions(workspaceId: string): EnterpriseLeadWorkspaceChatSessionSummary[] {
-    const rows = this.db.prepare(`
-      SELECT
-        sessions.id,
-        sessions.workspace_id as workspaceId,
-        sessions.title,
-        sessions.created_at as createdAt,
-        sessions.updated_at as updatedAt,
-        COUNT(messages.id) as messageCount
-      FROM enterprise_lead_chat_sessions sessions
-      LEFT JOIN enterprise_lead_chat_messages messages
-        ON messages.session_id = sessions.id
-      WHERE sessions.workspace_id = ?
-      GROUP BY sessions.id
-      ORDER BY sessions.updated_at DESC, sessions.rowid DESC
-    `).all(workspaceId) as EnterpriseLeadChatSessionRow[];
-
-    return rows;
-  }
-
-  getChatSession(workspaceId: string, sessionId: string): EnterpriseLeadWorkspaceChatSession | null {
-    const session = this.db.prepare(`
-      SELECT
-        sessions.id,
-        sessions.workspace_id as workspaceId,
-        sessions.title,
-        sessions.created_at as createdAt,
-        sessions.updated_at as updatedAt,
-        COUNT(messages.id) as messageCount
-      FROM enterprise_lead_chat_sessions sessions
-      LEFT JOIN enterprise_lead_chat_messages messages
-        ON messages.session_id = sessions.id
-      WHERE sessions.workspace_id = ? AND sessions.id = ?
-      GROUP BY sessions.id
-      LIMIT 1
-    `).get(workspaceId, sessionId) as EnterpriseLeadChatSessionRow | undefined;
-
-    if (!session) {
-      return null;
-    }
-
-    const messages = this.db.prepare(`
-      SELECT
-        id,
-        role,
-        content,
-        agent,
-        routing,
-        research,
-        progress_events as progressEvents,
-        sequence,
-        created_at as createdAt
-      FROM enterprise_lead_chat_messages
-      WHERE session_id = ?
-      ORDER BY sequence ASC, rowid ASC
-    `).all(sessionId) as EnterpriseLeadChatMessageRow[];
-
-    return {
-      ...session,
-      messages: messages.map(mapChatMessageRow),
-    };
-  }
-
-  deleteChatSession(workspaceId: string, sessionId: string): boolean {
-    const deleteTransaction = this.db.transaction(() => {
-      const session = this.db.prepare(`
-        SELECT id
-        FROM enterprise_lead_chat_sessions
-        WHERE id = ? AND workspace_id = ?
-        LIMIT 1
-      `).get(sessionId, workspaceId) as { id: string } | undefined;
-      if (!session) {
-        return false;
-      }
-
-      this.db.prepare(`
-        DELETE FROM enterprise_lead_chat_messages
-        WHERE session_id = ?
-      `).run(sessionId);
-
-      const result = this.db.prepare(`
-        DELETE FROM enterprise_lead_chat_sessions
-        WHERE id = ? AND workspace_id = ?
-      `).run(sessionId, workspaceId);
-
-      return result.changes > 0;
-    });
-
-    return deleteTransaction();
-  }
-
-  appendChatMessage(
-    sessionId: string,
-    message: EnterpriseLeadWorkspaceChatMessage,
-  ): EnterpriseLeadWorkspaceChatMessage {
-    const session = this.db.prepare(`
-      SELECT id
-      FROM enterprise_lead_chat_sessions
-      WHERE id = ?
-      LIMIT 1
-    `).get(sessionId) as { id: string } | undefined;
-    if (!session) {
-      throw new Error('Enterprise lead chat session not found');
-    }
-
-    const nextSequence = (
-      this.db.prepare(`
-        SELECT COALESCE(MAX(sequence), 0) + 1 as nextSequence
-        FROM enterprise_lead_chat_messages
-        WHERE session_id = ?
-      `).get(sessionId) as { nextSequence: number }
-    ).nextSequence;
-    const createdAt = cleanText(message.createdAt) || new Date().toISOString();
-    const sanitized: EnterpriseLeadWorkspaceChatMessage = {
-      id: cleanText(message.id) || randomUUID(),
-      role: message.role === 'assistant' ? 'assistant' : 'user',
-      content: message.content,
-      createdAt,
-    };
-    if (message.research) {
-      sanitized.research = message.research;
-    }
-    if (message.agent?.id && message.agent.name) {
-      sanitized.agent = {
-        id: cleanText(message.agent.id),
-        name: cleanText(message.agent.name),
-      };
-    }
-    const routingAgents = message.routing?.agents
-      .map(agent => ({
-        id: cleanText(agent.id),
-        name: cleanText(agent.name),
-      }))
-      .filter(agent => agent.id && agent.name) ?? [];
-    if (message.routing?.reason && routingAgents.length > 0) {
-      const routingSteps = message.routing.steps
-        ?.map(step => ({
-          agent: {
-            id: cleanText(step.agent.id),
-            name: cleanText(step.agent.name),
-          },
-          content: cleanText(step.content),
-        }))
-        .filter(step => step.agent.id && step.agent.name && step.content) ?? [];
-      sanitized.routing = {
-        reason: cleanText(message.routing.reason),
-        agents: routingAgents,
-        ...(routingSteps.length > 0 ? { steps: routingSteps } : {}),
-      };
-    }
-    if (message.progressEvents?.length) {
-      sanitized.progressEvents = message.progressEvents.map(event => ({
-        requestId: cleanText(event.requestId),
-        stepId: cleanText(event.stepId),
-        phase: event.phase,
-        status: event.status,
-        title: cleanText(event.title),
-        timestamp: Number.isFinite(event.timestamp) ? event.timestamp : Date.now(),
-        ...(event.detail ? { detail: cleanText(event.detail) } : {}),
-        ...(event.source ? { source: cleanText(event.source) } : {}),
-      })).filter(event =>
-        event.requestId && event.stepId && event.phase && event.status && event.title,
-      );
-    }
-
-    const appendTransaction = this.db.transaction(() => {
-      this.db.prepare(`
-        INSERT INTO enterprise_lead_chat_messages (
-          id,
-          session_id,
-          role,
-          content,
-          agent,
-          routing,
-          research,
-          progress_events,
-          sequence,
-          created_at
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(
-        sanitized.id,
-        sessionId,
-        sanitized.role,
-        sanitized.content,
-        sanitized.agent ? JSON.stringify(sanitized.agent) : null,
-        sanitized.routing ? JSON.stringify(sanitized.routing) : null,
-        sanitized.research ? JSON.stringify(sanitized.research) : null,
-        sanitized.progressEvents?.length ? JSON.stringify(sanitized.progressEvents) : null,
-        nextSequence,
-        sanitized.createdAt,
-      );
-
-      this.db.prepare(`
-        UPDATE enterprise_lead_chat_sessions
-        SET updated_at = ?
-        WHERE id = ?
-      `).run(sanitized.createdAt, sessionId);
-    });
-
-    appendTransaction();
-    return sanitized;
   }
 
   updateRunProgress(input: UpdateEnterpriseLeadRunProgressInput): EnterpriseLeadRun {

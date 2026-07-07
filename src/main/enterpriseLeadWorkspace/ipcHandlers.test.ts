@@ -16,8 +16,6 @@ import { EnterpriseLeadWorkspaceIpc } from '../../shared/enterpriseLeadWorkspace
 import type {
   EnterpriseLeadWorkspace,
   EnterpriseLeadWorkspaceAgentCalibrationResponse,
-  EnterpriseLeadWorkspaceChatProgressEvent,
-  EnterpriseLeadWorkspaceChatResponse,
 } from '../../shared/enterpriseLeadWorkspace/types';
 import {
   type EnterpriseLeadWorkspaceHandlerDeps,
@@ -32,14 +30,6 @@ const makeDeps = (): {
     id: 'workspace-1',
     workspaceAgents: [],
   } as EnterpriseLeadWorkspace;
-  const chatResponse: EnterpriseLeadWorkspaceChatResponse = {
-    message: {
-      id: 'assistant-1',
-      role: 'assistant',
-      content: 'ok',
-      createdAt: '2026-07-05T00:00:00.000Z',
-    },
-  };
   const calibrationResponse: EnterpriseLeadWorkspaceAgentCalibrationResponse = {
     content: '客户优先级：高',
     checks: [{ id: 'priority', passed: true }],
@@ -52,13 +42,10 @@ const makeDeps = (): {
     deleteWorkspace: vi.fn(() => true),
     updateWorkspaceProfile: vi.fn(() => workspace),
     updateWorkspaceSources: vi.fn(() => workspace),
+    enqueueWorkspaceDocumentProcessing: vi.fn(() => workspace),
     updateWorkspaceSettings: vi.fn(() => workspace),
     updateWorkspaceAgents: vi.fn(() => workspace),
     listRuns: vi.fn(() => []),
-    listChatSessions: vi.fn(() => []),
-    getChatSession: vi.fn(() => null),
-    deleteChatSession: vi.fn(() => true),
-    chat: vi.fn(() => chatResponse),
     testWorkspaceAgent: vi.fn(() => calibrationResponse),
     createRun: vi.fn(),
     getSnapshot: vi.fn(),
@@ -115,133 +102,36 @@ describe('registerEnterpriseLeadWorkspaceHandlers', () => {
     });
   });
 
-  test('deletes a workspace chat session through the chat session delete channel', async () => {
+  test('queues workspace document processing through the document process channel', async () => {
     const { deps, service } = makeDeps();
     registerEnterpriseLeadWorkspaceHandlers(deps);
 
-    const handler = registeredHandlers.get(EnterpriseLeadWorkspaceIpc.DeleteChatSession);
+    const handler = registeredHandlers.get(EnterpriseLeadWorkspaceIpc.ProcessDocumentSource);
     expect(handler).toBeDefined();
 
+    const sources = [
+      {
+        kind: 'file',
+        label: '工厂资料',
+        text: '主营精密五金加工。',
+      },
+    ];
     const result = await handler?.(undefined, {
       workspaceId: 'workspace-1',
-      sessionId: 'chat-1',
+      sources,
+      sourceIndex: 0,
     });
 
-    expect(service.deleteChatSession).toHaveBeenCalledWith('workspace-1', 'chat-1');
-    expect(result).toEqual({
-      success: true,
-      data: true,
-    });
-  });
-
-  test('drops malformed recent chat messages before calling the service', async () => {
-    const { deps, service } = makeDeps();
-    registerEnterpriseLeadWorkspaceHandlers(deps);
-
-    const handler = registeredHandlers.get(EnterpriseLeadWorkspaceIpc.Chat);
-    expect(handler).toBeDefined();
-
-    await handler?.(undefined, {
-      workspaceId: 'workspace-1',
-      request: {
-        message: '帮我写一段跟进话术',
-        recentMessages: [
-          {
-            id: 'user-1',
-            role: 'user',
-            content: '历史问题',
-            createdAt: '2026-07-05T00:00:00.000Z',
-            research: { summary: 'pass-through' },
-          },
-          {
-            id: 'assistant-bad',
-            role: 'system',
-            content: 'bad role',
-            createdAt: '2026-07-05T00:00:00.000Z',
-          },
-          {
-            id: 'assistant-2',
-            role: 'assistant',
-            content: 42,
-            createdAt: '2026-07-05T00:00:00.000Z',
-          },
-          'bad',
-        ],
-      },
-    });
-
-    expect(service.chat).toHaveBeenCalledWith('workspace-1', {
-      message: '帮我写一段跟进话术',
-      recentMessages: [
-        {
-          id: 'user-1',
-          role: 'user',
-          content: '历史问题',
-          createdAt: '2026-07-05T00:00:00.000Z',
-        },
-      ],
-    });
-  });
-
-  test('forwards real chat progress events to the invoking renderer', async () => {
-    const { deps, service } = makeDeps();
-    const progressEvent: EnterpriseLeadWorkspaceChatProgressEvent = {
-      requestId: 'request-1',
-      stepId: 'routing',
-      phase: 'routing',
-      status: 'running',
-      title: '正在分析任务和选择 Agent',
-      timestamp: 1,
-    };
-    vi.mocked(service.chat).mockImplementation((_workspaceId, _request, progressSink) => {
-      progressSink?.(progressEvent);
-      return {
-        message: {
-          id: 'assistant-1',
-          role: 'assistant',
-          content: 'ok',
-          createdAt: '2026-07-05T00:00:00.000Z',
-        },
-      };
-    });
-    registerEnterpriseLeadWorkspaceHandlers(deps);
-
-    const handler = registeredHandlers.get(EnterpriseLeadWorkspaceIpc.Chat);
-    expect(handler).toBeDefined();
-
-    const sender = { send: vi.fn() };
-    const result = await handler?.(
-      { sender },
-      {
-        workspaceId: 'workspace-1',
-        request: {
-          requestId: 'request-1',
-          message: '帮我判断这批客户谁更值得优先跟进',
-        },
-      },
-    );
-
-    expect(service.chat).toHaveBeenCalledWith(
+    expect(service.enqueueWorkspaceDocumentProcessing).toHaveBeenCalledWith(
       'workspace-1',
-      {
-        requestId: 'request-1',
-        message: '帮我判断这批客户谁更值得优先跟进',
-      },
-      expect.any(Function),
-    );
-    expect(sender.send).toHaveBeenCalledWith(
-      EnterpriseLeadWorkspaceIpc.ChatProgress,
-      progressEvent,
+      [expect.objectContaining(sources[0])],
+      0,
     );
     expect(result).toEqual({
       success: true,
       data: {
-        message: {
-          id: 'assistant-1',
-          role: 'assistant',
-          content: 'ok',
-          createdAt: '2026-07-05T00:00:00.000Z',
-        },
+        id: 'workspace-1',
+        workspaceAgents: [],
       },
     });
   });

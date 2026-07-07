@@ -11,6 +11,7 @@ import type { CoworkSessionSummary } from '../../types/cowork';
 import { CoworkView, type CoworkViewProps } from '../cowork';
 import CoworkSearchModal from '../cowork/CoworkSearchModal';
 import SidebarToggleIcon from '../icons/SidebarToggleIcon';
+import { SkillsView } from '../skills';
 import WindowTitleBar from '../window/WindowTitleBar';
 import {
   EnterpriseLeadWorkspaceInternalPage,
@@ -28,7 +29,7 @@ import {
   openEmbeddedCoworkConversationRecord,
   selectWorkspaceCoworkSearchSession,
 } from './workspaceCoworkSessionActions';
-import { mapCoworkSessionsToEnterpriseLeadChatSessionSummaries } from './workspaceCoworkSessionRecords';
+import { mapCoworkSessionsToWorkspaceConversationRecords } from './workspaceCoworkSessionRecords';
 import WorkspaceCreate from './WorkspaceCreate';
 import WorkspaceEntryHome from './WorkspaceEntryHome';
 import WorkspaceKnowledgeBase from './WorkspaceKnowledgeBase';
@@ -46,6 +47,8 @@ interface EnterpriseLeadWorkspaceViewProps {
   onPrepareCoworkChat: (draft: string) => void;
   onShowSkills?: () => void;
   onShowKits?: () => void;
+  onCreateSkillByChat?: () => void;
+  skillsReadOnly?: boolean;
 }
 
 export const EnterpriseLeadWorkspacePageTarget = {
@@ -81,6 +84,8 @@ export const EnterpriseLeadWorkspaceView: React.FC<EnterpriseLeadWorkspaceViewPr
   onPrepareCoworkChat,
   onShowSkills,
   onShowKits,
+  onCreateSkillByChat,
+  skillsReadOnly,
 }) => {
   const [screen, setScreen] = useState<EnterpriseLeadWorkspaceScreen>(
     EnterpriseLeadWorkspaceScreen.Entry,
@@ -324,9 +329,7 @@ export const EnterpriseLeadWorkspaceView: React.FC<EnterpriseLeadWorkspaceViewPr
 
   const visibleChatSessions = useMemo(
     () =>
-      activeWorkspaceId
-        ? mapCoworkSessionsToEnterpriseLeadChatSessionSummaries(coworkSessions, activeWorkspaceId)
-        : [],
+      activeWorkspaceId ? mapCoworkSessionsToWorkspaceConversationRecords(coworkSessions) : [],
     [activeWorkspaceId, coworkSessions],
   );
   const visibleActiveChatSessionId = getWorkspaceSidebarActiveChatSessionId({
@@ -376,6 +379,7 @@ export const EnterpriseLeadWorkspaceView: React.FC<EnterpriseLeadWorkspaceViewPr
         'enterpriseLeadWorkbenchNavCreationRecords',
       [EnterpriseLeadWorkspaceInternalPage.AgentManagement]:
         'enterpriseLeadWorkbenchNavAgentManagement',
+      [EnterpriseLeadWorkspaceInternalPage.Settings]: 'enterpriseLeadWorkbenchNavSettings',
     } satisfies Record<EnterpriseLeadWorkspaceInternalPageType, string>;
 
     return (
@@ -422,6 +426,17 @@ export const EnterpriseLeadWorkspaceView: React.FC<EnterpriseLeadWorkspaceViewPr
       );
     }
 
+    if (page === EnterpriseLeadWorkspaceInternalPage.Settings) {
+      return (
+        <SkillsView
+          isSidebarCollapsed={false}
+          onCreateSkillByChat={onCreateSkillByChat}
+          onOpenBrowserSettings={() => onRequestAppSettings?.({ initialTab: 'browserWebAccess' })}
+          readOnly={skillsReadOnly}
+        />
+      );
+    }
+
     if (pageRouting.target === EnterpriseLeadWorkspacePageTarget.EmbeddedCoworkChat) {
       return (
         <CoworkView
@@ -430,6 +445,7 @@ export const EnterpriseLeadWorkspaceView: React.FC<EnterpriseLeadWorkspaceViewPr
           onShowKits={onShowKits}
           isSidebarCollapsed={false}
           onNewChat={() => prepareEmbeddedCoworkChat(workspace)}
+          enterpriseLeadWorkspace={workspace}
         />
       );
     }

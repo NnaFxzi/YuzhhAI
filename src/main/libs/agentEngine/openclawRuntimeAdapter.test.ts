@@ -483,6 +483,33 @@ test('outbound prompt injects knowledge-first guidance for content production re
   );
 });
 
+test('outbound prompt requires a video generation follow-up for short video script requests', async () => {
+  const adapter = new OpenClawRuntimeAdapter(
+    {
+      getSession: () => null,
+      getAgent: () => null,
+    } as never,
+    {} as never,
+  );
+  const internal = adapter as unknown as {
+    bridgedSessions: Set<string>;
+    buildOutboundPrompt: (
+      sessionId: string,
+      prompt: string,
+      systemPrompt?: string,
+      agentId?: string,
+    ) => Promise<string>;
+  };
+  internal.bridgedSessions.add('session-1');
+
+  const prompt = await internal.buildOutboundPrompt('session-1', '帮我写一个 60 秒短视频脚本');
+
+  expect(prompt).toContain('[Knowledge evidence usage contract]');
+  expect(prompt).toContain('下一步：是否需要继续生成视频？');
+  expect(prompt).toContain('如果需要，我可以继续把这版脚本整理成视频生成提示词');
+  expect(prompt).toContain('不要只给“老板出镜版/30 秒版”等改写建议来替代这个确认');
+});
+
 test('outbound prompt appends matched workspace knowledge snippets for industry analysis requests', async () => {
   const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lobsterai-knowledge-context-'));
   const workspaceDir = path.join(stateDir, 'workspace-main');
@@ -2388,10 +2415,10 @@ test('chat final sanitizes internal memory diagnostics before persisting assista
   });
 
   const persisted = session.messages.find(message => message.id === 'msg-2')?.content as string;
-  expect(persisted).toContain('部分历史记忆暂未读取');
-  expect(persisted).toContain('待验证');
   expect(persisted).toContain('结论：先按重包装/工业包装行业分析。');
   expect(persisted).toContain('下一步：优先验证客户场景和出口包装需求。');
+  expect(persisted).not.toContain('部分历史记忆');
+  expect(persisted).not.toContain('待验证');
   expect(persisted).not.toContain('embedding');
   expect(persisted).not.toContain('openclaw memory index --force');
 });

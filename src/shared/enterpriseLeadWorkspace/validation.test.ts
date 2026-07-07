@@ -23,7 +23,6 @@ import {
   normalizeEnterpriseLeadWorkspaceSettings,
   normalizeEnterpriseLeadWorkspaceSettingsUpdate,
   normalizeRiskReviewOutput,
-  normalizeWorkspaceChatResearchIntent,
   normalizeWorkspaceDraftInput,
 } from './validation';
 
@@ -467,7 +466,6 @@ describe('enterprise lead workspace validation', () => {
           systemPrompt: 'Workspace prompt',
           icon: 'briefcase',
           model: 'deepseek/deepseek-chat',
-          skillIds: ['docx', 'web-search'],
         },
       },
     ]);
@@ -545,7 +543,6 @@ describe('enterprise lead workspace validation', () => {
           systemPrompt: '先抽取产品能力，再标记缺失信息',
           icon: '产',
           model: 'deepseek/deepseek-v4-pro',
-          skillIds: ['product-profile', 'source-check'],
         },
       },
     ]);
@@ -622,75 +619,4 @@ describe('enterprise lead workspace validation', () => {
     });
   });
 
-  test('normalizes oversized workspace chat search intent', () => {
-    const normalized = normalizeWorkspaceChatResearchIntent({
-      kind: 'search',
-      query: 'x'.repeat(700),
-      provider: 'unknown',
-    });
-
-    expect(normalized).toEqual({
-      kind: 'search',
-      query: 'x'.repeat(500),
-      provider: 'auto',
-    });
-  });
-
-  test('normalizes extract intents to http urls and ten items', () => {
-    const urls = [
-      'https://example.com/a',
-      'ftp://example.com/b',
-      'http://example.com/c',
-      ...Array.from({ length: 20 }, (_, index) => `https://example.com/${index}`),
-    ];
-
-    const normalized = normalizeWorkspaceChatResearchIntent({
-      kind: 'extract',
-      urls,
-      query: '  summarize competitor pages  ',
-      provider: 'firecrawl',
-    });
-
-    expect(normalized.kind).toBe('extract');
-    if (normalized.kind !== 'extract') throw new Error('Expected extract intent');
-    expect(normalized.urls).toHaveLength(10);
-    expect(normalized.urls).not.toContain('ftp://example.com/b');
-    expect(normalized.query).toBe('summarize competitor pages');
-    expect(normalized.provider).toBe('firecrawl');
-  });
-
-  test('caps extract intent query length', () => {
-    const normalized = normalizeWorkspaceChatResearchIntent({
-      kind: 'extract',
-      urls: ['https://example.com/a'],
-      query: ` ${'x'.repeat(700)} `,
-      provider: 'tavily',
-    });
-
-    expect(normalized.kind).toBe('extract');
-    if (normalized.kind !== 'extract') throw new Error('Expected extract intent');
-    expect(normalized.query).toBe('x'.repeat(500));
-  });
-
-  test('normalizes domestic search intents with valid searchable source ids', () => {
-    const normalized = normalizeWorkspaceChatResearchIntent({
-      kind: 'domestic_search',
-      query: ` ${'客户线索'.repeat(200)} `,
-      sourceIds: ['bilibili', 'unknown', 'wechat_official_accounts', 'bilibili'],
-    });
-
-    expect(normalized).toEqual({
-      kind: 'domestic_search',
-      query: '客户线索'.repeat(125),
-      sourceIds: ['bilibili', 'wechat_official_accounts'],
-    });
-  });
-
-  test('drops domestic search intents without a query', () => {
-    expect(normalizeWorkspaceChatResearchIntent({
-      kind: 'domestic_search',
-      query: ' ',
-      sourceIds: ['bilibili'],
-    })).toEqual({ kind: 'none' });
-  });
 });

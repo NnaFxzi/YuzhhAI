@@ -12,15 +12,18 @@ import { AppIpcChannel } from '../shared/app/constants';
 import { AppSettingsIpc } from '../shared/appSettings/constants';
 import { AppUpdateIpc } from '../shared/appUpdate/constants';
 import { ArtifactPreviewIpc } from '../shared/artifactPreview/constants';
-import {
-  AsrIpcChannel,
-  type AsrRealtimeSessionRequest,
-} from '../shared/asr/constants';
+import { AsrIpcChannel, type AsrRealtimeSessionRequest } from '../shared/asr/constants';
 import { AuthIpcChannel } from '../shared/auth/constants';
 import { BrowserIpc, type BrowserRuntimeProfile } from '../shared/browserWebAccess/constants';
 import { ClipboardIpc } from '../shared/clipboard/constants';
+import {
+  type ContentQualityRegressionApplyPromptPatchRequest,
+  ContentQualityRegressionIpc,
+  type ContentQualityRegressionRunReportRequest,
+} from '../shared/contentQualityRegression/constants';
 import { CoworkIpcChannel } from '../shared/cowork/constants';
 import type { LayeredCoworkSettingsUpdate } from '../shared/cowork/layeredSettings';
+import type { CoworkWorkspaceAgentSelection } from '../shared/cowork/workspaceAgentSelection';
 import { DataMigrationIpc } from '../shared/dataMigration/constants';
 import { DialogIpc } from '../shared/dialog/constants';
 import { EnterpriseLeadWorkspaceIpc } from '../shared/enterpriseLeadWorkspace/constants';
@@ -28,8 +31,6 @@ import type {
   EnterpriseLeadExtractionSource,
   EnterpriseLeadWorkspaceAgentBinding,
   EnterpriseLeadWorkspaceAgentCalibrationRequest,
-  EnterpriseLeadWorkspaceChatProgressEvent,
-  EnterpriseLeadWorkspaceChatRequest,
   EnterpriseLeadWorkspaceDraft,
   EnterpriseLeadWorkspaceProfile,
   EnterpriseLeadWorkspaceSettingsUpdate,
@@ -41,10 +42,7 @@ import {
   type HtmlShareSourceType,
   type HtmlShareStatus,
 } from '../shared/htmlShare/constants';
-import {
-  type IndustryExportFormat,
-  IndustryMarketingIpc,
-} from '../shared/industryPack/constants';
+import { type IndustryExportFormat, IndustryMarketingIpc } from '../shared/industryPack/constants';
 import type { IndustryGenerationRequest } from '../shared/industryPack/types';
 import type {
   KitReference,
@@ -196,6 +194,12 @@ contextBridge.exposeInMainWorld('electron', {
     exportAsset: (assetId: string, format: IndustryExportFormat) =>
       ipcRenderer.invoke(IndustryMarketingIpc.ExportAsset, { assetId, format }),
   },
+  contentQualityRegression: {
+    runReport: (request?: ContentQualityRegressionRunReportRequest) =>
+      ipcRenderer.invoke(ContentQualityRegressionIpc.RunReport, request),
+    applyPromptPatchToAgent: (request: ContentQualityRegressionApplyPromptPatchRequest) =>
+      ipcRenderer.invoke(ContentQualityRegressionIpc.ApplyPromptPatchToAgent, request),
+  },
   enterpriseLeadWorkspace: {
     listWorkspaces: () => ipcRenderer.invoke(EnterpriseLeadWorkspaceIpc.ListWorkspaces),
     getWorkspace: (id: string) => ipcRenderer.invoke(EnterpriseLeadWorkspaceIpc.GetWorkspace, id),
@@ -215,6 +219,16 @@ contextBridge.exposeInMainWorld('electron', {
         workspaceId,
         sources,
       }),
+    processDocumentSource: (
+      workspaceId: string,
+      sources: EnterpriseLeadExtractionSource[],
+      sourceIndex: number,
+    ) =>
+      ipcRenderer.invoke(EnterpriseLeadWorkspaceIpc.ProcessDocumentSource, {
+        workspaceId,
+        sources,
+        sourceIndex,
+      }),
     updateWorkspaceSettings: (
       workspaceId: string,
       settings: EnterpriseLeadWorkspaceSettingsUpdate,
@@ -233,23 +247,6 @@ contextBridge.exposeInMainWorld('electron', {
       ipcRenderer.invoke(EnterpriseLeadWorkspaceIpc.GetRun, { workspaceId, runId }),
     runWorkflow: (workspaceId: string, runId: string) =>
       ipcRenderer.invoke(EnterpriseLeadWorkspaceIpc.RunWorkflow, { workspaceId, runId }),
-    listChatSessions: (workspaceId: string) =>
-      ipcRenderer.invoke(EnterpriseLeadWorkspaceIpc.ListChatSessions, workspaceId),
-    getChatSession: (workspaceId: string, sessionId: string) =>
-      ipcRenderer.invoke(EnterpriseLeadWorkspaceIpc.GetChatSession, { workspaceId, sessionId }),
-    deleteChatSession: (workspaceId: string, sessionId: string) =>
-      ipcRenderer.invoke(EnterpriseLeadWorkspaceIpc.DeleteChatSession, { workspaceId, sessionId }),
-    chat: (workspaceId: string, request: EnterpriseLeadWorkspaceChatRequest) =>
-      ipcRenderer.invoke(EnterpriseLeadWorkspaceIpc.Chat, { workspaceId, request }),
-    onChatProgress: (
-      requestId: string,
-      callback: (event: EnterpriseLeadWorkspaceChatProgressEvent) => void,
-    ) => {
-      const handler = (_event: unknown, progressEvent: EnterpriseLeadWorkspaceChatProgressEvent) =>
-        progressEvent.requestId === requestId ? callback(progressEvent) : undefined;
-      ipcRenderer.on(EnterpriseLeadWorkspaceIpc.ChatProgress, handler);
-      return () => ipcRenderer.removeListener(EnterpriseLeadWorkspaceIpc.ChatProgress, handler);
-    },
     testWorkspaceAgent: (
       workspaceId: string,
       request: EnterpriseLeadWorkspaceAgentCalibrationRequest,
@@ -512,6 +509,7 @@ contextBridge.exposeInMainWorld('electron', {
         dataUrl?: string;
         role?: string;
       }>;
+      workspaceAgentSelection?: CoworkWorkspaceAgentSelection | null;
     }) => ipcRenderer.invoke('cowork:session:start', options),
     continueSession: (options: {
       sessionId: string;
@@ -564,6 +562,7 @@ contextBridge.exposeInMainWorld('electron', {
         dataUrl?: string;
         role?: string;
       }>;
+      workspaceAgentSelection?: CoworkWorkspaceAgentSelection | null;
     }) => ipcRenderer.invoke('cowork:session:continue', options),
     stopSession: (sessionId: string) => ipcRenderer.invoke('cowork:session:stop', sessionId),
     deleteSession: (sessionId: string) => ipcRenderer.invoke('cowork:session:delete', sessionId),

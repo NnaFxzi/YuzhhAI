@@ -1,7 +1,15 @@
 import { describe, expect, test } from 'vitest';
 
-import { EnterpriseLeadKnowledgeItemKind } from './enterpriseLeadWorkspaceUi';
 import {
+  EnterpriseLeadDocumentExtractionStatus,
+  EnterpriseLeadKnowledgeIndexStatus,
+} from '../../../shared/enterpriseLeadWorkspace/constants';
+import {
+  EnterpriseLeadKnowledgeItemKind,
+  EnterpriseLeadKnowledgeSection,
+} from './enterpriseLeadWorkspaceUi';
+import {
+  canRetryEnterpriseLeadDocumentProcessing,
   confirmEnterpriseLeadKnowledgeItemInProfile,
   confirmEnterpriseLeadKnowledgeItemsInProfile,
   doesEnterpriseLeadKnowledgeSourceNeedVectorSync,
@@ -19,16 +27,21 @@ import {
   enterpriseLeadKnowledgeVectorIndexStatusClassNames,
   enterpriseLeadReadableDocumentExtensions,
   getEnterpriseLeadKnowledgeConfirmationKey,
+  getEnterpriseLeadKnowledgeDeletionKeys,
   getEnterpriseLeadKnowledgeMessageAutoDismissMs,
   getEnterpriseLeadKnowledgeMessageRole,
   getEnterpriseLeadKnowledgePendingItemCount,
   getEnterpriseLeadKnowledgePendingItems,
+  getEnterpriseLeadKnowledgeSelectedDeletionKeys,
   getEnterpriseLeadKnowledgeSelectedItemIdAfterViewChange,
   getEnterpriseLeadKnowledgeVectorIndexStatus,
   getEnterpriseLeadKnowledgeVectorIndexSummary,
   getEnterpriseLeadNewExtractedKnowledgeKeys,
+  isEnterpriseLeadDocumentProcessing,
   isEnterpriseLeadKnowledgeItemConfirmed,
+  isEnterpriseLeadKnowledgeSectionShownInAiKnowledgeTable,
   removeEnterpriseLeadKnowledgeKeysFromProfile,
+  shouldShowEnterpriseLeadKnowledgeSelectionToolbar,
 } from './WorkspaceKnowledgeBase';
 
 describe('WorkspaceKnowledgeBase layout', () => {
@@ -141,6 +154,81 @@ describe('WorkspaceKnowledgeBase layout', () => {
       getEnterpriseLeadKnowledgeConfirmationKey(items[1]),
     ]);
     expect(getEnterpriseLeadKnowledgePendingItemCount(confirmedProfile, items)).toBe(0);
+  });
+
+  test('builds batch delete keys only for maintainable AI knowledge items', () => {
+    const items = [
+      {
+        id: 'product-0',
+        kind: EnterpriseLeadKnowledgeItemKind.Product,
+        text: '重型纸箱',
+      },
+      {
+        id: 'source-0',
+        kind: EnterpriseLeadKnowledgeItemKind.Source,
+        text: '客户访谈原文',
+      },
+      {
+        id: 'selling-point-0',
+        kind: EnterpriseLeadKnowledgeItemKind.SellingPoint,
+        text: '防破损',
+      },
+    ];
+
+    expect(getEnterpriseLeadKnowledgeDeletionKeys(items)).toEqual([
+      'productList:重型纸箱',
+      'sellingPoints:防破损',
+    ]);
+  });
+
+  test('builds batch delete keys only from selected maintainable AI knowledge items', () => {
+    const items = [
+      {
+        id: 'product-0',
+        kind: EnterpriseLeadKnowledgeItemKind.Product,
+        text: '重型纸箱',
+      },
+      {
+        id: 'source-0',
+        kind: EnterpriseLeadKnowledgeItemKind.Source,
+        text: '客户访谈原文',
+      },
+      {
+        id: 'selling-point-0',
+        kind: EnterpriseLeadKnowledgeItemKind.SellingPoint,
+        text: '防破损',
+      },
+    ];
+
+    expect(getEnterpriseLeadKnowledgeSelectedDeletionKeys(items, ['product-0'])).toEqual([
+      'productList:重型纸箱',
+    ]);
+    expect(
+      getEnterpriseLeadKnowledgeSelectedDeletionKeys(items, ['source-0', 'selling-point-0']),
+    ).toEqual(['sellingPoints:防破损']);
+  });
+
+  test('shows selected action toolbar only after AI knowledge is selected', () => {
+    expect(shouldShowEnterpriseLeadKnowledgeSelectionToolbar(0)).toBe(false);
+    expect(shouldShowEnterpriseLeadKnowledgeSelectionToolbar(1)).toBe(true);
+  });
+
+  test('hides recent deliverables and archives from the AI knowledge table', () => {
+    expect(
+      isEnterpriseLeadKnowledgeSectionShownInAiKnowledgeTable(
+        EnterpriseLeadKnowledgeSection.Deliverables,
+      ),
+    ).toBe(false);
+    expect(
+      isEnterpriseLeadKnowledgeSectionShownInAiKnowledgeTable(
+        EnterpriseLeadKnowledgeSection.Archives,
+      ),
+    ).toBe(false);
+    expect(
+      isEnterpriseLeadKnowledgeSectionShownInAiKnowledgeTable(
+        EnterpriseLeadKnowledgeSection.Products,
+      ),
+    ).toBe(true);
   });
 
   test('tracks only newly contributed knowledge keys from document extraction', () => {
@@ -304,6 +392,13 @@ describe('WorkspaceKnowledgeBase layout', () => {
     expect(
       doesEnterpriseLeadKnowledgeSourceNeedVectorSync({
         text: '主营工业包装服务，客户是机械设备厂采购负责人。',
+        extractionStatus: 'extracting',
+        vectorIndexStatus: 'indexing',
+      }),
+    ).toBe(false);
+    expect(
+      doesEnterpriseLeadKnowledgeSourceNeedVectorSync({
+        text: '主营工业包装服务，客户是机械设备厂采购负责人。',
         vectorChunkCount: 4,
         vectorIndexStatus: 'indexed',
       }),
@@ -312,6 +407,67 @@ describe('WorkspaceKnowledgeBase layout', () => {
       doesEnterpriseLeadKnowledgeSourceNeedVectorSync({
         text: '   ',
         vectorIndexStatus: 'pending',
+      }),
+    ).toBe(false);
+  });
+
+  test('guards retry and mutation actions while documents are processing', () => {
+    expect(
+      canRetryEnterpriseLeadDocumentProcessing({
+        text: '企业资料正文',
+        extractionStatus: EnterpriseLeadDocumentExtractionStatus.Pending,
+        vectorIndexStatus: EnterpriseLeadKnowledgeIndexStatus.Pending,
+      }),
+    ).toBe(true);
+    expect(
+      canRetryEnterpriseLeadDocumentProcessing({
+        text: '企业资料正文',
+        extractionStatus: EnterpriseLeadDocumentExtractionStatus.Failed,
+        vectorIndexStatus: EnterpriseLeadKnowledgeIndexStatus.Failed,
+      }),
+    ).toBe(true);
+    expect(
+      canRetryEnterpriseLeadDocumentProcessing({
+        text: '企业资料正文',
+        extractionStatus: EnterpriseLeadDocumentExtractionStatus.Extracted,
+        vectorIndexStatus: EnterpriseLeadKnowledgeIndexStatus.Failed,
+      }),
+    ).toBe(true);
+    expect(
+      canRetryEnterpriseLeadDocumentProcessing({
+        text: '企业资料正文',
+        extractionStatus: EnterpriseLeadDocumentExtractionStatus.Extracted,
+        vectorIndexStatus: EnterpriseLeadKnowledgeIndexStatus.Indexed,
+      }),
+    ).toBe(false);
+    expect(
+      canRetryEnterpriseLeadDocumentProcessing({
+        text: '企业资料正文',
+        extractionStatus: EnterpriseLeadDocumentExtractionStatus.Extracting,
+        vectorIndexStatus: EnterpriseLeadKnowledgeIndexStatus.Indexing,
+      }),
+    ).toBe(false);
+    expect(
+      canRetryEnterpriseLeadDocumentProcessing({
+        text: '   ',
+        extractionStatus: EnterpriseLeadDocumentExtractionStatus.Failed,
+        vectorIndexStatus: EnterpriseLeadKnowledgeIndexStatus.Failed,
+      }),
+    ).toBe(false);
+    expect(
+      isEnterpriseLeadDocumentProcessing({
+        extractionStatus: EnterpriseLeadDocumentExtractionStatus.Extracting,
+      }),
+    ).toBe(true);
+    expect(
+      isEnterpriseLeadDocumentProcessing({
+        vectorIndexStatus: EnterpriseLeadKnowledgeIndexStatus.Indexing,
+      }),
+    ).toBe(true);
+    expect(
+      isEnterpriseLeadDocumentProcessing({
+        extractionStatus: EnterpriseLeadDocumentExtractionStatus.Failed,
+        vectorIndexStatus: EnterpriseLeadKnowledgeIndexStatus.Failed,
       }),
     ).toBe(false);
   });

@@ -1,10 +1,5 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
 
-import {
-  EnterpriseLeadChatProgressPhase,
-  EnterpriseLeadChatProgressStatus,
-} from '../../shared/enterpriseLeadWorkspace/constants';
-import type { EnterpriseLeadWorkspaceChatProgressEvent } from '../../shared/enterpriseLeadWorkspace/types';
 import { buildDefaultEnterpriseLeadWorkspaceSettings } from '../../shared/enterpriseLeadWorkspace/validation';
 import { enterpriseLeadWorkspaceService } from './enterpriseLeadWorkspace';
 
@@ -120,10 +115,64 @@ describe('enterpriseLeadWorkspaceService', () => {
     }));
     createWindowWithEnterpriseLeadWorkspace({ updateWorkspaceAgents });
 
-    const result = await enterpriseLeadWorkspaceService.updateWorkspaceAgents('workspace-1', [binding]);
+    const result = await enterpriseLeadWorkspaceService.updateWorkspaceAgents('workspace-1', [
+      binding,
+    ]);
 
     expect(updateWorkspaceAgents).toHaveBeenCalledWith('workspace-1', [binding]);
     expect(result?.workspaceAgents).toEqual([binding]);
+  });
+
+  test('queues document source processing through bridge', async () => {
+    const workspace = {
+      id: 'workspace-1',
+      name: 'Workspace 1',
+      type: 'enterprise_lead',
+      profile: {
+        companySummary: '',
+        productList: [],
+        productCapabilities: [],
+        targetCustomers: [],
+        applicationScenarios: [],
+        sellingPoints: [],
+        channelPreferences: [],
+        prohibitedClaims: [],
+        contactRules: [],
+        missingInfo: [],
+      },
+      extractionSources: [
+        {
+          kind: 'file',
+          label: '工厂资料',
+          text: '主营精密五金加工。',
+        },
+      ],
+      riskRules: [],
+      enabledAgentRoles: [],
+      workspaceAgents: [],
+      settings: buildDefaultEnterpriseLeadWorkspaceSettings(),
+      recentRunId: null,
+      createdAt: '2026-07-05T00:00:00.000Z',
+      updatedAt: '2026-07-05T00:00:00.000Z',
+    };
+    const processDocumentSource = vi.fn(async () => ({
+      success: true as const,
+      data: workspace,
+    }));
+    createWindowWithEnterpriseLeadWorkspace({ processDocumentSource });
+
+    const result = await enterpriseLeadWorkspaceService.processDocumentSource(
+      'workspace-1',
+      workspace.extractionSources,
+      0,
+    );
+
+    expect(processDocumentSource).toHaveBeenCalledWith(
+      'workspace-1',
+      workspace.extractionSources,
+      0,
+    );
+    expect(result?.extractionSources[0]?.label).toBe('工厂资料');
   });
 
   test('deletes a workspace through bridge', async () => {
@@ -150,124 +199,6 @@ describe('enterpriseLeadWorkspaceService', () => {
 
     expect(listRuns).toHaveBeenCalledWith('workspace-1');
     expect(result).toEqual([]);
-  });
-
-  test('lists workspace chat sessions through bridge', async () => {
-    const listChatSessions = vi.fn(async () => ({
-      success: true as const,
-      data: [
-        {
-          id: 'chat-1',
-          workspaceId: 'workspace-1',
-          title: '安装 oh-my-claudecode skill',
-          createdAt: '2026-07-04T00:00:00.000Z',
-          updatedAt: '2026-07-05T00:00:00.000Z',
-          messageCount: 2,
-        },
-      ],
-    }));
-    createWindowWithEnterpriseLeadWorkspace({ listChatSessions });
-
-    const result = await enterpriseLeadWorkspaceService.listChatSessions('workspace-1');
-
-    expect(listChatSessions).toHaveBeenCalledWith('workspace-1');
-    expect(result[0]?.title).toBe('安装 oh-my-claudecode skill');
-  });
-
-  test('loads a workspace chat session through bridge', async () => {
-    const getChatSession = vi.fn(async () => ({
-      success: true as const,
-      data: {
-        id: 'chat-1',
-        workspaceId: 'workspace-1',
-        title: '安装 oh-my-claudecode skill',
-        createdAt: '2026-07-04T00:00:00.000Z',
-        updatedAt: '2026-07-05T00:00:00.000Z',
-        messageCount: 2,
-        messages: [
-          {
-            id: 'user-1',
-            role: 'user' as const,
-            content: '安装 oh-my-claudecode skill',
-            createdAt: '2026-07-04T00:00:00.000Z',
-          },
-        ],
-      },
-    }));
-    createWindowWithEnterpriseLeadWorkspace({ getChatSession });
-
-    const result = await enterpriseLeadWorkspaceService.getChatSession('workspace-1', 'chat-1');
-
-    expect(getChatSession).toHaveBeenCalledWith('workspace-1', 'chat-1');
-    expect(result?.messages[0]?.content).toBe('安装 oh-my-claudecode skill');
-  });
-
-  test('deletes a workspace chat session through bridge', async () => {
-    const deleteChatSession = vi.fn(async () => ({
-      success: true as const,
-      data: true,
-    }));
-    createWindowWithEnterpriseLeadWorkspace({ deleteChatSession });
-
-    const serviceWithDelete =
-      enterpriseLeadWorkspaceService as typeof enterpriseLeadWorkspaceService & {
-        deleteChatSession?: (workspaceId: string, sessionId: string) => Promise<boolean>;
-      };
-    expect(typeof serviceWithDelete.deleteChatSession).toBe('function');
-
-    const result = await serviceWithDelete.deleteChatSession?.('workspace-1', 'chat-1');
-
-    expect(deleteChatSession).toHaveBeenCalledWith('workspace-1', 'chat-1');
-    expect(result).toBe(true);
-  });
-
-  test('sends workspace chat messages through bridge', async () => {
-    const chat = vi.fn(async () => ({
-      success: true as const,
-      data: {
-        message: {
-          id: 'assistant-1',
-          role: 'assistant' as const,
-          content: '可以，这是基于当前空间资料的回答。',
-          createdAt: '2026-07-05T00:00:00.000Z',
-        },
-      },
-    }));
-    createWindowWithEnterpriseLeadWorkspace({ chat });
-
-    const result = await enterpriseLeadWorkspaceService.chat('workspace-1', {
-      message: '帮我写一段跟进话术',
-    });
-
-    expect(chat).toHaveBeenCalledWith('workspace-1', { message: '帮我写一段跟进话术' });
-    expect(result?.message.content).toContain('当前空间资料');
-  });
-
-  test('subscribes to workspace chat progress through bridge', () => {
-    const cleanup = vi.fn();
-    const callback = vi.fn();
-    const onChatProgress = vi.fn(
-      (_requestId: string, _callback: (event: EnterpriseLeadWorkspaceChatProgressEvent) => void) =>
-        cleanup,
-    );
-    createWindowWithEnterpriseLeadWorkspace({ onChatProgress });
-
-    const unsubscribe = enterpriseLeadWorkspaceService.onChatProgress('request-1', callback);
-    const event = {
-      requestId: 'request-1',
-      stepId: 'routing',
-      phase: EnterpriseLeadChatProgressPhase.Routing,
-      status: EnterpriseLeadChatProgressStatus.Running,
-      title: '正在分析任务和选择 Agent',
-      timestamp: 1,
-    };
-
-    expect(onChatProgress).toHaveBeenCalledWith('request-1', callback);
-    const registeredCallback = onChatProgress.mock.calls[0]?.[1];
-    registeredCallback?.(event);
-    expect(callback).toHaveBeenCalledWith(event);
-    unsubscribe();
-    expect(cleanup).toHaveBeenCalled();
   });
 
   test('tests workspace Agent drafts through bridge', async () => {

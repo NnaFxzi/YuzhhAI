@@ -1,10 +1,8 @@
-import type { DomesticResearchConfig, DomesticResearchSourceId } from '../agent/domesticResearch';
+import type { DomesticResearchConfig } from '../agent/domesticResearch';
 import type { ExternalResearchConfig } from '../agent/externalResearch';
 import type { ProviderConfig } from '../providers';
 import type {
   EnterpriseLeadAgentRole,
-  EnterpriseLeadChatProgressPhase,
-  EnterpriseLeadChatProgressStatus,
   EnterpriseLeadContentOutputLengthPolicy,
   EnterpriseLeadContentOutputPlatformId,
   EnterpriseLeadDeliverableKind,
@@ -189,97 +187,6 @@ export interface EnterpriseLeadWorkspaceRunSummary {
   deliverableCount: number;
   todoCount: number;
   riskCount: number;
-}
-
-export interface EnterpriseLeadWorkspaceChatMessage {
-  id: string;
-  role: 'user' | 'assistant';
-  content: string;
-  createdAt: string;
-  agent?: EnterpriseLeadWorkspaceChatAgentAttribution;
-  routing?: EnterpriseLeadWorkspaceChatRouting;
-  research?: EnterpriseLeadWorkspaceChatResearchResult;
-  progressEvents?: EnterpriseLeadWorkspaceChatProgressEvent[];
-}
-
-export interface EnterpriseLeadWorkspaceChatProgressEvent {
-  requestId: string;
-  stepId: string;
-  phase: EnterpriseLeadChatProgressPhase;
-  status: EnterpriseLeadChatProgressStatus;
-  title: string;
-  timestamp: number;
-  detail?: string;
-  source?: string;
-}
-
-export interface EnterpriseLeadWorkspaceChatAgentAttribution {
-  id: string;
-  name: string;
-}
-
-export interface EnterpriseLeadWorkspaceChatRouting {
-  reason: string;
-  agents: EnterpriseLeadWorkspaceChatAgentAttribution[];
-  steps?: EnterpriseLeadWorkspaceChatRouteStep[];
-}
-
-export interface EnterpriseLeadWorkspaceChatRouteStep {
-  agent: EnterpriseLeadWorkspaceChatAgentAttribution;
-  content: string;
-}
-
-export interface EnterpriseLeadWorkspaceChatSessionSummary {
-  id: string;
-  workspaceId: string;
-  title: string;
-  createdAt: string;
-  updatedAt: string;
-  messageCount: number;
-}
-
-export interface EnterpriseLeadWorkspaceChatSession extends EnterpriseLeadWorkspaceChatSessionSummary {
-  messages: EnterpriseLeadWorkspaceChatMessage[];
-}
-
-export interface EnterpriseLeadWorkspaceChatRequest {
-  requestId?: string;
-  message: string;
-  sessionId?: string;
-  targetAgentId?: string;
-  recentMessages?: EnterpriseLeadWorkspaceChatMessage[];
-}
-
-export type EnterpriseLeadWorkspaceChatResearchIntent =
-  | { kind: 'none' }
-  | { kind: 'search'; query: string; provider: 'auto' | 'tavily' | 'firecrawl' }
-  | { kind: 'extract'; urls: string[]; query?: string; provider: 'auto' | 'tavily' | 'firecrawl' }
-  | { kind: 'domestic_search'; query: string; sourceIds: DomesticResearchSourceId[] }
-  | { kind: 'domestic_status' };
-
-export interface EnterpriseLeadWorkspaceChatResearchResult {
-  intent: EnterpriseLeadWorkspaceChatResearchIntent;
-  status: 'skipped' | 'completed' | 'failed';
-  provider?: 'tavily' | 'firecrawl' | 'domestic';
-  summary: string;
-  leadCandidates?: EnterpriseLeadWorkspaceChatLeadCandidate[];
-  payload?: unknown;
-}
-
-export interface EnterpriseLeadWorkspaceChatLeadCandidate {
-  kind: 'company' | 'category';
-  name: string;
-  evidence: string;
-  sourceTitle?: string;
-  sourceUrl?: string;
-  demandSignal?: string;
-  matchReason?: string;
-  confidence: 'low' | 'medium' | 'high';
-}
-
-export interface EnterpriseLeadWorkspaceChatResponse {
-  message: EnterpriseLeadWorkspaceChatMessage;
-  session?: EnterpriseLeadWorkspaceChatSession;
 }
 
 export interface EnterpriseLeadWorkspaceAgentCalibrationDraft {

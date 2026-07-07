@@ -6,12 +6,12 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 
 import {
   EnterpriseLeadAgentRole,
-  EnterpriseLeadChatProgressPhase,
-  EnterpriseLeadChatProgressStatus,
   EnterpriseLeadContentDeliveryMode,
   EnterpriseLeadContentOutputPlatformId,
   EnterpriseLeadDeliverableKind,
+  EnterpriseLeadDocumentExtractionStatus,
   EnterpriseLeadExtractionSourceKind,
+  EnterpriseLeadKnowledgeIndexStatus,
   EnterpriseLeadRunStatus,
   EnterpriseLeadTaskStatus,
   EnterpriseLeadWorkspaceAgentSource,
@@ -22,7 +22,6 @@ import type {
   EnterpriseLeadRun,
   EnterpriseLeadWorkspace,
   EnterpriseLeadWorkspaceAgentBinding,
-  EnterpriseLeadWorkspaceChatSessionSummary,
   EnterpriseLeadWorkspaceDraft,
   EnterpriseLeadWorkspaceProfile,
   EnterpriseLeadWorkspaceRunSummary,
@@ -86,25 +85,8 @@ import {
   EnterpriseLeadWorkspacePageTarget,
   getEnterpriseLeadWorkspacePageRouting,
 } from './EnterpriseLeadWorkspaceView';
-import {
-  buildWorkspaceAiChatAgentHabitBindings,
-  buildWorkspaceAiChatAgentHabitPrompt,
-  buildWorkspaceAiChatOutputPreferenceInstructions,
-  buildWorkspaceAiChatRetryDraft,
-  getSortedAgentChoices,
-  getWorkspaceAiChatExecutionHabitSummaries,
-  getWorkspaceAiChatMessageRowClassName,
-  getWorkspaceAiChatTypewriterText,
-  isWorkspaceAiChatRequestCurrent,
-  shouldSubmitWorkspaceChatKey,
-  TypewriterMessageText,
-  WorkspaceAiChat,
-  WorkspaceAiChatAdjustmentDrawer,
-  WorkspaceAiChatAgentPicker,
-  WorkspaceAiChatMessageRow,
-  WorkspaceAiChatPendingRow,
-} from './WorkspaceAiChat';
-import WorkspaceCreate from './WorkspaceCreate';
+import type { WorkspaceConversationRecord } from './workspaceCoworkSessionRecords';
+import WorkspaceCreate, { createWorkspaceFromUploadedMaterial } from './WorkspaceCreate';
 import { getInitialCreationRecordId } from './WorkspaceCreationRecords';
 import WorkspaceEntryHome, {
   WorkspaceDeleteConfirmDialog,
@@ -389,7 +371,15 @@ class FakeDomNode {
   childNodes: FakeDomNode[] = [];
   ownerDocument: FakeDomDocument | null = null;
   nodeValue: string | null = null;
-  textContent = '';
+  private textContentValue = '';
+
+  get textContent(): string {
+    return this.textContentValue;
+  }
+
+  set textContent(value: string) {
+    this.textContentValue = value;
+  }
 
   get firstChild(): FakeDomNode | null {
     return this.childNodes[0] ?? null;
@@ -462,7 +452,7 @@ class FakeDomElement extends FakeDomNode {
 
   constructor(
     public tagName: string,
-    private readonly isSvg = false,
+    isSvg = false,
   ) {
     super();
     this.nodeName = tagName.toUpperCase();
@@ -632,7 +622,7 @@ describe('enterprise lead workspace UI helpers', () => {
     ).toBe(true);
   });
 
-  test('renders EnterpriseLeadWorkspaceView without dedicated chat-session loads when a workspace opens', async () => {
+  test('loads Cowork sessions when a workspace opens', async () => {
     await vi.resetModules();
     const restoreDom = installFakeDom();
 
@@ -690,9 +680,7 @@ describe('enterprise lead workspace UI helpers', () => {
 
     vi.spyOn(enterpriseLeadWorkspaceService, 'listWorkspaces').mockResolvedValue([workspace]);
     vi.spyOn(enterpriseLeadWorkspaceService, 'getWorkspace').mockResolvedValue(workspace);
-    vi.spyOn(enterpriseLeadWorkspaceService, 'listChatSessions').mockResolvedValue([]);
-    vi.spyOn(enterpriseLeadWorkspaceService, 'getChatSession').mockResolvedValue(null);
-    vi.spyOn(coworkService, 'loadSessions').mockResolvedValue(undefined);
+    const loadCoworkSessions = vi.spyOn(coworkService, 'loadSessions').mockResolvedValue(undefined);
 
     const container = document.createElement('div');
     const root = createRoot(container);
@@ -710,13 +698,127 @@ describe('enterprise lead workspace UI helpers', () => {
       });
 
       expect(entryHomeProps).not.toBeNull();
+      loadCoworkSessions.mockClear();
 
       await act(async () => {
         entryHomeProps?.onOpen('workspace-1');
       });
 
-      expect(enterpriseLeadWorkspaceService.listChatSessions).not.toHaveBeenCalled();
-      expect(enterpriseLeadWorkspaceService.getChatSession).not.toHaveBeenCalled();
+      expect(loadCoworkSessions).toHaveBeenCalled();
+    } finally {
+      root.unmount();
+      restoreDom();
+    }
+  });
+
+  test('embeds SkillsView when the workspace skills nav item is selected', async () => {
+    await vi.resetModules();
+    const restoreDom = installFakeDom();
+
+    const ReactInner = await import('react');
+    const { configureStore } = await import('@reduxjs/toolkit');
+    const { Provider } = await import('react-redux');
+    const { createRoot } = await import('react-dom/client');
+    const { act } = ReactInner;
+    const coworkModule = await import('../../services/cowork');
+    const enterpriseLeadWorkspaceModule = await import('../../services/enterpriseLeadWorkspace');
+    const { default: coworkReducer } = await import('../../store/slices/coworkSlice');
+
+    let entryHomeProps: { onOpen: (workspaceId: string) => void } | null = null;
+    let shellProps: {
+      onPageChange: (page: EnterpriseLeadWorkspaceInternalPage) => void;
+    } | null = null;
+    let workspaceSettingsRenderCount = 0;
+    let skillsViewRenderCount = 0;
+
+    vi.doMock('./WorkspaceEntryHome', () => ({
+      default: (props: { onOpen: (workspaceId: string) => void }) => {
+        entryHomeProps = props;
+        return ReactInner.createElement('div', { 'data-testid': 'workspace-entry-home' });
+      },
+    }));
+    vi.doMock('./WorkspaceShell', () => ({
+      default: (props: {
+        onPageChange: (page: EnterpriseLeadWorkspaceInternalPage) => void;
+        children?: React.ReactNode;
+      }) => {
+        shellProps = props;
+        return ReactInner.createElement('div', { 'data-testid': 'workspace-shell' }, props.children);
+      },
+    }));
+    vi.doMock('./WorkspaceSettings', () => ({
+      default: () => {
+        workspaceSettingsRenderCount += 1;
+        return ReactInner.createElement('div', { 'data-testid': 'workspace-settings' });
+      },
+    }));
+    vi.doMock('../skills', () => ({
+      SkillsView: () => {
+        skillsViewRenderCount += 1;
+        return ReactInner.createElement('div', { 'data-testid': 'skills-view' });
+      },
+    }));
+    vi.doMock('./WorkspaceStart', () => ({
+      default: () => ReactInner.createElement('div', { 'data-testid': 'workspace-start' }),
+    }));
+    vi.doMock('./WorkspaceKnowledgeBase', () => ({
+      default: () => ReactInner.createElement('div', { 'data-testid': 'workspace-knowledge-base' }),
+    }));
+    vi.doMock('./WorkspaceWorkbench', () => ({
+      default: () => ReactInner.createElement('div', { 'data-testid': 'workspace-workbench' }),
+    }));
+    vi.doMock('./WorkspaceCreate', () => ({
+      default: () => ReactInner.createElement('div', { 'data-testid': 'workspace-create' }),
+    }));
+    vi.doMock('../cowork/CoworkSearchModal', () => ({
+      default: () => ReactInner.createElement('div', { 'data-testid': 'cowork-search-modal' }),
+    }));
+    vi.doMock('../cowork', () => ({
+      CoworkView: () => ReactInner.createElement('div', { 'data-testid': 'cowork-view' }),
+    }));
+
+    const { coworkService } = coworkModule;
+    const { enterpriseLeadWorkspaceService } = enterpriseLeadWorkspaceModule;
+    const { EnterpriseLeadWorkspaceView: IsolatedEnterpriseLeadWorkspaceView } =
+      await import('./EnterpriseLeadWorkspaceView');
+    const workspace = createWorkspace('workspace-1');
+    const testStore = configureStore({
+      reducer: {
+        cowork: coworkReducer,
+      },
+    });
+
+    vi.spyOn(enterpriseLeadWorkspaceService, 'listWorkspaces').mockResolvedValue([workspace]);
+    vi.spyOn(enterpriseLeadWorkspaceService, 'getWorkspace').mockResolvedValue(workspace);
+    vi.spyOn(coworkService, 'loadSessions').mockResolvedValue(undefined);
+
+    const container = document.createElement('div');
+    const root = createRoot(container);
+
+    try {
+      await act(async () => {
+        root.render(
+          ReactInner.createElement(Provider, {
+            store: testStore,
+            children: ReactInner.createElement(IsolatedEnterpriseLeadWorkspaceView, {
+              onPrepareCoworkChat: vi.fn(),
+            }),
+          }),
+        );
+      });
+
+      await act(async () => {
+        entryHomeProps?.onOpen('workspace-1');
+      });
+
+      expect(shellProps).not.toBeNull();
+
+      await act(async () => {
+        shellProps?.onPageChange(EnterpriseLeadWorkspaceInternalPage.Settings);
+      });
+
+      expect(skillsViewRenderCount).toBe(1);
+      expect(workspaceSettingsRenderCount).toBe(0);
     } finally {
       root.unmount();
       restoreDom();
@@ -763,7 +865,7 @@ describe('enterprise lead workspace UI helpers', () => {
     expect(effective.name).toBe('Edited Writer');
     expect(effective.description).toBe('Workspace description');
     expect(effective.model).toBe('deepseek/deepseek-chat');
-    expect(effective.skillIds).toEqual(['web-search']);
+    expect(effective.skillIds).toEqual([]);
   });
 
   test('uses workspace Agent id fallback without marking a missing global Agent', () => {
@@ -1017,6 +1119,73 @@ describe('enterprise lead workspace UI helpers', () => {
     });
   });
 
+  test('creates uploaded material workspace before background document processing finishes', async () => {
+    const createdWorkspace = {
+      ...createWorkspace('workspace-1'),
+      extractionSources: [
+        {
+          kind: EnterpriseLeadExtractionSourceKind.File,
+          label: 'factory.md',
+          fileName: 'factory.md',
+          fileSize: 128,
+          text: '主营精密五金加工。',
+          extractionStatus: EnterpriseLeadDocumentExtractionStatus.Pending,
+          vectorIndexStatus: EnterpriseLeadKnowledgeIndexStatus.Pending,
+        },
+      ],
+    };
+    const createWorkspaceSpy = vi
+      .spyOn(enterpriseLeadWorkspaceService, 'createWorkspace')
+      .mockResolvedValue(createdWorkspace);
+    const extractDraftSpy = vi
+      .spyOn(enterpriseLeadWorkspaceService, 'extractDraft')
+      .mockReturnValue(new Promise(() => undefined));
+    const processDocumentSourceSpy = vi
+      .spyOn(enterpriseLeadWorkspaceService, 'processDocumentSource')
+      .mockReturnValue(new Promise(() => undefined));
+    const onCreated = vi.fn();
+
+    const creationResult = createWorkspaceFromUploadedMaterial({
+      workspaceName: '  五金工厂拓客  ',
+      sourceText: '  主营精密五金加工。  ',
+      sourceLabel: 'factory.md',
+      fileName: 'factory.md',
+      fileSize: 128,
+      settings: buildDefaultEnterpriseLeadWorkspaceSettings(),
+      onCreated,
+    });
+    const racedResult = await Promise.race([
+      creationResult.then(result => result?.id ?? ''),
+      new Promise<string>(resolve => {
+        setTimeout(() => resolve('blocked-by-processing'), 0);
+      }),
+    ]);
+
+    expect(racedResult).toBe('workspace-1');
+    expect(extractDraftSpy).not.toHaveBeenCalled();
+    expect(createWorkspaceSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: '五金工厂拓客',
+        profile: emptyProfile(),
+        source: expect.objectContaining({
+          kind: EnterpriseLeadExtractionSourceKind.File,
+          label: 'factory.md',
+          fileName: 'factory.md',
+          fileSize: 128,
+          text: '主营精密五金加工。',
+          extractionStatus: EnterpriseLeadDocumentExtractionStatus.Pending,
+          vectorIndexStatus: EnterpriseLeadKnowledgeIndexStatus.Pending,
+        }),
+      }),
+    );
+    expect(processDocumentSourceSpy).toHaveBeenCalledWith(
+      'workspace-1',
+      createdWorkspace.extractionSources,
+      0,
+    );
+    expect(onCreated).toHaveBeenCalledWith('workspace-1');
+  });
+
   test('computes profile completion from six populated profile groups', () => {
     const profile = emptyProfile();
     profile.companySummary = 'Industrial sales workflow automation';
@@ -1267,6 +1436,7 @@ describe('enterprise lead workspace UI helpers', () => {
       'enterpriseLeadWorkbenchNavSearch',
       'enterpriseLeadWorkbenchNavKnowledgeBase',
       'enterpriseLeadWorkbenchNavAgentManagement',
+      'enterpriseLeadWorkbenchNavSettings',
     ]);
   });
 
@@ -1277,6 +1447,7 @@ describe('enterprise lead workspace UI helpers', () => {
       'search',
       'knowledge_base',
       'agent_management',
+      'settings',
     ]);
   });
 
@@ -1387,6 +1558,7 @@ describe('enterprise lead workspace UI helpers', () => {
     expect(markup).toContain('工作台');
     expect(markup).toContain('知识库');
     expect(markup).toContain('Agent 团队');
+    expect(markup).toContain('空间技能');
     expect(markup).toContain('对话');
     expect(markup).not.toContain('空间设置');
     expect(markup).not.toContain('rounded-lg border border-border/70 bg-background/70 p-1');
@@ -1440,12 +1612,11 @@ describe('enterprise lead workspace UI helpers', () => {
     expect(markup).toContain('shrink-0 border-t border-border/70 pt-3');
   });
 
-  test('renders Codex-style chat history in the workspace shell sidebar', () => {
+  test('renders Codex-style Cowork chat history in the workspace shell sidebar', () => {
     const workspace = createWorkspace('sidebar');
-    const chatSessions: EnterpriseLeadWorkspaceChatSessionSummary[] = [
+    const chatSessions: WorkspaceConversationRecord[] = [
       {
         id: 'chat-1',
-        workspaceId: workspace.id,
         title: '安装 oh-my-claudecode skill',
         createdAt: new Date(Date.now() - 86_400_000).toISOString(),
         updatedAt: new Date(Date.now() - 86_400_000).toISOString(),
@@ -1453,7 +1624,6 @@ describe('enterprise lead workspace UI helpers', () => {
       },
       {
         id: 'chat-2',
-        workspaceId: workspace.id,
         title: '使用 GitHub 插件',
         createdAt: new Date(Date.now() - 172_800_000).toISOString(),
         updatedAt: new Date(Date.now() - 172_800_000).toISOString(),
@@ -1473,7 +1643,7 @@ describe('enterprise lead workspace UI helpers', () => {
       }),
     );
 
-    expect(markup).toContain('对话');
+    expect(markup).toContain('Cowork 对话');
     expect(markup).toContain('安装 oh-my-claudecode skill');
     expect(markup).toContain('使用 GitHub 插件');
     expect(markup).toContain('1 天');
@@ -1487,10 +1657,9 @@ describe('enterprise lead workspace UI helpers', () => {
 
   test('does not mark New Chat as current while a chat history row is current', () => {
     const workspace = createWorkspace('sidebar-active-chat');
-    const chatSessions: EnterpriseLeadWorkspaceChatSessionSummary[] = [
+    const chatSessions: WorkspaceConversationRecord[] = [
       {
         id: 'chat-1',
-        workspaceId: workspace.id,
         title: '帮我出分析当前行业的形式',
         createdAt: '2026-07-06T00:00:00.000Z',
         updatedAt: '2026-07-06T00:00:00.000Z',
@@ -1515,10 +1684,9 @@ describe('enterprise lead workspace UI helpers', () => {
 
   test('renders delete actions for workspace shell chat history rows', () => {
     const workspace = createWorkspace('sidebar');
-    const chatSessions: EnterpriseLeadWorkspaceChatSessionSummary[] = [
+    const chatSessions: WorkspaceConversationRecord[] = [
       {
         id: 'chat-1',
-        workspaceId: workspace.id,
         title: '安装 oh-my-claudecode skill',
         createdAt: '2026-07-06T00:00:00.000Z',
         updatedAt: '2026-07-06T00:00:00.000Z',
@@ -1540,7 +1708,7 @@ describe('enterprise lead workspace UI helpers', () => {
     );
 
     expect(markup).toContain('data-testid="enterprise-lead-chat-session-delete"');
-    expect(markup).toContain('aria-label="删除对话 安装 oh-my-claudecode skill"');
+    expect(markup).toContain('aria-label="删除 Cowork 对话 安装 oh-my-claudecode skill"');
     expect(markup).toContain('安装 oh-my-claudecode skill');
   });
 
@@ -1636,6 +1804,7 @@ describe('enterprise lead workspace UI helpers', () => {
       'search',
       'knowledge',
       'agents',
+      'settings',
     ]);
   });
 
@@ -2346,7 +2515,7 @@ describe('enterprise lead workspace UI helpers', () => {
     expect(markup).not.toContain('保存失败，当前草稿已保留');
   });
 
-  test('renders workspace settings as a readiness summary with advanced sections', () => {
+  test('renders workspace settings as a focused space skills manager', () => {
     const workspace = createWorkspace('workspace-1');
     workspace.settings.model.providers.deepseek = {
       enabled: true,
@@ -2362,23 +2531,28 @@ describe('enterprise lead workspace UI helpers', () => {
       React.createElement(WorkspaceSettings, { workspace }),
     );
 
-    expect(markup).toContain('推荐配置已就绪');
-    expect(markup).toContain('基础配置');
-    expect(markup).toContain('默认模型');
+    expect(markup).toContain('空间技能');
     expect(markup).toContain('空间能力');
-    expect(markup).toContain('联网调研');
     expect(markup).toContain('获客内容包');
-    expect(markup).toContain('无需联网授权也可开始');
-    expect(markup).toContain('高级设置');
-    expect(markup).toContain('先不接外部服务');
-    expect(markup).toContain('高级模型设置');
+    expect(markup).toContain('选择一个能力包');
     expect(markup).toContain('技能明细');
-    expect(markup).toContain('调研来源');
-    expect(markup).toContain('内容投递与风控');
-    expect(markup).toContain('测试模型连接');
-    expect(markup).toContain('测试连接');
-    expect(markup).toContain('小红书草稿');
+    expect(markup).toContain('文档处理');
+    expect(markup).toContain('联网搜索');
+    expect(markup).toContain('管理技能');
+    expect(markup).toContain('已安装');
+    expect(markup).toContain('技能市场');
     expect(markup).toContain('保存配置');
+    expect(markup).not.toContain('推荐配置已就绪');
+    expect(markup).not.toContain('基础配置');
+    expect(markup).not.toContain('默认模型');
+    expect(markup).not.toContain('联网调研');
+    expect(markup).not.toContain('高级设置');
+    expect(markup).not.toContain('高级模型设置');
+    expect(markup).not.toContain('调研来源');
+    expect(markup).not.toContain('内容投递与风控');
+    expect(markup).not.toContain('测试模型连接');
+    expect(markup).not.toContain('测试连接');
+    expect(markup).not.toContain('小红书草稿');
     expect(markup).not.toContain('配置调研和输出');
     expect(markup).not.toContain('完成快速设置后即可开始任务');
     expect(markup).not.toContain('大模型厂商配置');
@@ -2540,7 +2714,7 @@ describe('enterprise lead workspace UI helpers', () => {
     );
   });
 
-  test('renders workspace settings save blocker before allowing invalid config save', () => {
+  test('does not block space skill management with non-skill provider credentials', () => {
     const workspace = createWorkspace('workspace-1');
     workspace.settings.model.providers.deepseek = {
       enabled: true,
@@ -2554,10 +2728,12 @@ describe('enterprise lead workspace UI helpers', () => {
       React.createElement(WorkspaceSettings, { workspace }),
     );
 
-    expect(markup).toContain('请补齐：缺少 API Key');
+    expect(markup).toContain('空间技能');
+    expect(markup).toContain('保存空间技能');
+    expect(markup).not.toContain('请补齐：缺少 API Key');
   });
 
-  test('renders custom workspace model provider controls', () => {
+  test('hides custom workspace model provider controls from space skills', () => {
     const workspace = createWorkspace('workspace-1');
     workspace.settings.model.providers.custom_0 = {
       enabled: true,
@@ -2574,597 +2750,11 @@ describe('enterprise lead workspace UI helpers', () => {
       React.createElement(WorkspaceSettings, { workspace }),
     );
 
-    expect(markup).toContain('新增模型厂商');
-    expect(markup).toContain('厂商名称');
-    expect(markup).toContain('硅基流动');
-  });
-
-  test('renders workspace AI chat with configured agent choices in a LobsterAI-style composer', () => {
-    const workspace = createWorkspace('workspace-1');
-    workspace.settings.externalResearch.providers.tavily = {
-      enabled: true,
-      apiKey: 'tvly-test',
-    };
-    workspace.workspaceAgents = [
-      {
-        agentId: 'agent-a',
-        enabled: true,
-        order: 0,
-        overrides: {
-          name: '内容 Agent',
-        },
-      },
-    ];
-
-    const markup = renderEnterpriseLeadComponent(
-      React.createElement(WorkspaceAiChat, { workspace }),
-    );
-
-    expect(markup).toContain('今天要完成什么？');
-    expect(markup).toContain('输入想推进的事项，我会结合当前空间、Agent 和知识库继续处理。');
-    expect(markup).toContain('目标 Agent');
-    expect(markup).toContain('aria-haspopup="listbox"');
-    expect(markup).toContain('允许调研');
-    expect(markup).toContain('引用知识库');
-    expect(markup).toContain('发送');
-    expect(markup).not.toContain('本空间能力');
-    expect(markup).not.toContain('AI 对话');
-    expect(markup).not.toContain('接下来要完成什么？');
-    expect(markup).not.toContain('还没有对话。选择目标 Agent 后发送第一条消息。');
-  });
-
-  test('renders workspace AI chat empty state as a LobsterAI-style new conversation', () => {
-    const workspace = createWorkspace('workspace-1');
-    workspace.settings.externalResearch.providers.tavily = {
-      enabled: true,
-      apiKey: 'tvly-test',
-    };
-    workspace.workspaceAgents = [
-      {
-        agentId: 'agent-a',
-        enabled: true,
-        order: 0,
-        overrides: {
-          name: '内容 Agent',
-        },
-      },
-    ];
-
-    const markup = renderEnterpriseLeadComponent(
-      React.createElement(WorkspaceAiChat, { workspace }),
-    );
-
-    expect(markup).toContain('今天要完成什么？');
-    expect(markup).toContain('输入想推进的事项，我会结合当前空间、Agent 和知识库继续处理。');
-    expect(markup).toContain('添加上下文');
-    expect(markup).toContain('目标 Agent');
-    expect(markup).toContain('aria-haspopup="listbox"');
-    expect(markup).toContain('允许调研');
-    expect(markup).toContain('引用知识库');
-    expect(markup).not.toContain('AI 对话');
-  });
-
-  test('applies LobsterAI conversation layout tokens to workspace AI chat', () => {
-    const workspace = createWorkspace('workspace-1');
-
-    const markup = renderEnterpriseLeadComponent(
-      React.createElement(WorkspaceAiChat, { workspace }),
-    );
-
-    expect(markup).toContain('bg-background');
-    expect(markup).toContain('max-w-[920px]');
-    expect(markup).toContain('rounded-2xl border border-border bg-surface shadow-card');
-    expect(markup).toContain('bg-black/[0.035]');
-    expect(markup).toContain('min-h-[92px]');
-    expect(markup).toContain('h-7 w-7');
-    expect(markup).not.toContain('bg-[#f6f7fa]');
-    expect(markup).not.toContain('max-w-[1060px]');
-    expect(markup).not.toContain('min-h-[178px]');
-  });
-
-  test('applies LobsterAI motion tokens to workspace AI chat empty state', () => {
-    const workspace = createWorkspace('workspace-1');
-
-    const markup = renderEnterpriseLeadComponent(
-      React.createElement(WorkspaceAiChat, { workspace }),
-    );
-
-    expect(markup).toContain('animate-fade-in-up');
-    expect(markup).toContain('animation-delay:70ms');
-    expect(markup).toContain('animation-delay:120ms');
-    expect(markup).toContain('animation-delay:160ms');
-    expect(markup).toContain('motion-reduce:animate-none');
-    expect(markup).toContain('transition-all duration-200 ease-out');
-  });
-
-  test('uses LobsterAI message entrance classes for workspace AI chat rows', () => {
-    expect(getWorkspaceAiChatMessageRowClassName(true)).toContain('justify-end');
-    expect(getWorkspaceAiChatMessageRowClassName(true)).toContain('animate-message-in');
-    expect(getWorkspaceAiChatMessageRowClassName(true)).toContain('motion-reduce:animate-none');
-    expect(getWorkspaceAiChatMessageRowClassName(false)).toContain('justify-start');
-    expect(getWorkspaceAiChatMessageRowClassName(false, false)).not.toContain('animate-message-in');
-  });
-
-  test('renders workspace AI chat pending row with LobsterAI typing dots', () => {
-    const markup = renderEnterpriseLeadComponent(
-      React.createElement(WorkspaceAiChatPendingRow, {
-        isResearchEnabled: true,
-      }),
-    );
-
-    expect(markup).toContain('正在思考');
-    expect(markup).not.toContain('正在处理');
-    expect(markup).toContain('aria-live="polite"');
-    expect(markup).toContain('animate-message-in');
-    expect(markup).toContain('space-x-1.5');
-    expect(markup).toContain('animate-bounce');
-    expect(markup).toContain('animation-delay:0ms');
-    expect(markup).toContain('animation-delay:150ms');
-    expect(markup).toContain('animation-delay:300ms');
-    expect(markup).toContain('motion-reduce:animate-none');
-    expect(markup).not.toContain('animate-thinking-ring');
-    expect(markup).not.toContain('animate-thinking-flow');
-    expect(markup).not.toContain('motion-reduce:hidden');
-    expect(markup).not.toContain('animate-pulse');
-    expect(markup).not.toContain('过程');
-    expect(markup).not.toContain('3 步');
-    expect(markup).not.toContain('正在调研');
-    expect(markup).not.toContain('理解任务');
-    expect(markup).not.toContain('正在选择 Agent');
-    expect(markup).not.toContain('生成答案');
-    expect(markup).not.toContain('正在生成回复');
-    expect(markup).not.toContain('border-l border-border/70');
-    expect(markup).not.toContain('rounded-2xl bg-surface-raised');
-  });
-
-  test('does not infer skipped research during workspace AI chat pending state', () => {
-    const markup = renderEnterpriseLeadComponent(
-      React.createElement(WorkspaceAiChatPendingRow, {
-        isResearchEnabled: false,
-      }),
-    );
-
-    expect(markup).toContain('正在思考');
-    expect(markup).not.toContain('正在处理');
-    expect(markup).not.toContain('过程');
-    expect(markup).not.toContain('3 步');
-    expect(markup).not.toContain('跳过调研');
-    expect(markup).not.toContain('理解任务');
-    expect(markup).not.toContain('生成答案');
-    expect(markup).not.toContain('正在调研');
-  });
-
-  test('renders live workspace AI chat process from real progress events only', () => {
-    const markup = renderEnterpriseLeadComponent(
-      React.createElement(WorkspaceAiChatPendingRow, {
-        progressEvents: [
-          {
-            requestId: 'request-1',
-            stepId: 'routing',
-            phase: EnterpriseLeadChatProgressPhase.Routing,
-            status: EnterpriseLeadChatProgressStatus.Completed,
-            title: '已选择商机雷达 Agent',
-            detail: '手动选择：商机雷达 Agent',
-            source: '商机雷达 Agent',
-            timestamp: 1,
-          },
-          {
-            requestId: 'request-1',
-            stepId: 'research',
-            phase: EnterpriseLeadChatProgressPhase.Research,
-            status: EnterpriseLeadChatProgressStatus.Running,
-            title: '正在调研公开信息',
-            detail: '自动化设备厂 采购信号',
-            timestamp: 2,
-          },
-        ],
-      }),
-    );
-
-    expect(markup).toContain('正在思考');
-    expect(markup).toContain('过程');
-    expect(markup).toContain('2 步');
-    expect(markup).toContain('正在调研公开信息');
-    expect(markup).toContain('自动化设备厂 采购信号');
-    expect(markup).toContain('手动选择：商机雷达 Agent');
-    expect(markup).not.toContain('理解任务');
-    expect(markup).not.toContain('生成答案');
-    expect(markup).not.toContain('跳过调研');
-  });
-
-  test('renders workspace AI chat choices without global Agent fallback', () => {
-    const workspace = createWorkspace('workspace-1');
-    workspace.workspaceAgents = [
-      {
-        agentId: 'agent-a',
-        enabled: true,
-        order: 0,
-        overrides: {},
-      },
-    ];
-
-    const choices = getSortedAgentChoices(workspace.workspaceAgents);
-    const markup = renderEnterpriseLeadComponent(
-      React.createElement(WorkspaceAiChatAgentPicker, {
-        choices,
-        selectedAgentId: '',
-        onSelectedAgentIdChange: vi.fn(),
-        defaultOpen: true,
-      }),
-    );
-
-    expect(choices.map(choice => choice.label)).toEqual(['agent-a']);
-    expect(markup).toContain('agent-a');
-    expect(markup).not.toContain('Global Writer');
-  });
-
-  test('renders workspace AI chat Agent choices in a custom popover trigger', () => {
-    const workspace = createWorkspace('workspace-1');
-    workspace.workspaceAgents = [
-      {
-        agentId: 'agent-a',
-        enabled: true,
-        order: 0,
-        overrides: {
-          name: '内容 Agent',
-        },
-      },
-    ];
-
-    const markup = renderEnterpriseLeadComponent(
-      React.createElement(WorkspaceAiChat, { workspace }),
-    );
-
-    expect(markup).toContain('aria-haspopup="listbox"');
-    expect(markup).toContain('aria-expanded="false"');
-    expect(markup).toContain('选择目标 Agent');
-    expect(markup).toContain('自动');
-    expect(markup).not.toContain('<select');
-  });
-
-  test('renders workspace AI chat active output habits in the composer', () => {
-    const workspace = createWorkspace('workspace-1');
-    workspace.settings.outputPreferences.instructions = ['先给结论，再给依据。'];
-    workspace.workspaceAgents = [
-      {
-        agentId: 'agent-a',
-        enabled: true,
-        order: 0,
-        overrides: {
-          name: '内容 Agent',
-          systemPrompt: buildWorkspaceAiChatAgentHabitPrompt('', '列出证据来源。'),
-        },
-      },
-    ];
-
-    const markup = renderEnterpriseLeadComponent(
-      React.createElement(WorkspaceAiChat, { workspace }),
-    );
-
-    expect(markup).toContain('空间习惯 1 条');
-    expect(markup).toContain('Agent 习惯 1 条');
-  });
-
-  test('renders workspace AI chat Agent popover menu with selected option state', () => {
-    const markup = renderEnterpriseLeadComponent(
-      React.createElement(WorkspaceAiChatAgentPicker, {
-        choices: [
-          {
-            id: 'agent-a',
-            label: '内容 Agent',
-            enabled: true,
-            order: 0,
-          },
-        ],
-        selectedAgentId: 'agent-a',
-        onSelectedAgentIdChange: vi.fn(),
-        defaultOpen: true,
-      }),
-    );
-
-    expect(markup).toContain('role="listbox"');
-    expect(markup).toContain('role="option"');
-    expect(markup).toContain('aria-selected="true"');
-    expect(markup).toContain('自动判断任务需要的 Agent');
-    expect(markup).toContain('内容 Agent');
-    expect(markup).toContain('bottom-full');
-  });
-
-  test('renders workspace AI chat assistant message with Agent output controls', () => {
-    const markup = renderEnterpriseLeadComponent(
-      React.createElement(WorkspaceAiChatMessageRow, {
-        message: {
-          id: 'assistant-1',
-          role: 'assistant',
-          content: '这里是商机分析结果。',
-          createdAt: '2026-07-06T08:00:00.000Z',
-          agent: {
-            id: 'opportunity-radar',
-            name: '商机雷达 Agent',
-          },
-        },
-        onAdjustAgent: vi.fn(),
-      }),
-    );
-
-    expect(markup).toContain('这里是商机分析结果。');
-    expect(markup).toContain('输出状态');
-    expect(markup).toContain('可直接复制');
-    expect(markup).toContain('使用了 商机雷达 Agent');
-    expect(markup).toContain('过程');
-    expect(markup).toContain('调整这个 Agent');
-  });
-
-  test('renders workspace AI chat routing process after the answer', () => {
-    const markup = renderEnterpriseLeadComponent(
-      React.createElement(WorkspaceAiChatMessageRow, {
-        message: {
-          id: 'assistant-1',
-          role: 'assistant',
-          content: '这里是私信草稿。',
-          createdAt: '2026-07-06T08:00:00.000Z',
-          agent: {
-            id: 'content_planning',
-            name: '内容策划 Agent',
-          },
-          routing: {
-            reason: '识别到：私信/外发文案',
-            agents: [
-              {
-                id: 'content_planning',
-                name: '内容策划 Agent',
-              },
-              {
-                id: 'sales_handoff',
-                name: '销售交接 Agent',
-              },
-              {
-                id: 'risk_review',
-                name: '风控审核 Agent',
-              },
-            ],
-          },
-        },
-        onAdjustAgent: vi.fn(),
-      }),
-    );
-
-    expect(markup).toContain('这里是私信草稿。');
-    expect(markup).toContain('输出状态');
-    expect(markup).toContain('可直接复制');
-    expect(markup).toContain('多 Agent 整合');
-    expect(markup).toContain('风控已检查');
-    expect(markup).toContain('使用了 内容策划 Agent + 销售交接 Agent + 风控审核 Agent');
-    expect(markup).toContain('过程');
-    expect(markup).toContain('调整这个 Agent');
-  });
-
-  test('renders workspace AI chat research process and no-company suggested actions', () => {
-    const markup = renderEnterpriseLeadComponent(
-      React.createElement(WorkspaceAiChatMessageRow, {
-        message: {
-          id: 'assistant-1',
-          role: 'assistant',
-          content: '目前不能排序，因为没有具体客户名单。',
-          createdAt: '2026-07-06T08:00:00.000Z',
-          agent: {
-            id: 'opportunity-radar',
-            name: '商机雷达 Agent',
-          },
-          routing: {
-            reason: '自动判断：客户优先级判断',
-            agents: [
-              {
-                id: 'research-helper',
-                name: '调研助手 Agent',
-              },
-              {
-                id: 'opportunity-radar',
-                name: '商机雷达 Agent',
-              },
-            ],
-          },
-          research: {
-            intent: { kind: 'search', query: '机械厂 客户线索', provider: 'auto' },
-            status: 'completed',
-            provider: 'firecrawl',
-            summary: '调研完成，未发现可排序的真实客户名单。',
-            leadCandidates: [
-              {
-                kind: 'category',
-                name: '机械设备厂',
-                evidence: '行业方向匹配。',
-                confidence: 'medium',
-              },
-            ],
-          },
-        },
-        onSuggestedActionDraft: vi.fn(),
-        onAdjustAgent: vi.fn(),
-      }),
-    );
-
-    expect(markup).toContain('目前不能排序');
-    expect(markup).toContain('输出状态');
-    expect(markup).toContain('调研已完成');
-    expect(markup).toContain('过程');
-    expect(markup).toContain('调研完成');
-    expect(markup).toContain('继续搜索真实公司');
-    expect(markup).toContain('粘贴客户名单后评分');
-    expect(markup).toContain('生成客户筛选表');
-    expect(markup).toContain('调整这个 Agent');
-  });
-
-  test('renders Agent adjustment drawer with workspace habit option', () => {
-    const markup = renderEnterpriseLeadComponent(
-      React.createElement(WorkspaceAiChatAdjustmentDrawer, {
-        agentName: '商机雷达 Agent',
-        messageContent: '这里是商机分析结果。',
-        onClose: vi.fn(),
-        onRetry: vi.fn(),
-        onSaveAgentHabit: vi.fn(),
-      }),
-    );
-
-    expect(markup).toContain('调整这个 Agent');
-    expect(markup).toContain('哪里不合适？');
-    expect(markup).toContain('仅本次重试');
-    expect(markup).toContain('保存到这个 Agent 的执行习惯');
-    expect(markup).toContain('保存为本空间输出习惯');
-    expect(markup).toContain('重新回答');
-  });
-
-  test('builds retry-only Agent adjustment draft', () => {
-    const draft = buildWorkspaceAiChatRetryDraft({
-      agentName: '商机雷达 Agent',
-      instruction: '补充客户行业和证据来源。',
-    });
-
-    expect(draft).toContain('请让商机雷达 Agent 按以下调整重新回答上一条');
-    expect(draft).toContain('补充客户行业和证据来源。');
-  });
-
-  test('builds workspace output preference instructions without duplicates', () => {
-    expect(
-      buildWorkspaceAiChatOutputPreferenceInstructions(
-        ['输出时先给结论，再给依据。', ''],
-        ' 输出时先给结论，再给依据。 ',
-      ),
-    ).toEqual(['输出时先给结论，再给依据。']);
-  });
-
-  test('builds workspace Agent habit prompt without duplicating saved instructions', () => {
-    const prompt = buildWorkspaceAiChatAgentHabitPrompt(
-      buildWorkspaceAiChatAgentHabitPrompt('原始 Agent 规则', '先输出客户优先级，再给依据。'),
-      ' 先输出客户优先级，再给依据。 ',
-    );
-
-    expect(prompt.startsWith('原始 Agent 规则')).toBe(true);
-    expect(prompt).toContain('Agent 执行习惯');
-    expect(prompt.match(/先输出客户优先级，再给依据。/g)).toHaveLength(1);
-  });
-
-  test('builds workspace Agent bindings with saved execution habit', () => {
-    const bindings: EnterpriseLeadWorkspaceAgentBinding[] = [
-      {
-        agentId: 'agent-opportunity',
-        enabled: true,
-        order: 0,
-        systemPrompt: '系统默认规则',
-        overrides: {
-          name: '商机雷达 Agent',
-          systemPrompt: '空间内原始规则',
-        },
-      },
-      {
-        agentId: 'agent-risk',
-        enabled: true,
-        order: 1,
-        overrides: {
-          name: '风控审核 Agent',
-          systemPrompt: '只审核风险。',
-        },
-      },
-    ];
-
-    const updated = buildWorkspaceAiChatAgentHabitBindings(
-      bindings,
-      'agent-opportunity',
-      '必须列出证据来源。',
-    );
-
-    expect(updated[0]?.overrides.systemPrompt).toContain('空间内原始规则');
-    expect(updated[0]?.overrides.systemPrompt).toContain('Agent 执行习惯');
-    expect(updated[0]?.overrides.systemPrompt).toContain('必须列出证据来源。');
-    expect(updated[1]).toEqual(bindings[1]);
-  });
-
-  test('summarizes active workspace and Agent execution habits', () => {
-    const workspace = createWorkspace('workspace-1');
-    workspace.settings.outputPreferences.instructions = ['先给结论。', '列出证据。'];
-    workspace.workspaceAgents = [
-      {
-        agentId: 'agent-a',
-        enabled: true,
-        order: 0,
-        overrides: {
-          systemPrompt: buildWorkspaceAiChatAgentHabitPrompt('', '按优先级排序。'),
-        },
-      },
-      {
-        agentId: 'agent-b',
-        enabled: false,
-        order: 1,
-        overrides: {
-          systemPrompt: buildWorkspaceAiChatAgentHabitPrompt('', '不要输出草稿外发承诺。'),
-        },
-      },
-    ];
-
-    expect(getWorkspaceAiChatExecutionHabitSummaries(workspace, '')).toEqual([
-      {
-        id: 'workspace',
-        count: 2,
-        labelKey: 'enterpriseLeadAiChatCapabilityWorkspaceHabits',
-      },
-      {
-        id: 'agent',
-        count: 1,
-        labelKey: 'enterpriseLeadAiChatCapabilityAgentHabits',
-      },
-    ]);
-  });
-
-  test('submits workspace AI chat on plain Enter only', () => {
-    expect(
-      shouldSubmitWorkspaceChatKey({
-        key: 'Enter',
-        shiftKey: false,
-        isComposing: false,
-      }),
-    ).toBe(true);
-
-    expect(
-      shouldSubmitWorkspaceChatKey({
-        key: 'Enter',
-        shiftKey: true,
-        isComposing: false,
-      }),
-    ).toBe(false);
-
-    expect(
-      shouldSubmitWorkspaceChatKey({
-        key: 'Enter',
-        shiftKey: false,
-        isComposing: true,
-      }),
-    ).toBe(false);
-
-    expect(
-      shouldSubmitWorkspaceChatKey({
-        key: 'a',
-        shiftKey: false,
-        isComposing: false,
-      }),
-    ).toBe(false);
-  });
-
-  test('renders assistant messages with typewriter text clipping and cursor', () => {
-    expect(getWorkspaceAiChatTypewriterText('收到，我会继续。', 3)).toBe('收到，');
-    expect(getWorkspaceAiChatTypewriterText('收到，我会继续。', 100)).toBe('收到，我会继续。');
-
-    const markup = renderEnterpriseLeadComponent(
-      React.createElement(TypewriterMessageText, {
-        content: '收到，我会继续。',
-        isActive: true,
-        visibleCharacterCount: 3,
-      }),
-    );
-
-    expect(markup).toContain('aria-live="polite"');
-    expect(markup).toContain('收到，');
-    expect(markup).not.toContain('我会继续');
-    expect(markup).toContain('animate-pulse');
+    expect(markup).toContain('空间技能');
+    expect(markup).toContain('技能明细');
+    expect(markup).not.toContain('新增模型厂商');
+    expect(markup).not.toContain('厂商名称');
+    expect(markup).not.toContain('硅基流动');
   });
 
   test('searches current workspace profile, sources, and workspace Agents', () => {
@@ -3199,13 +2789,12 @@ describe('enterprise lead workspace UI helpers', () => {
     expect(agentResults.map(result => result.title)).toContain('商机雷达');
   });
 
-  test('shows recent workspace conversations before profile search when query is empty', () => {
+  test('shows recent Cowork conversations before profile search when query is empty', () => {
     const workspace = createWorkspace('workspace-1');
     workspace.profile.productList = ['精密金属支架'];
-    const chatSessions: EnterpriseLeadWorkspaceChatSessionSummary[] = [
+    const chatSessions: WorkspaceConversationRecord[] = [
       {
         id: 'chat-1',
-        workspaceId: workspace.id,
         title: '你好1',
         createdAt: '2026-07-06T00:00:00.000Z',
         updatedAt: '2026-07-06T00:00:00.000Z',
@@ -3228,81 +2817,8 @@ describe('enterprise lead workspace UI helpers', () => {
     );
 
     expect(markup).toContain('搜索');
-    expect(markup).toContain('搜索当前空间的对话、画像、来源和 Agent 配置');
+    expect(markup).toContain('搜索 Cowork 对话、当前空间画像、来源和 Agent 配置');
     expect(markup).toContain('交付稳定');
-  });
-
-  test('omits disabled workspace Agents from AI chat choices', () => {
-    const workspace = createWorkspace('workspace-1');
-    workspace.workspaceAgents = [
-      {
-        agentId: 'agent-a',
-        enabled: true,
-        order: 0,
-        overrides: {
-          name: '内容 Agent',
-        },
-      },
-      {
-        agentId: 'agent-b',
-        enabled: false,
-        order: 1,
-        overrides: {
-          name: '停用 Agent',
-        },
-      },
-    ];
-
-    const choices = getSortedAgentChoices(workspace.workspaceAgents);
-    const markup = renderEnterpriseLeadComponent(
-      React.createElement(WorkspaceAiChatAgentPicker, {
-        choices,
-        selectedAgentId: '',
-        onSelectedAgentIdChange: vi.fn(),
-        defaultOpen: true,
-      }),
-    );
-
-    expect(choices.map(choice => choice.label)).toEqual(['内容 Agent']);
-    expect(markup).toContain('内容 Agent');
-    expect(markup).not.toContain('停用 Agent');
-  });
-
-  test('treats workspace AI chat completions as stale after workspace or request changes', () => {
-    const token = {
-      requestId: 4,
-      workspaceId: 'workspace-a',
-      sessionId: 'chat-a',
-    };
-
-    expect(
-      isWorkspaceAiChatRequestCurrent(token, {
-        requestId: 4,
-        workspaceId: 'workspace-a',
-        sessionId: 'chat-a',
-      }),
-    ).toBe(true);
-    expect(
-      isWorkspaceAiChatRequestCurrent(token, {
-        requestId: 4,
-        workspaceId: 'workspace-b',
-        sessionId: 'chat-a',
-      }),
-    ).toBe(false);
-    expect(
-      isWorkspaceAiChatRequestCurrent(token, {
-        requestId: 5,
-        workspaceId: 'workspace-a',
-        sessionId: 'chat-a',
-      }),
-    ).toBe(false);
-    expect(
-      isWorkspaceAiChatRequestCurrent(token, {
-        requestId: 4,
-        workspaceId: 'workspace-a',
-        sessionId: 'chat-b',
-      }),
-    ).toBe(false);
   });
 
   test('workbench agent save sends only workspace agent bindings', async () => {
@@ -3374,7 +2890,6 @@ describe('enterprise lead workspace UI helpers', () => {
         order: 1,
         overrides: {
           name: 'Last A',
-          skillIds: ['web-search'],
         },
       },
     ]);
@@ -3476,7 +2991,6 @@ describe('enterprise lead workspace UI helpers', () => {
       identity: ' 空间助手 ',
       model: ' gpt-4.1 ',
       icon: ' compass ',
-      skillIds: ['web-search', 'docx'],
       isCurrentSave: () => true,
       onSaved,
       onError,
@@ -3495,11 +3009,11 @@ describe('enterprise lead workspace UI helpers', () => {
           identity: '空间助手',
           model: 'gpt-4.1',
           icon: 'compass',
-          skillIds: ['web-search', 'docx'],
         }),
       }),
     ]);
     const savedBindings = updateWorkspaceAgents.mock.calls[0]?.[1] ?? [];
+    expect(savedBindings[0]?.overrides).not.toHaveProperty('skillIds');
     expect(savedBindings[0]?.overrides.systemPrompt).toContain(
       'lobsterai-agent-stability:rule.workStyle',
     );
@@ -3661,7 +3175,6 @@ describe('enterprise lead workspace UI helpers', () => {
     await saveWorkspaceSettingsDraft({
       workspaceId: 'workspace-1',
       draftSettings: settings,
-      isCurrentSave: () => true,
       onSaved,
       onError,
     });

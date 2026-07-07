@@ -18,6 +18,12 @@ import type {
   BrowserRuntimeProfile,
 } from '../../shared/browserWebAccess/constants';
 import type {
+  ContentQualityRegressionApplyPromptPatchRequest,
+  ContentQualityRegressionApplyPromptPatchResponse,
+  ContentQualityRegressionRunReportRequest,
+  ContentQualityRegressionRunReportResponse,
+} from '../../shared/contentQualityRegression/constants';
+import type {
   CoworkContextUsageFailureReason,
   CoworkContextUsageSource,
 } from '../../shared/cowork/constants';
@@ -27,6 +33,7 @@ import type {
   LayeredCoworkSettingsValues,
 } from '../../shared/cowork/layeredSettings';
 import type { CoworkMessageRailIndexItem } from '../../shared/cowork/rail';
+import type { CoworkWorkspaceAgentSelection } from '../../shared/cowork/workspaceAgentSelection';
 import type {
   DataMigrationBackupResult,
   DataMigrationLastRestoreResponse,
@@ -41,11 +48,6 @@ import type {
   EnterpriseLeadWorkspaceAgentBinding,
   EnterpriseLeadWorkspaceAgentCalibrationRequest,
   EnterpriseLeadWorkspaceAgentCalibrationResponse,
-  EnterpriseLeadWorkspaceChatProgressEvent,
-  EnterpriseLeadWorkspaceChatRequest,
-  EnterpriseLeadWorkspaceChatResponse,
-  EnterpriseLeadWorkspaceChatSession,
-  EnterpriseLeadWorkspaceChatSessionSummary,
   EnterpriseLeadWorkspaceDraft,
   EnterpriseLeadWorkspaceProfile,
   EnterpriseLeadWorkspaceRunSummary,
@@ -269,9 +271,7 @@ interface IndustryWorkspace {
   name: string;
 }
 
-type IndustryMarketingIpcResult<T> =
-  | ({ success: true } & T)
-  | { success: false; error: string };
+type IndustryMarketingIpcResult<T> = ({ success: true } & T) | { success: false; error: string };
 type IndustryMarketingExportResult =
   | { success: true; filePath: string }
   | { success: false; canceled: true }
@@ -676,6 +676,14 @@ interface IElectronAPI {
       format: IndustryExportFormat,
     ) => Promise<IndustryMarketingExportResult>;
   };
+  contentQualityRegression: {
+    runReport: (
+      request?: ContentQualityRegressionRunReportRequest,
+    ) => Promise<ContentQualityRegressionRunReportResponse>;
+    applyPromptPatchToAgent: (
+      request: ContentQualityRegressionApplyPromptPatchRequest,
+    ) => Promise<ContentQualityRegressionApplyPromptPatchResponse>;
+  };
   enterpriseLeadWorkspace: {
     listWorkspaces: () => Promise<EnterpriseLeadIpcResult<EnterpriseLeadWorkspace[]>>;
     getWorkspace: (id: string) => Promise<EnterpriseLeadIpcResult<EnterpriseLeadWorkspace | null>>;
@@ -691,6 +699,11 @@ interface IElectronAPI {
     updateWorkspaceSources: (
       workspaceId: string,
       sources: EnterpriseLeadExtractionSource[],
+    ) => Promise<EnterpriseLeadIpcResult<EnterpriseLeadWorkspace>>;
+    processDocumentSource: (
+      workspaceId: string,
+      sources: EnterpriseLeadExtractionSource[],
+      sourceIndex: number,
     ) => Promise<EnterpriseLeadIpcResult<EnterpriseLeadWorkspace>>;
     updateWorkspaceSettings: (
       workspaceId: string,
@@ -715,25 +728,6 @@ interface IElectronAPI {
       workspaceId: string,
       runId: string,
     ) => Promise<EnterpriseLeadIpcResult<EnterpriseLeadWorkspaceSnapshot>>;
-    listChatSessions: (
-      workspaceId: string,
-    ) => Promise<EnterpriseLeadIpcResult<EnterpriseLeadWorkspaceChatSessionSummary[]>>;
-    getChatSession: (
-      workspaceId: string,
-      sessionId: string,
-    ) => Promise<EnterpriseLeadIpcResult<EnterpriseLeadWorkspaceChatSession | null>>;
-    deleteChatSession: (
-      workspaceId: string,
-      sessionId: string,
-    ) => Promise<EnterpriseLeadIpcResult<boolean>>;
-    chat: (
-      workspaceId: string,
-      request: EnterpriseLeadWorkspaceChatRequest,
-    ) => Promise<EnterpriseLeadIpcResult<EnterpriseLeadWorkspaceChatResponse>>;
-    onChatProgress: (
-      requestId: string,
-      callback: (event: EnterpriseLeadWorkspaceChatProgressEvent) => void,
-    ) => () => void;
     testWorkspaceAgent: (
       workspaceId: string,
       request: EnterpriseLeadWorkspaceAgentCalibrationRequest,
@@ -874,6 +868,7 @@ interface IElectronAPI {
         dataUrl?: string;
         role?: string;
       }>;
+      workspaceAgentSelection?: CoworkWorkspaceAgentSelection | null;
     }) => Promise<{
       success: boolean;
       session?: CoworkSession;
@@ -932,6 +927,7 @@ interface IElectronAPI {
         dataUrl?: string;
         role?: string;
       }>;
+      workspaceAgentSelection?: CoworkWorkspaceAgentSelection | null;
     }) => Promise<{
       success: boolean;
       session?: CoworkSession;

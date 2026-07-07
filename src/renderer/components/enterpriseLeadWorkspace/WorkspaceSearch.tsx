@@ -1,15 +1,13 @@
 import { MagnifyingGlassIcon } from '@heroicons/react/24/outline';
 import React, { useMemo, useState } from 'react';
 
-import type {
-  EnterpriseLeadWorkspace,
-  EnterpriseLeadWorkspaceChatSessionSummary,
-} from '../../../shared/enterpriseLeadWorkspace/types';
+import type { EnterpriseLeadWorkspace } from '../../../shared/enterpriseLeadWorkspace/types';
 import { i18nService } from '../../services/i18n';
+import type { WorkspaceConversationRecord } from './workspaceCoworkSessionRecords';
 
 interface WorkspaceSearchProps {
   workspace: EnterpriseLeadWorkspace;
-  chatSessions?: EnterpriseLeadWorkspaceChatSessionSummary[];
+  chatSessions?: WorkspaceConversationRecord[];
   onChatSessionSelect?: (sessionId: string) => void;
 }
 
@@ -64,10 +62,11 @@ const appendTextResults = (
 const appendChatSessionResults = (
   results: WorkspaceSearchResult[],
   query: string,
-  chatSessions: EnterpriseLeadWorkspaceChatSessionSummary[],
+  chatSessions: WorkspaceConversationRecord[],
 ): void => {
   chatSessions.forEach(session => {
-    const title = session.title.trim() || i18nService.t('enterpriseLeadAiChatUntitledSession');
+    const title =
+      session.title.trim() || i18nService.t('enterpriseLeadWorkspaceConversationUntitled');
     if (!matchesQuery(query, [title])) {
       return;
     }
@@ -87,7 +86,7 @@ const appendChatSessionResults = (
 export const buildWorkspaceSearchResults = (
   workspace: EnterpriseLeadWorkspace,
   rawQuery: string,
-  chatSessions: EnterpriseLeadWorkspaceChatSessionSummary[] = [],
+  chatSessions: WorkspaceConversationRecord[] = [],
 ): WorkspaceSearchResult[] => {
   const query = normalizeSearchText(rawQuery);
   const results: WorkspaceSearchResult[] = [];

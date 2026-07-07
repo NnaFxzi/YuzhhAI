@@ -9,10 +9,16 @@ let contextMenu: Menu | null = null;
 let clickHandler: (() => void) | null = null;
 let rightClickHandler: (() => void) | null = null;
 let trayReminder: TrayReminderState = { count: 0 };
+let trayDevelopmentActions: TrayDevelopmentAction[] = [];
 
 export interface TrayReminderState {
   count: number;
   onClick?: () => void;
+}
+
+export interface TrayDevelopmentAction {
+  label: string;
+  onClick: () => void;
 }
 
 function getTrayIconPath(): string {
@@ -95,6 +101,15 @@ function buildContextMenu(getWindow: () => BrowserWindow | null): Menu {
         }
       },
     },
+    ...(trayDevelopmentActions.length > 0
+      ? [
+          { type: 'separator' as const },
+          ...trayDevelopmentActions.map(action => ({
+            label: action.label,
+            click: action.onClick,
+          })),
+        ]
+      : []),
     { type: 'separator' },
     {
       label: labels.quit,
@@ -154,6 +169,10 @@ export function updateTrayMenu(getWindow: () => BrowserWindow | null): void {
   if (!tray) return;
   contextMenu = buildContextMenu(getWindow);
   tray.setToolTip(resolveTrayTooltip());
+}
+
+export function setTrayDevelopmentActions(actions: TrayDevelopmentAction[]): void {
+  trayDevelopmentActions = actions;
 }
 
 export function updateTrayReminder(

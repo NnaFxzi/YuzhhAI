@@ -13,6 +13,7 @@ import type {
   LayeredCoworkSettingsValues,
 } from '../../shared/cowork/layeredSettings';
 import type { CoworkSelectedTextSnippet } from '../../shared/cowork/selectedText';
+import type { CoworkWorkspaceAgentSelection } from '../../shared/cowork/workspaceAgentSelection';
 import type {
   KitReference,
   ResolvedKitCapabilities,
@@ -347,9 +348,16 @@ export interface CoworkStartOptions {
   agentId?: string;
   modelOverride?: string;
   imageAttachments?: CoworkImageAttachment[];
-  mediaSelection?: { mode: string; modelId?: string; modelName?: string; imageModelId?: string; videoModelId?: string };
+  mediaSelection?: {
+    mode: string;
+    modelId?: string;
+    modelName?: string;
+    imageModelId?: string;
+    videoModelId?: string;
+  };
   mediaReferences?: import('./mediaGeneration').MediaAttachmentRef[];
   selectedTextSnippets?: CoworkSelectedTextSnippet[];
+  workspaceAgentSelection?: CoworkWorkspaceAgentSelection | null;
 }
 
 // Continue session options
@@ -363,9 +371,16 @@ export interface CoworkContinueOptions {
   kitReferences?: KitReference[];
   resolvedKitCapabilities?: ResolvedKitCapabilities;
   imageAttachments?: CoworkImageAttachment[];
-  mediaSelection?: { mode: string; modelId?: string; modelName?: string; imageModelId?: string; videoModelId?: string };
+  mediaSelection?: {
+    mode: string;
+    modelId?: string;
+    modelName?: string;
+    imageModelId?: string;
+    videoModelId?: string;
+  };
   mediaReferences?: import('./mediaGeneration').MediaAttachmentRef[];
   selectedTextSnippets?: CoworkSelectedTextSnippet[];
+  workspaceAgentSelection?: CoworkWorkspaceAgentSelection | null;
 }
 
 // IPC result types

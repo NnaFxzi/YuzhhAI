@@ -1,6 +1,3 @@
-const MEMORY_CONTEXT_LIMITATION_NOTE =
-  '部分历史记忆暂未读取，本次已基于已命中的行业包和资料分析；相关缺口已标为“待验证”。';
-
 const CAUTIOUS_EVIDENCE_FRAMING_NOTE =
   '我先基于已命中的行业包、知识库资料和搜索结果做分析；未能交叉验证的数据会标为“待验证”。';
 
@@ -10,6 +7,8 @@ const EXTERNAL_RESEARCH_LIMITATION_NOTE =
 const INTERNAL_MEMORY_DIAGNOSTIC_PATTERNS = [
   /\bopenclaw\s+memory\s+index\s+--force\b/i,
   /\bmemory\s+index\s+--force\b/i,
+  /部分历史记忆.*(?:不可用|暂未读取|暂未接入|检索暂不可用)/i,
+  /(?:历史)?记忆(?:检索|读取|搜索).*(?:不可用|失败|错误|暂未|未命中|读不到)/i,
   /记忆索引.*(?:不可用|失败|错误|不匹配|重建)/i,
   /(?:embedding|向量|索引).*(?:不匹配|错误|失败|不可用|重建)/i,
   /(?:不匹配|错误|失败|不可用).*(?:embedding|向量|索引)/i,
@@ -64,7 +63,6 @@ export function sanitizeAgentVisibleOutput(content: string): string {
 
   const lines = content.split(/\r?\n/);
   const sanitizedLines: string[] = [];
-  let insertedLimitationNote = content.includes(MEMORY_CONTEXT_LIMITATION_NOTE);
   let insertedCautiousEvidenceNote = content.includes(CAUTIOUS_EVIDENCE_FRAMING_NOTE);
   let insertedExternalResearchNote = content.includes(EXTERNAL_RESEARCH_LIMITATION_NOTE);
   let removedDiagnostic = false;
@@ -90,10 +88,6 @@ export function sanitizeAgentVisibleOutput(content: string): string {
     }
     if (isInternalMemoryDiagnosticLine(line)) {
       removedDiagnostic = true;
-      if (!insertedLimitationNote) {
-        sanitizedLines.push(`> 注：${MEMORY_CONTEXT_LIMITATION_NOTE}`);
-        insertedLimitationNote = true;
-      }
       continue;
     }
     sanitizedLines.push(line);

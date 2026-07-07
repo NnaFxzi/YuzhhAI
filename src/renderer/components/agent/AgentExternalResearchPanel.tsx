@@ -28,8 +28,11 @@ interface AgentExternalResearchPanelProps {
   value: ExternalResearchEditConfig;
   agentId?: string | null;
   appDefaults: MaskedExternalResearchConfig | null;
+  availableModes?: readonly AgentExternalResearchMode[];
   onChange: (value: ExternalResearchEditConfig) => void;
-  onTestProvider: (input: ExternalResearchProviderTestInput) => Promise<{ ok: boolean; message: string }>;
+  onTestProvider: (
+    input: ExternalResearchProviderTestInput,
+  ) => Promise<{ ok: boolean; message: string }>;
 }
 
 const providerLabelKeys = {
@@ -75,6 +78,7 @@ const AgentExternalResearchPanel: React.FC<AgentExternalResearchPanelProps> = ({
   value,
   agentId,
   appDefaults,
+  availableModes = modeOptions,
   onChange,
   onTestProvider,
 }) => {
@@ -88,13 +92,14 @@ const AgentExternalResearchPanel: React.FC<AgentExternalResearchPanelProps> = ({
   const updateProvider = (
     providerId: ExternalResearchProviderIdValue,
     patch: Partial<ExternalResearchEditConfig['providers'][ExternalResearchProviderIdValue]>,
-  ) => onChange({
-    ...value,
-    providers: {
-      ...value.providers,
-      [providerId]: { ...value.providers[providerId], ...patch },
-    },
-  });
+  ) =>
+    onChange({
+      ...value,
+      providers: {
+        ...value.providers,
+        [providerId]: { ...value.providers[providerId], ...patch },
+      },
+    });
 
   const clearTestResult = (providerId: ExternalResearchProviderIdValue) => {
     setTestResult(prev => {
@@ -104,10 +109,7 @@ const AgentExternalResearchPanel: React.FC<AgentExternalResearchPanelProps> = ({
     });
   };
 
-  const updateProviderApiKey = (
-    providerId: ExternalResearchProviderIdValue,
-    apiKey: string,
-  ) => {
+  const updateProviderApiKey = (providerId: ExternalResearchProviderIdValue, apiKey: string) => {
     clearTestResult(providerId);
     updateProvider(providerId, {
       apiKey,
@@ -129,9 +131,10 @@ const AgentExternalResearchPanel: React.FC<AgentExternalResearchPanelProps> = ({
     setTesting(prev => ({ ...prev, [providerId]: true }));
     try {
       const provider = value.providers[providerId];
-      const useSavedKey = Boolean(agentId)
-        && provider.apiKeyAction === ExternalResearchSecretEditAction.Preserve
-        && provider.apiKey.trim().length === 0;
+      const useSavedKey =
+        Boolean(agentId) &&
+        provider.apiKeyAction === ExternalResearchSecretEditAction.Preserve &&
+        provider.apiKey.trim().length === 0;
       const result = await onTestProvider({
         providerId,
         agentId,
@@ -163,10 +166,19 @@ const AgentExternalResearchPanel: React.FC<AgentExternalResearchPanelProps> = ({
         </div>
         <div className="mt-2 grid gap-2 sm:grid-cols-2">
           {[
-            [i18nService.t('agentExternalResearchTavily'), tavily.hasApiKey ? tavily.apiKeyPreview : i18nService.t('agentIMNotConfigured')],
-            [i18nService.t('agentExternalResearchFirecrawl'), firecrawl.hasApiKey ? firecrawl.apiKeyPreview : i18nService.t('agentIMNotConfigured')],
+            [
+              i18nService.t('agentExternalResearchTavily'),
+              tavily.hasApiKey ? tavily.apiKeyPreview : i18nService.t('agentIMNotConfigured'),
+            ],
+            [
+              i18nService.t('agentExternalResearchFirecrawl'),
+              firecrawl.hasApiKey ? firecrawl.apiKeyPreview : i18nService.t('agentIMNotConfigured'),
+            ],
           ].map(([label, status]) => (
-            <div key={label} className="flex items-center justify-between gap-3 rounded-md border border-border-subtle bg-surface px-2.5 py-2">
+            <div
+              key={label}
+              className="flex items-center justify-between gap-3 rounded-md border border-border-subtle bg-surface px-2.5 py-2"
+            >
               <span className="text-xs font-medium text-foreground">{label}</span>
               <span className="truncate text-xs text-secondary">{status}</span>
             </div>
@@ -210,29 +222,31 @@ const AgentExternalResearchPanel: React.FC<AgentExternalResearchPanelProps> = ({
           </div>
         </div>
 
-        <div>
-          <div className="grid gap-2 sm:grid-cols-3">
-            {modeOptions.map(mode => (
-              <button
-                key={mode}
-                type="button"
-                aria-pressed={value.mode === mode}
-                onClick={() => updateMode(mode)}
-                className={`flex h-9 items-center justify-center gap-2 rounded-lg border px-3 text-sm font-semibold transition-colors ${
-                  value.mode === mode
-                    ? 'border-primary bg-primary/10 text-primary'
-                    : 'border-border text-secondary hover:border-primary/40 hover:bg-surface-raised'
-                }`}
-              >
-                {value.mode === mode && <CheckIcon className="h-3.5 w-3.5" />}
-                <span>{i18nService.t(modeShortLabelKeys[mode])}</span>
-              </button>
-            ))}
+        {availableModes.length > 1 && (
+          <div>
+            <div className="grid gap-2 sm:grid-cols-3">
+              {availableModes.map(mode => (
+                <button
+                  key={mode}
+                  type="button"
+                  aria-pressed={value.mode === mode}
+                  onClick={() => updateMode(mode)}
+                  className={`flex h-9 items-center justify-center gap-2 rounded-lg border px-3 text-sm font-semibold transition-colors ${
+                    value.mode === mode
+                      ? 'border-primary bg-primary/10 text-primary'
+                      : 'border-border text-secondary hover:border-primary/40 hover:bg-surface-raised'
+                  }`}
+                >
+                  {value.mode === mode && <CheckIcon className="h-3.5 w-3.5" />}
+                  <span>{i18nService.t(modeShortLabelKeys[mode])}</span>
+                </button>
+              ))}
+            </div>
+            <p className="mt-2 text-xs leading-5 text-secondary">
+              {i18nService.t(modeHintKeys[value.mode])}
+            </p>
           </div>
-          <p className="mt-2 text-xs leading-5 text-secondary">
-            {i18nService.t(modeHintKeys[value.mode])}
-          </p>
-        </div>
+        )}
 
         {renderDefaultSummary()}
 
@@ -244,14 +258,19 @@ const AgentExternalResearchPanel: React.FC<AgentExternalResearchPanelProps> = ({
             {ExternalResearchProviderIds.map(providerId => {
               const providerLabel = i18nService.t(providerLabelKeys[providerId]);
               const provider = value.providers[providerId];
-              const isConfigured = provider.apiKeyAction === ExternalResearchSecretEditAction.Preserve
-                || provider.apiKey.trim().length > 0;
-              const canUseSavedKey = Boolean(agentId)
-                && provider.apiKeyAction === ExternalResearchSecretEditAction.Preserve;
+              const isConfigured =
+                provider.apiKeyAction === ExternalResearchSecretEditAction.Preserve ||
+                provider.apiKey.trim().length > 0;
+              const canUseSavedKey =
+                Boolean(agentId) &&
+                provider.apiKeyAction === ExternalResearchSecretEditAction.Preserve;
               const canTest = provider.apiKey.trim().length > 0 || canUseSavedKey;
               const isShown = shown[providerId] === true;
               return (
-                <div key={providerId} className="rounded-lg border border-border bg-surface-raised/30 p-3">
+                <div
+                  key={providerId}
+                  className="rounded-lg border border-border bg-surface-raised/30 p-3"
+                >
                   <label className="flex items-center justify-between gap-3 rounded-md">
                     <span className="flex min-w-0 flex-wrap items-center gap-2">
                       <span className="text-sm font-semibold text-foreground">{providerLabel}</span>
@@ -274,7 +293,9 @@ const AgentExternalResearchPanel: React.FC<AgentExternalResearchPanelProps> = ({
                       <input
                         type="checkbox"
                         checked={provider.enabled}
-                        onChange={event => updateProvider(providerId, { enabled: event.target.checked })}
+                        onChange={event =>
+                          updateProvider(providerId, { enabled: event.target.checked })
+                        }
                         className="h-4 w-4 accent-primary"
                       />
                     </span>
@@ -291,17 +312,26 @@ const AgentExternalResearchPanel: React.FC<AgentExternalResearchPanelProps> = ({
                     <button
                       type="button"
                       aria-label={replaceProviderName(
-                        i18nService.t(isShown ? 'agentExternalResearchHide' : 'agentExternalResearchShow'),
+                        i18nService.t(
+                          isShown ? 'agentExternalResearchHide' : 'agentExternalResearchShow',
+                        ),
                         providerLabel,
                       )}
                       onClick={() => setShown(prev => ({ ...prev, [providerId]: !isShown }))}
                       className="h-9 w-9 rounded-lg border border-border text-secondary hover:bg-surface-raised"
                     >
-                      {isShown ? <EyeSlashIcon className="mx-auto h-4 w-4" /> : <EyeIcon className="mx-auto h-4 w-4" />}
+                      {isShown ? (
+                        <EyeSlashIcon className="mx-auto h-4 w-4" />
+                      ) : (
+                        <EyeIcon className="mx-auto h-4 w-4" />
+                      )}
                     </button>
                     <button
                       type="button"
-                      aria-label={replaceProviderName(i18nService.t('agentExternalResearchClear'), providerLabel)}
+                      aria-label={replaceProviderName(
+                        i18nService.t('agentExternalResearchClear'),
+                        providerLabel,
+                      )}
                       onClick={() => clearProviderApiKey(providerId)}
                       className="h-9 w-9 rounded-lg border border-border text-secondary hover:bg-surface-raised"
                     >
@@ -318,26 +348,25 @@ const AgentExternalResearchPanel: React.FC<AgentExternalResearchPanelProps> = ({
                         : i18nService.t('agentExternalResearchTest')}
                     </button>
                   </div>
-                  {testResult[providerId] && (() => {
-                    const feedback = getExternalResearchTestFeedback(testResult[providerId]);
-                    return (
-                      <div className={`mt-3 flex items-start gap-2 rounded-md border px-2.5 py-2 text-xs ${feedback.toneClassName}`}>
-                        {feedback.icon === 'success' ? (
-                          <CheckCircleIcon className="mt-0.5 h-4 w-4 shrink-0" />
-                        ) : (
-                          <ExclamationTriangleIcon className="mt-0.5 h-4 w-4 shrink-0" />
-                        )}
-                        <div className="min-w-0">
-                          <div className="font-semibold">
-                            {i18nService.t(feedback.labelKey)}
-                          </div>
-                          <div className="mt-0.5 break-words leading-5">
-                            {feedback.message}
+                  {testResult[providerId] &&
+                    (() => {
+                      const feedback = getExternalResearchTestFeedback(testResult[providerId]);
+                      return (
+                        <div
+                          className={`mt-3 flex items-start gap-2 rounded-md border px-2.5 py-2 text-xs ${feedback.toneClassName}`}
+                        >
+                          {feedback.icon === 'success' ? (
+                            <CheckCircleIcon className="mt-0.5 h-4 w-4 shrink-0" />
+                          ) : (
+                            <ExclamationTriangleIcon className="mt-0.5 h-4 w-4 shrink-0" />
+                          )}
+                          <div className="min-w-0">
+                            <div className="font-semibold">{i18nService.t(feedback.labelKey)}</div>
+                            <div className="mt-0.5 break-words leading-5">{feedback.message}</div>
                           </div>
                         </div>
-                      </div>
-                    );
-                  })()}
+                      );
+                    })()}
                 </div>
               );
             })}

@@ -6,8 +6,12 @@ import {
 import {
   EnterpriseLeadAgentRole,
   EnterpriseLeadContentAgentRoles,
+  EnterpriseLeadDocumentExtractionStatus,
+  EnterpriseLeadExtractionSourceKind,
+  EnterpriseLeadKnowledgeIndexStatus,
   EnterpriseLeadWorkspaceAgentCalibrationCheckId,
   EnterpriseLeadWorkspaceAgentSource,
+  EnterpriseLeadWorkspaceType,
 } from '@shared/enterpriseLeadWorkspace/constants';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useSelector } from 'react-redux';
@@ -18,6 +22,8 @@ import type {
   EnterpriseLeadWorkspaceAgentCalibrationRequest,
   EnterpriseLeadWorkspaceAgentCalibrationResponse,
   EnterpriseLeadWorkspaceAgentOverrides,
+  EnterpriseLeadWorkspaceDraft,
+  EnterpriseLeadWorkspaceSettings,
   EnterpriseLeadWorkspaceSnapshot,
 } from '../../../shared/enterpriseLeadWorkspace/types';
 import { enterpriseLeadWorkspaceService } from '../../services/enterpriseLeadWorkspace';
@@ -25,6 +31,7 @@ import { i18nService } from '../../services/i18n';
 import type { RootState } from '../../store';
 import { toOpenClawModelRef } from '../../utils/openclawModelRef';
 import {
+  buildEmptyEnterpriseLeadWorkspaceProfile,
   type EnterpriseLeadWorkbenchMode as EnterpriseLeadWorkbenchModeType,
   EnterpriseLeadWorkbenchStatusTone,
   getAgentRoleLabel,
@@ -187,12 +194,62 @@ interface CreateAndBindWorkspaceAgentOptions {
   identity: string;
   model: string;
   icon: string;
-  skillIds: string[];
   isCurrentSave: () => boolean;
   onSaved: (workspace: EnterpriseLeadWorkspace) => void;
   onError: () => void;
   saveInFlightRef?: { current: boolean };
 }
+
+interface CreateWorkspaceFromUploadedMaterialOptions {
+  workspaceName: string;
+  sourceText: string;
+  sourceLabel: string;
+  fileName?: string;
+  fileSize?: number;
+  settings?: EnterpriseLeadWorkspaceSettings;
+  onCreated?: (workspaceId: string) => void;
+}
+
+export const createWorkspaceFromUploadedMaterial = async ({
+  workspaceName,
+  sourceText,
+  sourceLabel,
+  fileName,
+  fileSize,
+  settings,
+  onCreated,
+}: CreateWorkspaceFromUploadedMaterialOptions): Promise<EnterpriseLeadWorkspace | null> => {
+  const trimmedSourceLabel = sourceLabel.trim();
+  const draft: EnterpriseLeadWorkspaceDraft = {
+    name: workspaceName.trim() || trimmedSourceLabel,
+    type: EnterpriseLeadWorkspaceType.EnterpriseLead,
+    profile: buildEmptyEnterpriseLeadWorkspaceProfile(),
+    source: {
+      kind: EnterpriseLeadExtractionSourceKind.File,
+      label: trimmedSourceLabel,
+      fileName: fileName?.trim() || undefined,
+      fileSize,
+      text: sourceText.trim() || undefined,
+      extractionStatus: EnterpriseLeadDocumentExtractionStatus.Pending,
+      vectorIndexStatus: EnterpriseLeadKnowledgeIndexStatus.Pending,
+    },
+    enabledAgentRoles: [],
+    settings,
+    workspaceAgents: [],
+  };
+
+  const workspace = await enterpriseLeadWorkspaceService.createWorkspace(draft);
+  if (!workspace) {
+    return null;
+  }
+
+  onCreated?.(workspace.id);
+  void enterpriseLeadWorkspaceService
+    .processDocumentSource(workspace.id, workspace.extractionSources, 0)
+    .catch((): void => undefined);
+
+  return workspace;
+};
 
 export const saveWorkspaceAgentBindings = async ({
   workspaceId,
@@ -277,19 +334,23 @@ export const prepareWorkspaceAgentBindings = (
     if (!agentId) {
       return;
     }
+    const overrides = { ...(binding.overrides ?? {}) };
+    delete overrides.skillIds;
+    const normalizedBinding: EnterpriseLeadWorkspaceAgentBinding = {
+      ...binding,
+      agentId,
+      source: resolveWorkspaceAgentSource(binding, agentId),
+      ...(resolveWorkspaceAgentSource(binding, agentId) ===
+      EnterpriseLeadWorkspaceAgentSource.SystemTemplate
+        ? { templateId: binding.templateId?.trim() || agentId }
+        : { templateId: undefined }),
+      order: Number.isFinite(binding.order) ? binding.order : sourceIndex,
+      overrides,
+    };
+    delete normalizedBinding.skillIds;
 
     lastBindingByAgentId.set(agentId, {
-      binding: {
-        ...binding,
-        agentId,
-        source: resolveWorkspaceAgentSource(binding, agentId),
-        ...(resolveWorkspaceAgentSource(binding, agentId) ===
-        EnterpriseLeadWorkspaceAgentSource.SystemTemplate
-          ? { templateId: binding.templateId?.trim() || agentId }
-          : { templateId: undefined }),
-        order: Number.isFinite(binding.order) ? binding.order : sourceIndex,
-        overrides: binding.overrides ?? {},
-      },
+      binding: normalizedBinding,
       sourceIndex,
     });
   });
@@ -361,11 +422,6 @@ export const addSystemAgentBindingToWorkspace = (
 const cleanOptionalText = (value: string): string | undefined => {
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : undefined;
-};
-
-const cleanSkillIds = (value: string[]): string[] | undefined => {
-  const skillIds = value.map(skillId => skillId.trim()).filter(Boolean);
-  return skillIds.length > 0 ? skillIds : undefined;
 };
 
 export type WorkspaceAgentOverrideDraft = {
@@ -790,7 +846,7 @@ export const buildWorkspaceAgentCalibrationRequest = ({
     systemPrompt: ensureWorkspaceAgentStabilityPrompt(draft.systemPrompt),
     icon: draft.icon.trim(),
     model: draft.model.trim(),
-    skillIds: cleanSkillIds(draft.skillIds) ?? [],
+    skillIds: [],
   },
   example: {
     sampleInput: example.sampleInput.trim(),
@@ -1394,7 +1450,6 @@ export const buildWorkspaceAgentOverrides = (
   const systemPrompt = cleanOptionalText(ensureWorkspaceAgentStabilityPrompt(draft.systemPrompt));
   const icon = cleanOptionalText(draft.icon);
   const model = cleanOptionalText(draft.model);
-  const skillIds = cleanSkillIds(draft.skillIds);
 
   if (name) overrides.name = name;
   if (description) overrides.description = description;
@@ -1402,7 +1457,6 @@ export const buildWorkspaceAgentOverrides = (
   if (systemPrompt) overrides.systemPrompt = systemPrompt;
   if (icon) overrides.icon = icon;
   if (model) overrides.model = model;
-  if (skillIds) overrides.skillIds = skillIds;
 
   return overrides;
 };
@@ -1434,7 +1488,6 @@ const buildDefaultWorkspaceAgentBindings = (
           `${i18nService.t('enterpriseLeadAgentDefaultOutputPrefix')}${i18nService.t(metadata.outputKey)}`,
         ].join('\n'),
         icon: i18nService.t(metadata.shortLabelKey),
-        skillIds: [],
       },
     };
   });
@@ -1472,7 +1525,6 @@ export const createAndBindWorkspaceAgent = async ({
   identity,
   model,
   icon,
-  skillIds,
   isCurrentSave,
   onSaved,
   onError,
@@ -1507,7 +1559,7 @@ export const createAndBindWorkspaceAgent = async ({
           systemPrompt,
           model,
           icon,
-          skillIds,
+          skillIds: [],
         }),
       },
     ]);
@@ -1852,12 +1904,7 @@ export const WorkspaceWorkbench: React.FC<WorkspaceWorkbenchProps> = ({
     const fallbackInitial = agent.name.trim().charAt(0).toUpperCase() || '#';
     const avatarLabel = agent.icon.length <= 2 ? agent.icon || fallbackInitial : fallbackInitial;
     const modelLabel = agent.model || i18nService.t('enterpriseLeadWorkbenchAgentDefaultModel');
-    const skillCountLabel =
-      agent.skillIds.length > 0
-        ? i18nService
-            .t('enterpriseLeadWorkbenchAgentSkillCount')
-            .replace('{count}', String(agent.skillIds.length))
-        : i18nService.t('enterpriseLeadWorkbenchAgentInheritedSkills');
+    const skillCountLabel = i18nService.t('enterpriseLeadWorkbenchAgentInheritedSkills');
     const source =
       workspaceAgentBindings.find(binding => binding.agentId === agent.id)?.source ??
       EnterpriseLeadWorkspaceAgentSource.WorkspaceCreated;

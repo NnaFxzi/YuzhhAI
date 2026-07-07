@@ -2,19 +2,30 @@ import { ArrowPathIcon, XCircleIcon as XCircleIconSolid } from '@heroicons/react
 import {
   ArrowDownTrayIcon,
   CheckCircleIcon,
+  Cog6ToothIcon,
+  GlobeAltIcon,
   XMarkIcon,
 } from '@heroicons/react/24/outline';
+import {
+  AgentExternalResearchMode,
+  buildDefaultExternalResearchEditConfig,
+  createExternalResearchEditConfigFromMasked,
+  type ExternalResearchEditConfig,
+  type MaskedExternalResearchConfig,
+} from '@shared/agent/externalResearch';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useDispatch, useSelector } from 'react-redux';
 
 import type { SkillSecurityReport as SkillSecurityReportData } from '../../../main/libs/skillSecurity/skillSecurityTypes';
 import { ENABLE_OPENCLAW_SKILL_SYNC } from '../../../shared/featureFlags';
+import { agentService } from '../../services/agent';
 import { i18nService } from '../../services/i18n';
 import { compareVersions,resolveLocalizedText, skillService } from '../../services/skill';
 import { RootState } from '../../store';
 import { setSkills } from '../../store/slices/skillSlice';
 import { MarketplaceSkill, MarketTag,Skill } from '../../types/skill';
+import AgentExternalResearchPanel from '../agent/AgentExternalResearchPanel';
 import Modal from '../common/Modal';
 import ErrorMessage from '../ErrorMessage';
 import FolderOpenIcon from '../icons/FolderOpenIcon';
@@ -31,12 +42,26 @@ import {
   reportSkillAction,
 } from './analytics';
 import SkillSecurityReport from './SkillSecurityReport';
+import {
+  getDefaultSkillsManagerTab,
+  getSkillsManagerTabLabelKey,
+  getSkillsManagerTabs,
+  SkillsManagerTab,
+  type SkillsManagerTab as SkillsManagerTabValue,
+} from './skillsManagerTabs';
+import {
+  getSkillsResearchCapabilityCards,
+  SkillsResearchCapabilityActionTarget,
+  type SkillsResearchCapabilityCard,
+  SkillsResearchCapabilityKind,
+} from './skillsResearchCapabilityCards';
 
-type SkillTab = 'installed' | 'marketplace';
 type ImportSourceType = 'github' | 'clawhub';
 type DirectImportSource = 'zip' | 'folder' | 'remote';
 
 const importSourceTypes: ImportSourceType[] = ['github', 'clawhub'];
+const createDefaultExternalResearchEditConfig = (): ExternalResearchEditConfig =>
+  buildDefaultExternalResearchEditConfig(AgentExternalResearchMode.Override);
 
 const importTabConfig: Record<ImportSourceType, {
   tabLabelKey: string;
@@ -64,9 +89,10 @@ const importTabConfig: Record<ImportSourceType, {
 interface SkillsManagerProps {
   readOnly?: boolean;
   onCreateByChat?: () => void;
+  onOpenBrowserSettings?: () => void;
 }
 
-const SkillsManager: React.FC<SkillsManagerProps> = ({ readOnly, onCreateByChat }) => {
+const SkillsManager: React.FC<SkillsManagerProps> = ({ readOnly, onCreateByChat, onOpenBrowserSettings }) => {
   const dispatch = useDispatch();
   const skills = useSelector((state: RootState) => state.skill.skills);
 
@@ -77,7 +103,7 @@ const SkillsManager: React.FC<SkillsManagerProps> = ({ readOnly, onCreateByChat 
   const [isAddSkillMenuOpen, setIsAddSkillMenuOpen] = useState(false);
   const [isRemoteImportOpen, setIsRemoteImportOpen] = useState(false);
   const [importTab, setImportTab] = useState<ImportSourceType>('github');
-  const [activeTab, setActiveTab] = useState<SkillTab>('installed');
+  const [activeTab, setActiveTab] = useState<SkillsManagerTabValue>(getDefaultSkillsManagerTab);
   const [marketplaceSkills, setMarketplaceSkills] = useState<MarketplaceSkill[]>([]);
   const [marketTags, setMarketTags] = useState<MarketTag[]>([]);
   const [activeMarketTag, setActiveMarketTag] = useState('all');
@@ -91,6 +117,15 @@ const SkillsManager: React.FC<SkillsManagerProps> = ({ readOnly, onCreateByChat 
   const [pendingInstallId, setPendingInstallId] = useState<string | null>(null);
   const [pendingImportSource, setPendingImportSource] = useState<DirectImportSource | null>(null);
   const [isConfirmingInstall, setIsConfirmingInstall] = useState(false);
+  const [isExternalResearchSettingsOpen, setIsExternalResearchSettingsOpen] = useState(false);
+  const [isExternalResearchSettingsLoading, setIsExternalResearchSettingsLoading] = useState(false);
+  const [isExternalResearchSettingsSaving, setIsExternalResearchSettingsSaving] = useState(false);
+  const [externalResearchSettingsError, setExternalResearchSettingsError] = useState('');
+  const [externalResearchConfig, setExternalResearchConfig] = useState<ExternalResearchEditConfig>(
+    createDefaultExternalResearchEditConfig,
+  );
+  const [externalResearchDefaults, setExternalResearchDefaults] =
+    useState<MaskedExternalResearchConfig | null>(null);
   const [upgradeState, setUpgradeState] = useState<{
     isActive: boolean;
     total: number;
@@ -246,7 +281,7 @@ const SkillsManager: React.FC<SkillsManagerProps> = ({ readOnly, onCreateByChat 
   useEffect(() => {
     const query = skillSearchQuery.trim();
     if (!query) return undefined;
-    const resultCount = activeTab === 'marketplace'
+    const resultCount = activeTab === SkillsManagerTab.Marketplace
       ? filteredMarketplaceSkills.length
       : filteredSkills.length;
     const timer = window.setTimeout(() => {
@@ -489,11 +524,11 @@ const SkillsManager: React.FC<SkillsManagerProps> = ({ readOnly, onCreateByChat 
 
     if (!skillCreator) {
       // Not installed → switch to marketplace tab and search
-      setActiveTab('marketplace');
+      setActiveTab(SkillsManagerTab.Marketplace);
       setSkillSearchQuery('skill-creator');
       reportSkillAction('create_by_chat_missing_skill', {
         source: 'skills_manager',
-        activeTab: 'marketplace',
+        activeTab: SkillsManagerTab.Marketplace,
         skillId: 'skill-creator',
       });
       window.dispatchEvent(new CustomEvent('app:showToast', { detail: i18nService.t('skillCreatorNotInstalled') }));
@@ -502,11 +537,11 @@ const SkillsManager: React.FC<SkillsManagerProps> = ({ readOnly, onCreateByChat 
 
     if (!skillCreator.enabled) {
       // Installed but disabled → switch to installed tab and search
-      setActiveTab('installed');
+      setActiveTab(SkillsManagerTab.Installed);
       setSkillSearchQuery('skill-creator');
       reportSkillAction('create_by_chat_disabled_skill', {
         source: 'skills_manager',
-        activeTab: 'installed',
+        activeTab: SkillsManagerTab.Installed,
         ...getInstalledSkillAnalyticsParams(skillCreator, marketplaceSkills.find(item => item.id === skillCreator.id)),
       });
       window.dispatchEvent(new CustomEvent('app:showToast', { detail: i18nService.t('skillCreatorNotEnabled') }));
@@ -819,6 +854,135 @@ const SkillsManager: React.FC<SkillsManagerProps> = ({ readOnly, onCreateByChat 
     }
   };
 
+  const handleOpenExternalResearchSettings = async () => {
+    setIsExternalResearchSettingsOpen(true);
+    setIsExternalResearchSettingsLoading(true);
+    setExternalResearchSettingsError('');
+
+    const settings = await agentService.getExternalResearchSettings();
+    if (!settings) {
+      setExternalResearchSettingsError(i18nService.t('skillsResearchExternalLoadFailed'));
+      setExternalResearchConfig(createDefaultExternalResearchEditConfig());
+      setExternalResearchDefaults(null);
+      setIsExternalResearchSettingsLoading(false);
+      return;
+    }
+
+    const nextConfig = createExternalResearchEditConfigFromMasked(settings.appDefaults);
+    setExternalResearchDefaults(settings.appDefaults);
+    setExternalResearchConfig({
+      ...nextConfig,
+      mode: AgentExternalResearchMode.Override,
+    });
+    setIsExternalResearchSettingsLoading(false);
+  };
+
+  const handleCloseExternalResearchSettings = () => {
+    if (isExternalResearchSettingsSaving) return;
+    setIsExternalResearchSettingsOpen(false);
+    setExternalResearchSettingsError('');
+  };
+
+  const handleSaveExternalResearchSettings = async () => {
+    if (isExternalResearchSettingsSaving) return;
+    setIsExternalResearchSettingsSaving(true);
+    setExternalResearchSettingsError('');
+
+    const saved = await agentService.saveExternalResearchSettings(null, {
+      ...externalResearchConfig,
+      mode: AgentExternalResearchMode.Override,
+    });
+
+    if (!saved) {
+      setExternalResearchSettingsError(i18nService.t('skillsResearchExternalSaveFailed'));
+      setIsExternalResearchSettingsSaving(false);
+      return;
+    }
+
+    setExternalResearchDefaults(saved);
+    setExternalResearchConfig({
+      ...createExternalResearchEditConfigFromMasked(saved),
+      mode: AgentExternalResearchMode.Override,
+    });
+    setIsExternalResearchSettingsSaving(false);
+    setIsExternalResearchSettingsOpen(false);
+    showToast(i18nService.t('skillsResearchExternalSaved'));
+  };
+
+  const renderResearchCapabilityCard = (
+    card: SkillsResearchCapabilityCard,
+  ) => {
+    const Icon = card.kind === SkillsResearchCapabilityKind.Browser ? GlobeAltIcon : Cog6ToothIcon;
+    const canOpenAction =
+      card.actionTarget === SkillsResearchCapabilityActionTarget.ExternalResearchSettings
+      || (
+        card.actionTarget === SkillsResearchCapabilityActionTarget.BrowserSettings
+        && typeof onOpenBrowserSettings === 'function'
+      );
+    const handleAction = () => {
+      if (card.actionTarget === SkillsResearchCapabilityActionTarget.ExternalResearchSettings) {
+        void handleOpenExternalResearchSettings();
+        return;
+      }
+      if (card.actionTarget === SkillsResearchCapabilityActionTarget.BrowserSettings) {
+        onOpenBrowserSettings?.();
+      }
+    };
+
+    return (
+      <div
+        key={card.kind}
+        className="rounded-xl border border-border bg-surface p-3 transition-colors hover:border-primary hover:bg-surface-raised"
+      >
+        <div className="mb-2 flex items-start justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-2">
+            <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-surface text-secondary">
+              <Icon className="h-4 w-4" />
+            </div>
+            <span className="truncate text-sm font-medium text-foreground">
+              {i18nService.t(card.titleKey)}
+            </span>
+          </div>
+          {card.actionLabelKey && canOpenAction && (
+            <button
+              type="button"
+              onClick={handleAction}
+              className="inline-flex flex-shrink-0 items-center gap-1 rounded-lg border border-border px-2 py-1 text-[10px] font-medium text-foreground transition-colors hover:bg-surface-raised"
+            >
+              <Cog6ToothIcon className="h-3.5 w-3.5" />
+              {i18nService.t(card.actionLabelKey)}
+            </button>
+          )}
+        </div>
+
+        <p className="mb-2 line-clamp-2 text-xs text-secondary">
+          {i18nService.t(card.descriptionKey)}
+        </p>
+
+        <div className="flex flex-wrap items-center gap-2 text-[10px] text-secondary">
+          <span className="rounded bg-surface-raised px-1.5 py-0.5 font-medium">
+            {i18nService.t(card.statusKey)}
+          </span>
+          <span>·</span>
+          <span className="rounded bg-surface-raised px-1.5 py-0.5 font-medium">
+            {i18nService.t('skillsResearchNotManagedAsSkill')}
+          </span>
+        </div>
+
+        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          {card.toolNames.map(toolName => (
+            <span
+              key={toolName}
+              className="rounded bg-background px-1.5 py-0.5 font-mono text-[10px] text-tertiary"
+            >
+              {toolName}
+            </span>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-4">
       <div>
@@ -837,7 +1001,8 @@ const SkillsManager: React.FC<SkillsManagerProps> = ({ readOnly, onCreateByChat 
       {/* Sticky toolbar: Description + Search + Tabs + Tag pills */}
       <div className="sticky top-0 z-10 bg-claude-bg dark:bg-claude-darkBg pb-4 space-y-4 shadow-sm">
         {/* Search + Add button */}
-        <div className="flex items-center gap-3">
+        {activeTab !== SkillsManagerTab.Research && (
+          <div className="flex items-center gap-3">
         <div className="relative flex-1">
           <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-secondary" />
           <input
@@ -856,7 +1021,7 @@ const SkillsManager: React.FC<SkillsManagerProps> = ({ readOnly, onCreateByChat 
                   activeTab,
                   activeMarketTag,
                   searchKeywordLength: skillSearchQuery.trim().length,
-                  resultCount: activeTab === 'marketplace'
+                  resultCount: activeTab === SkillsManagerTab.Marketplace
                     ? filteredMarketplaceSkills.length
                     : filteredSkills.length,
                 });
@@ -945,58 +1110,41 @@ const SkillsManager: React.FC<SkillsManagerProps> = ({ readOnly, onCreateByChat 
             </div>
           )}
         </div>
-        </div>
+          </div>
+        )}
 
         {/* Tabs */}
         <div className="flex items-center border-b border-border">
-          <button
-            type="button"
-            onClick={() => {
-              reportSkillAction('tab_change', {
-                source: 'skills_manager',
-                activeTab,
-                targetTab: 'installed',
-              });
-              setActiveTab('installed');
-            }}
-            className={`px-4 py-2 text-sm font-medium transition-colors relative ${
-              activeTab === 'installed'
-                ? 'text-foreground'
-                : 'text-secondary hover:hover:text-foreground'
-            }`}
-          >
-            {i18nService.t('skillInstalled')}
-            {skills.length > 0 && (
-              <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full bg-surface-raised">
-                {skills.length}
-              </span>
-            )}
-            <div className={`absolute bottom-0 left-0 right-0 h-0.5 rounded-full transition-colors ${
-              activeTab === 'installed' ? 'bg-primary' : 'bg-transparent'
-            }`} />
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              reportSkillAction('tab_change', {
-                source: 'skills_manager',
-                activeTab,
-                targetTab: 'marketplace',
-              });
-              setActiveTab('marketplace');
-            }}
-            className={`px-4 py-2 text-sm font-medium transition-colors relative ${
-              activeTab === 'marketplace'
-                ? 'text-foreground'
-                : 'text-secondary hover:hover:text-foreground'
-            }`}
-          >
-            {i18nService.t('skillMarketplace')}
-            <div className={`absolute bottom-0 left-0 right-0 h-0.5 rounded-full transition-colors ${
-              activeTab === 'marketplace' ? 'bg-primary' : 'bg-transparent'
-            }`} />
-          </button>
-          {updatableSkills.length > 0 && (
+          {getSkillsManagerTabs().map(tab => (
+            <button
+              key={tab}
+              type="button"
+              onClick={() => {
+                reportSkillAction('tab_change', {
+                  source: 'skills_manager',
+                  activeTab,
+                  targetTab: tab,
+                });
+                setActiveTab(tab);
+              }}
+              className={`relative px-4 py-2 text-sm font-medium transition-colors ${
+                activeTab === tab
+                  ? 'text-foreground'
+                  : 'text-secondary hover:hover:text-foreground'
+              }`}
+            >
+              {i18nService.t(getSkillsManagerTabLabelKey(tab))}
+              {tab === SkillsManagerTab.Installed && skills.length > 0 && (
+                <span className="ml-1.5 rounded-full bg-surface-raised px-1.5 py-0.5 text-[10px]">
+                  {skills.length}
+                </span>
+              )}
+              <div className={`absolute bottom-0 left-0 right-0 h-0.5 rounded-full transition-colors ${
+                activeTab === tab ? 'bg-primary' : 'bg-transparent'
+              }`} />
+            </button>
+          ))}
+          {activeTab !== SkillsManagerTab.Research && updatableSkills.length > 0 && (
             <div className="ml-auto pr-1 pb-1">
               <button
                 type="button"
@@ -1012,7 +1160,7 @@ const SkillsManager: React.FC<SkillsManagerProps> = ({ readOnly, onCreateByChat 
         </div>
 
         {/* Tag filter pills (Marketplace only) */}
-        {activeTab === 'marketplace' && !isLoadingMarketplace && marketTags.length > 0 && (
+        {activeTab === SkillsManagerTab.Marketplace && !isLoadingMarketplace && marketTags.length > 0 && (
           <div className="flex items-center gap-1.5 flex-wrap">
             <button
               type="button"
@@ -1062,7 +1210,13 @@ const SkillsManager: React.FC<SkillsManagerProps> = ({ readOnly, onCreateByChat 
       </div>
 
       <div>
-      {activeTab === 'installed' && (
+      {activeTab === SkillsManagerTab.Research && (
+        <div className="grid grid-cols-2 gap-3">
+          {getSkillsResearchCapabilityCards().map(renderResearchCapabilityCard)}
+        </div>
+      )}
+
+      {activeTab === SkillsManagerTab.Installed && (
       <>
       <div className="grid grid-cols-2 gap-3">
         {filteredSkills.length === 0 ? (
@@ -1173,7 +1327,7 @@ const SkillsManager: React.FC<SkillsManagerProps> = ({ readOnly, onCreateByChat 
       </>
       )}
 
-      {activeTab === 'marketplace' && (
+      {activeTab === SkillsManagerTab.Marketplace && (
         isLoadingMarketplace ? (
           <div className="text-center py-12 text-sm text-secondary">
             {i18nService.t('downloadingSkill')}
@@ -1293,6 +1447,79 @@ const SkillsManager: React.FC<SkillsManagerProps> = ({ readOnly, onCreateByChat 
         )
       )}
       </div>
+
+      {isExternalResearchSettingsOpen && (
+        <Modal
+          onClose={handleCloseExternalResearchSettings}
+          overlayClassName="fixed inset-0 z-50 flex items-center justify-center bg-black/45"
+          className="mx-4 flex max-h-[86vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-border bg-background shadow-2xl"
+        >
+          <div className="flex items-start justify-between gap-4 border-b border-border px-5 py-4">
+            <div className="min-w-0">
+              <h2 className="text-base font-semibold text-foreground">
+                {i18nService.t('skillsResearchExternalModalTitle')}
+              </h2>
+              <p className="mt-1 text-sm leading-5 text-secondary">
+                {i18nService.t('skillsResearchExternalModalDesc')}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleCloseExternalResearchSettings}
+              disabled={isExternalResearchSettingsSaving}
+              className="rounded-lg p-1.5 text-secondary transition-colors hover:bg-surface-raised hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <XMarkIcon className="h-5 w-5" />
+            </button>
+          </div>
+
+          <div className="min-h-0 flex-1 overflow-y-auto p-5">
+            {isExternalResearchSettingsLoading ? (
+              <div className="rounded-xl border border-border bg-surface px-4 py-8 text-center text-sm text-secondary">
+                {i18nService.t('skillsResearchExternalLoading')}
+              </div>
+            ) : (
+              <AgentExternalResearchPanel
+                value={externalResearchConfig}
+                agentId={null}
+                appDefaults={externalResearchDefaults}
+                availableModes={[AgentExternalResearchMode.Override]}
+                onChange={setExternalResearchConfig}
+                onTestProvider={input => agentService.testExternalResearchProvider(input)}
+              />
+            )}
+            {externalResearchSettingsError && (
+              <div className="mt-4">
+                <ErrorMessage
+                  message={externalResearchSettingsError}
+                  onClose={() => setExternalResearchSettingsError('')}
+                />
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center justify-end gap-3 border-t border-border px-5 py-4">
+            <button
+              type="button"
+              onClick={handleCloseExternalResearchSettings}
+              disabled={isExternalResearchSettingsSaving}
+              className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-surface-raised disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {i18nService.t('cancel')}
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleSaveExternalResearchSettings()}
+              disabled={isExternalResearchSettingsSaving || isExternalResearchSettingsLoading}
+              className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-hover disabled:cursor-not-allowed disabled:bg-gray-400"
+            >
+              {isExternalResearchSettingsSaving
+                ? i18nService.t('saving')
+                : i18nService.t('save')}
+            </button>
+          </div>
+        </Modal>
+      )}
 
       {selectedMarketplaceSkill && createPortal(
         <Modal

@@ -56,6 +56,12 @@ const applyLayer = (result: LayeredCoworkSettingsResolution, layer?: CoworkSetti
   if (!layer) return;
 
   for (const key of settingKeys) {
+    if (
+      key === 'skillIds' &&
+      (layer.scope === SettingScope.Agent || layer.scope === SettingScope.Session)
+    ) {
+      continue;
+    }
     const value = layer.values[key];
     if (value !== undefined) {
       result.values[key] = value as never;

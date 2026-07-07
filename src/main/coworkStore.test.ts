@@ -1023,6 +1023,7 @@ test('effective cowork settings resolve global workspace and agent layers', () =
   store.setWorkspaceSettings('workspace-a', {
     workingDirectory: '/workspace/project',
     embeddingEnabled: true,
+    skillIds: ['workspace-skill'],
   });
   const agent = store.createAgent({
     name: 'Docs Agent',
@@ -1042,8 +1043,8 @@ test('effective cowork settings resolve global workspace and agent layers', () =
   expect(resolved.sources.embeddingEnabled).toBe(SettingScope.Workspace);
   expect(resolved.values.defaultModel).toBe('agent-model');
   expect(resolved.sources.defaultModel).toBe(SettingScope.Agent);
-  expect(resolved.values.skillIds).toEqual(['agent-skill']);
-  expect(resolved.sources.skillIds).toBe(SettingScope.Agent);
+  expect(resolved.values.skillIds).toEqual(['workspace-skill']);
+  expect(resolved.sources.skillIds).toBe(SettingScope.Workspace);
 });
 
 test('backfillEmptyAgentModels assigns the current default model to empty agents only', () => {

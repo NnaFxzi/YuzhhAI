@@ -45,7 +45,6 @@ import {
   updateSessionTitle,
   updateToolUseMediaStatus,
 } from '../store/slices/coworkSlice';
-import { clearActiveSkills, setActiveSkillIds } from '../store/slices/skillSlice';
 import type {
   CoworkApiConfig,
   CoworkConfigUpdate,
@@ -111,16 +110,6 @@ const FINAL_CONTEXT_USAGE_REFRESH_DELAYS_MS = [800, 2500, 6000, 12000] as const;
 const CONTEXT_USAGE_AUTO_SUPPRESSION_MS = 5 * 60 * 1000;
 const CONTEXT_USAGE_REFRESH_BACKOFF_MS = 30_000;
 const MANUAL_CONTEXT_COMPACTION_WATCHDOG_MS = 130_000;
-
-const restoreCurrentAgentDefaultSkills = (): void => {
-  const state = store.getState();
-  const currentAgent = state.agent.agents.find((agent) => agent.id === state.agent.currentAgentId);
-  if (currentAgent?.skillIds?.length) {
-    store.dispatch(setActiveSkillIds(currentAgent.skillIds));
-  } else {
-    store.dispatch(clearActiveSkills());
-  }
-};
 
 class CoworkService {
   private streamListenerCleanups: Array<() => void> = [];
@@ -900,6 +889,7 @@ class CoworkService {
       mediaSelection: options.mediaSelection,
       mediaReferences: options.mediaReferences,
       selectedTextSnippets: options.selectedTextSnippets,
+      workspaceAgentSelection: options.workspaceAgentSelection ?? null,
     });
     if (!result.success) {
       store.dispatch(setStreaming(false));
@@ -1624,11 +1614,8 @@ class CoworkService {
     return window.electron.getRecentCwds(limit);
   }
 
-  clearSession(options: { restoreAgentSkills?: boolean } = {}): void {
+  clearSession(_options: { restoreAgentSkills?: boolean } = {}): void {
     store.dispatch(clearCurrentSession());
-    if (options.restoreAgentSkills) {
-      restoreCurrentAgentDefaultSkills();
-    }
   }
 
   destroy(): void {

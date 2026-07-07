@@ -262,6 +262,15 @@ const sectionDefaultKinds: Partial<Record<EnterpriseLeadKnowledgeSection, Editab
     [EnterpriseLeadKnowledgeSection.Rules]: EnterpriseLeadKnowledgeItemKind.ContactRule,
   };
 
+const enterpriseLeadKnowledgeAiTableHiddenSections = new Set<EnterpriseLeadKnowledgeSection>([
+  EnterpriseLeadKnowledgeSection.Deliverables,
+  EnterpriseLeadKnowledgeSection.Archives,
+]);
+
+export const isEnterpriseLeadKnowledgeSectionShownInAiKnowledgeTable = (
+  sectionId: EnterpriseLeadKnowledgeSection,
+): boolean => !enterpriseLeadKnowledgeAiTableHiddenSections.has(sectionId);
+
 const cloneProfile = (profile: EnterpriseLeadWorkspaceProfile): EnterpriseLeadWorkspaceProfile => ({
   companySummary: profile.companySummary,
   productList: [...profile.productList],
@@ -389,6 +398,31 @@ export const getEnterpriseLeadKnowledgePendingItemCount = (
   profile: EnterpriseLeadWorkspaceProfile,
   items: WorkspaceKnowledgeItem[],
 ): number => getEnterpriseLeadKnowledgePendingItems(profile, items).length;
+
+export const getEnterpriseLeadKnowledgeDeletionKeys = (items: WorkspaceKnowledgeItem[]): string[] =>
+  Array.from(
+    new Set(items.map(item => getEnterpriseLeadKnowledgeConfirmationKey(item)).filter(Boolean)),
+  );
+
+export const getEnterpriseLeadKnowledgeSelectedItems = (
+  items: WorkspaceKnowledgeItem[],
+  selectedItemIds: string[],
+): WorkspaceKnowledgeItem[] => {
+  const selectedItemIdSet = new Set(selectedItemIds);
+  return items.filter(item => selectedItemIdSet.has(item.id));
+};
+
+export const getEnterpriseLeadKnowledgeSelectedDeletionKeys = (
+  items: WorkspaceKnowledgeItem[],
+  selectedItemIds: string[],
+): string[] =>
+  getEnterpriseLeadKnowledgeDeletionKeys(
+    getEnterpriseLeadKnowledgeSelectedItems(items, selectedItemIds),
+  );
+
+export const shouldShowEnterpriseLeadKnowledgeSelectionToolbar = (
+  selectedItemCount: number,
+): boolean => selectedItemCount > 0;
 
 const getEnterpriseLeadProfileKnowledgeKeys = (
   profile: EnterpriseLeadWorkspaceProfile,
@@ -523,7 +557,9 @@ export const enterpriseLeadKnowledgeVectorIndexStatusClassNames: Record<string, 
   [EnterpriseLeadKnowledgeIndexStatus.Failed]: 'bg-red-500/10 text-red-700 dark:text-red-300',
 };
 
-const getDocumentExtractionStatus = (source?: EnterpriseLeadExtractionSource): string => {
+const getDocumentExtractionStatus = (
+  source?: Pick<EnterpriseLeadExtractionSource, 'extractionStatus' | 'text'>,
+): string => {
   if (source?.extractionStatus) {
     return source.extractionStatus;
   }
@@ -539,10 +575,13 @@ export const getEnterpriseLeadKnowledgeVectorIndexStatus = (
 export const doesEnterpriseLeadKnowledgeSourceNeedVectorSync = (
   source?: Pick<
     EnterpriseLeadExtractionSource,
-    'summary' | 'text' | 'vectorChunkCount' | 'vectorIndexStatus'
+    'extractionStatus' | 'summary' | 'text' | 'vectorChunkCount' | 'vectorIndexStatus'
   >,
 ): boolean => {
   if (!source?.summary?.trim() && !source?.text?.trim()) {
+    return false;
+  }
+  if (source.extractionStatus === EnterpriseLeadDocumentExtractionStatus.Extracting) {
     return false;
   }
   const status = getEnterpriseLeadKnowledgeVectorIndexStatus(source);
@@ -552,6 +591,26 @@ export const doesEnterpriseLeadKnowledgeSourceNeedVectorSync = (
   return (
     status === EnterpriseLeadKnowledgeIndexStatus.Pending ||
     status === EnterpriseLeadKnowledgeIndexStatus.Indexing
+  );
+};
+
+export const isEnterpriseLeadDocumentProcessing = (
+  source?: Pick<EnterpriseLeadExtractionSource, 'extractionStatus' | 'vectorIndexStatus'>,
+): boolean =>
+  source?.extractionStatus === EnterpriseLeadDocumentExtractionStatus.Extracting ||
+  source?.vectorIndexStatus === EnterpriseLeadKnowledgeIndexStatus.Indexing;
+
+export const canRetryEnterpriseLeadDocumentProcessing = (
+  source?: Pick<EnterpriseLeadExtractionSource, 'extractionStatus' | 'text' | 'vectorIndexStatus'>,
+): boolean => {
+  if (!source?.text?.trim() || isEnterpriseLeadDocumentProcessing(source)) {
+    return false;
+  }
+  const extractionStatus = getDocumentExtractionStatus(source);
+  const vectorIndexStatus = getEnterpriseLeadKnowledgeVectorIndexStatus(source);
+  return (
+    extractionStatus !== EnterpriseLeadDocumentExtractionStatus.Extracted ||
+    vectorIndexStatus !== EnterpriseLeadKnowledgeIndexStatus.Indexed
   );
 };
 
@@ -635,7 +694,14 @@ type DocumentStatusFilter =
   | typeof EnterpriseLeadDocumentExtractionStatus.Extracting
   | typeof EnterpriseLeadDocumentExtractionStatus.Extracted
   | typeof EnterpriseLeadDocumentExtractionStatus.Failed;
-type ModalMode = 'none' | 'company' | 'item' | 'document' | 'documentPreview' | 'deleteDocument';
+type ModalMode =
+  | 'none'
+  | 'company'
+  | 'item'
+  | 'document'
+  | 'documentPreview'
+  | 'deleteDocument'
+  | 'deleteKnowledgeBatch';
 type ItemModalMode = 'add' | 'edit';
 type DeleteDocumentScope = 'document' | 'document_and_knowledge';
 
@@ -710,55 +776,6 @@ const getFileExtension = (filePath: string): string => {
   const dotIndex = fileName.lastIndexOf('.');
   return dotIndex > -1 ? fileName.slice(dotIndex + 1).toLowerCase() : '';
 };
-
-const mergeUniqueValues = (currentValues: string[], incomingValues: string[]): string[] => {
-  const seen = new Set<string>();
-  return [...currentValues, ...incomingValues]
-    .map(value => value.trim())
-    .filter(value => {
-      if (!value) {
-        return false;
-      }
-      const key = value.toLowerCase();
-      if (seen.has(key)) {
-        return false;
-      }
-      seen.add(key);
-      return true;
-    });
-};
-
-const mergeExtractedProfile = (
-  currentProfile: EnterpriseLeadWorkspaceProfile,
-  extractedProfile: EnterpriseLeadWorkspaceProfile,
-): EnterpriseLeadWorkspaceProfile => ({
-  ...cloneProfile(currentProfile),
-  companySummary: currentProfile.companySummary.trim() || extractedProfile.companySummary.trim(),
-  productList: mergeUniqueValues(currentProfile.productList, extractedProfile.productList),
-  productCapabilities: mergeUniqueValues(
-    currentProfile.productCapabilities,
-    extractedProfile.productCapabilities,
-  ),
-  targetCustomers: mergeUniqueValues(
-    currentProfile.targetCustomers,
-    extractedProfile.targetCustomers,
-  ),
-  applicationScenarios: mergeUniqueValues(
-    currentProfile.applicationScenarios,
-    extractedProfile.applicationScenarios,
-  ),
-  sellingPoints: mergeUniqueValues(currentProfile.sellingPoints, extractedProfile.sellingPoints),
-  channelPreferences: mergeUniqueValues(
-    currentProfile.channelPreferences,
-    extractedProfile.channelPreferences,
-  ),
-  prohibitedClaims: mergeUniqueValues(
-    currentProfile.prohibitedClaims,
-    extractedProfile.prohibitedClaims,
-  ),
-  contactRules: mergeUniqueValues(currentProfile.contactRules, extractedProfile.contactRules),
-  missingInfo: mergeUniqueValues(currentProfile.missingInfo, extractedProfile.missingInfo),
-});
 
 interface ItemDraft {
   mode: ItemModalMode;
@@ -941,6 +958,7 @@ export const WorkspaceKnowledgeBase: React.FC<WorkspaceKnowledgeBaseProps> = ({
   const [selectedItemId, setSelectedItemId] = useState(
     enterpriseLeadKnowledgeInitialSelectedItemId,
   );
+  const [selectedKnowledgeItemIds, setSelectedKnowledgeItemIds] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<KnowledgeStatusFilter>('all');
   const [documentStatusFilter, setDocumentStatusFilter] = useState<DocumentStatusFilter>('all');
@@ -962,6 +980,7 @@ export const WorkspaceKnowledgeBase: React.FC<WorkspaceKnowledgeBaseProps> = ({
   const automaticVectorSyncPromiseRef = useRef<Promise<EnterpriseLeadWorkspace | null> | null>(
     null,
   );
+  const documentProcessingRefreshTokenRef = useRef(0);
   const pendingSelectionRef = useRef<{
     field: keyof EnterpriseLeadWorkspaceProfile;
     index: number;
@@ -998,6 +1017,13 @@ export const WorkspaceKnowledgeBase: React.FC<WorkspaceKnowledgeBaseProps> = ({
     setCurrentWorkspace(workspace);
     setCompanyDraft(buildCompanyDraft(workspace.profile));
   }, [workspace]);
+
+  useEffect(
+    () => () => {
+      documentProcessingRefreshTokenRef.current += 1;
+    },
+    [],
+  );
 
   useEffect(() => {
     const requestId = requestRef.current + 1;
@@ -1061,7 +1087,10 @@ export const WorkspaceKnowledgeBase: React.FC<WorkspaceKnowledgeBaseProps> = ({
   }, [sections]);
 
   const knowledgeRows = useMemo<KnowledgeTableRow[]>(
-    () => sections.flatMap(section => section.items.map(item => ({ item, section }))),
+    () =>
+      sections
+        .filter(section => isEnterpriseLeadKnowledgeSectionShownInAiKnowledgeTable(section.id))
+        .flatMap(section => section.items.map(item => ({ item, section }))),
     [sections],
   );
   const documentRows = useMemo<KnowledgeTableRow[]>(() => {
@@ -1116,6 +1145,26 @@ export const WorkspaceKnowledgeBase: React.FC<WorkspaceKnowledgeBaseProps> = ({
     currentWorkspace.profile,
     filteredKnowledgeRows.map(row => row.item),
   );
+  const filteredSelectableKnowledgeItems = filteredKnowledgeRows
+    .map(row => row.item)
+    .filter(isEditableItem);
+  const selectedKnowledgeItems = getEnterpriseLeadKnowledgeSelectedItems(
+    filteredSelectableKnowledgeItems,
+    selectedKnowledgeItemIds,
+  );
+  const selectedPendingKnowledgeItems = getEnterpriseLeadKnowledgePendingItems(
+    currentWorkspace.profile,
+    selectedKnowledgeItems,
+  );
+  const selectedDeletableKnowledgeItems = selectedKnowledgeItems.filter(isEditableItem);
+  const selectedKnowledgeItemIdSet = new Set(selectedKnowledgeItemIds);
+  const selectedKnowledgeCount = selectedKnowledgeItems.length;
+  const shouldShowSelectionToolbar =
+    activeView === 'knowledge' &&
+    shouldShowEnterpriseLeadKnowledgeSelectionToolbar(selectedKnowledgeCount);
+  const areAllFilteredKnowledgeItemsSelected =
+    filteredSelectableKnowledgeItems.length > 0 &&
+    filteredSelectableKnowledgeItems.every(item => selectedKnowledgeItemIdSet.has(item.id));
   const documentPreviewText = documentDraft.note.trim();
   const documentFileName = documentDraft.fileName || getFileNameFromPath(documentDraft.category);
   const documentExtension = getFileExtension(documentDraft.category || documentFileName);
@@ -1132,6 +1181,7 @@ export const WorkspaceKnowledgeBase: React.FC<WorkspaceKnowledgeBaseProps> = ({
   const canDeleteDocumentKnowledge = deletingDocumentKnowledgeKeys.length > 0;
   const isDocumentPreviewModal = modalMode === 'documentPreview';
   const isDeleteDocumentModal = modalMode === 'deleteDocument';
+  const isDeleteKnowledgeBatchModal = modalMode === 'deleteKnowledgeBatch';
   const activeCompanyFieldConfig = getCompanyDraftFieldConfig(activeCompanyField);
   const activeCompanyValue = companyDraft[activeCompanyField];
   const activeCompanyValueCount = getCompanyDraftValueCount(activeCompanyValue);
@@ -1350,7 +1400,7 @@ export const WorkspaceKnowledgeBase: React.FC<WorkspaceKnowledgeBaseProps> = ({
   const openEditDocumentModal = (item: WorkspaceKnowledgeItem): void => {
     const sourceIndex = getSourceIndexFromItemId(item);
     const source = currentWorkspace.extractionSources[sourceIndex];
-    if (!source) {
+    if (!source || isEnterpriseLeadDocumentProcessing(source)) {
       return;
     }
     setSelectedItemId(item.id);
@@ -1372,7 +1422,7 @@ export const WorkspaceKnowledgeBase: React.FC<WorkspaceKnowledgeBaseProps> = ({
   const openDeleteDocumentModal = (item: WorkspaceKnowledgeItem): void => {
     const sourceIndex = getSourceIndexFromItemId(item);
     const source = currentWorkspace.extractionSources[sourceIndex];
-    if (!source) {
+    if (!source || isEnterpriseLeadDocumentProcessing(source)) {
       return;
     }
     setSelectedItemId(item.id);
@@ -1383,6 +1433,47 @@ export const WorkspaceKnowledgeBase: React.FC<WorkspaceKnowledgeBaseProps> = ({
     setModalMode('deleteDocument');
   };
 
+  const retryDocumentProcessing = async (item: WorkspaceKnowledgeItem): Promise<void> => {
+    const sourceIndex = getSourceIndexFromItemId(item);
+    const source = currentWorkspace.extractionSources[sourceIndex];
+    if (!source || !canRetryEnterpriseLeadDocumentProcessing(source)) {
+      return;
+    }
+
+    setIsSaving(true);
+    clearFeedbackMessage();
+    try {
+      const queuedWorkspace = await enterpriseLeadWorkspaceService.processDocumentSource(
+        currentWorkspace.id,
+        currentWorkspace.extractionSources,
+        sourceIndex,
+      );
+      if (!queuedWorkspace) {
+        throw new Error('Workspace document processing returned empty result');
+      }
+      setCurrentWorkspace(queuedWorkspace);
+      setCompanyDraft(buildCompanyDraft(queuedWorkspace.profile));
+      onWorkspaceUpdated?.(queuedWorkspace);
+      setActiveView('documents');
+      setSelectedItemId(item.id);
+      showFeedbackMessage('success', 'enterpriseLeadKnowledgeDocumentReprocessQueued');
+      void refreshWorkspaceAfterDocumentProcessing(queuedWorkspace.id, sourceIndex);
+    } catch (queueError) {
+      const isApiUnavailable =
+        queueError instanceof Error &&
+        queueError.message ===
+          EnterpriseLeadWorkspaceServiceError.ProcessDocumentSourceApiUnavailable;
+      showFeedbackMessage(
+        isApiUnavailable ? 'exception' : 'failure',
+        isApiUnavailable
+          ? 'enterpriseLeadKnowledgeDocumentApiUnavailable'
+          : 'enterpriseLeadKnowledgeSaveFailed',
+      );
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const openEditModalForRow = (row: KnowledgeTableRow): void => {
     if (!isEditableItem(row.item)) {
       return;
@@ -1390,6 +1481,35 @@ export const WorkspaceKnowledgeBase: React.FC<WorkspaceKnowledgeBaseProps> = ({
     setSelectedItemId(row.item.id);
     setItemDraft(createItemDraft(row.section.id, row.item));
     setModalMode('item');
+  };
+
+  const clearSelectedKnowledgeItems = (): void => {
+    setSelectedKnowledgeItemIds([]);
+  };
+
+  const toggleKnowledgeItemSelection = (item: WorkspaceKnowledgeItem): void => {
+    if (!isEditableItem(item)) {
+      return;
+    }
+    setSelectedItemId(item.id);
+    setSelectedKnowledgeItemIds(currentIds =>
+      currentIds.includes(item.id)
+        ? currentIds.filter(itemId => itemId !== item.id)
+        : [...currentIds, item.id],
+    );
+  };
+
+  const toggleFilteredKnowledgeSelection = (checked: boolean): void => {
+    const filteredItemIds = filteredSelectableKnowledgeItems.map(item => item.id);
+    if (filteredItemIds.length === 0) {
+      return;
+    }
+    setSelectedKnowledgeItemIds(currentIds => {
+      if (!checked) {
+        return currentIds.filter(itemId => !filteredItemIds.includes(itemId));
+      }
+      return Array.from(new Set([...currentIds, ...filteredItemIds]));
+    });
   };
 
   const closeModal = (): void => {
@@ -1487,93 +1607,35 @@ export const WorkspaceKnowledgeBase: React.FC<WorkspaceKnowledgeBaseProps> = ({
     setModalMode('none');
   };
 
-  const extractDocumentSource = async (
-    workspaceWithSource: EnterpriseLeadWorkspace,
+  const refreshWorkspaceAfterDocumentProcessing = async (
+    workspaceId: string,
     sourceIndex: number,
-    sourceText: string,
-    successMessageKey: string,
   ): Promise<void> => {
-    let latestWorkspace = workspaceWithSource;
-    setIsSaving(true);
-    clearFeedbackMessage();
-    try {
-      const extractedDraft = await enterpriseLeadWorkspaceService.extractDraft(sourceText);
-      if (!extractedDraft) {
-        throw new Error('Document extraction returned empty result');
-      }
-      const nextProfile = mergeExtractedProfile(latestWorkspace.profile, extractedDraft.profile);
-      const extractedKnowledgeKeys = getEnterpriseLeadNewExtractedKnowledgeKeys(
-        latestWorkspace.profile,
-        extractedDraft.profile,
-        nextProfile,
-      );
-      const profiledWorkspace = await enterpriseLeadWorkspaceService.updateWorkspaceProfile(
-        latestWorkspace.id,
-        nextProfile,
-      );
-      if (!profiledWorkspace) {
-        throw new Error('Document extraction profile update returned empty result');
-      }
-      latestWorkspace = profiledWorkspace;
-
-      const now = new Date().toISOString();
-      const extractedSources = [...latestWorkspace.extractionSources];
-      const extractedSource = extractedSources[sourceIndex];
-      if (extractedSource) {
-        extractedSources[sourceIndex] = {
-          ...extractedSource,
-          extractionError: undefined,
-          extractionStatus: EnterpriseLeadDocumentExtractionStatus.Extracted,
-          extractedKnowledgeKeys: Array.from(
-            new Set([
-              ...getSourceExtractedKnowledgeKeys(extractedSource),
-              ...extractedKnowledgeKeys,
-            ]),
-          ),
-          lastExtractedAt: now,
-          updatedAt: now,
-        };
-      }
-      const extractedWorkspace = await enterpriseLeadWorkspaceService.updateWorkspaceSources(
-        latestWorkspace.id,
-        extractedSources,
-      );
-      if (!extractedWorkspace) {
-        throw new Error('Document extraction source update returned empty result');
+    const refreshToken = documentProcessingRefreshTokenRef.current + 1;
+    documentProcessingRefreshTokenRef.current = refreshToken;
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      await new Promise(resolve => {
+        window.setTimeout(resolve, 1500);
+      });
+      if (documentProcessingRefreshTokenRef.current !== refreshToken) {
+        return;
       }
 
-      setCurrentWorkspace(extractedWorkspace);
-      setCompanyDraft(buildCompanyDraft(extractedWorkspace.profile));
-      onWorkspaceUpdated?.(extractedWorkspace);
-      setActiveView('knowledge');
-      showFeedbackMessage('success', successMessageKey);
-    } catch {
-      const now = new Date().toISOString();
-      const failedSources = [...latestWorkspace.extractionSources];
-      const failedSource = failedSources[sourceIndex];
-      if (failedSource) {
-        failedSources[sourceIndex] = {
-          ...failedSource,
-          extractionError: i18nService.t('enterpriseLeadKnowledgeDocumentExtractFailed'),
-          extractionStatus: EnterpriseLeadDocumentExtractionStatus.Failed,
-          updatedAt: now,
-        };
+      const latestWorkspace = await enterpriseLeadWorkspaceService.getWorkspace(workspaceId);
+      if (!latestWorkspace || documentProcessingRefreshTokenRef.current !== refreshToken) {
+        continue;
       }
-      try {
-        const failedWorkspace = await enterpriseLeadWorkspaceService.updateWorkspaceSources(
-          latestWorkspace.id,
-          failedSources,
-        );
-        if (failedWorkspace) {
-          setCurrentWorkspace(failedWorkspace);
-          onWorkspaceUpdated?.(failedWorkspace);
-        }
-      } catch {
-        // The visible error below is enough for this user action.
+      setCurrentWorkspace(latestWorkspace);
+      setCompanyDraft(buildCompanyDraft(latestWorkspace.profile));
+      onWorkspaceUpdated?.(latestWorkspace);
+
+      const source = latestWorkspace.extractionSources[sourceIndex];
+      if (
+        source?.extractionStatus !== EnterpriseLeadDocumentExtractionStatus.Extracting &&
+        source?.vectorIndexStatus !== EnterpriseLeadKnowledgeIndexStatus.Indexing
+      ) {
+        return;
       }
-      showFeedbackMessage('failure', 'enterpriseLeadKnowledgeDocumentExtractFailed');
-    } finally {
-      setIsSaving(false);
     }
   };
 
@@ -1630,6 +1692,52 @@ export const WorkspaceKnowledgeBase: React.FC<WorkspaceKnowledgeBaseProps> = ({
       nextSources.unshift(nextSource);
     }
 
+    if (documentDraft.extractImmediately && sourceText) {
+      const sourceIndex =
+        documentDraft.mode === 'edit' && documentDraft.sourceIndex >= 0
+          ? documentDraft.sourceIndex
+          : 0;
+      setIsSaving(true);
+      clearFeedbackMessage();
+      try {
+        const queuedWorkspace = await enterpriseLeadWorkspaceService.processDocumentSource(
+          currentWorkspace.id,
+          nextSources,
+          sourceIndex,
+        );
+        if (!queuedWorkspace) {
+          throw new Error('Workspace document processing returned empty result');
+        }
+        setCurrentWorkspace(queuedWorkspace);
+        setCompanyDraft(buildCompanyDraft(queuedWorkspace.profile));
+        onWorkspaceUpdated?.(queuedWorkspace);
+        setActiveView('documents');
+        setSelectedItemId(`source-${sourceIndex}`);
+        setModalMode('none');
+        showFeedbackMessage(
+          'success',
+          documentDraft.mode === 'edit'
+            ? 'enterpriseLeadKnowledgeDocumentUpdatedProcessingQueued'
+            : 'enterpriseLeadKnowledgeDocumentProcessingQueued',
+        );
+        void refreshWorkspaceAfterDocumentProcessing(queuedWorkspace.id, sourceIndex);
+      } catch (queueError) {
+        const isApiUnavailable =
+          queueError instanceof Error &&
+          queueError.message ===
+            EnterpriseLeadWorkspaceServiceError.ProcessDocumentSourceApiUnavailable;
+        showFeedbackMessage(
+          isApiUnavailable ? 'exception' : 'failure',
+          isApiUnavailable
+            ? 'enterpriseLeadKnowledgeDocumentApiUnavailable'
+            : 'enterpriseLeadKnowledgeSaveFailed',
+        );
+      } finally {
+        setIsSaving(false);
+      }
+      return;
+    }
+
     const savedWorkspace = await saveSources(
       nextSources,
       documentDraft.mode === 'edit'
@@ -1639,19 +1747,6 @@ export const WorkspaceKnowledgeBase: React.FC<WorkspaceKnowledgeBaseProps> = ({
     if (!savedWorkspace) {
       return;
     }
-    if (!documentDraft.extractImmediately || !sourceText) {
-      setModalMode('none');
-      return;
-    }
-
-    await extractDocumentSource(
-      savedWorkspace,
-      documentDraft.mode === 'edit' ? documentDraft.sourceIndex : 0,
-      sourceText,
-      documentDraft.mode === 'edit'
-        ? 'enterpriseLeadKnowledgeDocumentUpdatedAndExtracted'
-        : 'enterpriseLeadKnowledgeDocumentAddedAndExtracted',
-    );
     setModalMode('none');
   };
 
@@ -1765,6 +1860,7 @@ export const WorkspaceKnowledgeBase: React.FC<WorkspaceKnowledgeBaseProps> = ({
       return;
     }
     setSelectedItemId('');
+    clearSelectedKnowledgeItems();
     await saveProfile(
       confirmEnterpriseLeadKnowledgeItemsInProfile(
         currentWorkspace.profile,
@@ -1773,6 +1869,71 @@ export const WorkspaceKnowledgeBase: React.FC<WorkspaceKnowledgeBaseProps> = ({
       'enterpriseLeadKnowledgeBatchConfirmed',
       { count: filteredPendingKnowledgeItems.length },
     );
+  };
+
+  const confirmSelectedKnowledgeItems = async (): Promise<void> => {
+    if (selectedPendingKnowledgeItems.length === 0) {
+      showFeedbackMessage('exception', 'enterpriseLeadKnowledgeBatchConfirmEmpty');
+      return;
+    }
+    setSelectedItemId('');
+    clearSelectedKnowledgeItems();
+    await saveProfile(
+      confirmEnterpriseLeadKnowledgeItemsInProfile(
+        currentWorkspace.profile,
+        selectedPendingKnowledgeItems,
+      ),
+      'enterpriseLeadKnowledgeBatchConfirmed',
+      { count: selectedPendingKnowledgeItems.length },
+    );
+  };
+
+  const handleDeleteSelectedKnowledgeItems = async (): Promise<void> => {
+    if (selectedDeletableKnowledgeItems.length === 0) {
+      showFeedbackMessage('exception', 'enterpriseLeadKnowledgeBatchDeleteEmpty');
+      return;
+    }
+
+    setIsSaving(true);
+    clearFeedbackMessage();
+    try {
+      const nextProfile = removeEnterpriseLeadKnowledgeKeysFromProfile(
+        currentWorkspace.profile,
+        getEnterpriseLeadKnowledgeSelectedDeletionKeys(
+          selectedDeletableKnowledgeItems,
+          selectedKnowledgeItemIds,
+        ),
+      );
+      const updatedWorkspace = await enterpriseLeadWorkspaceService.updateWorkspaceProfile(
+        currentWorkspace.id,
+        nextProfile,
+      );
+      if (!updatedWorkspace) {
+        throw new Error('Workspace profile update returned empty result');
+      }
+      setCurrentWorkspace(updatedWorkspace);
+      setCompanyDraft(buildCompanyDraft(updatedWorkspace.profile));
+      onWorkspaceUpdated?.(updatedWorkspace);
+      setSelectedItemId('');
+      clearSelectedKnowledgeItems();
+      setModalMode('none');
+      showFeedbackMessage('success', 'enterpriseLeadKnowledgeBatchDeleted', {
+        count: selectedDeletableKnowledgeItems.length,
+      });
+    } catch (deleteError) {
+      showFeedbackMessage(
+        deleteError instanceof Error &&
+          deleteError.message === 'Workspace profile update returned empty result'
+          ? 'exception'
+          : 'failure',
+        deleteError instanceof Error &&
+          deleteError.message === 'Workspace profile update returned empty result'
+          ? 'enterpriseLeadKnowledgeUnexpectedError'
+          : 'enterpriseLeadKnowledgeSaveFailed',
+      );
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -2026,11 +2187,57 @@ export const WorkspaceKnowledgeBase: React.FC<WorkspaceKnowledgeBaseProps> = ({
             </button>
           </div>
 
+          {shouldShowSelectionToolbar ? (
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-primary/5 px-5 py-2.5">
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                <span className="rounded-md bg-background px-2.5 py-1 text-xs font-semibold text-primary shadow-sm">
+                  {formatEnterpriseLeadKnowledgeMessage(
+                    'enterpriseLeadKnowledgeSelectedToolbarSummary',
+                    { count: selectedKnowledgeCount },
+                  )}
+                </span>
+                <button
+                  type="button"
+                  className="inline-flex h-8 items-center rounded-md border border-border bg-background px-2.5 text-xs font-medium text-secondary transition-colors hover:bg-surface-raised hover:text-foreground"
+                  onClick={clearSelectedKnowledgeItems}
+                >
+                  {i18nService.t('enterpriseLeadKnowledgeClearSelectionAction')}
+                </button>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  disabled={isSaving || selectedPendingKnowledgeItems.length === 0}
+                  className="inline-flex h-8 items-center gap-1.5 rounded-md border border-emerald-500/25 bg-background px-2.5 text-xs font-semibold text-emerald-700 transition-colors hover:bg-emerald-500/10 disabled:cursor-not-allowed disabled:opacity-45 dark:text-emerald-300"
+                  onClick={() => void confirmSelectedKnowledgeItems()}
+                >
+                  <CheckCircleIcon className="h-4 w-4" />
+                  {formatEnterpriseLeadKnowledgeMessage(
+                    'enterpriseLeadKnowledgeConfirmSelectedAction',
+                    { count: selectedPendingKnowledgeItems.length },
+                  )}
+                </button>
+                <button
+                  type="button"
+                  disabled={isSaving || selectedDeletableKnowledgeItems.length === 0}
+                  className="inline-flex h-8 items-center gap-1.5 rounded-md border border-red-500/25 bg-background px-2.5 text-xs font-semibold text-red-600 transition-colors hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-45 dark:text-red-300"
+                  onClick={() => setModalMode('deleteKnowledgeBatch')}
+                >
+                  <TrashIcon className="h-4 w-4" />
+                  {formatEnterpriseLeadKnowledgeMessage(
+                    'enterpriseLeadKnowledgeDeleteSelectedAction',
+                    { count: selectedDeletableKnowledgeItems.length },
+                  )}
+                </button>
+              </div>
+            </div>
+          ) : null}
+
           <div className="min-h-0 flex-1 overflow-auto">
             {activeView === 'documents' ? (
               filteredDocumentRows.length > 0 ? (
                 <div className="w-full min-w-0 p-3 text-sm">
-                  <div className="sticky top-0 z-10 grid grid-cols-[minmax(150px,1fr)_72px_76px_minmax(96px,0.46fr)_minmax(108px,0.46fr)_112px_minmax(216px,244px)] items-center gap-2.5 border-b border-border bg-background/95 px-4 py-2 text-xs font-semibold text-secondary backdrop-blur">
+                  <div className="sticky top-0 z-10 grid grid-cols-[minmax(150px,1fr)_72px_76px_minmax(96px,0.46fr)_minmax(108px,0.46fr)_112px_minmax(252px,286px)] items-center gap-2.5 border-b border-border bg-background/95 px-4 py-2 text-xs font-semibold text-secondary backdrop-blur">
                     <span className={enterpriseLeadKnowledgeDocumentHeaderClassName}>
                       {i18nService.t('enterpriseLeadKnowledgeTableDocument')}
                     </span>
@@ -2060,6 +2267,8 @@ export const WorkspaceKnowledgeBase: React.FC<WorkspaceKnowledgeBaseProps> = ({
                       const source = currentWorkspace.extractionSources[sourceIndex];
                       const extractionStatus = getDocumentExtractionStatus(source);
                       const vectorIndexStatus = getEnterpriseLeadKnowledgeVectorIndexStatus(source);
+                      const isDocumentProcessing = isEnterpriseLeadDocumentProcessing(source);
+                      const canRetryDocument = canRetryEnterpriseLeadDocumentProcessing(source);
                       const isSelected = selectedItemId === item.id;
                       const sourceTextLength = source?.text?.replace(/\s/g, '').length ?? 0;
                       const sourceDetail =
@@ -2070,7 +2279,7 @@ export const WorkspaceKnowledgeBase: React.FC<WorkspaceKnowledgeBaseProps> = ({
                       return (
                         <div
                           key={item.id}
-                          className={`relative grid min-h-[76px] cursor-pointer grid-cols-[minmax(150px,1fr)_72px_76px_minmax(96px,0.46fr)_minmax(108px,0.46fr)_112px_minmax(216px,244px)] items-center gap-2.5 rounded-lg border px-4 py-3 transition-colors ${
+                          className={`relative grid min-h-[76px] cursor-pointer grid-cols-[minmax(150px,1fr)_72px_76px_minmax(96px,0.46fr)_minmax(108px,0.46fr)_112px_minmax(252px,286px)] items-center gap-2.5 rounded-lg border px-4 py-3 transition-colors ${
                             isSelected
                               ? 'border-primary/25 bg-background shadow-[0_0_0_1px_rgba(59,130,246,0.12)]'
                               : 'border-transparent bg-background hover:border-border hover:bg-surface/50'
@@ -2162,9 +2371,23 @@ export const WorkspaceKnowledgeBase: React.FC<WorkspaceKnowledgeBaseProps> = ({
                               <DocumentTextIcon className="h-4 w-4" />
                               {i18nService.t('enterpriseLeadKnowledgePreviewDocument')}
                             </button>
+                            {canRetryDocument ? (
+                              <button
+                                type="button"
+                                disabled={isSaving}
+                                className="inline-flex h-8 shrink-0 items-center gap-1 rounded-md border border-primary/20 bg-primary/10 px-2 text-xs font-medium text-primary transition-colors hover:bg-primary/15 disabled:cursor-not-allowed disabled:opacity-45"
+                                onClick={event => {
+                                  event.stopPropagation();
+                                  void retryDocumentProcessing(item);
+                                }}
+                              >
+                                <ArrowPathIcon className="h-4 w-4" />
+                                {i18nService.t('enterpriseLeadKnowledgeReprocessDocument')}
+                              </button>
+                            ) : null}
                             <button
                               type="button"
-                              disabled={isSaving}
+                              disabled={isSaving || isDocumentProcessing}
                               className="inline-flex h-8 shrink-0 items-center gap-1 rounded-md border border-border bg-background px-2 text-xs font-medium text-secondary transition-colors hover:bg-surface-raised hover:text-foreground disabled:cursor-not-allowed disabled:opacity-45"
                               onClick={event => {
                                 event.stopPropagation();
@@ -2176,7 +2399,7 @@ export const WorkspaceKnowledgeBase: React.FC<WorkspaceKnowledgeBaseProps> = ({
                             </button>
                             <button
                               type="button"
-                              disabled={isSaving}
+                              disabled={isSaving || isDocumentProcessing}
                               className="inline-flex h-8 shrink-0 items-center gap-1 rounded-md border border-red-500/20 bg-background px-2 text-xs font-medium text-red-600 transition-colors hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-45 dark:text-red-300"
                               onClick={event => {
                                 event.stopPropagation();
@@ -2212,7 +2435,17 @@ export const WorkspaceKnowledgeBase: React.FC<WorkspaceKnowledgeBaseProps> = ({
                 <thead>
                   <tr className="bg-background text-xs font-semibold text-secondary">
                     <th className={enterpriseLeadKnowledgeHeaderCellClassName}>
-                      {i18nService.t('enterpriseLeadKnowledgeTableKnowledge')}
+                      <span className="flex items-center justify-start gap-3">
+                        <input
+                          type="checkbox"
+                          checked={areAllFilteredKnowledgeItemsSelected}
+                          disabled={isSaving || filteredSelectableKnowledgeItems.length === 0}
+                          aria-label={i18nService.t('enterpriseLeadKnowledgeSelectVisibleAction')}
+                          className="h-4 w-4 rounded border-border text-primary disabled:cursor-not-allowed disabled:opacity-45"
+                          onChange={event => toggleFilteredKnowledgeSelection(event.target.checked)}
+                        />
+                        <span>{i18nService.t('enterpriseLeadKnowledgeTableKnowledge')}</span>
+                      </span>
                     </th>
                     <th className={enterpriseLeadKnowledgeHeaderCellClassName}>
                       {i18nService.t('enterpriseLeadKnowledgeTableMeta')}
@@ -2229,7 +2462,8 @@ export const WorkspaceKnowledgeBase: React.FC<WorkspaceKnowledgeBaseProps> = ({
                     const confirmed =
                       editable &&
                       isEnterpriseLeadKnowledgeItemConfirmed(currentWorkspace.profile, item);
-                    const isSelected = selectedItemId === item.id;
+                    const isFocused = selectedItemId === item.id;
+                    const isChecked = selectedKnowledgeItemIdSet.has(item.id);
                     const sourceText = editable
                       ? i18nService.t('enterpriseLeadKnowledgeSourceWorkspaceProfile')
                       : getItemMeta(item) ||
@@ -2253,7 +2487,7 @@ export const WorkspaceKnowledgeBase: React.FC<WorkspaceKnowledgeBaseProps> = ({
                         ? 'enterpriseLeadKnowledgeStatusPendingConfirmation'
                         : 'enterpriseLeadKnowledgeStatusReadonly';
                     const cellClassName = `border-b border-border px-3 py-3 align-middle ${
-                      isSelected ? 'bg-primary/5' : 'bg-background'
+                      isFocused || isChecked ? 'bg-primary/5' : 'bg-background'
                     }`;
                     return (
                       <tr
@@ -2263,21 +2497,32 @@ export const WorkspaceKnowledgeBase: React.FC<WorkspaceKnowledgeBaseProps> = ({
                       >
                         <td
                           className={`relative border-b border-border px-4 py-3 align-middle ${
-                            isSelected ? 'bg-primary/5' : 'bg-background'
+                            isFocused || isChecked ? 'bg-primary/5' : 'bg-background'
                           }`}
                         >
-                          {isSelected ? (
+                          {isFocused ? (
                             <span className="absolute bottom-3 left-0 top-3 w-1 rounded-r-full bg-primary" />
                           ) : null}
-                          <div className="min-w-0">
-                            <p className="line-clamp-2 font-semibold leading-6 text-foreground">
-                              {item.text}
-                            </p>
-                            {knowledgeMetaText ? (
-                              <p className="mt-1 line-clamp-1 text-xs text-secondary">
-                                {knowledgeMetaText}
+                          <div className="flex min-w-0 items-start gap-3">
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              disabled={!editable || isSaving}
+                              aria-label={i18nService.t('enterpriseLeadKnowledgeSelectRowAction')}
+                              className="mt-1 h-4 w-4 shrink-0 rounded border-border text-primary disabled:cursor-not-allowed disabled:opacity-35"
+                              onClick={event => event.stopPropagation()}
+                              onChange={() => toggleKnowledgeItemSelection(item)}
+                            />
+                            <div className="min-w-0">
+                              <p className="line-clamp-2 font-semibold leading-6 text-foreground">
+                                {item.text}
                               </p>
-                            ) : null}
+                              {knowledgeMetaText ? (
+                                <p className="mt-1 line-clamp-1 text-xs text-secondary">
+                                  {knowledgeMetaText}
+                                </p>
+                              ) : null}
+                            </div>
                           </div>
                         </td>
                         <td className={cellClassName}>
@@ -2384,13 +2629,15 @@ export const WorkspaceKnowledgeBase: React.FC<WorkspaceKnowledgeBaseProps> = ({
             className={`flex max-h-[calc(100vh-48px)] w-full flex-col overflow-hidden rounded-xl border border-border bg-background shadow-2xl ${
               isDocumentPreviewModal
                 ? 'h-[calc(100vh-64px)] max-w-5xl'
-                : isDeleteDocumentModal
+                : isDeleteKnowledgeBatchModal
                   ? 'max-w-xl'
-                  : modalMode === 'document'
-                    ? 'max-w-2xl'
-                    : modalMode === 'company'
-                      ? 'h-[720px] max-w-4xl'
-                      : 'max-w-3xl'
+                  : isDeleteDocumentModal
+                    ? 'max-w-xl'
+                    : modalMode === 'document'
+                      ? 'max-w-2xl'
+                      : modalMode === 'company'
+                        ? 'h-[720px] max-w-4xl'
+                        : 'max-w-3xl'
             }`}
           >
             <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-4">
@@ -2398,30 +2645,34 @@ export const WorkspaceKnowledgeBase: React.FC<WorkspaceKnowledgeBaseProps> = ({
                 <h2 className="text-base font-semibold text-foreground">
                   {isDocumentPreviewModal
                     ? i18nService.t('enterpriseLeadKnowledgePreviewDocumentModalTitle')
-                    : isDeleteDocumentModal
-                      ? i18nService.t('enterpriseLeadKnowledgeDeleteDocumentModalTitle')
-                      : modalMode === 'document'
-                        ? i18nService.t(
-                            documentDraft.mode === 'edit'
-                              ? 'enterpriseLeadKnowledgeEditDocumentModalTitle'
-                              : 'enterpriseLeadKnowledgeAddDocumentModalTitle',
-                          )
-                        : modalMode === 'company'
-                          ? i18nService.t('enterpriseLeadKnowledgeCompanyModalTitle')
-                          : itemDraft.mode === 'edit'
-                            ? i18nService.t('enterpriseLeadKnowledgeEditModalTitle')
-                            : i18nService.t('enterpriseLeadKnowledgeAddModalTitle')}
+                    : isDeleteKnowledgeBatchModal
+                      ? i18nService.t('enterpriseLeadKnowledgeBatchDeleteModalTitle')
+                      : isDeleteDocumentModal
+                        ? i18nService.t('enterpriseLeadKnowledgeDeleteDocumentModalTitle')
+                        : modalMode === 'document'
+                          ? i18nService.t(
+                              documentDraft.mode === 'edit'
+                                ? 'enterpriseLeadKnowledgeEditDocumentModalTitle'
+                                : 'enterpriseLeadKnowledgeAddDocumentModalTitle',
+                            )
+                          : modalMode === 'company'
+                            ? i18nService.t('enterpriseLeadKnowledgeCompanyModalTitle')
+                            : itemDraft.mode === 'edit'
+                              ? i18nService.t('enterpriseLeadKnowledgeEditModalTitle')
+                              : i18nService.t('enterpriseLeadKnowledgeAddModalTitle')}
                 </h2>
                 {!isDocumentPreviewModal ? (
                   <p className="mt-1 text-sm text-secondary">
                     {i18nService.t(
-                      isDeleteDocumentModal
-                        ? 'enterpriseLeadKnowledgeDeleteDocumentModalSubtitle'
-                        : modalMode === 'document'
-                          ? documentDraft.mode === 'edit'
-                            ? 'enterpriseLeadKnowledgeEditDocumentModalSubtitle'
-                            : 'enterpriseLeadKnowledgeAddDocumentModalSubtitle'
-                          : 'enterpriseLeadKnowledgeModalSubtitle',
+                      isDeleteKnowledgeBatchModal
+                        ? 'enterpriseLeadKnowledgeBatchDeleteModalSubtitle'
+                        : isDeleteDocumentModal
+                          ? 'enterpriseLeadKnowledgeDeleteDocumentModalSubtitle'
+                          : modalMode === 'document'
+                            ? documentDraft.mode === 'edit'
+                              ? 'enterpriseLeadKnowledgeEditDocumentModalSubtitle'
+                              : 'enterpriseLeadKnowledgeAddDocumentModalSubtitle'
+                            : 'enterpriseLeadKnowledgeModalSubtitle',
                     )}
                   </p>
                 ) : null}
@@ -2568,6 +2819,37 @@ export const WorkspaceKnowledgeBase: React.FC<WorkspaceKnowledgeBaseProps> = ({
                         </span>
                       </span>
                     </label>
+                  </div>
+                </div>
+              ) : isDeleteKnowledgeBatchModal ? (
+                <div className="grid gap-4">
+                  <div className="rounded-lg border border-red-500/20 bg-red-500/5 px-4 py-3">
+                    <div className="flex items-start gap-3">
+                      <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-red-500/10 text-red-600 dark:text-red-300">
+                        <TrashIcon className="h-5 w-5" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-foreground">
+                          {formatEnterpriseLeadKnowledgeMessage(
+                            'enterpriseLeadKnowledgeBatchDeleteSummary',
+                            { count: selectedDeletableKnowledgeItems.length },
+                          )}
+                        </p>
+                        <p className="mt-1 text-xs leading-5 text-secondary">
+                          {i18nService.t('enterpriseLeadKnowledgeBatchDeleteWarning')}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="rounded-lg border border-border bg-surface px-4 py-3">
+                    <p className="text-xs font-semibold text-secondary">
+                      {i18nService.t('enterpriseLeadKnowledgeBatchDeleteScopeTitle')}
+                    </p>
+                    <div className="mt-2 grid gap-1.5 text-xs leading-5 text-secondary">
+                      <p>{i18nService.t('enterpriseLeadKnowledgeBatchDeleteScopeKnowledge')}</p>
+                      <p>{i18nService.t('enterpriseLeadKnowledgeBatchDeleteScopeDocuments')}</p>
+                      <p>{i18nService.t('enterpriseLeadKnowledgeBatchDeleteScopeReadonly')}</p>
+                    </div>
                   </div>
                 </div>
               ) : modalMode === 'document' ? (
@@ -2971,7 +3253,7 @@ export const WorkspaceKnowledgeBase: React.FC<WorkspaceKnowledgeBaseProps> = ({
               )}
             </div>
 
-            {isDeleteDocumentModal ? (
+            {isDeleteDocumentModal || isDeleteKnowledgeBatchModal ? (
               <div className="flex items-center justify-end gap-3 border-t border-border px-5 py-4">
                 <button
                   type="button"
@@ -2983,18 +3265,30 @@ export const WorkspaceKnowledgeBase: React.FC<WorkspaceKnowledgeBaseProps> = ({
                 </button>
                 <button
                   type="button"
-                  disabled={isSaving}
+                  disabled={
+                    isSaving ||
+                    (isDeleteKnowledgeBatchModal && selectedDeletableKnowledgeItems.length === 0)
+                  }
                   className="inline-flex h-9 items-center gap-2 rounded-lg bg-red-600 px-4 text-sm font-semibold text-white transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
-                  onClick={() => void handleDeleteDocumentSource()}
+                  onClick={() =>
+                    void (isDeleteKnowledgeBatchModal
+                      ? handleDeleteSelectedKnowledgeItems()
+                      : handleDeleteDocumentSource())
+                  }
                 >
                   <TrashIcon className="h-4 w-4" />
                   {isSaving
                     ? i18nService.t('saving')
-                    : i18nService.t(
-                        deleteDocumentDraft.scope === 'document_and_knowledge'
-                          ? 'enterpriseLeadKnowledgeDeleteWithKnowledgeAction'
-                          : 'enterpriseLeadKnowledgeDeleteDocumentAction',
-                      )}
+                    : isDeleteKnowledgeBatchModal
+                      ? formatEnterpriseLeadKnowledgeMessage(
+                          'enterpriseLeadKnowledgeBatchDeleteAction',
+                          { count: selectedDeletableKnowledgeItems.length },
+                        )
+                      : i18nService.t(
+                          deleteDocumentDraft.scope === 'document_and_knowledge'
+                            ? 'enterpriseLeadKnowledgeDeleteWithKnowledgeAction'
+                            : 'enterpriseLeadKnowledgeDeleteDocumentAction',
+                        )}
                 </button>
               </div>
             ) : !isDocumentPreviewModal ? (

@@ -35,7 +35,6 @@ import type {
   EnterpriseLeadTodoInput,
   EnterpriseLeadWorkspaceAgentBinding,
   EnterpriseLeadWorkspaceAgentOverrides,
-  EnterpriseLeadWorkspaceChatResearchIntent,
   EnterpriseLeadWorkspaceContentOutputRules,
   EnterpriseLeadWorkspaceContentPlatformConfig,
   EnterpriseLeadWorkspaceContentPlatformSettings,
@@ -47,8 +46,6 @@ import type {
   EnterpriseLeadWorkspaceSettings,
 } from './types';
 
-export const MAX_WORKSPACE_CHAT_QUERY_LENGTH = 500;
-export const MAX_WORKSPACE_CHAT_EXTRACT_URLS = 10;
 const MAX_WORKSPACE_OUTPUT_PREFERENCE_INSTRUCTIONS = 12;
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -93,34 +90,6 @@ const readOptionalBoolean = (value: unknown): boolean | undefined =>
 const readPositiveNumber = (value: unknown): number | undefined =>
   typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : undefined;
 
-const isHttpUrl = (value: unknown): value is string => {
-  const url = cleanText(value);
-  if (!url) return false;
-  try {
-    const parsedUrl = new URL(url);
-    return parsedUrl.protocol === 'http:' || parsedUrl.protocol === 'https:';
-  } catch {
-    return false;
-  }
-};
-
-const normalizeResearchProvider = (value: unknown): 'auto' | 'tavily' | 'firecrawl' => {
-  if (value === 'tavily' || value === 'firecrawl') {
-    return value;
-  }
-  return 'auto';
-};
-
-const normalizeDomesticResearchSourceIds = (value: unknown): DomesticResearchSourceId[] => {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-  return Array.from(new Set(value.map(cleanText))).filter(
-    (sourceId): sourceId is DomesticResearchSourceId =>
-      DomesticResearchSourceIds.includes(sourceId as DomesticResearchSourceId),
-  );
-};
-
 const normalizeWorkspaceAgentOverrides = (
   value: unknown,
   directValue?: unknown,
@@ -138,7 +107,6 @@ const normalizeWorkspaceAgentOverrides = (
   const systemPrompt = cleanOptionalText(record.systemPrompt);
   const icon = cleanOptionalText(record.icon);
   const model = cleanOptionalText(record.model);
-  const skillIds = cleanSkillIds(record.skillIds);
 
   if (name) overrides.name = name;
   if (description) overrides.description = description;
@@ -146,7 +114,6 @@ const normalizeWorkspaceAgentOverrides = (
   if (systemPrompt) overrides.systemPrompt = systemPrompt;
   if (icon) overrides.icon = icon;
   if (model) overrides.model = model;
-  if (skillIds.length > 0) overrides.skillIds = skillIds;
 
   return overrides;
 };
@@ -235,59 +202,6 @@ export function normalizeEnterpriseLeadWorkspaceAgents(
         : {}),
       order,
     }));
-}
-
-export function normalizeWorkspaceChatResearchIntent(
-  value: unknown,
-): EnterpriseLeadWorkspaceChatResearchIntent {
-  const record = readRecord(value);
-  const kind = cleanText(record.kind);
-
-  if (kind === 'domestic_status') {
-    return { kind: 'domestic_status' };
-  }
-
-  if (kind === 'search') {
-    const query = cleanText(record.query).slice(0, MAX_WORKSPACE_CHAT_QUERY_LENGTH);
-    if (!query) return { kind: 'none' };
-    return {
-      kind: 'search',
-      query,
-      provider: normalizeResearchProvider(record.provider),
-    };
-  }
-
-  if (kind === 'extract') {
-    const urls = Array.isArray(record.urls)
-      ? Array.from(new Set(record.urls.map(cleanText).filter(isHttpUrl))).slice(
-          0,
-          MAX_WORKSPACE_CHAT_EXTRACT_URLS,
-        )
-      : [];
-    if (urls.length === 0) return { kind: 'none' };
-    const query = cleanOptionalText(
-      cleanText(record.query).slice(0, MAX_WORKSPACE_CHAT_QUERY_LENGTH),
-    );
-
-    return {
-      kind: 'extract',
-      urls,
-      ...(query ? { query } : {}),
-      provider: normalizeResearchProvider(record.provider),
-    };
-  }
-
-  if (kind === 'domestic_search') {
-    const query = cleanText(record.query).slice(0, MAX_WORKSPACE_CHAT_QUERY_LENGTH);
-    if (!query) return { kind: 'none' };
-    return {
-      kind: 'domestic_search',
-      query,
-      sourceIds: normalizeDomesticResearchSourceIds(record.sourceIds),
-    };
-  }
-
-  return { kind: 'none' };
 }
 
 const normalizeApiFormat = (
@@ -929,19 +843,17 @@ export function normalizeWorkspaceDraftInput(value: unknown): EnterpriseLeadWork
 
   const source = readRecord(record.source);
   const sourceKind = cleanText(source.kind) || EnterpriseLeadExtractionSourceKind.Conversation;
+  const normalizedSource = normalizeEnterpriseLeadExtractionSource({
+    ...source,
+    kind: sourceKind,
+    label: cleanText(source.label) || '用户输入',
+  });
 
   return {
     name,
     type: EnterpriseLeadWorkspaceType.EnterpriseLead,
     profile: normalizeWorkspaceProfile(record.profile),
-    source: {
-      kind: sourceKind,
-      label: cleanText(source.label) || '用户输入',
-      filePath: cleanText(source.filePath) || undefined,
-      text: cleanText(source.text) || undefined,
-      createdAt: cleanText(source.createdAt) || undefined,
-      updatedAt: cleanText(source.updatedAt) || undefined,
-    },
+    source: normalizedSource,
     enabledAgentRoles: Object.values(EnterpriseLeadAgentRole),
     workspaceAgents: normalizeEnterpriseLeadWorkspaceAgents(record.workspaceAgents),
     ...(isRecord(record.settings)

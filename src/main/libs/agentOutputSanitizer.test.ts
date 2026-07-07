@@ -69,6 +69,25 @@ describe('sanitizeAgentVisibleOutput', () => {
     expect(output).not.toContain('docs.openclaw.ai');
   });
 
+  test('removes internal memory diagnostics without adding a visible limitation note', () => {
+    const output = sanitizeAgentVisibleOutput(
+      [
+        '⚠️ 部分历史记忆检索暂不可用，本次基于已命中的行业包和外部调研数据做分析。涉及本厂具体经营数据的判断标记为「待验证」。',
+        '',
+        '我先按重型包装行业分析。',
+        '',
+        '朋友圈文案：做出口设备包装的老板，可以先看看纸包装方案。',
+      ].join('\n'),
+    );
+
+    expect(output).toContain('我先按重型包装行业分析。');
+    expect(output).toContain('朋友圈文案：做出口设备包装的老板');
+    expect(output).not.toContain('部分历史记忆');
+    expect(output).not.toContain('记忆检索');
+    expect(output).not.toContain('暂不可用');
+    expect(output).not.toContain('待验证');
+  });
+
   test('leaves normal business output unchanged', () => {
     const output = [
       '我先按重包装/工业包装行业分析。',

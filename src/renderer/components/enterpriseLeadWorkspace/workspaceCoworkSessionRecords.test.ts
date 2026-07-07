@@ -1,7 +1,10 @@
 import { describe, expect, test } from 'vitest';
 
 import { CoworkSessionStatusValue, type CoworkSessionSummary } from '../../types/cowork';
-import { mapCoworkSessionsToEnterpriseLeadChatSessionSummaries } from './workspaceCoworkSessionRecords';
+import {
+  mapCoworkSessionsToWorkspaceConversationRecords,
+  type WorkspaceConversationRecord,
+} from './workspaceCoworkSessionRecords';
 
 const createCoworkSession = (
   overrides: Partial<CoworkSessionSummary> = {},
@@ -19,17 +22,15 @@ const createCoworkSession = (
   ...overrides,
 });
 
-describe('mapCoworkSessionsToEnterpriseLeadChatSessionSummaries', () => {
+describe('mapCoworkSessionsToWorkspaceConversationRecords', () => {
   test('maps Cowork sessions into workspace sidebar conversation records', () => {
-    const records = mapCoworkSessionsToEnterpriseLeadChatSessionSummaries(
-      [createCoworkSession()],
-      'workspace-1',
-    );
+    const records: WorkspaceConversationRecord[] = mapCoworkSessionsToWorkspaceConversationRecords([
+      createCoworkSession(),
+    ]);
 
     expect(records).toEqual([
       {
         id: 'cowork-session-1',
-        workspaceId: 'workspace-1',
         title: 'Cowork 获客对话',
         createdAt: '2026-02-01T00:00:00.000Z',
         updatedAt: '2026-02-01T00:01:00.000Z',
@@ -39,10 +40,9 @@ describe('mapCoworkSessionsToEnterpriseLeadChatSessionSummaries', () => {
   });
 
   test('uses a fallback title for blank Cowork session titles', () => {
-    const records = mapCoworkSessionsToEnterpriseLeadChatSessionSummaries(
-      [createCoworkSession({ title: '   ' })],
-      'workspace-1',
-    );
+    const records = mapCoworkSessionsToWorkspaceConversationRecords([
+      createCoworkSession({ title: '   ' }),
+    ]);
 
     expect(records[0].title).toBe('新对话');
   });

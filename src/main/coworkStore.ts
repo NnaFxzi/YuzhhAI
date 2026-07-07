@@ -2248,9 +2248,6 @@ export class CoworkStore {
     if (agent?.model.trim()) {
       agentValues.defaultModel = agent.model.trim();
     }
-    if (agent?.skillIds.length) {
-      agentValues.skillIds = agent.skillIds;
-    }
     const agentLayer: CoworkSettingsLayer | undefined =
       Object.keys(agentValues).length > 0
         ? {
@@ -2269,9 +2266,6 @@ export class CoworkStore {
     }
     if (session?.modelOverride.trim()) {
       sessionValues.defaultModel = session.modelOverride.trim();
-    }
-    if (session?.activeSkillIds.length) {
-      sessionValues.skillIds = session.activeSkillIds;
     }
     const sessionLayer: CoworkSettingsLayer | undefined =
       Object.keys(sessionValues).length > 0

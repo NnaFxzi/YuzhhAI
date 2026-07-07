@@ -23,6 +23,14 @@ const translations: Record<LanguageType, Record<string, string>> = {
     trayCompletedTaskTooltip: '宇智汇和 AI 助手 - {count} 个任务已完成',
     traySettings: '设置',
     trayQuit: '退出',
+    contentQualityRegressionDevMenu: '内容质检',
+    contentQualityRegressionRunReport: '运行内容质量回归报告',
+    contentQualityRegressionApplyLatestPromptPatch: '应用最新内容质检提示词补丁',
+    contentQualityRegressionReportStarted: '内容质量回归报告已开始运行，请稍等完成提示。',
+    contentQualityRegressionReportSuccess: '内容质量回归报告已生成',
+    contentQualityRegressionReportFailure: '内容质量回归报告失败',
+    contentQualityRegressionPromptPatchSuccess: '内容质检提示词补丁已应用',
+    contentQualityRegressionPromptPatchFailure: '内容质检提示词补丁应用失败',
     taskCompletionNotificationTitle: '任务已完成',
     taskCompletionNotificationBody: '有任务已完成，点击查看结果',
     taskCompletionOverlayDescription: '有任务已完成',
@@ -67,7 +75,8 @@ const translations: Record<LanguageType, Record<string, string>> = {
       '本次消息过大，请减少附件、压缩图片或拆分提交。（单次整体需小于 30MB）',
     coworkErrorCouldNotProcessPdf: '无法处理 PDF 文件。',
     coworkErrorModelNotFound: '请求的模型不存在或不可用。',
-    coworkGatewaySessionSyncTimeout: 'OpenClaw 引擎响应缓慢，消息尚未发送。请等待 1~2 分钟后重新发送；若频繁出现，请检查系统内存与磁盘占用，并将 宇智汇和 AI 助手 加入杀毒软件白名单。',
+    coworkGatewaySessionSyncTimeout:
+      'OpenClaw 引擎响应缓慢，消息尚未发送。请等待 1~2 分钟后重新发送；若频繁出现，请检查系统内存与磁盘占用，并将 宇智汇和 AI 助手 加入杀毒软件白名单。',
     coworkErrorGatewayDisconnected: 'AI 引擎连接中断，请重试。',
     coworkErrorServiceRestart: 'AI 引擎正在重启，请稍后重试。',
     coworkErrorGatewayDraining: 'AI 引擎正在重启中，请稍等片刻后重试。',
@@ -298,6 +307,15 @@ const translations: Record<LanguageType, Record<string, string>> = {
     trayCompletedTaskTooltip: '宇智汇和 AI 助手 - {count} completed task(s)',
     traySettings: 'Settings',
     trayQuit: 'Quit',
+    contentQualityRegressionDevMenu: 'Content Quality',
+    contentQualityRegressionRunReport: 'Run Content Quality Regression Report',
+    contentQualityRegressionApplyLatestPromptPatch: 'Apply Latest Content Quality Prompt Patch',
+    contentQualityRegressionReportStarted:
+      'Content quality regression report has started. Please wait for the completion prompt.',
+    contentQualityRegressionReportSuccess: 'Content quality regression report generated',
+    contentQualityRegressionReportFailure: 'Content quality regression report failed',
+    contentQualityRegressionPromptPatchSuccess: 'Content quality prompt patch applied',
+    contentQualityRegressionPromptPatchFailure: 'Failed to apply content quality prompt patch',
     taskCompletionNotificationTitle: 'Task Complete',
     taskCompletionNotificationBody: 'A task has finished. Click to view the result.',
     taskCompletionOverlayDescription: 'Task complete',
@@ -340,8 +358,10 @@ const translations: Record<LanguageType, Record<string, string>> = {
 
     // Cowork error messages
     coworkErrorAuthInvalid: 'Invalid or expired API key. Please check your configuration.',
-    coworkErrorOAuthInvalid: 'OAuth authorization is invalid or missing required access. Re-authenticate and try again.',
-    coworkErrorModelAccessDenied: 'This account is not allowed to access the selected model. Switch models or check provider account permissions.',
+    coworkErrorOAuthInvalid:
+      'OAuth authorization is invalid or missing required access. Re-authenticate and try again.',
+    coworkErrorModelAccessDenied:
+      'This account is not allowed to access the selected model. Switch models or check provider account permissions.',
     coworkErrorQuotaExhausted:
       'Your credits have been used up. Upgrade your plan to continue.\n\n[Upgrade or recharge](https://www.yuzhh.com/pricing)',
     coworkErrorFreeQuotaExhausted:
@@ -352,7 +372,8 @@ const translations: Record<LanguageType, Record<string, string>> = {
       'This message is too large. Reduce attachments, compress images, or split it up. (Keep each message under about 30 MB.)',
     coworkErrorCouldNotProcessPdf: 'Unable to process the PDF file.',
     coworkErrorModelNotFound: 'The requested model does not exist or is unavailable.',
-    coworkGatewaySessionSyncTimeout: 'The OpenClaw engine is responding slowly and your message has not been sent. Please wait a minute or two and resend. If this happens frequently, check system memory and disk usage, and add 宇智汇和 AI 助手 to your antivirus allowlist.',
+    coworkGatewaySessionSyncTimeout:
+      'The OpenClaw engine is responding slowly and your message has not been sent. Please wait a minute or two and resend. If this happens frequently, check system memory and disk usage, and add 宇智汇和 AI 助手 to your antivirus allowlist.',
     coworkErrorGatewayDisconnected: 'AI engine connection lost. Please retry.',
     coworkErrorServiceRestart: 'AI engine is restarting. Please try again later.',
     coworkErrorGatewayDraining: 'AI engine is restarting. Please wait a moment and try again.',

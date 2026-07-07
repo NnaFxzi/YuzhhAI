@@ -31,6 +31,8 @@ describe('buildAgentKnowledgeEvidencePrompt', () => {
     expect(prompt).toContain('Firecrawl');
     expect(prompt).toContain('agent 设置');
     expect(prompt).toContain('docs.openclaw.ai');
+    expect(prompt).toContain('不要在最终回答中提及“历史记忆”“索引”“检索暂不可用”');
+    expect(prompt).not.toContain('统一转译为“部分历史记忆');
   });
 
   test('requires source quality tiers and forbids overconfident data-ready wording', () => {
@@ -83,6 +85,14 @@ describe('buildAgentKnowledgeEvidencePrompt', () => {
     expect(prompt).toContain('渠道适配、工厂画像复用、真人感、转化动作、事实边界、空泛程度');
     expect(prompt).toContain('任一项低于 8 分，先静默重写一次');
     expect(prompt).toContain('不要把评分表、扣分项或自检过程展示给用户');
+  });
+
+  test('requires an explicit video generation follow-up after short video scripts', () => {
+    const prompt = buildAgentKnowledgeEvidencePromptForRequest('帮我写一个 60 秒短视频脚本');
+
+    expect(prompt).toContain('下一步：是否需要继续生成视频？');
+    expect(prompt).toContain('如果需要，我可以继续把这版脚本整理成视频生成提示词');
+    expect(prompt).toContain('不要只给“老板出镜版/30 秒版”等改写建议来替代这个确认');
   });
 
   test('treats heavy-packaging positioning context as enough for a WeChat Moments draft', () => {

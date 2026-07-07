@@ -6,6 +6,7 @@ import {
   dialog,
   ipcMain,
   Menu,
+  MenuItem,
   nativeImage,
   nativeTheme,
   net,
@@ -35,6 +36,7 @@ import type {
   ExternalResearchEditConfig,
   ExternalResearchProviderTestInput,
 } from '../shared/agent/externalResearch';
+import { ManagedPresetAgentId } from '../shared/agent/managedPresetAgents';
 import { AppIpcChannel } from '../shared/app/constants';
 import { AppSettingsAutoLaunchErrorCode, AppSettingsIpc } from '../shared/appSettings/constants';
 import { AppUpdateIpc } from '../shared/appUpdate/constants';
@@ -75,6 +77,10 @@ import {
   type CoworkSelectedTextSnippet,
   normalizeCoworkSelectedTextSnippets,
 } from '../shared/cowork/selectedText';
+import {
+  type CoworkWorkspaceAgentSelection,
+  normalizeCoworkWorkspaceAgentSelection,
+} from '../shared/cowork/workspaceAgentSelection';
 import {
   DataMigrationIpc,
   type DataMigrationLastRestoreResult,
@@ -127,6 +133,7 @@ import {
   APP_USER_MODEL_ID,
   DB_FILENAME,
 } from './appConstants';
+import { installMainApplicationMenu } from './appMenu';
 import { createLocalFileProtocolResponse } from './artifactLocalFileProtocol';
 import {
   authQuotaGateStateFromQuota,
@@ -148,6 +155,7 @@ import {
   CoworkStore,
 } from './coworkStore';
 import { buildDevServerUnavailableDataUrl } from './devServerErrorPage';
+import { buildCoworkWorkspaceAgentTeamPrompt } from './enterpriseLeadWorkspace/coworkAgentTeamBridge';
 import { registerEnterpriseLeadWorkspaceHandlers } from './enterpriseLeadWorkspace/ipcHandlers';
 import { EnterpriseLeadWorkspaceService } from './enterpriseLeadWorkspace/service';
 import { EnterpriseLeadWorkspaceStore } from './enterpriseLeadWorkspace/store';
@@ -178,6 +186,7 @@ import { registerIndustryPackHandlers } from './industryPack/ipcHandlers';
 import { createConfiguredIndustryModelClient } from './industryPack/modelClientAdapter';
 import { PositioningService } from './industryPack/positioningService';
 import { registerAsrIpcHandlers } from './ipcHandlers/asr';
+import { registerContentQualityRegressionHandlers } from './ipcHandlers/contentQualityRegression';
 import { registerCoworkSubagentHandlers } from './ipcHandlers/coworkSubagent';
 import { registerKitHandlers } from './ipcHandlers/kits';
 import { registerMcpHandlers } from './ipcHandlers/mcp';
@@ -219,6 +228,19 @@ import {
 } from './libs/claudeSettings';
 import { ContentKnowledgeVectorStore } from './libs/contentKnowledgeVectorStore';
 import {
+  applyContentQualityPromptPatchOverlay,
+  applyContentQualityPromptPatchToAgent,
+  CONTENT_QUALITY_PROMPT_PATCH_REGISTRY_KEY,
+  type ContentQualityPromptPatchRegistry,
+  findLatestContentQualityPromptPatchPath,
+} from './libs/contentQualityPromptPatchApply';
+import {
+  installContentQualityRegressionDevMenu,
+  runContentQualityRegressionReportWithFeedback,
+} from './libs/contentQualityRegressionDevMenu';
+import { createContentQualityRegressionModelClient } from './libs/contentQualityRegressionModelClient';
+import { runContentQualityRegressionReportJob } from './libs/contentQualityRegressionReportJob';
+import {
   clearCopilotTokenState,
   initCopilotTokenManager,
   refreshCopilotTokenNow,
@@ -231,6 +253,7 @@ import {
   startCoworkOpenAICompatProxy,
   stopCoworkOpenAICompatProxy,
 } from './libs/coworkOpenAICompatProxy';
+import { resolveCoworkRuntimeSkillIds } from './libs/coworkRuntimeSkillPolicy';
 import { generateSessionTitle, probeCoworkModelReadiness } from './libs/coworkUtil';
 import {
   assertDataMigrationSqliteSnapshotMatchesLiveSync,
@@ -371,7 +394,13 @@ import { SqliteStore } from './sqliteStore';
 import { StartupProfiler } from './startupProfiler';
 import { SubagentMessageStore } from './subagentMessageStore';
 import { SubagentRunStore } from './subagentRunStore';
-import { createTray, destroyTray, updateTrayMenu, updateTrayReminder } from './trayManager';
+import {
+  createTray,
+  destroyTray,
+  setTrayDevelopmentActions,
+  updateTrayMenu,
+  updateTrayReminder,
+} from './trayManager';
 import {
   AppWindowStoreKey,
   MIN_APP_WINDOW_HEIGHT,
@@ -1651,33 +1680,6 @@ const getEnterpriseLeadWorkspaceService = (): EnterpriseLeadWorkspaceService => 
       modelClient: createConfiguredIndustryModelClient(),
       agentProvider: getAgentManager(),
       contentKnowledgeVectorStore: new ContentKnowledgeVectorStore(getStore().getDatabase()),
-      researchClient: {
-        tavilySearch: (apiKey, query, maxResults) =>
-          getAgentExternalResearchService().tavilySearchWithConfig(
-            { enabled: true, apiKey },
-            query,
-            maxResults,
-          ),
-        tavilyExtract: (apiKey, urls, query) =>
-          getAgentExternalResearchService().tavilyExtractWithConfig(
-            { enabled: true, apiKey },
-            urls,
-            query,
-          ),
-        firecrawlSearch: (apiKey, query, maxResults) =>
-          getAgentExternalResearchService().firecrawlSearchWithConfig(
-            { enabled: true, apiKey },
-            query,
-            maxResults,
-          ),
-        firecrawlScrape: (apiKey, url) =>
-          getAgentExternalResearchService().firecrawlScrapeWithConfig(
-            { enabled: true, apiKey },
-            url,
-          ),
-        domesticSearch: (sourceId, query, maxResults) =>
-          getAgentDomesticResearchService().domesticSearch(sourceId, query, maxResults),
-      },
     });
   }
   return enterpriseLeadWorkspaceService;
@@ -1734,6 +1736,37 @@ const getContentGenerationService = (): ContentGenerationService => {
     });
   }
   return contentGenerationService;
+};
+
+const getContentQualityRegressionReportDir = (): string =>
+  path.join(app.getPath('userData'), 'reports', 'content-quality');
+
+const getContentQualityPromptPatchBackupDir = (): string =>
+  path.join(getContentQualityRegressionReportDir(), 'prompt-patch-backups');
+
+const getContentQualityPromptPatchRegistry = (): ContentQualityPromptPatchRegistry =>
+  getStore().get<ContentQualityPromptPatchRegistry>(CONTENT_QUALITY_PROMPT_PATCH_REGISTRY_KEY) ??
+  {};
+
+const setContentQualityPromptPatchRegistry = (
+  registry: ContentQualityPromptPatchRegistry,
+): void => {
+  getStore().set(CONTENT_QUALITY_PROMPT_PATCH_REGISTRY_KEY, registry);
+};
+
+const listAgentsWithContentQualityPromptPatchOverlay = () =>
+  applyContentQualityPromptPatchOverlay(
+    getAgentManager().listAgents(),
+    getContentQualityPromptPatchRegistry(),
+  );
+
+const getAgentWithContentQualityPromptPatchOverlay = (agentId: string) => {
+  const agent = getAgentManager().getAgent(agentId);
+  if (!agent) return null;
+  return applyContentQualityPromptPatchOverlay(
+    [agent],
+    getContentQualityPromptPatchRegistry(),
+  )[0];
 };
 
 const resolveAgentDefaultWorkingDirectory = (agentId?: string): string => {
@@ -1893,7 +1926,7 @@ const getOpenClawConfigSync = (): OpenClawConfigSync => {
       getMediaCallbackUrl: () => getMcpRuntime().getMediaCallbackUrl(),
       getIndustryPositioningCallbackUrl: () => getMcpRuntime().getIndustryPositioningCallbackUrl(),
       getMcpBridgeSecret: () => getMcpRuntime().getBridgeSecret(),
-      getAgents: () => getCoworkStore().listAgents(),
+      getAgents: () => listAgentsWithContentQualityPromptPatchOverlay(),
       getUserPlugins: () =>
         getCoworkStore()
           .listUserPlugins()
@@ -2592,7 +2625,7 @@ const getCoworkEngineRouter = () => {
               const agent = getAgentManager().resolveRuntimeAgent(agentId);
               return {
                 agentId: agent.id,
-                activeSkillIds: agent.skillIds,
+                activeSkillIds: [],
                 modelOverride: agent.model,
               };
             },
@@ -2907,6 +2940,26 @@ function mergeCoworkSystemPrompt(systemPrompt?: string): string | undefined {
   }
   const sections = [scheduledTaskPrompt, normalizedSystemPrompt].filter(Boolean);
   return sections.length > 0 ? sections.join('\n\n') : undefined;
+}
+
+function appendCoworkWorkspaceAgentTeamPrompt(
+  systemPrompt: string | undefined,
+  rawSelection: CoworkWorkspaceAgentSelection | null | undefined,
+): string | undefined {
+  const selection = normalizeCoworkWorkspaceAgentSelection(rawSelection);
+  if (!selection) return systemPrompt;
+
+  try {
+    const workspace = getEnterpriseLeadWorkspaceStore().getWorkspace(selection.workspaceId);
+    const agentTeamPrompt = buildCoworkWorkspaceAgentTeamPrompt({ workspace, selection });
+    if (!agentTeamPrompt) return systemPrompt;
+
+    const sections = [systemPrompt?.trim() || '', agentTeamPrompt].filter(Boolean);
+    return sections.length > 0 ? sections.join('\n\n') : undefined;
+  } catch (error) {
+    console.warn('[Cowork] failed to build workspace Agent team prompt:', error);
+    return systemPrompt;
+  }
 }
 
 type CoworkImageAttachmentMain = {
@@ -6108,6 +6161,129 @@ if (!gotTheLock) {
     },
   });
 
+  const contentQualityRegressionModelClient = createContentQualityRegressionModelClient(
+    createConfiguredIndustryModelClient(),
+  );
+  const runContentQualityRegressionReport = async () => {
+    const result = await runContentQualityRegressionReportJob({
+      reportDir: getContentQualityRegressionReportDir(),
+      generator: contentQualityRegressionModelClient,
+      evaluator: contentQualityRegressionModelClient,
+    });
+    return {
+      success: true as const,
+      reportPath: result.reportPath,
+      promptPatchPath: result.promptPatchPath,
+      total: result.report.total,
+      passed: result.report.passed,
+      failed: result.report.failed,
+      passRate: result.report.passRate,
+      averageScore: result.report.averageScore,
+    };
+  };
+  const applyLatestContentQualityPromptPatchToMarketingAgent = async () => {
+    const promptPatchPath = findLatestContentQualityPromptPatchPath(
+      getContentQualityRegressionReportDir(),
+    );
+    if (!promptPatchPath) {
+      return {
+        success: false as const,
+        error: 'No content quality prompt patch file found. Run a report first.',
+      };
+    }
+
+    try {
+      const result = await applyContentQualityPromptPatchToAgent({
+        agentId: ManagedPresetAgentId.Marketing,
+        promptPatchPath,
+        backupDir: getContentQualityPromptPatchBackupDir(),
+        getAgent: agentId => getAgentManager().getAgent(agentId),
+        getRegistry: getContentQualityPromptPatchRegistry,
+        setRegistry: setContentQualityPromptPatchRegistry,
+      });
+      await syncOpenClawConfig({
+        reason: 'content-quality-prompt-patch-applied',
+      });
+
+      return {
+        success: true as const,
+        agentId: result.agentId,
+        appliedAt: result.appliedAt,
+        backupPath: result.backupPath,
+        ...(result.promptPatchPath ? { promptPatchPath: result.promptPatchPath } : {}),
+      };
+    } catch (error) {
+      return {
+        success: false as const,
+        error: error instanceof Error ? error.message : 'Unknown content quality prompt patch error',
+      };
+    }
+  };
+  const contentQualityRegressionLabels = {
+    menuLabel: t('contentQualityRegressionDevMenu'),
+    runReportLabel: t('contentQualityRegressionRunReport'),
+    applyLatestPromptPatchLabel: t('contentQualityRegressionApplyLatestPromptPatch'),
+    startMessage: t('contentQualityRegressionReportStarted'),
+    successMessage: t('contentQualityRegressionReportSuccess'),
+    failureMessage: t('contentQualityRegressionReportFailure'),
+    applyPromptPatchSuccessMessage: t('contentQualityRegressionPromptPatchSuccess'),
+    applyPromptPatchFailureMessage: t('contentQualityRegressionPromptPatchFailure'),
+  };
+
+  registerContentQualityRegressionHandlers({
+    getReportDir: getContentQualityRegressionReportDir,
+    generator: contentQualityRegressionModelClient,
+    evaluator: contentQualityRegressionModelClient,
+    applyPromptPatchToAgent: request =>
+      applyContentQualityPromptPatchToAgent({
+        ...request,
+        backupDir: getContentQualityPromptPatchBackupDir(),
+        getAgent: agentId => getAgentManager().getAgent(agentId),
+        getRegistry: getContentQualityPromptPatchRegistry,
+        setRegistry: setContentQualityPromptPatchRegistry,
+      }),
+    syncOpenClawConfig: reason =>
+      syncOpenClawConfig({
+        reason,
+      }).then((): void => undefined),
+  });
+  installMainApplicationMenu({
+    isMac,
+    buildMenuFromTemplate: template => Menu.buildFromTemplate(template),
+    setApplicationMenu: menu => Menu.setApplicationMenu(menu as Menu),
+  });
+  installContentQualityRegressionDevMenu({
+    isDev,
+    labels: contentQualityRegressionLabels,
+    runReport: runContentQualityRegressionReport,
+    applyLatestPromptPatchToMarketingAgent: applyLatestContentQualityPromptPatchToMarketingAgent,
+    showItemInFolder: filePath => shell.showItemInFolder(filePath),
+    showMessageBox: options => dialog.showMessageBox(options),
+    getApplicationMenu: () => Menu.getApplicationMenu(),
+    buildMenuFromTemplate: template => Menu.buildFromTemplate(template),
+    createMenuItem: options => new MenuItem(options),
+    setApplicationMenu: menu => Menu.setApplicationMenu(menu as Menu),
+  });
+  setTrayDevelopmentActions(
+    isDev
+      ? [
+          {
+            label: t('contentQualityRegressionRunReport'),
+            onClick: () => {
+              void runContentQualityRegressionReportWithFeedback({
+                labels: contentQualityRegressionLabels,
+                runReport: runContentQualityRegressionReport,
+                applyLatestPromptPatchToMarketingAgent:
+                  applyLatestContentQualityPromptPatchToMarketingAgent,
+                showItemInFolder: filePath => shell.showItemInFolder(filePath),
+                showMessageBox: options => dialog.showMessageBox(options),
+              });
+            },
+          },
+        ]
+      : [],
+  );
+
   registerEnterpriseLeadWorkspaceHandlers({
     service: {
       listWorkspaces: () => getEnterpriseLeadWorkspaceService().listWorkspaces(),
@@ -6121,6 +6297,12 @@ if (!gotTheLock) {
         getEnterpriseLeadWorkspaceService().updateWorkspaceProfile(workspaceId, profile),
       updateWorkspaceSources: (workspaceId, sources) =>
         getEnterpriseLeadWorkspaceService().updateWorkspaceSources(workspaceId, sources),
+      enqueueWorkspaceDocumentProcessing: (workspaceId, sources, sourceIndex) =>
+        getEnterpriseLeadWorkspaceService().enqueueWorkspaceDocumentProcessing(
+          workspaceId,
+          sources,
+          sourceIndex,
+        ),
       updateWorkspaceSettings: (workspaceId, input) =>
         getEnterpriseLeadWorkspaceService().updateWorkspaceSettings(workspaceId, input),
       updateWorkspaceAgents: (workspaceId, agents) =>
@@ -6128,14 +6310,6 @@ if (!gotTheLock) {
       testWorkspaceAgent: (workspaceId, request) =>
         getEnterpriseLeadWorkspaceService().testWorkspaceAgent(workspaceId, request),
       listRuns: workspaceId => getEnterpriseLeadWorkspaceService().listRuns(workspaceId),
-      listChatSessions: workspaceId =>
-        getEnterpriseLeadWorkspaceService().listChatSessions(workspaceId),
-      getChatSession: (workspaceId, sessionId) =>
-        getEnterpriseLeadWorkspaceService().getChatSession(workspaceId, sessionId),
-      deleteChatSession: (workspaceId, sessionId) =>
-        getEnterpriseLeadWorkspaceService().deleteChatSession(workspaceId, sessionId),
-      chat: (workspaceId, request) =>
-        getEnterpriseLeadWorkspaceService().chat(workspaceId, request),
       createRun: (workspaceId, userGoal) =>
         getEnterpriseLeadWorkspaceService().createRun(workspaceId, userGoal),
       getSnapshot: (workspaceId, runId) =>
@@ -6675,6 +6849,7 @@ if (!gotTheLock) {
         };
         mediaReferences?: MediaAttachmentRefMain[];
         selectedTextSnippets?: CoworkSelectedTextSnippet[];
+        workspaceAgentSelection?: CoworkWorkspaceAgentSelection | null;
       },
     ) => {
       try {
@@ -6696,10 +6871,14 @@ if (!gotTheLock) {
           options.agentId,
           options.prompt,
         );
-        const systemPrompt = mergeCoworkSystemPrompt(options.systemPrompt ?? config.systemPrompt);
-        const persistedSystemPrompt = containsPlanModePrompt(systemPrompt)
+        const baseSystemPrompt = mergeCoworkSystemPrompt(options.systemPrompt ?? config.systemPrompt);
+        const systemPrompt = appendCoworkWorkspaceAgentTeamPrompt(
+          baseSystemPrompt,
+          options.workspaceAgentSelection,
+        );
+        const persistedSystemPrompt = containsPlanModePrompt(baseSystemPrompt)
           ? mergeCoworkSystemPrompt(config.systemPrompt)
-          : systemPrompt;
+          : baseSystemPrompt;
         const selectedTaskDirectory = resolveSessionWorkingDirectory({
           cwd: options.cwd,
           agentId: runtimeAgent.id,
@@ -6727,8 +6906,10 @@ if (!gotTheLock) {
         );
         const title = options.title?.trim() || fallbackTitle;
         const taskWorkingDirectory = resolveTaskWorkingDirectory(selectedTaskDirectory);
-        const runtimeSkillIds =
-          options.runtimeSkillIds ?? options.activeSkillIds ?? runtimeAgent.skillIds;
+        const runtimeSkillIds = resolveCoworkRuntimeSkillIds({
+          runtimeSkillIds: options.runtimeSkillIds,
+          activeSkillIds: options.activeSkillIds,
+        });
         const sessionModelOverride = options.modelOverride || runtimeAgent.model || '';
         const selectedTextSnippets = normalizeSelectedTextSnippetsForIpc(
           options.selectedTextSnippets,
@@ -6785,7 +6966,6 @@ if (!gotTheLock) {
           options.imageAttachments,
         );
         const messageMetadata = buildCoworkUserSelectionMetadata({
-          skillIds: options.activeSkillIds,
           kitIds: options.kitIds,
           kitReferences: options.kitReferences,
           resolvedKitCapabilities: options.resolvedKitCapabilities,
@@ -6811,7 +6991,6 @@ if (!gotTheLock) {
             skipInitialUserMessage: true,
             systemPrompt,
             skillIds: runtimeSkillIds,
-            messageSkillIds: options.activeSkillIds,
             kitIds: options.kitIds,
             kitReferences: options.kitReferences,
             resolvedKitCapabilities: options.resolvedKitCapabilities,
@@ -6882,6 +7061,7 @@ if (!gotTheLock) {
         };
         mediaReferences?: MediaAttachmentRefMain[];
         selectedTextSnippets?: CoworkSelectedTextSnippet[];
+        workspaceAgentSelection?: CoworkWorkspaceAgentSelection | null;
       },
     ) => {
       try {
@@ -6902,9 +7082,13 @@ if (!gotTheLock) {
         const existingSession = coworkStoreInstance.getSession(options.sessionId);
         const config = coworkStoreInstance.getConfig();
         const hasLegacyPersistedPlanMode = containsPlanModePrompt(existingSession?.systemPrompt);
-        const continuationSystemPrompt = mergeCoworkSystemPrompt(
+        const continuationBaseSystemPrompt = mergeCoworkSystemPrompt(
           options.systemPrompt ??
             (hasLegacyPersistedPlanMode ? config.systemPrompt : existingSession?.systemPrompt),
+        );
+        const continuationSystemPrompt = appendCoworkWorkspaceAgentTeamPrompt(
+          continuationBaseSystemPrompt,
+          options.workspaceAgentSelection,
         );
         if (hasLegacyPersistedPlanMode) {
           coworkStoreInstance.updateSession(options.sessionId, {
@@ -6966,8 +7150,10 @@ if (!gotTheLock) {
         runtime
           .continueSession(options.sessionId, options.prompt, {
             systemPrompt: continuationSystemPrompt,
-            skillIds: options.runtimeSkillIds ?? options.activeSkillIds,
-            messageSkillIds: options.activeSkillIds,
+            skillIds: resolveCoworkRuntimeSkillIds({
+              runtimeSkillIds: options.runtimeSkillIds,
+              activeSkillIds: options.activeSkillIds,
+            }),
             kitIds: options.kitIds,
             kitReferences: options.kitReferences,
             resolvedKitCapabilities: options.resolvedKitCapabilities,
@@ -7375,7 +7561,7 @@ if (!gotTheLock) {
 
   ipcMain.handle(AgentIpcChannel.List, async () => {
     try {
-      const agents = getAgentManager().listAgents();
+      const agents = listAgentsWithContentQualityPromptPatchOverlay();
       return { success: true, agents };
     } catch (error) {
       return {
@@ -7387,7 +7573,7 @@ if (!gotTheLock) {
 
   ipcMain.handle(AgentIpcChannel.Get, async (_event, id: string) => {
     try {
-      const agent = getAgentManager().getAgent(id);
+      const agent = getAgentWithContentQualityPromptPatchOverlay(id);
       return { success: true, agent };
     } catch (error) {
       return {
@@ -10758,8 +10944,7 @@ if (!gotTheLock) {
       }
     }
 
-    // 禁用窗口菜单
-    mainWindow.setMenu(null);
+    mainWindow.setMenuBarVisibility(false);
 
     // 处理 window.open 请求（企微 SDK 授权弹窗等）
     mainWindow.webContents.setWindowOpenHandler(({ url }) => {

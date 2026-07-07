@@ -12,9 +12,15 @@ import {
 import React, { useRef, useState } from 'react';
 
 import {
+  EnterpriseLeadDocumentExtractionStatus,
   EnterpriseLeadExtractionSourceKind,
+  EnterpriseLeadKnowledgeIndexStatus,
 } from '../../../shared/enterpriseLeadWorkspace/constants';
-import type { EnterpriseLeadWorkspaceDraft } from '../../../shared/enterpriseLeadWorkspace/types';
+import type {
+  EnterpriseLeadWorkspace,
+  EnterpriseLeadWorkspaceDraft,
+  EnterpriseLeadWorkspaceSettings,
+} from '../../../shared/enterpriseLeadWorkspace/types';
 import { enterpriseLeadWorkspaceService } from '../../services/enterpriseLeadWorkspace';
 import { i18nService } from '../../services/i18n';
 import {
@@ -43,6 +49,94 @@ const ACCEPTED_MATERIAL_FILE_TYPES = '.txt,.md,.csv,text/plain,text/markdown,tex
 
 const formatWorkspaceNameText = (key: string, name: string): string =>
   i18nService.t(key).replace('{name}', name);
+
+type UploadedMaterialWorkspaceService = Pick<
+  typeof enterpriseLeadWorkspaceService,
+  'createWorkspace' | 'processDocumentSource'
+>;
+
+interface UploadedMaterialWorkspaceInput {
+  workspaceName: string;
+  sourceText: string;
+  sourceLabel: string;
+  fileName?: string;
+  fileSize?: number | null;
+  settings?: EnterpriseLeadWorkspaceSettings;
+  onCreated: (workspaceId: string) => void;
+  service?: UploadedMaterialWorkspaceService;
+}
+
+const normalizeOptionalFileSize = (fileSize?: number | null): number | undefined =>
+  typeof fileSize === 'number' && Number.isFinite(fileSize) && fileSize > 0
+    ? fileSize
+    : undefined;
+
+export const createWorkspaceFromUploadedMaterial = async ({
+  workspaceName,
+  sourceText,
+  sourceLabel,
+  fileName,
+  fileSize,
+  settings,
+  onCreated,
+  service = enterpriseLeadWorkspaceService,
+}: UploadedMaterialWorkspaceInput): Promise<EnterpriseLeadWorkspace | null> => {
+  const cleanSourceText = sourceText.trim();
+  if (!cleanSourceText) {
+    throw new Error('Uploaded material text is required');
+  }
+
+  const now = new Date().toISOString();
+  const cleanSourceLabel = sourceLabel.trim() ||
+    i18nService.t('enterpriseLeadCreateMaterialSourceLabel');
+  const draft = buildManualEnterpriseLeadWorkspaceDraft({
+    name: workspaceName,
+    mode: WorkspaceCreateStartMode.Material,
+    sourceLabel: cleanSourceLabel,
+    sourceText: cleanSourceText,
+    settings,
+  });
+
+  const workspace = await service.createWorkspace({
+    ...draft,
+    source: {
+      ...draft.source,
+      kind: EnterpriseLeadExtractionSourceKind.File,
+      label: cleanSourceLabel,
+      fileName: fileName?.trim() || undefined,
+      fileSize: normalizeOptionalFileSize(fileSize),
+      text: cleanSourceText,
+      extractionStatus: EnterpriseLeadDocumentExtractionStatus.Pending,
+      vectorIndexStatus: EnterpriseLeadKnowledgeIndexStatus.Pending,
+      createdAt: now,
+      updatedAt: now,
+    },
+  });
+
+  if (!workspace) {
+    return null;
+  }
+
+  const sourceIndex = workspace.extractionSources.findIndex(source =>
+    source.kind === EnterpriseLeadExtractionSourceKind.File &&
+    source.label === cleanSourceLabel &&
+    source.text?.trim() === cleanSourceText,
+  );
+  const processingSourceIndex = sourceIndex >= 0 ? sourceIndex : 0;
+  if (workspace.extractionSources[processingSourceIndex]?.text?.trim()) {
+    void service
+      .processDocumentSource(workspace.id, workspace.extractionSources, processingSourceIndex)
+      .catch(error => {
+        console.warn(
+          '[EnterpriseLeadWorkspace] Failed to queue uploaded material processing:',
+          error,
+        );
+      });
+  }
+
+  onCreated(workspace.id);
+  return workspace;
+};
 
 const startModeOptions: StartModeOption[] = [
   {
@@ -78,6 +172,7 @@ export const WorkspaceCreate: React.FC<WorkspaceCreateProps> = ({ onCreated, onC
   const [branchScreen, setBranchScreen] = useState<WorkspaceCreateBranchScreen | null>(null);
   const [materialText, setMaterialText] = useState('');
   const [loadedFileName, setLoadedFileName] = useState('');
+  const [loadedFileSize, setLoadedFileSize] = useState<number | null>(null);
   const [pasteText, setPasteText] = useState('');
   const [error, setError] = useState('');
   const [isCreating, setIsCreating] = useState(false);
@@ -105,6 +200,7 @@ export const WorkspaceCreate: React.FC<WorkspaceCreateProps> = ({ onCreated, onC
     const readRequestId = fileReadRequestRef.current + 1;
     fileReadRequestRef.current = readRequestId;
     setLoadedFileName(file.name);
+    setLoadedFileSize(file.size);
     setError('');
 
     const reader = new FileReader();
@@ -211,11 +307,28 @@ export const WorkspaceCreate: React.FC<WorkspaceCreateProps> = ({ onCreated, onC
       return;
     }
 
-    void createWorkspaceFromExtractedText(
-      materialText,
-      EnterpriseLeadExtractionSourceKind.File,
-      loadedFileName || i18nService.t('enterpriseLeadCreateMaterialSourceLabel'),
-    );
+    setIsCreating(true);
+    setError('');
+    void createWorkspaceFromUploadedMaterial({
+      workspaceName: workspaceDisplayName,
+      sourceText: materialText,
+      sourceLabel: loadedFileName || i18nService.t('enterpriseLeadCreateMaterialSourceLabel'),
+      fileName: loadedFileName || undefined,
+      fileSize: loadedFileSize,
+      settings: buildEnterpriseLeadWorkspaceSettingsFromCurrentConfig(),
+      onCreated,
+    })
+      .then(workspace => {
+        if (!workspace) {
+          setError(i18nService.t('enterpriseLeadCreateFailed'));
+        }
+      })
+      .catch(() => {
+        setError(i18nService.t('enterpriseLeadCreateFailed'));
+      })
+      .finally(() => {
+        setIsCreating(false);
+      });
   };
 
   const handleCreateFromPaste = (): void => {

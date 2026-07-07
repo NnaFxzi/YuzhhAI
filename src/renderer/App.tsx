@@ -21,6 +21,7 @@ import {
   type EnterpriseLeadWorkspaceShellModeType,
   EnterpriseLeadWorkspaceView,
 } from './components/enterpriseLeadWorkspace';
+import { resetEnterpriseLeadCoworkHandoffDraft } from './components/enterpriseLeadWorkspace/workspaceCoworkHandoffState';
 import KitsView from './components/kits/KitsView';
 import { McpView } from './components/mcp';
 import PrivacyDialog from './components/PrivacyDialog';
@@ -403,17 +404,9 @@ const App: React.FC = () => {
 
   const handlePrepareEnterpriseLeadCoworkChat = useCallback(
     (draft: string) => {
-      dispatch(setActiveKitIds([]));
       coworkService.clearSession({ restoreAgentSkills: true });
       dispatch(clearSelection());
-      dispatch(
-        setDraftCollaborationMode({
-          draftKey: '__home__',
-          mode: CoworkCollaborationMode.Default,
-        }),
-      );
-      dispatch(setDraftPrompt({ sessionId: '__home__', draft }));
-      dispatch(setDraftKitIds({ draftKey: '__home__', kitIds: [] }));
+      resetEnterpriseLeadCoworkHandoffDraft(dispatch, draft);
       window.setTimeout(() => {
         window.dispatchEvent(
           new CustomEvent(CoworkUiEvent.FocusInput, {
@@ -861,6 +854,14 @@ const App: React.FC = () => {
     return () => window.removeEventListener('app:showToast', handler);
   }, [showToast]);
 
+  useEffect(() => {
+    const handler = () => {
+      setMainView('skills');
+    };
+    window.addEventListener('app:open-skills', handler);
+    return () => window.removeEventListener('app:open-skills', handler);
+  }, []);
+
   // Listen for ask-ai events: close settings, navigate to cowork, pre-fill input
   useEffect(() => {
     const handler = (e: Event) => {
@@ -1097,6 +1098,7 @@ const App: React.FC = () => {
                 onToggleSidebar={handleToggleSidebar}
                 onNewChat={handleNewChat}
                 onCreateSkillByChat={handleCreateSkillByChat}
+                onOpenBrowserSettings={() => handleShowSettings({ initialTab: 'browserWebAccess' })}
                 updateBadge={viewSidebarCollapsed ? updateBadge : null}
                 readOnly={enterpriseConfig?.ui?.skills === 'readonly'}
               />
@@ -1118,6 +1120,8 @@ const App: React.FC = () => {
                 onPrepareCoworkChat={handlePrepareEnterpriseLeadCoworkChat}
                 onShowSkills={handleShowSkills}
                 onShowKits={handleShowKits}
+                onCreateSkillByChat={handleCreateSkillByChat}
+                skillsReadOnly={enterpriseConfig?.ui?.skills === 'readonly'}
               />
             ) : mainView === 'kits' ? (
               <KitsView

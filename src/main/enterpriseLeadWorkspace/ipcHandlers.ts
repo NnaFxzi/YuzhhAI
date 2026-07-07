@@ -10,13 +10,6 @@ import type {
   EnterpriseLeadWorkspaceAgentBinding,
   EnterpriseLeadWorkspaceAgentCalibrationRequest,
   EnterpriseLeadWorkspaceAgentCalibrationResponse,
-  EnterpriseLeadWorkspaceChatMessage,
-  EnterpriseLeadWorkspaceChatProgressEvent,
-  EnterpriseLeadWorkspaceChatRequest,
-  EnterpriseLeadWorkspaceChatResearchResult,
-  EnterpriseLeadWorkspaceChatResponse,
-  EnterpriseLeadWorkspaceChatSession,
-  EnterpriseLeadWorkspaceChatSessionSummary,
   EnterpriseLeadWorkspaceDraft,
   EnterpriseLeadWorkspaceProfile,
   EnterpriseLeadWorkspaceRunSummary,
@@ -25,7 +18,6 @@ import type {
 } from '../../shared/enterpriseLeadWorkspace/types';
 import {
   normalizeEnterpriseLeadExtractionSources,
-  normalizeWorkspaceChatResearchIntent,
   normalizeWorkspaceProfile,
 } from '../../shared/enterpriseLeadWorkspace/validation';
 
@@ -48,6 +40,11 @@ export interface EnterpriseLeadWorkspaceHandlerDeps {
       workspaceId: string,
       sources: EnterpriseLeadExtractionSource[],
     ) => EnterpriseLeadWorkspace | Promise<EnterpriseLeadWorkspace>;
+    enqueueWorkspaceDocumentProcessing: (
+      workspaceId: string,
+      sources: EnterpriseLeadExtractionSource[],
+      sourceIndex: number,
+    ) => EnterpriseLeadWorkspace | Promise<EnterpriseLeadWorkspace>;
     updateWorkspaceSettings: (
       workspaceId: string,
       input: EnterpriseLeadWorkspaceSettingsUpdate,
@@ -59,24 +56,6 @@ export interface EnterpriseLeadWorkspaceHandlerDeps {
     listRuns: (
       workspaceId: string,
     ) => EnterpriseLeadWorkspaceRunSummary[] | Promise<EnterpriseLeadWorkspaceRunSummary[]>;
-    listChatSessions: (
-      workspaceId: string,
-    ) =>
-      | EnterpriseLeadWorkspaceChatSessionSummary[]
-      | Promise<EnterpriseLeadWorkspaceChatSessionSummary[]>;
-    getChatSession: (
-      workspaceId: string,
-      sessionId: string,
-    ) =>
-      | EnterpriseLeadWorkspaceChatSession
-      | null
-      | Promise<EnterpriseLeadWorkspaceChatSession | null>;
-    deleteChatSession: (workspaceId: string, sessionId: string) => boolean | Promise<boolean>;
-    chat: (
-      workspaceId: string,
-      request: EnterpriseLeadWorkspaceChatRequest,
-      progressSink?: (event: EnterpriseLeadWorkspaceChatProgressEvent) => void,
-    ) => EnterpriseLeadWorkspaceChatResponse | Promise<EnterpriseLeadWorkspaceChatResponse>;
     testWorkspaceAgent: (
       workspaceId: string,
       request: EnterpriseLeadWorkspaceAgentCalibrationRequest,
@@ -138,111 +117,21 @@ const readWorkspaceSources = (value: unknown): EnterpriseLeadExtractionSource[] 
   return normalizeEnterpriseLeadExtractionSources(value);
 };
 
+const requireNonNegativeInteger = (value: unknown, label: string): number => {
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) {
+    throw new Error(`${label} must be a non-negative integer`);
+  }
+  return value;
+};
+
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === 'object' && !Array.isArray(value);
-
-const isChatResearchStatus = (
-  value: unknown,
-): value is EnterpriseLeadWorkspaceChatResearchResult['status'] =>
-  value === 'skipped' || value === 'completed' || value === 'failed';
-
-const isChatResearchProvider = (
-  value: unknown,
-): value is NonNullable<EnterpriseLeadWorkspaceChatResearchResult['provider']> =>
-  value === 'tavily' || value === 'firecrawl' || value === 'domestic';
-
-const readRecentMessageResearch = (
-  value: unknown,
-): EnterpriseLeadWorkspaceChatResearchResult | undefined => {
-  if (!isPlainObject(value) || !isChatResearchStatus(value.status)) {
-    return undefined;
-  }
-
-  const research: EnterpriseLeadWorkspaceChatResearchResult = {
-    intent: normalizeWorkspaceChatResearchIntent(value.intent),
-    status: value.status,
-    summary: typeof value.summary === 'string' ? value.summary.slice(0, 1_000) : '',
-  };
-  if (isChatResearchProvider(value.provider)) {
-    research.provider = value.provider;
-  }
-  return research;
-};
 
 const readWorkspaceAgents = (value: unknown): EnterpriseLeadWorkspaceAgentBinding[] => {
   if (!Array.isArray(value)) {
     throw new Error('Workspace agents are required');
   }
   return value as EnterpriseLeadWorkspaceAgentBinding[];
-};
-
-const readRecentChatMessages = (
-  value: unknown,
-): EnterpriseLeadWorkspaceChatMessage[] | undefined => {
-  if (!Array.isArray(value)) {
-    return undefined;
-  }
-
-  return value
-    .filter((item): item is EnterpriseLeadWorkspaceChatMessage => {
-      if (!isPlainObject(item)) {
-        return false;
-      }
-      const hasValidRole = item.role === 'user' || item.role === 'assistant';
-      return (
-        typeof item.id === 'string' &&
-        hasValidRole &&
-        typeof item.content === 'string' &&
-        typeof item.createdAt === 'string'
-      );
-    })
-    .map(item => {
-      const message: EnterpriseLeadWorkspaceChatMessage = {
-        id: item.id,
-        role: item.role,
-        content: item.content,
-        createdAt: item.createdAt,
-      };
-      const research = readRecentMessageResearch(item.research);
-      if (research) {
-        message.research = research;
-      }
-      return message;
-    });
-};
-
-const readChatRequest = (value: unknown): EnterpriseLeadWorkspaceChatRequest => {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    throw new Error('Chat request is required');
-  }
-
-  const input = value as {
-    message?: unknown;
-    requestId?: unknown;
-    sessionId?: unknown;
-    targetAgentId?: unknown;
-    recentMessages?: unknown;
-  };
-  const request: EnterpriseLeadWorkspaceChatRequest = {
-    message: requireNonEmptyString(input.message, 'Message'),
-  };
-
-  if (typeof input.requestId === 'string') {
-    request.requestId = input.requestId;
-  }
-  if (typeof input.targetAgentId === 'string') {
-    request.targetAgentId = input.targetAgentId;
-  }
-  if (typeof input.sessionId === 'string') {
-    request.sessionId = input.sessionId;
-  }
-
-  const recentMessages = readRecentChatMessages(input.recentMessages);
-  if (recentMessages) {
-    request.recentMessages = recentMessages;
-  }
-
-  return request;
 };
 
 const readOptionalString = (value: unknown): string =>
@@ -390,6 +279,24 @@ export function registerEnterpriseLeadWorkspaceHandlers(
   );
 
   ipcMain.handle(
+    EnterpriseLeadWorkspaceIpc.ProcessDocumentSource,
+    async (_event, input: { workspaceId?: unknown; sources?: unknown; sourceIndex?: unknown }) => {
+      try {
+        const workspaceId = requireNonEmptyString(input?.workspaceId, 'Workspace id');
+        return ok(
+          await deps.service.enqueueWorkspaceDocumentProcessing(
+            workspaceId,
+            readWorkspaceSources(input?.sources),
+            requireNonNegativeInteger(input?.sourceIndex, 'Document source index'),
+          ),
+        );
+      } catch (error) {
+        return fail<EnterpriseLeadWorkspace>(error);
+      }
+    },
+  );
+
+  ipcMain.handle(
     EnterpriseLeadWorkspaceIpc.UpdateWorkspaceSettings,
     async (_event, input: { workspaceId?: unknown; settings?: unknown }) => {
       try {
@@ -467,28 +374,6 @@ export function registerEnterpriseLeadWorkspaceHandlers(
   );
 
   ipcMain.handle(
-    EnterpriseLeadWorkspaceIpc.Chat,
-    async (event, input: { workspaceId?: unknown; request?: unknown }) => {
-      try {
-        const workspaceId = requireNonEmptyString(input?.workspaceId, 'Workspace id');
-        const request = readChatRequest(input?.request);
-        const progressSink =
-          request.requestId && event?.sender?.send
-            ? (progressEvent: EnterpriseLeadWorkspaceChatProgressEvent): void => {
-                event.sender.send(EnterpriseLeadWorkspaceIpc.ChatProgress, progressEvent);
-              }
-            : undefined;
-        const response = progressSink
-          ? await deps.service.chat(workspaceId, request, progressSink)
-          : await deps.service.chat(workspaceId, request);
-        return ok(response);
-      } catch (error) {
-        return fail<EnterpriseLeadWorkspaceChatResponse>(error);
-      }
-    },
-  );
-
-  ipcMain.handle(
     EnterpriseLeadWorkspaceIpc.TestWorkspaceAgent,
     async (_event, input: { workspaceId?: unknown; request?: unknown }) => {
       try {
@@ -501,45 +386,6 @@ export function registerEnterpriseLeadWorkspaceHandlers(
         );
       } catch (error) {
         return fail<EnterpriseLeadWorkspaceAgentCalibrationResponse>(error);
-      }
-    },
-  );
-
-  ipcMain.handle(
-    EnterpriseLeadWorkspaceIpc.ListChatSessions,
-    async (_event, workspaceId: unknown) => {
-      try {
-        return ok(
-          await deps.service.listChatSessions(requireNonEmptyString(workspaceId, 'Workspace id')),
-        );
-      } catch (error) {
-        return fail<EnterpriseLeadWorkspaceChatSessionSummary[]>(error);
-      }
-    },
-  );
-
-  ipcMain.handle(
-    EnterpriseLeadWorkspaceIpc.GetChatSession,
-    async (_event, input: { workspaceId?: unknown; sessionId?: unknown }) => {
-      try {
-        const workspaceId = requireNonEmptyString(input?.workspaceId, 'Workspace id');
-        const sessionId = requireNonEmptyString(input?.sessionId, 'Chat session id');
-        return ok(await deps.service.getChatSession(workspaceId, sessionId));
-      } catch (error) {
-        return fail<EnterpriseLeadWorkspaceChatSession | null>(error);
-      }
-    },
-  );
-
-  ipcMain.handle(
-    EnterpriseLeadWorkspaceIpc.DeleteChatSession,
-    async (_event, input: { workspaceId?: unknown; sessionId?: unknown }) => {
-      try {
-        const workspaceId = requireNonEmptyString(input?.workspaceId, 'Workspace id');
-        const sessionId = requireNonEmptyString(input?.sessionId, 'Chat session id');
-        return ok(await deps.service.deleteChatSession(workspaceId, sessionId));
-      } catch (error) {
-        return fail<boolean>(error);
       }
     },
   );

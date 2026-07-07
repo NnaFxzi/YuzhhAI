@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest';
 
 import { EnterpriseLeadAgentRole } from '../../shared/enterpriseLeadWorkspace/constants';
 import {
+  buildDefaultEnterpriseLeadWorkspaceAgents,
   ENTERPRISE_LEAD_AGENT_WORKFLOW,
   getDownstreamAgentRoles,
   getEnterpriseLeadAgentMetadata,
@@ -10,15 +11,12 @@ import {
 describe('enterprise lead agent workflow metadata', () => {
   test('keeps the fixed agent workflow role order', () => {
     expect(ENTERPRISE_LEAD_AGENT_WORKFLOW.map(agent => agent.role)).toEqual([
-      EnterpriseLeadAgentRole.Controller,
-      EnterpriseLeadAgentRole.ProductUnderstanding,
-      EnterpriseLeadAgentRole.OpportunityRadar,
-      EnterpriseLeadAgentRole.ContentPlanning,
-      EnterpriseLeadAgentRole.SocialOperation,
-      EnterpriseLeadAgentRole.SalesHandoff,
-      EnterpriseLeadAgentRole.RiskReview,
-      EnterpriseLeadAgentRole.ProjectSummary,
-      EnterpriseLeadAgentRole.ProjectArchive,
+      EnterpriseLeadAgentRole.ProductSellingPoint,
+      EnterpriseLeadAgentRole.TopicPlanning,
+      EnterpriseLeadAgentRole.ShortVideoScript,
+      EnterpriseLeadAgentRole.SocialCopy,
+      EnterpriseLeadAgentRole.PrivateDomainConversion,
+      EnterpriseLeadAgentRole.ContentQuality,
     ]);
   });
 
@@ -38,6 +36,14 @@ describe('enterprise lead agent workflow metadata', () => {
       EnterpriseLeadAgentRole.ProjectSummary,
       EnterpriseLeadAgentRole.ProjectArchive,
     ]);
+  });
+
+  test('content planning default prompt asks whether to continue into video generation', () => {
+    const contentPlanningAgent = buildDefaultEnterpriseLeadWorkspaceAgents([
+      EnterpriseLeadAgentRole.ContentPlanning,
+    ])[0];
+
+    expect(contentPlanningAgent.overrides.systemPrompt).toContain('是否需要继续生成视频');
   });
 
   test('throws for unknown roles', () => {

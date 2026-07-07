@@ -1,3 +1,4 @@
+import { VIDEO_GENERATION_HANDOFF_PROMPT } from '../../shared/contentProduction/videoGenerationHandoff';
 import type { EnterpriseLeadAgentRole } from '../../shared/enterpriseLeadWorkspace/constants';
 import {
   EnterpriseLeadAgentRole as AgentRole,
@@ -165,6 +166,13 @@ export const LEGACY_ENTERPRISE_LEAD_AGENT_WORKFLOW: EnterpriseLeadAgentMetadata[
 const getUnknownRoleError = (role: EnterpriseLeadAgentRole): Error =>
   new Error(`Unknown enterprise lead Agent role: ${role}`);
 
+const findWorkflowContainingRole = (
+  role: EnterpriseLeadAgentRole,
+): EnterpriseLeadAgentMetadata[] | null =>
+  [ENTERPRISE_LEAD_AGENT_WORKFLOW, LEGACY_ENTERPRISE_LEAD_AGENT_WORKFLOW].find(workflow =>
+    workflow.some(agent => agent.role === role),
+  ) ?? null;
+
 export const getEnterpriseLeadAgentMetadata = (
   role: EnterpriseLeadAgentRole,
 ): EnterpriseLeadAgentMetadata => {
@@ -180,13 +188,15 @@ export const getEnterpriseLeadAgentMetadata = (
 };
 
 export const getDownstreamAgentRoles = (role: EnterpriseLeadAgentRole): EnterpriseLeadAgentRole[] => {
-  const roleIndex = ENTERPRISE_LEAD_AGENT_WORKFLOW.findIndex(agent => agent.role === role);
+  const workflow = findWorkflowContainingRole(role);
 
-  if (roleIndex === -1) {
+  if (!workflow) {
     throw getUnknownRoleError(role);
   }
 
-  return ENTERPRISE_LEAD_AGENT_WORKFLOW.slice(roleIndex + 1).map(agent => agent.role);
+  const roleIndex = workflow.findIndex(agent => agent.role === role);
+
+  return workflow.slice(roleIndex + 1).map(agent => agent.role);
 };
 
 const buildDefaultSystemPrompt = (agent: EnterpriseLeadAgentMetadata): string =>
@@ -194,7 +204,10 @@ const buildDefaultSystemPrompt = (agent: EnterpriseLeadAgentMetadata): string =>
     agent.description,
     `输入：${agent.inputSummary}`,
     `输出：${agent.outputSummary}`,
-  ].join('\n');
+    agent.role === AgentRole.ContentPlanning ? VIDEO_GENERATION_HANDOFF_PROMPT : '',
+  ]
+    .filter(Boolean)
+    .join('\n');
 
 export const buildDefaultEnterpriseLeadWorkspaceAgents = (
   roles: readonly EnterpriseLeadAgentRole[] = EnterpriseLeadContentAgentRoles,

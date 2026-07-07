@@ -2,7 +2,7 @@ export const EnterpriseLeadWorkspaceType = {
   EnterpriseLead: 'enterprise_lead',
 } as const;
 export type EnterpriseLeadWorkspaceType =
-  typeof EnterpriseLeadWorkspaceType[keyof typeof EnterpriseLeadWorkspaceType];
+  (typeof EnterpriseLeadWorkspaceType)[keyof typeof EnterpriseLeadWorkspaceType];
 
 export const EnterpriseLeadAgentRole = {
   ProductSellingPoint: 'product_selling_point',
@@ -22,7 +22,7 @@ export const EnterpriseLeadAgentRole = {
   ProjectArchive: 'project_archive',
 } as const;
 export type EnterpriseLeadAgentRole =
-  typeof EnterpriseLeadAgentRole[keyof typeof EnterpriseLeadAgentRole];
+  (typeof EnterpriseLeadAgentRole)[keyof typeof EnterpriseLeadAgentRole];
 
 export const EnterpriseLeadContentAgentRoles = [
   EnterpriseLeadAgentRole.ProductSellingPoint,
@@ -49,26 +49,6 @@ export const EnterpriseLeadWorkspaceAgentCalibrationCheckId = {
 export type EnterpriseLeadWorkspaceAgentCalibrationCheckId =
   (typeof EnterpriseLeadWorkspaceAgentCalibrationCheckId)[keyof typeof EnterpriseLeadWorkspaceAgentCalibrationCheckId];
 
-export const EnterpriseLeadChatProgressPhase = {
-  Routing: 'routing',
-  Research: 'research',
-  Agent: 'agent',
-  Tool: 'tool',
-  Synthesis: 'synthesis',
-  Done: 'done',
-  Error: 'error',
-} as const;
-export type EnterpriseLeadChatProgressPhase =
-  (typeof EnterpriseLeadChatProgressPhase)[keyof typeof EnterpriseLeadChatProgressPhase];
-
-export const EnterpriseLeadChatProgressStatus = {
-  Running: 'running',
-  Completed: 'completed',
-  Failed: 'failed',
-} as const;
-export type EnterpriseLeadChatProgressStatus =
-  (typeof EnterpriseLeadChatProgressStatus)[keyof typeof EnterpriseLeadChatProgressStatus];
-
 export const EnterpriseLeadRunStatus = {
   Draft: 'draft',
   Running: 'running',
@@ -79,7 +59,7 @@ export const EnterpriseLeadRunStatus = {
   Error: 'error',
 } as const;
 export type EnterpriseLeadRunStatus =
-  typeof EnterpriseLeadRunStatus[keyof typeof EnterpriseLeadRunStatus];
+  (typeof EnterpriseLeadRunStatus)[keyof typeof EnterpriseLeadRunStatus];
 
 export const EnterpriseLeadTaskStatus = {
   Waiting: 'waiting',
@@ -91,7 +71,7 @@ export const EnterpriseLeadTaskStatus = {
   Error: 'error',
 } as const;
 export type EnterpriseLeadTaskStatus =
-  typeof EnterpriseLeadTaskStatus[keyof typeof EnterpriseLeadTaskStatus];
+  (typeof EnterpriseLeadTaskStatus)[keyof typeof EnterpriseLeadTaskStatus];
 
 export const EnterpriseLeadRiskLevel = {
   Low: 'low',
@@ -99,7 +79,7 @@ export const EnterpriseLeadRiskLevel = {
   High: 'high',
 } as const;
 export type EnterpriseLeadRiskLevel =
-  typeof EnterpriseLeadRiskLevel[keyof typeof EnterpriseLeadRiskLevel];
+  (typeof EnterpriseLeadRiskLevel)[keyof typeof EnterpriseLeadRiskLevel];
 
 export const EnterpriseLeadTodoKind = {
   MissingInfo: 'missing_info',
@@ -111,8 +91,7 @@ export const EnterpriseLeadTodoKind = {
   ReviewRisk: 'review_risk',
   ConfirmSource: 'confirm_source',
 } as const;
-export type EnterpriseLeadTodoKind =
-  typeof EnterpriseLeadTodoKind[keyof typeof EnterpriseLeadTodoKind];
+export type EnterpriseLeadTodoKind = (typeof EnterpriseLeadTodoKind)[keyof typeof EnterpriseLeadTodoKind];
 
 export const EnterpriseLeadDeliverableKind = {
   ProductProfile: 'product_profile',
@@ -126,7 +105,7 @@ export const EnterpriseLeadDeliverableKind = {
   FinalSummary: 'final_summary',
 } as const;
 export type EnterpriseLeadDeliverableKind =
-  typeof EnterpriseLeadDeliverableKind[keyof typeof EnterpriseLeadDeliverableKind];
+  (typeof EnterpriseLeadDeliverableKind)[keyof typeof EnterpriseLeadDeliverableKind];
 
 export const EnterpriseLeadExtractionSourceKind = {
   Conversation: 'conversation',
@@ -135,7 +114,7 @@ export const EnterpriseLeadExtractionSourceKind = {
   Blank: 'blank',
 } as const;
 export type EnterpriseLeadExtractionSourceKind =
-  typeof EnterpriseLeadExtractionSourceKind[keyof typeof EnterpriseLeadExtractionSourceKind];
+  (typeof EnterpriseLeadExtractionSourceKind)[keyof typeof EnterpriseLeadExtractionSourceKind];
 
 export const EnterpriseLeadDocumentExtractionStatus = {
   Pending: 'pending',
@@ -162,7 +141,7 @@ export const EnterpriseLeadSkillCapabilityId = {
   ContentRewrite: 'contentRewrite',
 } as const;
 export type EnterpriseLeadSkillCapabilityId =
-  typeof EnterpriseLeadSkillCapabilityId[keyof typeof EnterpriseLeadSkillCapabilityId];
+  (typeof EnterpriseLeadSkillCapabilityId)[keyof typeof EnterpriseLeadSkillCapabilityId];
 
 export const EnterpriseLeadSkillCapabilityIds = [
   EnterpriseLeadSkillCapabilityId.DocumentParsing,
@@ -178,7 +157,7 @@ export const EnterpriseLeadResearchCapabilityId = {
   HiringSignal: 'hiringSignal',
 } as const;
 export type EnterpriseLeadResearchCapabilityId =
-  typeof EnterpriseLeadResearchCapabilityId[keyof typeof EnterpriseLeadResearchCapabilityId];
+  (typeof EnterpriseLeadResearchCapabilityId)[keyof typeof EnterpriseLeadResearchCapabilityId];
 
 export const EnterpriseLeadResearchCapabilityIds = [
   EnterpriseLeadResearchCapabilityId.WebSearch,
@@ -195,7 +174,7 @@ export const EnterpriseLeadContentPlatformId = {
   Wecom: 'wecom',
 } as const;
 export type EnterpriseLeadContentPlatformId =
-  typeof EnterpriseLeadContentPlatformId[keyof typeof EnterpriseLeadContentPlatformId];
+  (typeof EnterpriseLeadContentPlatformId)[keyof typeof EnterpriseLeadContentPlatformId];
 
 export const EnterpriseLeadContentPlatformIds = [
   EnterpriseLeadContentPlatformId.Xiaohongshu,
@@ -212,7 +191,7 @@ export const EnterpriseLeadContentOutputPlatformId = {
   CustomWebhook: 'custom_webhook',
 } as const;
 export type EnterpriseLeadContentOutputPlatformId =
-  typeof EnterpriseLeadContentOutputPlatformId[keyof typeof EnterpriseLeadContentOutputPlatformId];
+  (typeof EnterpriseLeadContentOutputPlatformId)[keyof typeof EnterpriseLeadContentOutputPlatformId];
 
 export const EnterpriseLeadContentOutputPlatformIds = [
   EnterpriseLeadContentOutputPlatformId.XiaohongshuDraft,
@@ -227,7 +206,7 @@ export const EnterpriseLeadContentOutputLengthPolicy = {
   WarnOnly: 'warn_only',
 } as const;
 export type EnterpriseLeadContentOutputLengthPolicy =
-  typeof EnterpriseLeadContentOutputLengthPolicy[keyof typeof EnterpriseLeadContentOutputLengthPolicy];
+  (typeof EnterpriseLeadContentOutputLengthPolicy)[keyof typeof EnterpriseLeadContentOutputLengthPolicy];
 
 export const EnterpriseLeadContentDeliveryMode = {
   DraftOnly: 'draft_only',
@@ -240,13 +219,14 @@ export const EnterpriseLeadContentDeliveryMode = {
   Webhook: 'webhook',
 } as const;
 export type EnterpriseLeadContentDeliveryMode =
-  typeof EnterpriseLeadContentDeliveryMode[keyof typeof EnterpriseLeadContentDeliveryMode];
+  (typeof EnterpriseLeadContentDeliveryMode)[keyof typeof EnterpriseLeadContentDeliveryMode];
 
 export const EnterpriseLeadWorkspaceIpc = {
   ListWorkspaces: 'enterpriseLeadWorkspace:workspaces:list',
   GetWorkspace: 'enterpriseLeadWorkspace:workspaces:get',
   UpdateWorkspaceProfile: 'enterpriseLeadWorkspace:workspaces:updateProfile',
   UpdateWorkspaceSources: 'enterpriseLeadWorkspace:workspaces:updateSources',
+  ProcessDocumentSource: 'enterpriseLeadWorkspace:documents:processSource',
   UpdateWorkspaceSettings: 'enterpriseLeadWorkspace:workspaces:updateSettings',
   UpdateWorkspaceAgents: 'enterpriseLeadWorkspace:workspaces:updateAgents',
   ExtractDraft: 'enterpriseLeadWorkspace:drafts:extract',
@@ -256,11 +236,6 @@ export const EnterpriseLeadWorkspaceIpc = {
   CreateRun: 'enterpriseLeadWorkspace:runs:create',
   GetRun: 'enterpriseLeadWorkspace:runs:get',
   RunWorkflow: 'enterpriseLeadWorkspace:runs:runWorkflow',
-  ListChatSessions: 'enterpriseLeadWorkspace:chatSessions:list',
-  GetChatSession: 'enterpriseLeadWorkspace:chatSessions:get',
-  DeleteChatSession: 'enterpriseLeadWorkspace:chatSessions:delete',
-  Chat: 'enterpriseLeadWorkspace:chat:send',
-  ChatProgress: 'enterpriseLeadWorkspace:chat:progress',
   TestWorkspaceAgent: 'enterpriseLeadWorkspace:agents:test',
   RunTask: 'enterpriseLeadWorkspace:tasks:run',
   RerunTask: 'enterpriseLeadWorkspace:tasks:rerun',
@@ -269,4 +244,4 @@ export const EnterpriseLeadWorkspaceIpc = {
   ArchiveRun: 'enterpriseLeadWorkspace:runs:archive',
 } as const;
 export type EnterpriseLeadWorkspaceIpc =
-  typeof EnterpriseLeadWorkspaceIpc[keyof typeof EnterpriseLeadWorkspaceIpc];
+  (typeof EnterpriseLeadWorkspaceIpc)[keyof typeof EnterpriseLeadWorkspaceIpc];

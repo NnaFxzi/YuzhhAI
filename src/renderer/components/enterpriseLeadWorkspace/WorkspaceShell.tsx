@@ -3,6 +3,7 @@ import {
   BookOpenIcon,
   ChatBubbleLeftRightIcon,
   ClockIcon,
+  Cog6ToothIcon,
   ExclamationTriangleIcon,
   MagnifyingGlassIcon,
   RectangleGroupIcon,
@@ -11,10 +12,7 @@ import {
 } from '@heroicons/react/24/outline';
 import React, { useCallback, useState } from 'react';
 
-import type {
-  EnterpriseLeadWorkspace,
-  EnterpriseLeadWorkspaceChatSessionSummary,
-} from '../../../shared/enterpriseLeadWorkspace/types';
+import type { EnterpriseLeadWorkspace } from '../../../shared/enterpriseLeadWorkspace/types';
 import { i18nService } from '../../services/i18n';
 import {
   type EnterpriseLeadWorkbenchNavIcon as EnterpriseLeadWorkbenchNavIconType,
@@ -24,13 +22,14 @@ import {
   getWorkbenchSidebarWidth,
   getWorkspaceInternalPages,
 } from './enterpriseLeadWorkspaceUi';
+import type { WorkspaceConversationRecord } from './workspaceCoworkSessionRecords';
 
 interface WorkspaceShellProps {
   workspace: EnterpriseLeadWorkspace;
   activePage: EnterpriseLeadWorkspaceInternalPageType;
   onPageChange: (page: EnterpriseLeadWorkspaceInternalPageType) => void;
   onExitWorkspace?: () => void;
-  chatSessions?: EnterpriseLeadWorkspaceChatSessionSummary[];
+  chatSessions?: WorkspaceConversationRecord[];
   activeChatSessionId?: string | null;
   onChatSessionSelect?: (sessionId: string) => void;
   onChatSessionDelete?: (sessionId: string) => Promise<boolean>;
@@ -74,6 +73,7 @@ const navIconById: Record<EnterpriseLeadWorkbenchNavIconType, React.ComponentTyp
   knowledge: BookOpenIcon,
   records: ClockIcon,
   agents: UserGroupIcon,
+  settings: Cog6ToothIcon,
 };
 
 const formatChatSessionAge = (updatedAt: string): string => {
@@ -114,7 +114,7 @@ export const WorkspaceShell: React.FC<WorkspaceShellProps> = ({
   const sidebarWidth = getWorkbenchSidebarWidth(sidebarMode);
   const pages = getWorkspaceInternalPages();
   const [pendingDeleteSession, setPendingDeleteSession] =
-    useState<EnterpriseLeadWorkspaceChatSessionSummary | null>(null);
+    useState<WorkspaceConversationRecord | null>(null);
   const [isDeletingSessionId, setIsDeletingSessionId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState('');
   const isDeletingSession = Boolean(isDeletingSessionId);
@@ -211,7 +211,7 @@ export const WorkspaceShell: React.FC<WorkspaceShellProps> = ({
                 const isActive = session.id === activeChatSessionId;
                 const sessionAge = formatChatSessionAge(session.updatedAt);
                 const sessionTitle =
-                  session.title || i18nService.t('enterpriseLeadAiChatUntitledSession');
+                  session.title || i18nService.t('enterpriseLeadWorkspaceConversationUntitled');
                 const deleteLabel = formatWorkspaceShellMessage(
                   'enterpriseLeadWorkspaceDeleteConversationAria',
                   { title: sessionTitle },
@@ -253,7 +253,7 @@ export const WorkspaceShell: React.FC<WorkspaceShellProps> = ({
                         }}
                         className="absolute right-1.5 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-tertiary opacity-0 transition-colors hover:bg-red-500/10 hover:text-red-600 focus-visible:bg-red-500/10 focus-visible:text-red-600 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/20 group-hover:opacity-100 dark:hover:text-red-300 dark:focus-visible:text-red-300"
                         aria-label={deleteLabel}
-                        title={i18nService.t('enterpriseLeadWorkspaceDeleteConversation')}
+                    title={i18nService.t('enterpriseLeadWorkspaceDeleteConversation')}
                       >
                         <TrashIcon className="h-4 w-4" />
                       </button>
@@ -308,7 +308,7 @@ export const WorkspaceShell: React.FC<WorkspaceShellProps> = ({
                   {formatWorkspaceShellMessage('enterpriseLeadWorkspaceDeleteConversationTitle', {
                     title:
                       pendingDeleteSession.title ||
-                      i18nService.t('enterpriseLeadAiChatUntitledSession'),
+                      i18nService.t('enterpriseLeadWorkspaceConversationUntitled'),
                   })}
                 </h3>
                 <p
