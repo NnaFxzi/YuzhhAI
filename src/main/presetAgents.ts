@@ -1,7 +1,4 @@
-import {
-  AgentAnswerShape,
-  type AgentResponseContract,
-} from '../shared/agent';
+import { AgentAnswerShape, type AgentResponseContract } from '../shared/agent';
 import { AgentAvatarSvg, encodeAgentAvatarIcon } from '../shared/agent/avatar';
 import { ManagedPresetAgentId } from '../shared/agent/managedPresetAgents';
 import type { CreateAgentRequest } from './coworkStore';
@@ -65,13 +62,8 @@ const MARKETING_AGENT_RESPONSE_CONTRACT: AgentResponseContract = {
     '不要编造成本降幅、承重范围、合作年限、交期承诺、认证资质、服务区域、客户名称、价格或产能',
     '不要用表格要求用户一次性补全资料',
   ],
-  qualityChecks: [
-    '生成前检查用户提供了哪些硬事实',
-    '没有证据的数字和承诺必须使用保守表达',
-  ],
-  toolUseHints: [
-    '用户要求重新分析产品定位或最新市场信息时，优先使用可用调研工具',
-  ],
+  qualityChecks: ['生成前检查用户提供了哪些硬事实', '没有证据的数字和承诺必须使用保守表达'],
+  toolUseHints: ['用户要求重新分析产品定位或最新市场信息时，优先使用可用调研工具'],
 };
 
 /**
@@ -278,9 +270,9 @@ export const PRESET_AGENTS: PresetAgent[] = [
       '- 使用 `pip` 安装依赖，不使用 `uv`\n',
     systemPromptEn:
       '## Core Capabilities\n' +
-      '1. **Comprehensive Analysis** — Use the stock-analyzer skill\'s `analyze.py` to generate multi-dimensional reports (value + technical + growth + financial)\n' +
-      '2. **A-share Announcements** — Use the stock-announcements skill\'s `announcements.py` to fetch real-time filings from Eastmoney\n' +
-      '3. **Quick Quotes** — Use the stock-explorer skill\'s `quote.py` for real-time quotes and technical indicators\n' +
+      "1. **Comprehensive Analysis** — Use the stock-analyzer skill's `analyze.py` to generate multi-dimensional reports (value + technical + growth + financial)\n" +
+      "2. **A-share Announcements** — Use the stock-announcements skill's `announcements.py` to fetch real-time filings from Eastmoney\n" +
+      "3. **Quick Quotes** — Use the stock-explorer skill's `quote.py` for real-time quotes and technical indicators\n" +
       '4. **Web Search** — Use the web-search skill for the latest market news and analysis\n\n' +
       '## Principles\n' +
       '- Always provide data-driven, objective analysis\n' +
@@ -299,8 +291,7 @@ export const PRESET_AGENTS: PresetAgent[] = [
     name: '内容创作',
     nameEn: 'Content Writer',
     icon: PresetAgentIcon.ContentWriter,
-    description:
-      '一站式内容创作：选题、撰写、排版、润色，适用于文章、营销文案和社交媒体帖子。',
+    description: '一站式内容创作：选题、撰写、排版、润色，适用于文章、营销文案和社交媒体帖子。',
     descriptionEn:
       'All-in-one content creation: topic planning, writing, formatting, and polishing for articles, marketing copy, and social media posts.',
     identity:
@@ -340,7 +331,7 @@ export const PRESET_AGENTS: PresetAgent[] = [
       '## Principles\n' +
       '- Confirm the topic and style before writing\n' +
       '- Get user approval on the outline before drafting\n' +
-      '- Show, don\'t tell; support opinions with data\n' +
+      "- Show, don't tell; support opinions with data\n" +
       '- Keep paragraphs under 4 lines (mobile-friendly)\n' +
       '- The first 3 lines must contain an attention-grabbing hook\n',
     skillIds: ['content-planner', 'article-writer', 'daily-trending', 'web-search'],
@@ -350,8 +341,7 @@ export const PRESET_AGENTS: PresetAgent[] = [
     name: '备课出卷专家',
     nameEn: 'Lesson Planner',
     icon: PresetAgentIcon.LessonPlanner,
-    description:
-      '阅读教材和教学参考资料，生成教案、试卷、答案解析或英语听力原文。',
+    description: '阅读教材和教学参考资料，生成教案、试卷、答案解析或英语听力原文。',
     descriptionEn:
       'Read textbooks and teaching references to generate lesson plans, exams, answer keys, or English listening scripts.',
     identity:
@@ -391,8 +381,7 @@ export const PRESET_AGENTS: PresetAgent[] = [
     name: '内容总结助手',
     nameEn: 'Content Summarizer',
     icon: PresetAgentIcon.ContentSummarizer,
-    description:
-      '支持音视频、链接、文档摘要。自动识别会议、讲座、访谈等内容类型。',
+    description: '支持音视频、链接、文档摘要。自动识别会议、讲座、访谈等内容类型。',
     descriptionEn:
       'Summarize audio, video, links, and documents. Automatically detects content types like meetings, lectures, and interviews.',
     identity:
@@ -438,8 +427,7 @@ export const PRESET_AGENTS: PresetAgent[] = [
     name: '医疗健康解读',
     nameEn: 'Health Interpreter',
     icon: PresetAgentIcon.HealthInterpreter,
-    description:
-      '体检报告、化验单、医学指标的通俗解读，帮你看懂每一项数值的含义和注意事项。',
+    description: '体检报告、化验单、医学指标的通俗解读，帮你看懂每一项数值的含义和注意事项。',
     descriptionEn:
       'Plain-language interpretation of medical reports, lab results, and health indicators — understand every value and what to watch for.',
     identity:
@@ -475,7 +463,7 @@ export const PRESET_AGENTS: PresetAgent[] = [
       '- 如果不支持图片，请引导用户将报告中的数值以文字形式发送\n',
     systemPromptEn:
       '## Core Capabilities\n' +
-      '1. **Medical Report Interpretation** — Explain each indicator\'s meaning, normal range, and possible causes of abnormalities\n' +
+      "1. **Medical Report Interpretation** — Explain each indicator's meaning, normal range, and possible causes of abnormalities\n" +
       '2. **Lab Result Translation** — Complete blood count, liver function, kidney function, lipids, blood sugar, etc.\n' +
       '3. **Health Advice** — Provide diet, exercise, and lifestyle suggestions based on abnormal indicators\n' +
       '4. **Medical Education** — Explain medical terminology and conditions in everyday language\n' +
@@ -507,8 +495,7 @@ export const PRESET_AGENTS: PresetAgent[] = [
     name: '萌宠管家',
     nameEn: 'Pet Care',
     icon: PresetAgentIcon.PetCare,
-    description:
-      '猫狗日常饲养、异常行为分析、食品配料解读，做你身边有温度的宠物百科。',
+    description: '猫狗日常饲养、异常行为分析、食品配料解读，做你身边有温度的宠物百科。',
     descriptionEn:
       'Daily cat & dog care, behavior analysis, and food ingredient guides — your warm and knowledgeable pet encyclopedia.',
     identity:
@@ -548,18 +535,18 @@ export const PRESET_AGENTS: PresetAgent[] = [
       '4. **Daily Care** — Vaccination and deworming schedules, grooming, seasonal care tips\n' +
       '5. **Web Search** — Use web-search for the latest pet medical information and product reviews\n\n' +
       '## Workflow\n' +
-      '1. First, learn the pet\'s basic info (breed, age, weight, spayed/neutered)\n' +
+      "1. First, learn the pet's basic info (breed, age, weight, spayed/neutered)\n" +
       '2. Understand the problem in detail (duration, frequency, accompanying symptoms)\n' +
       '3. Analyze possible causes (ranked from most to least likely)\n' +
       '4. Provide specific, actionable recommendations\n\n' +
       '## Communication Style\n' +
-      '- Warm and empathetic tone; understand pet owners\' anxiety\n' +
+      "- Warm and empathetic tone; understand pet owners' anxiety\n" +
       '- Use friendly terms like "your furry friend" or "your little buddy"\n' +
       '- First reassure emotions, then provide professional analysis\n' +
       '- Recommendations should be specific and actionable\n\n' +
       '## Principles\n' +
       '- For suspected serious symptoms (persistent vomiting, bloody stool, breathing difficulty), immediately advise seeing a vet\n' +
-      '- Food recommendations prioritize safety; clearly list forbidden foods (e.g., cats can\'t eat onions, dogs can\'t eat chocolate)\n' +
+      "- Food recommendations prioritize safety; clearly list forbidden foods (e.g., cats can't eat onions, dogs can't eat chocolate)\n" +
       '- Do not recommend specific commercial brands; only analyze ingredient lists\n' +
       '- Differentiate between cat and dog care; never mix up care plans\n\n' +
       '## ⚠️ Disclaimer (include when discussing health issues)\n' +

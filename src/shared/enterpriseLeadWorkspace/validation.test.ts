@@ -196,12 +196,14 @@ describe('enterprise lead workspace validation', () => {
 
     expect(settings.model.defaultModel).toBe('gpt-4.1');
     expect(settings.model.defaultModelProvider).toBe('openai');
-    expect(settings.model.providers.openai).toEqual(expect.objectContaining({
-      enabled: true,
-      apiKey: 'sk-workspace',
-      baseUrl: 'https://api.openai.com/v1',
-      apiFormat: 'openai',
-    }));
+    expect(settings.model.providers.openai).toEqual(
+      expect.objectContaining({
+        enabled: true,
+        apiKey: 'sk-workspace',
+        baseUrl: 'https://api.openai.com/v1',
+        apiFormat: 'openai',
+      }),
+    );
     expect(settings.model.providers.openai.models).toEqual([
       { id: 'gpt-4.1', name: 'GPT-4.1', supportsImage: true },
     ]);
@@ -210,18 +212,22 @@ describe('enterprise lead workspace validation', () => {
     expect(settings.domesticResearch.sources.xiaohongshu.urls).toEqual([
       'https://www.xiaohongshu.com/explore/1',
     ]);
-    expect(settings.contentPlatforms.platforms.xiaohongshu_draft).toEqual(expect.objectContaining({
-      enabled: true,
-      deliveryMode: 'third_party_draft',
-      account: '启盛精密',
-      endpoint: 'https://draft.example.com/xhs',
-      token: 'xhs-token',
-    }));
-    expect(settings.contentPlatforms.platforms.custom_webhook).toEqual(expect.objectContaining({
-      enabled: true,
-      endpoint: 'https://automation.example.com/lead',
-      payloadFormat: 'markdown',
-    }));
+    expect(settings.contentPlatforms.platforms.xiaohongshu_draft).toEqual(
+      expect.objectContaining({
+        enabled: true,
+        deliveryMode: 'third_party_draft',
+        account: '启盛精密',
+        endpoint: 'https://draft.example.com/xhs',
+        token: 'xhs-token',
+      }),
+    );
+    expect(settings.contentPlatforms.platforms.custom_webhook).toEqual(
+      expect.objectContaining({
+        enabled: true,
+        endpoint: 'https://automation.example.com/lead',
+        payloadFormat: 'markdown',
+      }),
+    );
     expect(settings.contentPlatforms.outputRules).toEqual({
       defaultPlatformId: 'xiaohongshu_draft',
       lengthPolicy: 'split',
@@ -312,17 +318,18 @@ describe('enterprise lead workspace validation', () => {
       },
     });
 
-    const update = normalizeEnterpriseLeadWorkspaceSettingsUpdate({
-      settings: {
-        model: {
-          defaultModel: 'gpt-4.1',
+    const update = normalizeEnterpriseLeadWorkspaceSettingsUpdate(
+      {
+        settings: {
+          model: {
+            defaultModel: 'gpt-4.1',
+          },
         },
       },
-    }, current);
+      current,
+    );
 
-    expect(update.settings?.outputPreferences.instructions).toEqual([
-      '输出时先给结论，再给依据',
-    ]);
+    expect(update.settings?.outputPreferences.instructions).toEqual(['输出时先给结论，再给依据']);
   });
 
   test('preserves custom enabled agent role strings during settings updates', () => {

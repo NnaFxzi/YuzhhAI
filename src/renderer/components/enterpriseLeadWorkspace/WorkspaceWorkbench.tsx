@@ -476,10 +476,7 @@ const workspaceAgentEditorSections: ReadonlyArray<{
 ];
 
 export type WorkspaceAgentStabilityRuleField =
-  | 'workStyle'
-  | 'inputRequirements'
-  | 'outputFormat'
-  | 'guardrails';
+  'workStyle' | 'inputRequirements' | 'outputFormat' | 'guardrails';
 
 interface WorkspaceAgentStabilityRuleSpec {
   field: WorkspaceAgentStabilityRuleField;
@@ -722,45 +719,47 @@ export const parseWorkspaceAgentStabilityDraft = (
   };
 };
 
-export const buildWorkspaceAgentStabilityPrompt = (
-  stabilityDraft: WorkspaceAgentStabilityDraft,
-): string => [
-  i18nService.t('enterpriseLeadWorkbenchStabilityPromptTitle'),
-  ...workspaceAgentStabilityRuleSpecs.map(spec =>
-    renderWorkspaceAgentStabilityPromptBlock(
-      `rule.${spec.field}`,
-      stabilityDraft.rules[spec.field],
-    )),
-  i18nService.t('enterpriseLeadWorkbenchCalibrationPromptTitle'),
-  ...stabilityDraft.examples.flatMap(example => [
-    renderWorkspaceAgentStabilityPromptBlock(
-      `example.${example.id}.sampleInput`,
-      example.sampleInput,
+export const buildWorkspaceAgentStabilityPrompt = (stabilityDraft: WorkspaceAgentStabilityDraft): string =>
+  [
+    i18nService.t('enterpriseLeadWorkbenchStabilityPromptTitle'),
+    ...workspaceAgentStabilityRuleSpecs.map(spec =>
+      renderWorkspaceAgentStabilityPromptBlock(
+        `rule.${spec.field}`,
+        stabilityDraft.rules[spec.field],
+      ),
     ),
-    renderWorkspaceAgentStabilityPromptBlock(
-      `example.${example.id}.expectedPriority`,
-      example.expectedPriority,
-    ),
-    renderWorkspaceAgentStabilityPromptBlock(
-      `example.${example.id}.expectedReason`,
-      example.expectedReason,
-    ),
-    renderWorkspaceAgentStabilityPromptBlock(
-      `example.${example.id}.expectedMissing`,
-      example.expectedMissing,
-    ),
-    renderWorkspaceAgentStabilityPromptBlock(
-      `example.${example.id}.expectedNextStep`,
-      example.expectedNextStep,
-    ),
-  ]),
-].join('\n\n');
+    i18nService.t('enterpriseLeadWorkbenchCalibrationPromptTitle'),
+    ...stabilityDraft.examples.flatMap(example => [
+      renderWorkspaceAgentStabilityPromptBlock(
+        `example.${example.id}.sampleInput`,
+        example.sampleInput,
+      ),
+      renderWorkspaceAgentStabilityPromptBlock(
+        `example.${example.id}.expectedPriority`,
+        example.expectedPriority,
+      ),
+      renderWorkspaceAgentStabilityPromptBlock(
+        `example.${example.id}.expectedReason`,
+        example.expectedReason,
+      ),
+      renderWorkspaceAgentStabilityPromptBlock(
+        `example.${example.id}.expectedMissing`,
+        example.expectedMissing,
+      ),
+      renderWorkspaceAgentStabilityPromptBlock(
+        `example.${example.id}.expectedNextStep`,
+        example.expectedNextStep,
+      ),
+    ]),
+  ].join('\n\n');
 
 const hasWorkspaceAgentStabilityPrompt = (systemPrompt: string): boolean =>
   systemPrompt.includes(getWorkspaceAgentStabilityPromptMarker('rule.workStyle'));
 
 const getWorkspaceAgentCustomPromptPrefix = (systemPrompt: string): string => {
-  const firstMarkerIndex = systemPrompt.indexOf(getWorkspaceAgentStabilityPromptMarker('rule.workStyle'));
+  const firstMarkerIndex = systemPrompt.indexOf(
+    getWorkspaceAgentStabilityPromptMarker('rule.workStyle'),
+  );
   const rawPrefix = firstMarkerIndex < 0 ? systemPrompt : systemPrompt.slice(0, firstMarkerIndex);
   return rawPrefix.replace(/\n*\s*#[^\n]*\s*$/, '').trim();
 };
@@ -771,9 +770,7 @@ export const mergeWorkspaceAgentStabilityPrompt = (
 ): string => {
   const customPromptPrefix = getWorkspaceAgentCustomPromptPrefix(systemPrompt);
   const stabilityPrompt = buildWorkspaceAgentStabilityPrompt(stabilityDraft);
-  return customPromptPrefix
-    ? [customPromptPrefix, stabilityPrompt].join('\n\n')
-    : stabilityPrompt;
+  return customPromptPrefix ? [customPromptPrefix, stabilityPrompt].join('\n\n') : stabilityPrompt;
 };
 
 export const buildWorkspaceAgentCalibrationRequest = ({
@@ -842,12 +839,12 @@ export const WorkspaceAgentEditorDialog: React.FC<WorkspaceAgentEditorDialogProp
     validationErrors.includes(error);
   const validationMessageClassName = 'mt-1 text-xs leading-5 text-red-600 dark:text-red-300';
   const commitStabilityDraft = (nextDraft: WorkspaceAgentStabilityDraft): void => {
-    onDraftChange('systemPrompt', mergeWorkspaceAgentStabilityPrompt(draft.systemPrompt, nextDraft));
+    onDraftChange(
+      'systemPrompt',
+      mergeWorkspaceAgentStabilityPrompt(draft.systemPrompt, nextDraft),
+    );
   };
-  const updateStabilityRule = (
-    field: WorkspaceAgentStabilityRuleField,
-    value: string,
-  ): void => {
+  const updateStabilityRule = (field: WorkspaceAgentStabilityRuleField, value: string): void => {
     commitStabilityDraft({
       ...stabilityDraft,
       rules: {
@@ -869,7 +866,8 @@ export const WorkspaceAgentEditorDialog: React.FC<WorkspaceAgentEditorDialogProp
               ...example,
               [field]: value,
             }
-          : example),
+          : example,
+      ),
     });
   };
   const runCalibrationExample = async (
@@ -900,9 +898,7 @@ export const WorkspaceAgentEditorDialog: React.FC<WorkspaceAgentEditorDialogProp
       );
       setCalibrationRuns(previous => ({
         ...previous,
-        [exampleDraft.id]: response
-          ? { status: 'success', response }
-          : { status: 'error' },
+        [exampleDraft.id]: response ? { status: 'success', response } : { status: 'error' },
       }));
     } catch {
       setCalibrationRuns(previous => ({
@@ -1026,8 +1022,9 @@ export const WorkspaceAgentEditorDialog: React.FC<WorkspaceAgentEditorDialogProp
     spec: WorkspaceAgentCalibrationExampleSpec,
     index: number,
   ): React.ReactElement => {
-    const exampleDraft = stabilityDraft.examples.find(example => example.id === spec.id)
-      ?? createDefaultWorkspaceAgentStabilityDraft().examples[index];
+    const exampleDraft =
+      stabilityDraft.examples.find(example => example.id === spec.id) ??
+      createDefaultWorkspaceAgentStabilityDraft().examples[index];
     const runState = calibrationRuns[spec.id];
     const isRunning = runState?.status === 'running';
     return (
@@ -1043,9 +1040,7 @@ export const WorkspaceAgentEditorDialog: React.FC<WorkspaceAgentEditorDialogProp
             <h5 className="text-sm font-semibold text-foreground">
               {i18nService.t(spec.titleKey)}
             </h5>
-            <p className="mt-1 text-xs leading-5 text-secondary">
-              {i18nService.t(spec.descKey)}
-            </p>
+            <p className="mt-1 text-xs leading-5 text-secondary">{i18nService.t(spec.descKey)}</p>
           </div>
         </div>
 
@@ -1063,12 +1058,15 @@ export const WorkspaceAgentEditorDialog: React.FC<WorkspaceAgentEditorDialogProp
             <textarea
               value={exampleDraft.sampleInput}
               onChange={event =>
-                updateCalibrationExample(spec.id, 'sampleInput', event.target.value)}
+                updateCalibrationExample(spec.id, 'sampleInput', event.target.value)
+              }
               rows={4}
               className="mt-1 w-full resize-y rounded-lg border border-border bg-background px-3 py-2 text-sm leading-6 text-foreground outline-none focus:ring-2 focus:ring-primary/20"
             />
           </label>
-          <p className="mt-2 text-xs leading-5 text-secondary">{i18nService.t(spec.sampleNoteKey)}</p>
+          <p className="mt-2 text-xs leading-5 text-secondary">
+            {i18nService.t(spec.sampleNoteKey)}
+          </p>
         </div>
 
         <div className="rounded-lg border border-border-subtle bg-background p-3">
@@ -1086,7 +1084,8 @@ export const WorkspaceAgentEditorDialog: React.FC<WorkspaceAgentEditorDialogProp
               <input
                 value={exampleDraft.expectedPriority}
                 onChange={event =>
-                  updateCalibrationExample(spec.id, 'expectedPriority', event.target.value)}
+                  updateCalibrationExample(spec.id, 'expectedPriority', event.target.value)
+                }
                 className="mt-1 h-9 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-primary/20"
               />
             </label>
@@ -1097,7 +1096,8 @@ export const WorkspaceAgentEditorDialog: React.FC<WorkspaceAgentEditorDialogProp
               <textarea
                 value={exampleDraft.expectedReason}
                 onChange={event =>
-                  updateCalibrationExample(spec.id, 'expectedReason', event.target.value)}
+                  updateCalibrationExample(spec.id, 'expectedReason', event.target.value)
+                }
                 rows={2}
                 className="mt-1 w-full resize-y rounded-lg border border-border bg-background px-3 py-2 text-sm leading-6 text-foreground outline-none focus:ring-2 focus:ring-primary/20"
               />
@@ -1109,7 +1109,8 @@ export const WorkspaceAgentEditorDialog: React.FC<WorkspaceAgentEditorDialogProp
               <textarea
                 value={exampleDraft.expectedMissing}
                 onChange={event =>
-                  updateCalibrationExample(spec.id, 'expectedMissing', event.target.value)}
+                  updateCalibrationExample(spec.id, 'expectedMissing', event.target.value)
+                }
                 rows={2}
                 className="mt-1 w-full resize-y rounded-lg border border-border bg-background px-3 py-2 text-sm leading-6 text-foreground outline-none focus:ring-2 focus:ring-primary/20"
               />
@@ -1121,7 +1122,8 @@ export const WorkspaceAgentEditorDialog: React.FC<WorkspaceAgentEditorDialogProp
               <textarea
                 value={exampleDraft.expectedNextStep}
                 onChange={event =>
-                  updateCalibrationExample(spec.id, 'expectedNextStep', event.target.value)}
+                  updateCalibrationExample(spec.id, 'expectedNextStep', event.target.value)
+                }
                 rows={2}
                 className="mt-1 w-full resize-y rounded-lg border border-border bg-background px-3 py-2 text-sm leading-6 text-foreground outline-none focus:ring-2 focus:ring-primary/20"
               />
@@ -1409,9 +1411,8 @@ const buildDefaultWorkspaceAgentBindings = (
   roles: readonly string[],
 ): EnterpriseLeadWorkspaceAgentBinding[] => {
   const normalizedRoles = roles.filter(isEnterpriseLeadAgentRole);
-  const defaultRoles = normalizedRoles.length > 0
-    ? normalizedRoles
-    : [...EnterpriseLeadContentAgentRoles];
+  const defaultRoles =
+    normalizedRoles.length > 0 ? normalizedRoles : [...EnterpriseLeadContentAgentRoles];
 
   return defaultRoles.map((role, order) => {
     const metadata = getAgentRoleLabel(role);
@@ -2201,10 +2202,10 @@ export const WorkspaceWorkbench: React.FC<WorkspaceWorkbenchProps> = ({
         </section>
 
         {editingBinding ? (
-            <WorkspaceAgentEditorDialog
-              workspaceId={workspace.id}
-              agentId={editingAgentId ?? undefined}
-              draft={overrideDraft}
+          <WorkspaceAgentEditorDialog
+            workspaceId={workspace.id}
+            agentId={editingAgentId ?? undefined}
+            draft={overrideDraft}
             saveState={saveState}
             validationErrors={overrideValidationErrors}
             feedbackLabelKey={

@@ -73,9 +73,10 @@ export const ENTERPRISE_LEAD_AGENT_WORKFLOW: EnterpriseLeadAgentMetadata[] = [
   },
 ];
 
-const ENTERPRISE_LEAD_AGENT_METADATA_BY_ROLE = new Map<EnterpriseLeadAgentRole, EnterpriseLeadAgentMetadata>(
-  ENTERPRISE_LEAD_AGENT_WORKFLOW.map(agent => [agent.role, agent]),
-);
+const ENTERPRISE_LEAD_AGENT_METADATA_BY_ROLE = new Map<
+  EnterpriseLeadAgentRole,
+  EnterpriseLeadAgentMetadata
+>(ENTERPRISE_LEAD_AGENT_WORKFLOW.map(agent => [agent.role, agent]));
 
 export const LEGACY_ENTERPRISE_LEAD_AGENT_WORKFLOW: EnterpriseLeadAgentMetadata[] = [
   {
@@ -167,8 +168,9 @@ const getUnknownRoleError = (role: EnterpriseLeadAgentRole): Error =>
 export const getEnterpriseLeadAgentMetadata = (
   role: EnterpriseLeadAgentRole,
 ): EnterpriseLeadAgentMetadata => {
-  const metadata = ENTERPRISE_LEAD_AGENT_METADATA_BY_ROLE.get(role)
-    ?? LEGACY_ENTERPRISE_LEAD_AGENT_WORKFLOW.find(agent => agent.role === role);
+  const metadata =
+    ENTERPRISE_LEAD_AGENT_METADATA_BY_ROLE.get(role) ??
+    LEGACY_ENTERPRISE_LEAD_AGENT_WORKFLOW.find(agent => agent.role === role);
 
   if (!metadata) {
     throw getUnknownRoleError(role);
@@ -220,6 +222,5 @@ export const buildDefaultEnterpriseLeadWorkspaceAgents = (
         icon: agent.shortLabel,
         skillIds: [] as string[],
       },
-    }),
-  );
+    }));
 };

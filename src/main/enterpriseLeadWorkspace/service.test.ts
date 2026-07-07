@@ -429,7 +429,11 @@ describe('EnterpriseLeadWorkspaceService', () => {
     );
 
     expect(progressEvents.map(event => [event.stepId, event.phase, event.status])).toEqual([
-      ['routing', EnterpriseLeadChatProgressPhase.Routing, EnterpriseLeadChatProgressStatus.Running],
+      [
+        'routing',
+        EnterpriseLeadChatProgressPhase.Routing,
+        EnterpriseLeadChatProgressStatus.Running,
+      ],
       [
         'routing',
         EnterpriseLeadChatProgressPhase.Routing,
@@ -445,7 +449,11 @@ describe('EnterpriseLeadWorkspaceService', () => {
         EnterpriseLeadChatProgressPhase.Agent,
         EnterpriseLeadChatProgressStatus.Completed,
       ],
-      ['synthesis', EnterpriseLeadChatProgressPhase.Synthesis, EnterpriseLeadChatProgressStatus.Running],
+      [
+        'synthesis',
+        EnterpriseLeadChatProgressPhase.Synthesis,
+        EnterpriseLeadChatProgressStatus.Running,
+      ],
       [
         'synthesis',
         EnterpriseLeadChatProgressPhase.Synthesis,
@@ -660,9 +668,7 @@ describe('EnterpriseLeadWorkspaceService', () => {
     ]);
     expect(workspace.workspaceAgents.every(agent => agent.enabled)).toBe(true);
     expect(
-      workspace.workspaceAgents.find(
-        agent => agent.agentId === 'product_selling_point',
-      ),
+      workspace.workspaceAgents.find(agent => agent.agentId === 'product_selling_point'),
     ).toMatchObject({
       agentId: 'product_selling_point',
       order: 0,
@@ -1212,8 +1218,7 @@ describe('EnterpriseLeadWorkspaceService', () => {
       source: {
         kind: 'file',
         label: '知识库行业资料',
-        text:
-          '重包装行业正在从木箱替代转向蜂窝纸板、重型纸箱和可回收包装。机械设备厂关注出口运输抗压、防潮、交付周期和综合成本。',
+        text: '重包装行业正在从木箱替代转向蜂窝纸板、重型纸箱和可回收包装。机械设备厂关注出口运输抗压、防潮、交付周期和综合成本。',
       },
     });
     setup.modelClient.enqueue({ researchIntent: { kind: 'none' } });
@@ -1243,8 +1248,7 @@ describe('EnterpriseLeadWorkspaceService', () => {
       source: {
         kind: 'file',
         label: '工业包装内容资料',
-        text:
-          '主营工业包装服务，客户是机械设备厂采购负责人，卖点是防破损、免熏蒸、替代木箱和出口运输更稳。',
+        text: '主营工业包装服务，客户是机械设备厂采购负责人，卖点是防破损、免熏蒸、替代木箱和出口运输更稳。',
       },
       workspaceAgents: [
         {
@@ -1464,12 +1468,14 @@ describe('EnterpriseLeadWorkspaceService', () => {
     const setup = createService();
     db = setup.db;
     const workspace = setup.service.createWorkspace(draftPayloadWithWorkspaceModelConfig());
-    setup.modelClient.enqueue([
-      '客户优先级：高',
-      '判断依据：行业匹配，已有图纸和明确交期。',
-      '缺失信息：目标价格和验收标准。',
-      '下一步动作：安排技术评估，并由销售确认预算。',
-    ].join('\n'));
+    setup.modelClient.enqueue(
+      [
+        '客户优先级：高',
+        '判断依据：行业匹配，已有图纸和明确交期。',
+        '缺失信息：目标价格和验收标准。',
+        '下一步动作：安排技术评估，并由销售确认预算。',
+      ].join('\n'),
+    );
 
     const response = await setup.service.testWorkspaceAgent(workspace.id, {
       agentId: 'agent-opportunity',
@@ -1659,7 +1665,9 @@ describe('EnterpriseLeadWorkspaceService', () => {
     db = setup.db;
     const workspace = setup.service.createWorkspace(draftPayload());
     setup.modelClient.enqueue({ researchIntent: { kind: 'none' } });
-    setup.modelClient.enqueue('当前工作区还没有可用于排序的客户名单。请先提供公司名 + 行业/产品 + 需求或沟通信号。');
+    setup.modelClient.enqueue(
+      '当前工作区还没有可用于排序的客户名单。请先提供公司名 + 行业/产品 + 需求或沟通信号。',
+    );
 
     const response = await setup.service.chat(workspace.id, {
       message: '帮我判断这批客户谁更值得优先跟进',
@@ -2067,7 +2075,8 @@ describe('EnterpriseLeadWorkspaceService', () => {
         data: [
           {
             title: '启盛金属制品有限公司 精密金属支架厂家',
-            markdown: '启盛金属制品有限公司主营精密金属支架、钣金外壳和设备机箱，可按图加工。页面匹配搜索词：客户线索、采购信号、商机优先级。',
+            markdown:
+              '启盛金属制品有限公司主营精密金属支架、钣金外壳和设备机箱，可按图加工。页面匹配搜索词：客户线索、采购信号、商机优先级。',
             url: 'https://example.com/supplier-product',
           },
           {
@@ -3203,7 +3212,9 @@ describe('EnterpriseLeadWorkspaceService', () => {
     db = setup.db;
     const workspace = setup.service.createWorkspace(draftPayload());
     const snapshot = setup.service.createRun(workspace.id, '整理销售交接材料');
-    const task = snapshot.tasks.find(item => item.role === EnterpriseLeadAgentRole.PrivateDomainConversion);
+    const task = snapshot.tasks.find(
+      item => item.role === EnterpriseLeadAgentRole.PrivateDomainConversion,
+    );
     if (!task) throw new Error('Expected sales handoff task');
     setup.modelClient.enqueue({
       role: EnterpriseLeadAgentRole.PrivateDomainConversion,
@@ -3339,7 +3350,9 @@ describe('EnterpriseLeadWorkspaceService', () => {
     db = setup.db;
     const workspace = setup.service.createWorkspace(draftPayload());
     const snapshot = setup.service.createRun(workspace.id, '整理待办');
-    const task = snapshot.tasks.find(item => item.role === EnterpriseLeadAgentRole.PrivateDomainConversion);
+    const task = snapshot.tasks.find(
+      item => item.role === EnterpriseLeadAgentRole.PrivateDomainConversion,
+    );
     if (!task) throw new Error('Expected sales handoff task');
     setup.modelClient.enqueue({
       role: EnterpriseLeadAgentRole.PrivateDomainConversion,

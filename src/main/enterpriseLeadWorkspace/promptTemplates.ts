@@ -128,17 +128,18 @@ const buildEnterpriseLeadReplyContract = (): string =>
     language: AiDialogueReplyLanguage.Zh,
   });
 
-const buildContentProductionOutputSection = (): string => [
-  '内容生产交付规范：',
-  '- 优先输出可直接复制使用的成品，不要只给思路或建议。',
-  '- 信息不足时先给可用草稿，并用「[待补充：...]」标出缺口；不要只反问用户。',
-  '- B2B/获客内容必须围绕目标客户场景、痛点、证据、信任背书和清晰 CTA。',
-  '- 选题类输出标题/角度/目标人群/痛点/钩子/转化点，避免只有标题列表。',
-  '- 短视频脚本输出前三秒钩子、口播台词、画面或分镜节奏、字幕提示和 CTA。',
-  '- 图文文案输出标题备选、正文、配图或封面建议、评论/私信引导和发布提醒。',
-  '- 私域或销售转化输出破冰句、价值承接、需求确认、异议回应、下一步动作和跟进节奏。',
-  '- 内容质检输出问题清单、修改理由、优化版本和发布前提醒；重点去空泛、去 AI 味、去夸张承诺。',
-].join('\n');
+const buildContentProductionOutputSection = (): string =>
+  [
+    '内容生产交付规范：',
+    '- 优先输出可直接复制使用的成品，不要只给思路或建议。',
+    '- 信息不足时先给可用草稿，并用「[待补充：...]」标出缺口；不要只反问用户。',
+    '- B2B/获客内容必须围绕目标客户场景、痛点、证据、信任背书和清晰 CTA。',
+    '- 选题类输出标题/角度/目标人群/痛点/钩子/转化点，避免只有标题列表。',
+    '- 短视频脚本输出前三秒钩子、口播台词、画面或分镜节奏、字幕提示和 CTA。',
+    '- 图文文案输出标题备选、正文、配图或封面建议、评论/私信引导和发布提醒。',
+    '- 私域或销售转化输出破冰句、价值承接、需求确认、异议回应、下一步动作和跟进节奏。',
+    '- 内容质检输出问题清单、修改理由、优化版本和发布前提醒；重点去空泛、去 AI 味、去夸张承诺。',
+  ].join('\n');
 
 const emptyWorkspaceLeadContext = (): WorkspaceChatLeadContext => ({
   status: 'empty',
@@ -294,10 +295,7 @@ const buildWorkspaceOutputPreferenceSection = (workspace: EnterpriseLeadWorkspac
     return '';
   }
 
-  return [
-    '空间输出习惯：',
-    ...instructions.map(instruction => `- ${instruction}`),
-  ].join('\n');
+  return ['空间输出习惯：', ...instructions.map(instruction => `- ${instruction}`)].join('\n');
 };
 
 const getAgentTaskPromptMetadata = (

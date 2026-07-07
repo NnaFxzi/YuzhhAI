@@ -102,7 +102,7 @@ const WorkspaceAiChatAdjustmentApplyMode = {
   WorkspaceHabit: 'workspace_habit',
 } as const;
 type WorkspaceAiChatAdjustmentApplyMode =
-  typeof WorkspaceAiChatAdjustmentApplyMode[keyof typeof WorkspaceAiChatAdjustmentApplyMode];
+  (typeof WorkspaceAiChatAdjustmentApplyMode)[keyof typeof WorkspaceAiChatAdjustmentApplyMode];
 
 export const getWorkspaceAiChatTypewriterText = (
   content: string,
@@ -150,10 +150,14 @@ export const buildWorkspaceAiChatRetryDraft = ({
 export const buildWorkspaceAiChatOutputPreferenceInstructions = (
   existingInstructions: string[],
   instruction: string,
-): string[] => Array.from(new Set([
-  ...existingInstructions.map(item => item.trim()).filter(Boolean),
-  instruction.trim(),
-].filter(Boolean)));
+): string[] =>
+  Array.from(
+    new Set(
+      [...existingInstructions.map(item => item.trim()).filter(Boolean), instruction.trim()].filter(
+        Boolean,
+      ),
+    ),
+  );
 
 const workspaceAiChatAgentHabitPromptPrefix = 'lobsterai-agent-output-habit';
 const workspaceAiChatAgentHabitPromptKey = 'instructions';
@@ -178,9 +182,8 @@ const readWorkspaceAiChatAgentHabitInstructions = (systemPrompt: string): string
     .filter(Boolean);
 };
 
-export const getWorkspaceAiChatAgentHabitInstructions = (
-  systemPrompt: string,
-): string[] => readWorkspaceAiChatAgentHabitInstructions(systemPrompt);
+export const getWorkspaceAiChatAgentHabitInstructions = (systemPrompt: string): string[] =>
+  readWorkspaceAiChatAgentHabitInstructions(systemPrompt);
 
 const stripWorkspaceAiChatAgentHabitPrompt = (systemPrompt: string): string => {
   const startMarker = getWorkspaceAiChatAgentHabitPromptMarker();
@@ -192,10 +195,7 @@ const stripWorkspaceAiChatAgentHabitPrompt = (systemPrompt: string): string => {
   const endIndex = systemPrompt.indexOf(endMarker, contentStartIndex);
   if (endIndex < 0) return systemPrompt.trim();
 
-  return [
-    systemPrompt.slice(0, startIndex),
-    systemPrompt.slice(endIndex + endMarker.length),
-  ]
+  return [systemPrompt.slice(0, startIndex), systemPrompt.slice(endIndex + endMarker.length)]
     .join('\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
@@ -255,18 +255,20 @@ export const getWorkspaceAiChatExecutionHabitSummaries = (
   workspace: EnterpriseLeadWorkspace,
   selectedAgentId: string,
 ): WorkspaceAiChatExecutionHabitSummary[] => {
-  const workspaceHabitCount = workspace.settings.outputPreferences?.instructions
-    .map(item => item.trim())
-    .filter(Boolean)
-    .length ?? 0;
+  const workspaceHabitCount =
+    workspace.settings.outputPreferences?.instructions.map(item => item.trim()).filter(Boolean)
+      .length ?? 0;
   const targetBindings = selectedAgentId
-    ? workspace.workspaceAgents.filter(binding => binding.agentId === selectedAgentId && binding.enabled)
+    ? workspace.workspaceAgents.filter(
+        binding => binding.agentId === selectedAgentId && binding.enabled,
+      )
     : workspace.workspaceAgents.filter(binding => binding.enabled);
   const agentInstructions = new Set(
     targetBindings.flatMap(binding =>
       readWorkspaceAiChatAgentHabitInstructions(
         binding.overrides.systemPrompt ?? binding.systemPrompt ?? '',
-      )),
+      ),
+    ),
   );
 
   return [
@@ -318,9 +320,8 @@ const buildDefaultWorkspaceAgentBindings = (
   roles: readonly string[],
 ): EnterpriseLeadWorkspaceAgentBinding[] => {
   const normalizedRoles = roles.filter(isEnterpriseLeadAgentRole);
-  const defaultRoles = normalizedRoles.length > 0
-    ? normalizedRoles
-    : [...EnterpriseLeadContentAgentRoles];
+  const defaultRoles =
+    normalizedRoles.length > 0 ? normalizedRoles : [...EnterpriseLeadContentAgentRoles];
 
   return defaultRoles.map((role, order) => {
     const metadata = getAgentRoleLabel(role);
@@ -405,10 +406,7 @@ const WorkspaceAiChatProcessPanel: React.FC<{
   id: string;
   process: WorkspaceAiChatProcess;
 }> = ({ id, process }) => (
-  <div
-    id={id}
-    className="mt-2 rounded-lg border border-border/70 bg-surface-raised/70 px-3 py-2"
-  >
+  <div id={id} className="mt-2 rounded-lg border border-border/70 bg-surface-raised/70 px-3 py-2">
     <p className="text-xs font-medium leading-5 text-foreground">
       {i18nService.t('enterpriseLeadAiChatProcessTitle')}
     </p>
@@ -439,9 +437,7 @@ const WorkspaceAiChatProcessSummary: React.FC<{
       className="inline-flex max-w-full items-center gap-1.5 rounded-md bg-surface-raised px-2 py-0.5 font-medium text-secondary transition-colors hover:bg-background hover:text-foreground"
     >
       <ChevronDownIcon
-        className={`h-3.5 w-3.5 shrink-0 transition-transform ${
-          isExpanded ? 'rotate-180' : ''
-        }`}
+        className={`h-3.5 w-3.5 shrink-0 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
       />
       <span>{i18nService.t('enterpriseLeadAiChatProcessToggle')}</span>
       <span className="text-tertiary">·</span>
@@ -485,9 +481,7 @@ const getWorkspaceAiChatQualityStatusKeys = (
     : message.agent
       ? [message.agent]
       : [];
-  const hasRiskReview = agents.some(agent =>
-    /risk|风控|审核/i.test(`${agent.id} ${agent.name}`),
-  );
+  const hasRiskReview = agents.some(agent => /risk|风控|审核/i.test(`${agent.id} ${agent.name}`));
 
   if (message.content.trim()) {
     keys.push('enterpriseLeadAiChatQualityCopyReady');
@@ -728,7 +722,8 @@ export const WorkspaceAiChatAdjustmentDrawer: React.FC<{
   const effectiveInstruction = instruction.trim() || selectedReason;
   const canRetry = effectiveInstruction.trim().length > 0;
   const shouldSaveWorkspaceHabit =
-    applyMode === WorkspaceAiChatAdjustmentApplyMode.WorkspaceHabit && Boolean(onSaveWorkspaceHabit);
+    applyMode === WorkspaceAiChatAdjustmentApplyMode.WorkspaceHabit &&
+    Boolean(onSaveWorkspaceHabit);
   const shouldSaveAgentHabit =
     applyMode === WorkspaceAiChatAdjustmentApplyMode.AgentHabit && Boolean(onSaveAgentHabit);
   const applyOptions: Array<{
@@ -742,11 +737,13 @@ export const WorkspaceAiChatAdjustmentDrawer: React.FC<{
       descriptionKey: 'enterpriseLeadAiChatAdjustRetryOnlyDesc',
     },
     ...(onSaveAgentHabit
-      ? [{
-          mode: WorkspaceAiChatAdjustmentApplyMode.AgentHabit,
-          titleKey: 'enterpriseLeadAiChatAdjustSaveAgentHabit',
-          descriptionKey: 'enterpriseLeadAiChatAdjustSaveAgentHabitDesc',
-        }]
+      ? [
+          {
+            mode: WorkspaceAiChatAdjustmentApplyMode.AgentHabit,
+            titleKey: 'enterpriseLeadAiChatAdjustSaveAgentHabit',
+            descriptionKey: 'enterpriseLeadAiChatAdjustSaveAgentHabitDesc',
+          },
+        ]
       : []),
     {
       mode: WorkspaceAiChatAdjustmentApplyMode.WorkspaceHabit,
@@ -875,7 +872,9 @@ export const WorkspaceAiChatAdjustmentDrawer: React.FC<{
                 >
                   <span
                     className={`mt-0.5 flex h-4 w-4 items-center justify-center rounded-full border ${
-                      isSelected ? 'border-primary bg-primary text-primary-foreground' : 'border-border'
+                      isSelected
+                        ? 'border-primary bg-primary text-primary-foreground'
+                        : 'border-border'
                     }`}
                   >
                     {isSelected ? <CheckIcon className="h-3 w-3" /> : null}
@@ -920,10 +919,10 @@ export const WorkspaceAiChatAdjustmentDrawer: React.FC<{
           {isSavingWorkspaceHabit
             ? i18nService.t('enterpriseLeadAiChatAdjustSavingHabit')
             : i18nService.t(
-              shouldSaveWorkspaceHabit || shouldSaveAgentHabit
-                ? 'enterpriseLeadAiChatAdjustSaveAndRetry'
-                : 'enterpriseLeadAiChatAdjustRetry',
-            )}
+                shouldSaveWorkspaceHabit || shouldSaveAgentHabit
+                  ? 'enterpriseLeadAiChatAdjustSaveAndRetry'
+                  : 'enterpriseLeadAiChatAdjustRetry',
+              )}
         </button>
       </div>
     </aside>
@@ -1133,7 +1132,8 @@ export const WorkspaceAiChat: React.FC<WorkspaceAiChatProps> = ({
     EnterpriseLeadWorkspaceChatProgressEvent[]
   >([]);
   const [typewriterMessageId, setTypewriterMessageId] = useState<string | null>(null);
-  const [adjustingMessage, setAdjustingMessage] = useState<EnterpriseLeadWorkspaceChatMessage | null>(null);
+  const [adjustingMessage, setAdjustingMessage] =
+    useState<EnterpriseLeadWorkspaceChatMessage | null>(null);
   const requestTokenRef = useRef<WorkspaceAiChatRequestToken>({
     requestId: 0,
     workspaceId: workspace.id,
@@ -1156,13 +1156,14 @@ export const WorkspaceAiChat: React.FC<WorkspaceAiChatProps> = ({
     [workspace.settings],
   );
   const executionHabitSummaries = useMemo(
-    () => getWorkspaceAiChatExecutionHabitSummaries(
-      {
-        ...workspace,
-        workspaceAgents: workspaceAgentBindings,
-      },
-      selectedAgentId,
-    ),
+    () =>
+      getWorkspaceAiChatExecutionHabitSummaries(
+        {
+          ...workspace,
+          workspaceAgents: workspaceAgentBindings,
+        },
+        selectedAgentId,
+      ),
     [selectedAgentId, workspace, workspaceAgentBindings],
   );
 
@@ -1225,9 +1226,9 @@ export const WorkspaceAiChat: React.FC<WorkspaceAiChatProps> = ({
   const trimmedMessage = draftMessage.trim();
   const canSend = Boolean(trimmedMessage) && !isSending;
   const adjustingAgentName = adjustingMessage
-    ? adjustingMessage.agent?.name
-      ?? deriveWorkspaceAiChatProcess(adjustingMessage)?.agentLabel
-      ?? i18nService.t('enterpriseLeadAiChatAgentAll')
+    ? (adjustingMessage.agent?.name ??
+      deriveWorkspaceAiChatProcess(adjustingMessage)?.agentLabel ??
+      i18nService.t('enterpriseLeadAiChatAgentAll'))
     : '';
   const adjustingAgentId = adjustingMessage?.agent?.id ?? '';
   const canSaveAdjustingAgentHabit =
@@ -1444,9 +1445,7 @@ export const WorkspaceAiChat: React.FC<WorkspaceAiChatProps> = ({
             {executionHabitSummaries.map(summary => (
               <span key={summary.id} className={contextControlClassName}>
                 <SparklesIcon className="h-4 w-4 shrink-0" />
-                {i18nService
-                  .t(summary.labelKey)
-                  .replace('{count}', String(summary.count))}
+                {i18nService.t(summary.labelKey).replace('{count}', String(summary.count))}
               </span>
             ))}
           </div>
@@ -1528,7 +1527,7 @@ export const WorkspaceAiChat: React.FC<WorkspaceAiChatProps> = ({
           agentName={adjustingAgentName}
           messageContent={adjustingMessage.content}
           onClose={() => setAdjustingMessage(null)}
-          onRetry={(draft) => {
+          onRetry={draft => {
             setDraftMessage(draft);
             if (
               adjustingMessage.agent?.id &&
@@ -1546,7 +1545,6 @@ export const WorkspaceAiChat: React.FC<WorkspaceAiChatProps> = ({
           onSaveWorkspaceHabit={handleSaveWorkspaceOutputHabit}
         />
       ) : null}
-
     </div>
   );
 };

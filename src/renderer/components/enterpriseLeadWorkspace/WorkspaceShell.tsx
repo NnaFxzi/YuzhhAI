@@ -46,7 +46,7 @@ export const WorkspaceShellNavAction = {
   OpenSearch: 'open_search',
 } as const;
 export type WorkspaceShellNavAction =
-  typeof WorkspaceShellNavAction[keyof typeof WorkspaceShellNavAction];
+  (typeof WorkspaceShellNavAction)[keyof typeof WorkspaceShellNavAction];
 
 export const getWorkspaceShellNavAction = (
   page: EnterpriseLeadWorkspaceInternalPageType,

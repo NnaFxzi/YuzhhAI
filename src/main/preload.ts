@@ -210,10 +210,7 @@ contextBridge.exposeInMainWorld('electron', {
         workspaceId,
         profile,
       }),
-    updateWorkspaceSources: (
-      workspaceId: string,
-      sources: EnterpriseLeadExtractionSource[],
-    ) =>
+    updateWorkspaceSources: (workspaceId: string, sources: EnterpriseLeadExtractionSource[]) =>
       ipcRenderer.invoke(EnterpriseLeadWorkspaceIpc.UpdateWorkspaceSources, {
         workspaceId,
         sources,

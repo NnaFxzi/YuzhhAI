@@ -2902,8 +2902,7 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadAgentRoleShortVideoScriptOutput: '前三秒钩子、口播脚本、分镜建议、CTA',
     enterpriseLeadAgentRoleSocialCopyTitle: '图文文案 Agent',
     enterpriseLeadAgentRoleSocialCopyShortLabel: '文',
-    enterpriseLeadAgentRoleSocialCopyDescription:
-      '生成朋友圈、小红书、公众号、海报和种草文案。',
+    enterpriseLeadAgentRoleSocialCopyDescription: '生成朋友圈、小红书、公众号、海报和种草文案。',
     enterpriseLeadAgentRoleSocialCopyInput: '产品卖点、平台、目标用户、转化目标',
     enterpriseLeadAgentRoleSocialCopyOutput: '平台文案、标题、正文、行动引导',
     enterpriseLeadAgentRolePrivateDomainConversionTitle: '私域转化 Agent',
@@ -3305,8 +3304,7 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadKnowledgeCompanyGroupRules: '规则与缺口',
     enterpriseLeadKnowledgeCompanyEditorHint:
       '左侧选择一类资料，右侧只编辑当前内容，避免所有字段混在一起。',
-    enterpriseLeadKnowledgeCompanyFieldEditHint:
-      '多条内容按行维护；保存后会写回当前空间资料。',
+    enterpriseLeadKnowledgeCompanyFieldEditHint: '多条内容按行维护；保存后会写回当前空间资料。',
     enterpriseLeadKnowledgeCompanyFieldStats: '{count} 条内容',
     enterpriseLeadKnowledgeCompanyFieldEmpty: '暂无内容',
     enterpriseLeadKnowledgeEditModalTitle: '编辑知识内容',
@@ -3316,8 +3314,7 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadKnowledgePreviewDocumentModalTitle: '预览文档',
     enterpriseLeadKnowledgePreviewDocumentModalSubtitle:
       '只读查看原始资料；AI 知识和重新提取作为次级动作保留在这里。',
-    enterpriseLeadKnowledgeEditDocumentModalSubtitle:
-      '快速维护文档名称、摘要和来源信息。',
+    enterpriseLeadKnowledgeEditDocumentModalSubtitle: '快速维护文档名称、摘要和来源信息。',
     enterpriseLeadKnowledgeAddDocumentModalSubtitle:
       '维护文档信息和提取设置；完整正文在预览文档中查看。',
     enterpriseLeadKnowledgeModalSubtitle: '保存后只影响当前空间，不会改变其他空间。',
@@ -3389,8 +3386,7 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadKnowledgeDocumentExtractTextRequired:
       '当前文档没有可读取内容，无法立即提取。请上传文本文件，或在内容区补充可提取文本。',
     enterpriseLeadKnowledgeDocumentMissingError: '没有找到这份文档，请刷新后重试。',
-    enterpriseLeadKnowledgeDocumentApiUnavailable:
-      '文档保存能力尚未加载，请重启应用后再试。',
+    enterpriseLeadKnowledgeDocumentApiUnavailable: '文档保存能力尚未加载，请重启应用后再试。',
     enterpriseLeadKnowledgeCompanySaved: '公司资料已更新。',
     enterpriseLeadKnowledgeDocumentAdded: '文档已保存到文档库，当前状态为待提取。',
     enterpriseLeadKnowledgeDocumentUpdated: '文档已更新。',
@@ -3398,8 +3394,7 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadKnowledgeDocumentExtracted: 'AI 知识已提取并写入知识库。',
     enterpriseLeadKnowledgeDocumentAddedAndExtracted: '文档已保存，AI 知识已提取。',
     enterpriseLeadKnowledgeDocumentUpdatedAndExtracted: '文档已更新，AI 知识已重新提取。',
-    enterpriseLeadKnowledgeDocumentExtractFailed:
-      'AI 知识提取失败，请检查文档内容后重试。',
+    enterpriseLeadKnowledgeDocumentExtractFailed: 'AI 知识提取失败，请检查文档内容后重试。',
     enterpriseLeadKnowledgeDocumentDeleted: '文档已删除。',
     enterpriseLeadKnowledgeDeleteDocumentConfirm: '确定删除这份文档吗？相关 AI 知识不会自动删除。',
     enterpriseLeadKnowledgeStartExtract: '开始提取',
@@ -3609,13 +3604,11 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadWorkbenchStabilityInputRequirementsDefault:
       '优先使用客户行业、询盘内容、采购数量、预算范围、交期要求和历史沟通；缺少关键信息时标记为待补充。',
     enterpriseLeadWorkbenchStabilityOutputFormat: '输出格式',
-    enterpriseLeadWorkbenchStabilityOutputFormatHint:
-      '固定结构，方便阅读和后续 Agent 接力。',
+    enterpriseLeadWorkbenchStabilityOutputFormatHint: '固定结构，方便阅读和后续 Agent 接力。',
     enterpriseLeadWorkbenchStabilityOutputFormatDefault:
       '客户优先级\n判断依据\n风险或缺失信息\n建议跟进动作',
     enterpriseLeadWorkbenchStabilityGuardrails: '边界规则',
-    enterpriseLeadWorkbenchStabilityGuardrailsHint:
-      '限制不能猜、不能承诺、需要人工确认的情况。',
+    enterpriseLeadWorkbenchStabilityGuardrailsHint: '限制不能猜、不能承诺、需要人工确认的情况。',
     enterpriseLeadWorkbenchStabilityGuardrailsDefault:
       '不编造客户需求，不承诺价格、交期或合作结果；需要外发或人工确认时明确标记。',
     enterpriseLeadWorkbenchStabilityPromptTitle: '# Agent 稳定执行规范',
@@ -3650,21 +3643,18 @@ const translations: Record<LanguageType, Record<string, string>> = {
       '信息较完整，Agent 应该给出明确优先级和下一步动作。',
     enterpriseLeadWorkbenchCalibrationHighIntentSample:
       '客户来自汽车零部件行业，询问 5000 件铝合金精密件，要求两周内交样，已提供图纸但未说明目标价格。',
-    enterpriseLeadWorkbenchCalibrationHighIntentNote:
-      '保留真实业务表达，不需要写得像提示词。',
+    enterpriseLeadWorkbenchCalibrationHighIntentNote: '保留真实业务表达，不需要写得像提示词。',
     enterpriseLeadWorkbenchCalibrationHighIntentPriority: '高',
     enterpriseLeadWorkbenchCalibrationHighIntentReason:
       '行业匹配，已有图纸，数量明确，交样时间具体。',
-    enterpriseLeadWorkbenchCalibrationHighIntentMissing:
-      '目标价格、材料牌号、验收标准仍需补充。',
+    enterpriseLeadWorkbenchCalibrationHighIntentMissing: '目标价格、材料牌号、验收标准仍需补充。',
     enterpriseLeadWorkbenchCalibrationHighIntentNextStep:
       '安排技术评估图纸，并由销售确认预算和交期可行性。',
     enterpriseLeadWorkbenchCalibrationHighIntentCheck1:
       '输出必须包含客户优先级、判断依据、缺失信息和下一步动作。',
     enterpriseLeadWorkbenchCalibrationHighIntentCheck2:
       '目标价格缺失时只能标记待补充，不能自行推测。',
-    enterpriseLeadWorkbenchCalibrationHighIntentCheck3:
-      '涉及报价、交期或承诺时提示人工确认。',
+    enterpriseLeadWorkbenchCalibrationHighIntentCheck3: '涉及报价、交期或承诺时提示人工确认。',
     enterpriseLeadWorkbenchCalibrationMissingInfoTitle: '信息不足',
     enterpriseLeadWorkbenchCalibrationMissingInfoDesc:
       '资料不够时，Agent 应该先列待补充信息，而不是直接判断。',
@@ -3679,12 +3669,9 @@ const translations: Record<LanguageType, Record<string, string>> = {
       '图纸或样品照片、材料牌号、尺寸公差、采购数量、交期要求、应用场景。',
     enterpriseLeadWorkbenchCalibrationMissingInfoNextStep:
       '回复客户补充资料清单，先收集图纸、材料和数量，再进行技术评估。',
-    enterpriseLeadWorkbenchCalibrationMissingInfoCheck1:
-      '必须明确标记信息不足或待判断。',
-    enterpriseLeadWorkbenchCalibrationMissingInfoCheck2:
-      '不能给出价格、交期或确定优先级。',
-    enterpriseLeadWorkbenchCalibrationMissingInfoCheck3:
-      '必须给出下一步需要客户补充的资料清单。',
+    enterpriseLeadWorkbenchCalibrationMissingInfoCheck1: '必须明确标记信息不足或待判断。',
+    enterpriseLeadWorkbenchCalibrationMissingInfoCheck2: '不能给出价格、交期或确定优先级。',
+    enterpriseLeadWorkbenchCalibrationMissingInfoCheck3: '必须给出下一步需要客户补充的资料清单。',
     enterpriseLeadWorkbenchCalibrationManualReviewTitle: '需要人工确认',
     enterpriseLeadWorkbenchCalibrationManualReviewDesc:
       '涉及报价、交期、外发承诺时，Agent 应该主动标记人工确认。',
@@ -3701,10 +3688,8 @@ const translations: Record<LanguageType, Record<string, string>> = {
       '先标记人工确认，由技术和销售共同评估后再对外回复报价和交期。',
     enterpriseLeadWorkbenchCalibrationManualReviewCheck1:
       '必须标记人工确认，不能直接生成正式承诺。',
-    enterpriseLeadWorkbenchCalibrationManualReviewCheck2:
-      '不能承诺价格、交期、产能或合作结果。',
-    enterpriseLeadWorkbenchCalibrationManualReviewCheck3:
-      '必须说明需要技术和销售确认后再外发。',
+    enterpriseLeadWorkbenchCalibrationManualReviewCheck2: '不能承诺价格、交期、产能或合作结果。',
+    enterpriseLeadWorkbenchCalibrationManualReviewCheck3: '必须说明需要技术和销售确认后再外发。',
     enterpriseLeadWorkbenchAgentChat: '对话',
     enterpriseLeadWorkbenchAgentEdit: '编辑',
     enterpriseLeadWorkbenchAgentEnabled: '已启用',
@@ -3734,11 +3719,9 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadWorkbenchBasicModelTitle: '默认模型',
     enterpriseLeadWorkbenchBasicModelDesc: '更换模型和连接测试在高级模型设置里处理。',
     enterpriseLeadWorkbenchBasicSkillTitle: '空间能力',
-    enterpriseLeadWorkbenchBasicSkillDesc:
-      '当前包含 {count} 个技能，可在技能明细里手动调整。',
+    enterpriseLeadWorkbenchBasicSkillDesc: '当前包含 {count} 个技能，可在技能明细里手动调整。',
     enterpriseLeadWorkbenchBasicResearchTitle: '联网调研',
-    enterpriseLeadWorkbenchBasicResearchDesc:
-      '默认不强制接入外部服务；需要网页资料时再开启。',
+    enterpriseLeadWorkbenchBasicResearchDesc: '默认不强制接入外部服务；需要网页资料时再开启。',
     enterpriseLeadWorkbenchBasicOutputTitle: '输出目标',
     enterpriseLeadWorkbenchBasicOutputDesc: '投递渠道和风控规则在高级设置中调整。',
     enterpriseLeadWorkbenchResearchNoExternalReady: '无需联网授权也可开始',
@@ -3746,8 +3729,7 @@ const translations: Record<LanguageType, Record<string, string>> = {
       '先使用本地资料和粘贴链接，后续再接入搜索或抓取。',
     enterpriseLeadWorkbenchResearchConnectedDesc:
       '服务商已启用，API Key 可在外部调研服务商中维护。',
-    enterpriseLeadWorkbenchResearchNeedsKeyDesc:
-      '已选择联网方式，API Key 可稍后在高级设置中补充。',
+    enterpriseLeadWorkbenchResearchNeedsKeyDesc: '已选择联网方式，API Key 可稍后在高级设置中补充。',
     enterpriseLeadWorkbenchAdvancedSettingsTitle: '高级设置',
     enterpriseLeadWorkbenchAdvancedSettingsDesc:
       '模型密钥、技能明细、调研来源和内容投递都放在这里，按需要打开。',
@@ -3767,8 +3749,7 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadWorkbenchQuickSkillsPending: '待保存',
     enterpriseLeadWorkbenchQuickResearchOptional: '可稍后补',
     enterpriseLeadWorkbenchQuickSaveDockTitle: '保存基础配置',
-    enterpriseLeadWorkbenchQuickSaveDockDesc:
-      '联网 Key 和投递细节可以之后在高级设置里补充。',
+    enterpriseLeadWorkbenchQuickSaveDockDesc: '联网 Key 和投递细节可以之后在高级设置里补充。',
     enterpriseLeadWorkbenchSkillPresetAcquisitionContent: '获客内容包',
     enterpriseLeadWorkbenchSkillPresetAcquisitionContentDesc: '调研、选题、销售话术、风控审核。',
     enterpriseLeadWorkbenchSkillPresetResearchAnalysis: '调研分析包',
@@ -5335,7 +5316,8 @@ const translations: Record<LanguageType, Record<string, string>> = {
     agentIMBoundToOther: '→ {agent}',
     agentIMBindHint: 'Select IM channels this Agent responds to',
     agentCreateFailed: 'Failed to create Agent',
-    agentGlobalCreateUnavailable: 'Global agents only support system Agents. Create custom Agents inside a workspace.',
+    agentGlobalCreateUnavailable:
+      'Global agents only support system Agents. Create custom Agents inside a workspace.',
     agentSaveSuccess: 'Agent settings saved',
     agentSaveFeedbackSeparator: '. ',
     agentSaveFailed: 'Failed to save Agent settings',
@@ -7376,8 +7358,7 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadAiChatAdjustRetry: 'Retry answer',
     enterpriseLeadAiChatAdjustSaveAndRetry: 'Save and retry',
     enterpriseLeadAiChatAdjustSavingHabit: 'Saving',
-    enterpriseLeadAiChatAdjustSaveHabitFailed:
-      'Could not save the output habit. Try again later.',
+    enterpriseLeadAiChatAdjustSaveHabitFailed: 'Could not save the output habit. Try again later.',
     enterpriseLeadAiChatAdjustRetryDraft:
       'Ask {agent} to retry the previous answer with this adjustment:\n\n{instruction}',
     enterpriseLeadKnowledgeReadOnly: 'Read-only knowledge',
@@ -7617,8 +7598,7 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadKnowledgeDocumentExtractStarted: 'Started extracting AI knowledge.',
     enterpriseLeadKnowledgeDocumentExtracted:
       'AI knowledge extracted and saved to the knowledge base.',
-    enterpriseLeadKnowledgeDocumentAddedAndExtracted:
-      'Document saved and AI knowledge extracted.',
+    enterpriseLeadKnowledgeDocumentAddedAndExtracted: 'Document saved and AI knowledge extracted.',
     enterpriseLeadKnowledgeDocumentUpdatedAndExtracted:
       'Document updated and AI knowledge re-extracted.',
     enterpriseLeadKnowledgeDocumentExtractFailed:
@@ -7633,8 +7613,7 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadKnowledgeFileSelectionFailed: 'File selection failed. Try again.',
     enterpriseLeadKnowledgeFileTextTruncated:
       'The file is long, so only the first part was read for extraction.',
-    enterpriseLeadKnowledgeFileReadFailed:
-      'Failed to read file content. The file source was kept.',
+    enterpriseLeadKnowledgeFileReadFailed: 'Failed to read file content. The file source was kept.',
     enterpriseLeadKnowledgeFileReadUnsupported:
       'This file type cannot be read directly yet. Save it for later or add a summary.',
     enterpriseLeadKnowledgeItemAdded: 'Knowledge added to this workspace.',
@@ -7878,8 +7857,10 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadWorkbenchCalibrationSaveExample: 'Save example',
     enterpriseLeadWorkbenchCalibrationRunExample: 'Test run',
     enterpriseLeadWorkbenchCalibrationRunningShort: 'Running',
-    enterpriseLeadWorkbenchCalibrationRunning: 'Testing this example with the current Agent draft...',
-    enterpriseLeadWorkbenchCalibrationFailed: 'Test run failed. Check the model configuration and try again.',
+    enterpriseLeadWorkbenchCalibrationRunning:
+      'Testing this example with the current Agent draft...',
+    enterpriseLeadWorkbenchCalibrationFailed:
+      'Test run failed. Check the model configuration and try again.',
     enterpriseLeadWorkbenchCalibrationResultTitle: 'Test run result',
     enterpriseLeadWorkbenchCalibrationCheckPriority: 'Priority',
     enterpriseLeadWorkbenchCalibrationCheckReason: 'Reasoning',
@@ -7973,7 +7954,8 @@ const translations: Record<LanguageType, Record<string, string>> = {
       'Complete the default model and workspace capability before running workspace tasks.',
     enterpriseLeadWorkbenchReadinessAdvancedHint: 'Advanced items are tucked away',
     enterpriseLeadWorkbenchBasicsTitle: 'Basic configuration',
-    enterpriseLeadWorkbenchBasicsDesc: 'Only the information needed before starting tasks is shown here.',
+    enterpriseLeadWorkbenchBasicsDesc:
+      'Only the information needed before starting tasks is shown here.',
     enterpriseLeadWorkbenchBasicModelTitle: 'Default model',
     enterpriseLeadWorkbenchBasicModelDesc:
       'Change models and test connections in advanced model settings.',

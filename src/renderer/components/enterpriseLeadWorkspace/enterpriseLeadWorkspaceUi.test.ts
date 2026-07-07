@@ -1140,7 +1140,9 @@ describe('enterprise lead workspace UI helpers', () => {
     expect(markup).toContain('使用 GitHub 插件');
     expect(markup).toContain('1 天');
     expect(markup).toContain('2 天');
-    expect(markup).not.toContain('rounded-full bg-background px-2 py-0.5 text-[11px] font-medium leading-4 text-tertiary ring-1 ring-border/70');
+    expect(markup).not.toContain(
+      'rounded-full bg-background px-2 py-0.5 text-[11px] font-medium leading-4 text-tertiary ring-1 ring-border/70',
+    );
     expect(markup).not.toContain('2 条');
     expect(markup).not.toContain('全部记录');
   });
@@ -1784,7 +1786,8 @@ describe('enterprise lead workspace UI helpers', () => {
               sampleInput: '客户要求今天给正式报价，但缺少材料牌号和验收标准。',
               expectedNextStep: '先标记为人工确认，并请销售补齐材料牌号和验收标准。',
             }
-          : example),
+          : example,
+      ),
     };
 
     const prompt = buildWorkspaceAgentStabilityPrompt(nextDraft);
@@ -2694,10 +2697,7 @@ describe('enterprise lead workspace UI helpers', () => {
 
   test('builds workspace Agent habit prompt without duplicating saved instructions', () => {
     const prompt = buildWorkspaceAiChatAgentHabitPrompt(
-      buildWorkspaceAiChatAgentHabitPrompt(
-        '原始 Agent 规则',
-        '先输出客户优先级，再给依据。',
-      ),
+      buildWorkspaceAiChatAgentHabitPrompt('原始 Agent 规则', '先输出客户优先级，再给依据。'),
       ' 先输出客户优先级，再给依据。 ',
     );
 
@@ -2743,10 +2743,7 @@ describe('enterprise lead workspace UI helpers', () => {
 
   test('summarizes active workspace and Agent execution habits', () => {
     const workspace = createWorkspace('workspace-1');
-    workspace.settings.outputPreferences.instructions = [
-      '先给结论。',
-      '列出证据。',
-    ];
+    workspace.settings.outputPreferences.instructions = ['先给结论。', '列出证据。'];
     workspace.workspaceAgents = [
       {
         agentId: 'agent-a',

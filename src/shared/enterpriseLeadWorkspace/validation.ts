@@ -771,44 +771,48 @@ export function normalizeEnterpriseLeadWorkspaceSettings(
   const contentPlatformsRecord = readRecord(record.contentPlatforms);
   const hasNewContentPlatformsShape = isRecord(contentPlatformsRecord.platforms)
     || isRecord(contentPlatformsRecord.outputRules);
-  const hasNewShape = isRecord(record.model)
-    || Array.isArray(record.skillIds)
-    || isRecord(record.externalResearch)
-    || isRecord(record.domesticResearch)
-    || hasNewContentPlatformsShape
-    || isRecord(record.outputPreferences);
+  const hasNewShape =
+    isRecord(record.model) ||
+    Array.isArray(record.skillIds) ||
+    isRecord(record.externalResearch) ||
+    isRecord(record.domesticResearch) ||
+    hasNewContentPlatformsShape ||
+    isRecord(record.outputPreferences);
   const legacyModel = parseLegacyModelRef(record.modelRef);
 
   return {
     model: normalizeModelSettings(
-      hasNewShape
-        ? record.model
-        : { ...legacyModel, providers: {} },
+      hasNewShape ? record.model : { ...legacyModel, providers: {} },
       fallback.model,
     ),
-    skillIds: hasNewShape && hasOwn(record, 'skillIds')
-      ? cleanTextList(record.skillIds)
-      : hasNewShape
-        ? [...fallback.skillIds]
-        : legacySkillIdsFromCapabilities(record.skillCapabilities),
-    externalResearch: hasNewShape && hasOwn(record, 'externalResearch')
-      ? mergeExternalResearchConfigInput(record.externalResearch, fallback.externalResearch)
-      : hasNewShape
-        ? normalizeExternalResearchConfig(fallback.externalResearch)
-      : legacyExternalResearchFromCapabilities(record.researchCapabilities),
-    domesticResearch: hasNewShape && hasOwn(record, 'domesticResearch')
-      ? mergeDomesticResearchConfigInput(record.domesticResearch, fallback.domesticResearch)
-      : hasNewShape
-        ? normalizeDomesticResearchConfig(fallback.domesticResearch)
-        : legacyDomesticResearchFromPlatforms(record.contentPlatforms),
-    contentPlatforms: hasNewShape && hasOwn(record, 'contentPlatforms')
-      ? normalizeContentPlatformSettings(record.contentPlatforms, fallback.contentPlatforms)
-      : hasNewShape
-        ? normalizeContentPlatformSettings(fallback.contentPlatforms)
-        : legacyContentPlatformSettingsFromPlatforms(record.contentPlatforms),
-    outputPreferences: hasNewShape && hasOwn(record, 'outputPreferences')
-      ? normalizeOutputPreferences(record.outputPreferences, fallback.outputPreferences)
-      : normalizeOutputPreferences(fallback.outputPreferences),
+    skillIds:
+      hasNewShape && hasOwn(record, 'skillIds')
+        ? cleanTextList(record.skillIds)
+        : hasNewShape
+          ? [...fallback.skillIds]
+          : legacySkillIdsFromCapabilities(record.skillCapabilities),
+    externalResearch:
+      hasNewShape && hasOwn(record, 'externalResearch')
+        ? mergeExternalResearchConfigInput(record.externalResearch, fallback.externalResearch)
+        : hasNewShape
+          ? normalizeExternalResearchConfig(fallback.externalResearch)
+          : legacyExternalResearchFromCapabilities(record.researchCapabilities),
+    domesticResearch:
+      hasNewShape && hasOwn(record, 'domesticResearch')
+        ? mergeDomesticResearchConfigInput(record.domesticResearch, fallback.domesticResearch)
+        : hasNewShape
+          ? normalizeDomesticResearchConfig(fallback.domesticResearch)
+          : legacyDomesticResearchFromPlatforms(record.contentPlatforms),
+    contentPlatforms:
+      hasNewShape && hasOwn(record, 'contentPlatforms')
+        ? normalizeContentPlatformSettings(record.contentPlatforms, fallback.contentPlatforms)
+        : hasNewShape
+          ? normalizeContentPlatformSettings(fallback.contentPlatforms)
+          : legacyContentPlatformSettingsFromPlatforms(record.contentPlatforms),
+    outputPreferences:
+      hasNewShape && hasOwn(record, 'outputPreferences')
+        ? normalizeOutputPreferences(record.outputPreferences, fallback.outputPreferences)
+        : normalizeOutputPreferences(fallback.outputPreferences),
   };
 }
 
@@ -843,7 +847,8 @@ export function normalizeEnterpriseLeadExtractionSource(
 ): EnterpriseLeadExtractionSource {
   const record = readRecord(value);
   const kind = cleanText(record.kind) || EnterpriseLeadExtractionSourceKind.Manual;
-  const label = cleanText(record.label) ||
+  const label =
+    cleanText(record.label) ||
     cleanText(record.filePath) ||
     cleanText(record.text).slice(0, 40) ||
     '未命名资料';
@@ -862,11 +867,12 @@ export function normalizeEnterpriseLeadExtractionSource(
     vectorIndexStatus: cleanOptionalText(record.vectorIndexStatus),
     vectorIndexError: cleanOptionalText(record.vectorIndexError),
     vectorIndexedAt: cleanOptionalText(record.vectorIndexedAt),
-    vectorChunkCount: typeof record.vectorChunkCount === 'number' &&
+    vectorChunkCount:
+      typeof record.vectorChunkCount === 'number' &&
       Number.isFinite(record.vectorChunkCount) &&
       record.vectorChunkCount >= 0
-      ? Math.floor(record.vectorChunkCount)
-      : undefined,
+        ? Math.floor(record.vectorChunkCount)
+        : undefined,
     vectorEmbeddingVersion: cleanOptionalText(record.vectorEmbeddingVersion),
     createdAt: cleanOptionalText(record.createdAt),
     updatedAt: cleanOptionalText(record.updatedAt),

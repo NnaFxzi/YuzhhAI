@@ -4858,24 +4858,31 @@ if (!gotTheLock) {
     if (request.tool === 'lobsterai_industry_positioning_get_latest') {
       const packId = typeof request.args.packId === 'string' ? request.args.packId : '';
       const report = packId ? service.getLatestReport(packId, agentId) : null;
-      const fallbackPayload = report || !packId ? null : service.buildLatestToolPayload(packId, agentId);
+      const fallbackPayload =
+        report || !packId ? null : service.buildLatestToolPayload(packId, agentId);
       return {
         content: [
           {
             type: 'text',
             text: report
               ? JSON.stringify(report, null, 2)
-              : JSON.stringify(fallbackPayload ?? {
-                status: 'empty',
-                packId: packId || 'unknown pack',
-                message: `No positioning report saved for ${packId || 'unknown pack'}.`,
-                baselineEvidence: [],
-              }, null, 2),
+              : JSON.stringify(
+                  fallbackPayload ?? {
+                    status: 'empty',
+                    packId: packId || 'unknown pack',
+                    message: `No positioning report saved for ${packId || 'unknown pack'}.`,
+                    baselineEvidence: [],
+                  },
+                  null,
+                  2,
+                ),
           },
         ],
-        details: report ? { reportId: report.id } : fallbackPayload
-          ? { packId, status: fallbackPayload.status }
-          : undefined,
+        details: report
+          ? { reportId: report.id }
+          : fallbackPayload
+            ? { packId, status: fallbackPayload.status }
+            : undefined,
       };
     }
 

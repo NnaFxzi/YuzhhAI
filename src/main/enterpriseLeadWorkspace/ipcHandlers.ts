@@ -176,7 +176,9 @@ const readWorkspaceAgents = (value: unknown): EnterpriseLeadWorkspaceAgentBindin
   return value as EnterpriseLeadWorkspaceAgentBinding[];
 };
 
-const readRecentChatMessages = (value: unknown): EnterpriseLeadWorkspaceChatMessage[] | undefined => {
+const readRecentChatMessages = (
+  value: unknown,
+): EnterpriseLeadWorkspaceChatMessage[] | undefined => {
   if (!Array.isArray(value)) {
     return undefined;
   }
@@ -187,10 +189,12 @@ const readRecentChatMessages = (value: unknown): EnterpriseLeadWorkspaceChatMess
         return false;
       }
       const hasValidRole = item.role === 'user' || item.role === 'assistant';
-      return typeof item.id === 'string'
-        && hasValidRole
-        && typeof item.content === 'string'
-        && typeof item.createdAt === 'string';
+      return (
+        typeof item.id === 'string' &&
+        hasValidRole &&
+        typeof item.content === 'string' &&
+        typeof item.createdAt === 'string'
+      );
     })
     .map(item => {
       const message: EnterpriseLeadWorkspaceChatMessage = {
@@ -246,12 +250,14 @@ const readOptionalString = (value: unknown): string =>
 
 const readStringList = (value: unknown): string[] =>
   Array.isArray(value)
-    ? Array.from(new Set(
-      value
-        .filter((item): item is string => typeof item === 'string')
-        .map(item => item.trim())
-        .filter(Boolean),
-    ))
+    ? Array.from(
+        new Set(
+          value
+            .filter((item): item is string => typeof item === 'string')
+            .map(item => item.trim())
+            .filter(Boolean),
+        ),
+      )
     : [];
 
 const readWorkspaceAgentCalibrationRequest = (
@@ -336,25 +342,30 @@ export function registerEnterpriseLeadWorkspaceHandlers(
     },
   );
 
-  ipcMain.handle(EnterpriseLeadWorkspaceIpc.DeleteWorkspace, async (_event, workspaceId: unknown) => {
-    try {
-      return ok(await deps.service.deleteWorkspace(
-        requireNonEmptyString(workspaceId, 'Workspace id'),
-      ));
-    } catch (error) {
-      return fail<boolean>(error);
-    }
-  });
+  ipcMain.handle(
+    EnterpriseLeadWorkspaceIpc.DeleteWorkspace,
+    async (_event, workspaceId: unknown) => {
+      try {
+        return ok(
+          await deps.service.deleteWorkspace(requireNonEmptyString(workspaceId, 'Workspace id')),
+        );
+      } catch (error) {
+        return fail<boolean>(error);
+      }
+    },
+  );
 
   ipcMain.handle(
     EnterpriseLeadWorkspaceIpc.UpdateWorkspaceProfile,
     async (_event, input: { workspaceId?: unknown; profile?: unknown }) => {
       try {
         const workspaceId = requireNonEmptyString(input?.workspaceId, 'Workspace id');
-        return ok(await deps.service.updateWorkspaceProfile(
-          workspaceId,
-          readWorkspaceProfile(input?.profile),
-        ));
+        return ok(
+          await deps.service.updateWorkspaceProfile(
+            workspaceId,
+            readWorkspaceProfile(input?.profile),
+          ),
+        );
       } catch (error) {
         return fail<EnterpriseLeadWorkspace>(error);
       }
@@ -366,10 +377,12 @@ export function registerEnterpriseLeadWorkspaceHandlers(
     async (_event, input: { workspaceId?: unknown; sources?: unknown }) => {
       try {
         const workspaceId = requireNonEmptyString(input?.workspaceId, 'Workspace id');
-        return ok(await deps.service.updateWorkspaceSources(
-          workspaceId,
-          readWorkspaceSources(input?.sources),
-        ));
+        return ok(
+          await deps.service.updateWorkspaceSources(
+            workspaceId,
+            readWorkspaceSources(input?.sources),
+          ),
+        );
       } catch (error) {
         return fail<EnterpriseLeadWorkspace>(error);
       }
@@ -381,10 +394,12 @@ export function registerEnterpriseLeadWorkspaceHandlers(
     async (_event, input: { workspaceId?: unknown; settings?: unknown }) => {
       try {
         const workspaceId = requireNonEmptyString(input?.workspaceId, 'Workspace id');
-        return ok(await deps.service.updateWorkspaceSettings(
-          workspaceId,
-          readSettingsUpdate(input?.settings),
-        ));
+        return ok(
+          await deps.service.updateWorkspaceSettings(
+            workspaceId,
+            readSettingsUpdate(input?.settings),
+          ),
+        );
       } catch (error) {
         return fail<EnterpriseLeadWorkspace>(error);
       }
@@ -457,11 +472,12 @@ export function registerEnterpriseLeadWorkspaceHandlers(
       try {
         const workspaceId = requireNonEmptyString(input?.workspaceId, 'Workspace id');
         const request = readChatRequest(input?.request);
-        const progressSink = request.requestId && event?.sender?.send
-          ? (progressEvent: EnterpriseLeadWorkspaceChatProgressEvent): void => {
-              event.sender.send(EnterpriseLeadWorkspaceIpc.ChatProgress, progressEvent);
-            }
-          : undefined;
+        const progressSink =
+          request.requestId && event?.sender?.send
+            ? (progressEvent: EnterpriseLeadWorkspaceChatProgressEvent): void => {
+                event.sender.send(EnterpriseLeadWorkspaceIpc.ChatProgress, progressEvent);
+              }
+            : undefined;
         const response = progressSink
           ? await deps.service.chat(workspaceId, request, progressSink)
           : await deps.service.chat(workspaceId, request);
@@ -565,9 +581,11 @@ export function registerEnterpriseLeadWorkspaceHandlers(
     EnterpriseLeadWorkspaceIpc.ApplyPendingVersion,
     async (_event, pendingVersionId: unknown) => {
       try {
-        return ok(await deps.service.applyPendingVersion(
-          requireNonEmptyString(pendingVersionId, 'Pending version id'),
-        ));
+        return ok(
+          await deps.service.applyPendingVersion(
+            requireNonEmptyString(pendingVersionId, 'Pending version id'),
+          ),
+        );
       } catch (error) {
         return fail<EnterpriseLeadWorkspaceSnapshot>(error);
       }
