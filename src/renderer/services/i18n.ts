@@ -3824,8 +3824,7 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadWorkbenchSkillsRealDesc: '选择当前工作台可以调用的真实已安装技能。',
     enterpriseLeadWorkbenchSkillsEmpty: '还没有可用技能，请先安装或同步技能。',
     enterpriseLeadWorkbenchManageSkills: '管理技能',
-    enterpriseLeadWorkbenchManageSkillsDesc:
-      '打开已有技能管理页，处理“已安装”和“技能市场”。',
+    enterpriseLeadWorkbenchManageSkillsDesc: '打开已有技能管理页，处理“已安装”和“技能市场”。',
     enterpriseLeadWorkbenchSkillDocumentParsing: '资料解析',
     enterpriseLeadWorkbenchSkillDocumentParsingDesc: '文档、图片、表格',
     enterpriseLeadWorkbenchSkillCustomerProfile: '客户画像',
@@ -5663,8 +5662,10 @@ const translations: Record<LanguageType, Record<string, string>> = {
     skillsResearchExternalModalDesc:
       'Saved here as the app default research setup. Agents that use default research settings inherit this Tavily / Firecrawl configuration.',
     skillsResearchExternalLoading: 'Loading external research settings...',
-    skillsResearchExternalLoadFailed: 'Failed to load external research settings. Please try again later.',
-    skillsResearchExternalSaveFailed: 'Failed to save external research settings. Please try again later.',
+    skillsResearchExternalLoadFailed:
+      'Failed to load external research settings. Please try again later.',
+    skillsResearchExternalSaveFailed:
+      'Failed to save external research settings. Please try again later.',
     skillsResearchExternalSaved: 'External research settings saved',
     skillsResearchBrowserTitle: 'Browser search tool',
     skillsResearchBrowserDesc:
@@ -7214,7 +7215,8 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadWorkspaceSearchPlaceholder:
       'Search Cowork conversations, products, customers, sources, rules, or Agents',
     enterpriseLeadWorkspaceSearchResultCount: '{count} results',
-    enterpriseLeadWorkspaceSearchScope: 'Scope: Cowork conversations and current workspace material',
+    enterpriseLeadWorkspaceSearchScope:
+      'Scope: Cowork conversations and current workspace material',
     enterpriseLeadWorkspaceSearchEmpty: 'No matching content found.',
     enterpriseLeadWorkspaceSearchAreaConversations: 'Cowork conversations',
     enterpriseLeadWorkspaceSearchAreaWorkspace: 'Basic info',

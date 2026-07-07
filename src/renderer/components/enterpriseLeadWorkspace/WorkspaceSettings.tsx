@@ -221,7 +221,9 @@ export const WorkspaceSettings: React.FC<WorkspaceSettingsProps> = ({
     setSelectedSkillPresetId(preset.id);
     const availableSkillIds = new Set(skills.map(skill => skill.id));
     const presetSkillIds = preset.skillIds.filter(skillId => availableSkillIds.has(skillId));
-    updateSkillIds(presetSkillIds.length > 0 || skills.length > 0 ? presetSkillIds : preset.skillIds);
+    updateSkillIds(
+      presetSkillIds.length > 0 || skills.length > 0 ? presetSkillIds : preset.skillIds,
+    );
   };
 
   const saveSettings = async (): Promise<void> => {

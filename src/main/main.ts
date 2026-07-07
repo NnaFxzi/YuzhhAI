@@ -1763,10 +1763,7 @@ const listAgentsWithContentQualityPromptPatchOverlay = () =>
 const getAgentWithContentQualityPromptPatchOverlay = (agentId: string) => {
   const agent = getAgentManager().getAgent(agentId);
   if (!agent) return null;
-  return applyContentQualityPromptPatchOverlay(
-    [agent],
-    getContentQualityPromptPatchRegistry(),
-  )[0];
+  return applyContentQualityPromptPatchOverlay([agent], getContentQualityPromptPatchRegistry())[0];
 };
 
 const resolveAgentDefaultWorkingDirectory = (agentId?: string): string => {
@@ -6215,7 +6212,8 @@ if (!gotTheLock) {
     } catch (error) {
       return {
         success: false as const,
-        error: error instanceof Error ? error.message : 'Unknown content quality prompt patch error',
+        error:
+          error instanceof Error ? error.message : 'Unknown content quality prompt patch error',
       };
     }
   };
@@ -6871,7 +6869,9 @@ if (!gotTheLock) {
           options.agentId,
           options.prompt,
         );
-        const baseSystemPrompt = mergeCoworkSystemPrompt(options.systemPrompt ?? config.systemPrompt);
+        const baseSystemPrompt = mergeCoworkSystemPrompt(
+          options.systemPrompt ?? config.systemPrompt,
+        );
         const systemPrompt = appendCoworkWorkspaceAgentTeamPrompt(
           baseSystemPrompt,
           options.workspaceAgentSelection,

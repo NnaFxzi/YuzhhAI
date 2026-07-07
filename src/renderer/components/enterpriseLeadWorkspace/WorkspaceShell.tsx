@@ -66,7 +66,10 @@ export const getWorkspaceShellNavItemActive = (
   return activePage === page;
 };
 
-const navIconById: Record<EnterpriseLeadWorkbenchNavIconType, React.ComponentType<{ className?: string }>> = {
+const navIconById: Record<
+  EnterpriseLeadWorkbenchNavIconType,
+  React.ComponentType<{ className?: string }>
+> = {
   dashboard: RectangleGroupIcon,
   chat: ChatBubbleLeftRightIcon,
   search: MagnifyingGlassIcon,
@@ -253,7 +256,7 @@ export const WorkspaceShell: React.FC<WorkspaceShellProps> = ({
                         }}
                         className="absolute right-1.5 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-tertiary opacity-0 transition-colors hover:bg-red-500/10 hover:text-red-600 focus-visible:bg-red-500/10 focus-visible:text-red-600 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/20 group-hover:opacity-100 dark:hover:text-red-300 dark:focus-visible:text-red-300"
                         aria-label={deleteLabel}
-                    title={i18nService.t('enterpriseLeadWorkspaceDeleteConversation')}
+                        title={i18nService.t('enterpriseLeadWorkspaceDeleteConversation')}
                       >
                         <TrashIcon className="h-4 w-4" />
                       </button>

@@ -699,9 +699,7 @@ describe('EnterpriseLeadWorkspaceService', () => {
     const taskPrompt = setup.modelClient.prompts.at(-1)?.prompt ?? '';
     expect(taskPrompt).toContain('space-skill');
     expect(taskPrompt).toMatch(/"workspaceAgents": \[\s*\{[\s\S]*"skillIds": \[\]/);
-    expect(taskPrompt).toMatch(
-      /"agentSnapshot": \{[\s\S]*"skillIds": \[\s*"space-skill"\s*\]/,
-    );
+    expect(taskPrompt).toMatch(/"agentSnapshot": \{[\s\S]*"skillIds": \[\s*"space-skill"\s*\]/);
     expect(taskPrompt).not.toContain('agent-skill');
     expect(taskPrompt).not.toContain('global-skill');
   });
@@ -1062,12 +1060,14 @@ describe('EnterpriseLeadWorkspaceService', () => {
     expect(pendingVersionPrompt).toContain('"defaultPlatformId": "xiaohongshu_draft"');
     expect(pendingVersionPrompt).toContain('"deliveryMode": "third_party_draft"');
     expect(pendingVersionPrompt).toContain('"configured": true');
-    setup.modelClient.prompts.map(prompt => prompt.prompt).forEach(prompt => {
-      expect(prompt).not.toContain('xhs-secret-token');
-      expect(prompt).not.toContain('https://draft.example.com/xhs');
-      expect(prompt).not.toContain('"token"');
-      expect(prompt).not.toContain('"endpoint"');
-    });
+    setup.modelClient.prompts
+      .map(prompt => prompt.prompt)
+      .forEach(prompt => {
+        expect(prompt).not.toContain('xhs-secret-token');
+        expect(prompt).not.toContain('https://draft.example.com/xhs');
+        expect(prompt).not.toContain('"token"');
+        expect(prompt).not.toContain('"endpoint"');
+      });
   });
 
   test('tests a workspace Agent draft without persisting a chat session', async () => {

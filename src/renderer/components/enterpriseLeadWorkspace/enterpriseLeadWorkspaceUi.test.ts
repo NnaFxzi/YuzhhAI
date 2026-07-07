@@ -743,7 +743,11 @@ describe('enterprise lead workspace UI helpers', () => {
         children?: React.ReactNode;
       }) => {
         shellProps = props;
-        return ReactInner.createElement('div', { 'data-testid': 'workspace-shell' }, props.children);
+        return ReactInner.createElement(
+          'div',
+          { 'data-testid': 'workspace-shell' },
+          props.children,
+        );
       },
     }));
     vi.doMock('./WorkspaceSettings', () => ({

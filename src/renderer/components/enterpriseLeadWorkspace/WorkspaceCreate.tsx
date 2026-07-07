@@ -67,9 +67,7 @@ interface UploadedMaterialWorkspaceInput {
 }
 
 const normalizeOptionalFileSize = (fileSize?: number | null): number | undefined =>
-  typeof fileSize === 'number' && Number.isFinite(fileSize) && fileSize > 0
-    ? fileSize
-    : undefined;
+  typeof fileSize === 'number' && Number.isFinite(fileSize) && fileSize > 0 ? fileSize : undefined;
 
 export const createWorkspaceFromUploadedMaterial = async ({
   workspaceName,
@@ -87,8 +85,8 @@ export const createWorkspaceFromUploadedMaterial = async ({
   }
 
   const now = new Date().toISOString();
-  const cleanSourceLabel = sourceLabel.trim() ||
-    i18nService.t('enterpriseLeadCreateMaterialSourceLabel');
+  const cleanSourceLabel =
+    sourceLabel.trim() || i18nService.t('enterpriseLeadCreateMaterialSourceLabel');
   const draft = buildManualEnterpriseLeadWorkspaceDraft({
     name: workspaceName,
     mode: WorkspaceCreateStartMode.Material,
@@ -117,10 +115,11 @@ export const createWorkspaceFromUploadedMaterial = async ({
     return null;
   }
 
-  const sourceIndex = workspace.extractionSources.findIndex(source =>
-    source.kind === EnterpriseLeadExtractionSourceKind.File &&
-    source.label === cleanSourceLabel &&
-    source.text?.trim() === cleanSourceText,
+  const sourceIndex = workspace.extractionSources.findIndex(
+    source =>
+      source.kind === EnterpriseLeadExtractionSourceKind.File &&
+      source.label === cleanSourceLabel &&
+      source.text?.trim() === cleanSourceText,
   );
   const processingSourceIndex = sourceIndex >= 0 ? sourceIndex : 0;
   if (workspace.extractionSources[processingSourceIndex]?.text?.trim()) {
@@ -177,8 +176,8 @@ export const WorkspaceCreate: React.FC<WorkspaceCreateProps> = ({ onCreated, onC
   const [error, setError] = useState('');
   const [isCreating, setIsCreating] = useState(false);
 
-  const workspaceDisplayName = workspaceName.trim() ||
-    i18nService.t('enterpriseLeadCreateDefaultWorkspaceName');
+  const workspaceDisplayName =
+    workspaceName.trim() || i18nService.t('enterpriseLeadCreateDefaultWorkspaceName');
   const isBusy = isCreating;
 
   const handleCancel = (): void => {
@@ -236,9 +235,7 @@ export const WorkspaceCreate: React.FC<WorkspaceCreateProps> = ({ onCreated, onC
     setBranchScreen(null);
   };
 
-  const createWorkspaceFromDraft = async (
-    draft: EnterpriseLeadWorkspaceDraft,
-  ): Promise<void> => {
+  const createWorkspaceFromDraft = async (draft: EnterpriseLeadWorkspaceDraft): Promise<void> => {
     setIsCreating(true);
     setError('');
 
@@ -345,21 +342,25 @@ export const WorkspaceCreate: React.FC<WorkspaceCreateProps> = ({ onCreated, onC
   };
 
   const handleCreateBlank = (): void => {
-    void createWorkspaceFromDraft(buildManualEnterpriseLeadWorkspaceDraft({
-      name: workspaceDisplayName,
-      mode: WorkspaceCreateStartMode.Blank,
-      sourceLabel: i18nService.t('enterpriseLeadCreateBlankSourceLabel'),
-      settings: buildEnterpriseLeadWorkspaceSettingsFromCurrentConfig(),
-    }));
+    void createWorkspaceFromDraft(
+      buildManualEnterpriseLeadWorkspaceDraft({
+        name: workspaceDisplayName,
+        mode: WorkspaceCreateStartMode.Blank,
+        sourceLabel: i18nService.t('enterpriseLeadCreateBlankSourceLabel'),
+        settings: buildEnterpriseLeadWorkspaceSettingsFromCurrentConfig(),
+      }),
+    );
   };
 
   const handleSkipMaterial = (): void => {
-    void createWorkspaceFromDraft(buildManualEnterpriseLeadWorkspaceDraft({
-      name: workspaceDisplayName,
-      mode: WorkspaceCreateStartMode.Blank,
-      sourceLabel: i18nService.t('enterpriseLeadCreateBlankSourceLabel'),
-      settings: buildEnterpriseLeadWorkspaceSettingsFromCurrentConfig(),
-    }));
+    void createWorkspaceFromDraft(
+      buildManualEnterpriseLeadWorkspaceDraft({
+        name: workspaceDisplayName,
+        mode: WorkspaceCreateStartMode.Blank,
+        sourceLabel: i18nService.t('enterpriseLeadCreateBlankSourceLabel'),
+        settings: buildEnterpriseLeadWorkspaceSettingsFromCurrentConfig(),
+      }),
+    );
   };
 
   const renderError = (): React.ReactNode => {
@@ -387,9 +388,7 @@ export const WorkspaceCreate: React.FC<WorkspaceCreateProps> = ({ onCreated, onC
         <h1 className="text-3xl font-semibold leading-tight text-foreground">
           {i18nService.t(titleKey)}
         </h1>
-        <p className="mt-3 text-base leading-7 text-secondary">
-          {description}
-        </p>
+        <p className="mt-3 text-base leading-7 text-secondary">{description}</p>
       </div>
       <div className="flex shrink-0 flex-wrap justify-end gap-2">
         <button
@@ -485,9 +484,10 @@ export const WorkspaceCreate: React.FC<WorkspaceCreateProps> = ({ onCreated, onC
                       {i18nService.t(option.descriptionKey)}
                     </span>
                   </span>
-                  <span className={`rounded-full px-2 py-1 text-xs font-semibold ${
-                    isSelected ? 'bg-primary/10 text-primary' : 'text-secondary'
-                  }`}
+                  <span
+                    className={`rounded-full px-2 py-1 text-xs font-semibold ${
+                      isSelected ? 'bg-primary/10 text-primary' : 'text-secondary'
+                    }`}
                   >
                     {i18nService.t(option.badgeKey)}
                   </span>
