@@ -2,10 +2,7 @@ import { ArrowLeftIcon } from '@heroicons/react/24/outline';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSelector } from 'react-redux';
 
-import type {
-  EnterpriseLeadWorkspace,
-  EnterpriseLeadWorkspaceChatSessionSummary,
-} from '../../../shared/enterpriseLeadWorkspace/types';
+import type { EnterpriseLeadWorkspace } from '../../../shared/enterpriseLeadWorkspace/types';
 import { coworkService } from '../../services/cowork';
 import { enterpriseLeadWorkspaceService } from '../../services/enterpriseLeadWorkspace';
 import { i18nService } from '../../services/i18n';
@@ -25,7 +22,6 @@ import {
   getShellModeForEnterpriseLeadWorkspaceScreen,
   sortWorkspacesByRecentUpdate,
 } from './enterpriseLeadWorkspaceUi';
-import WorkspaceAiChat from './WorkspaceAiChat';
 import { buildEnterpriseLeadCoworkHandoffRequest } from './workspaceCoworkHandoff';
 import {
   getWorkspaceSidebarActiveChatSessionId,
@@ -47,10 +43,33 @@ interface EnterpriseLeadWorkspaceViewProps {
   onShellModeChange?: (shellMode: EnterpriseLeadWorkspaceShellModeType) => void;
   updateBadge?: React.ReactNode;
   onRequestAppSettings?: CoworkViewProps['onRequestAppSettings'];
-  onPrepareCoworkChat?: (draft: string) => void;
+  onPrepareCoworkChat: (draft: string) => void;
   onShowSkills?: () => void;
   onShowKits?: () => void;
 }
+
+export const EnterpriseLeadWorkspacePageTarget = {
+  EmbeddedCoworkChat: 'embedded_cowork_chat',
+  WorkspacePanel: 'workspace_panel',
+} as const;
+
+export type EnterpriseLeadWorkspacePageTarget =
+  (typeof EnterpriseLeadWorkspacePageTarget)[keyof typeof EnterpriseLeadWorkspacePageTarget];
+
+export interface EnterpriseLeadWorkspacePageRouting {
+  target: EnterpriseLeadWorkspacePageTarget;
+  usesDedicatedEnterpriseLeadChatSessions: boolean;
+}
+
+export const getEnterpriseLeadWorkspacePageRouting = (
+  page: EnterpriseLeadWorkspaceInternalPageType,
+): EnterpriseLeadWorkspacePageRouting => ({
+  target:
+    page === EnterpriseLeadWorkspaceInternalPage.AiChat
+      ? EnterpriseLeadWorkspacePageTarget.EmbeddedCoworkChat
+      : EnterpriseLeadWorkspacePageTarget.WorkspacePanel,
+  usesDedicatedEnterpriseLeadChatSessions: false,
+});
 
 export const EnterpriseLeadWorkspaceView: React.FC<EnterpriseLeadWorkspaceViewProps> = ({
   isSidebarCollapsed,
@@ -71,7 +90,6 @@ export const EnterpriseLeadWorkspaceView: React.FC<EnterpriseLeadWorkspaceViewPr
   const [activeWorkspace, setActiveWorkspace] = useState<EnterpriseLeadWorkspace | null>(null);
   const [activeInternalPage, setActiveInternalPage] =
     useState<EnterpriseLeadWorkspaceInternalPageType>(getDefaultWorkspaceInternalPage());
-  const [chatSessions, setChatSessions] = useState<EnterpriseLeadWorkspaceChatSessionSummary[]>([]);
   const [activeChatSessionId, setActiveChatSessionId] = useState<string | null>(null);
   const [isWorkspaceSearchOpen, setIsWorkspaceSearchOpen] = useState(false);
   const [isLoadingWorkspaces, setIsLoadingWorkspaces] = useState(true);
@@ -80,10 +98,8 @@ export const EnterpriseLeadWorkspaceView: React.FC<EnterpriseLeadWorkspaceViewPr
   const [workspaceListError, setWorkspaceListError] = useState('');
   const navigationRevisionRef = useRef(0);
   const refreshRequestRef = useRef(0);
-  const chatSessionsRequestRef = useRef(0);
   const isMac = window.electron.platform === 'darwin';
   const shellMode = getShellModeForEnterpriseLeadWorkspaceScreen(screen);
-  const isEmbeddedCoworkMode = Boolean(onPrepareCoworkChat);
   const coworkSessions = useSelector((state: RootState) => state.cowork.sessions);
   const currentCoworkSessionId = useSelector((state: RootState) => state.cowork.currentSessionId);
 
@@ -145,39 +161,11 @@ export const EnterpriseLeadWorkspaceView: React.FC<EnterpriseLeadWorkspaceViewPr
     void refreshWorkspaces();
   }, [refreshWorkspaces]);
 
-  const refreshChatSessions = useCallback(async (workspaceId: string): Promise<void> => {
-    const requestId = chatSessionsRequestRef.current + 1;
-    chatSessionsRequestRef.current = requestId;
-
-    try {
-      const nextChatSessions = await enterpriseLeadWorkspaceService.listChatSessions(workspaceId);
-      if (chatSessionsRequestRef.current === requestId) {
-        setChatSessions(nextChatSessions);
-      }
-    } catch {
-      if (chatSessionsRequestRef.current === requestId) {
-        setChatSessions([]);
-      }
-    }
-  }, []);
-
   useEffect(() => {
-    if (!activeWorkspaceId) {
-      chatSessionsRequestRef.current += 1;
-      setChatSessions([]);
-      setActiveChatSessionId(null);
-      setIsWorkspaceSearchOpen(false);
-      return;
-    }
-
     setActiveChatSessionId(null);
     setIsWorkspaceSearchOpen(false);
-    if (isEmbeddedCoworkMode) {
-      void coworkService.loadSessions();
-    } else {
-      void refreshChatSessions(activeWorkspaceId);
-    }
-  }, [activeWorkspaceId, isEmbeddedCoworkMode, refreshChatSessions]);
+    void coworkService.loadSessions();
+  }, [activeWorkspaceId]);
 
   useEffect(() => {
     let isCancelled = false;
@@ -235,7 +223,6 @@ export const EnterpriseLeadWorkspaceView: React.FC<EnterpriseLeadWorkspaceViewPr
     navigationRevisionRef.current += 1;
     setActiveWorkspace(null);
     setActiveWorkspaceId(null);
-    setChatSessions([]);
     setActiveChatSessionId(null);
     setWorkspaceError('');
     setActiveInternalPage(getDefaultWorkspaceInternalPage());
@@ -246,7 +233,6 @@ export const EnterpriseLeadWorkspaceView: React.FC<EnterpriseLeadWorkspaceViewPr
     navigationRevisionRef.current += 1;
     setActiveWorkspace(null);
     setWorkspaceError('');
-    setChatSessions([]);
     setActiveChatSessionId(null);
     setActiveWorkspaceId(workspaceId);
     setActiveInternalPage(getDefaultWorkspaceInternalPage());
@@ -257,7 +243,6 @@ export const EnterpriseLeadWorkspaceView: React.FC<EnterpriseLeadWorkspaceViewPr
     navigationRevisionRef.current += 1;
     setActiveWorkspace(null);
     setWorkspaceError('');
-    setChatSessions([]);
     setActiveChatSessionId(null);
     setActiveWorkspaceId(workspaceId);
     setActiveInternalPage(getDefaultWorkspaceInternalPage());
@@ -283,7 +268,6 @@ export const EnterpriseLeadWorkspaceView: React.FC<EnterpriseLeadWorkspaceViewPr
         navigationRevisionRef.current += 1;
         setActiveWorkspaceId(null);
         setActiveWorkspace(null);
-        setChatSessions([]);
         setActiveChatSessionId(null);
         setActiveInternalPage(getDefaultWorkspaceInternalPage());
         setScreen(EnterpriseLeadWorkspaceScreen.Entry);
@@ -298,7 +282,6 @@ export const EnterpriseLeadWorkspaceView: React.FC<EnterpriseLeadWorkspaceViewPr
     navigationRevisionRef.current += 1;
     setActiveWorkspace(null);
     setActiveWorkspaceId(null);
-    setChatSessions([]);
     setActiveChatSessionId(null);
     setWorkspaceError('');
     setActiveInternalPage(getDefaultWorkspaceInternalPage());
@@ -311,54 +294,40 @@ export const EnterpriseLeadWorkspaceView: React.FC<EnterpriseLeadWorkspaceViewPr
 
       setActiveChatSessionId(null);
       setActiveInternalPage(request.nextInternalPage);
-      onPrepareCoworkChat?.(request.draft);
+      onPrepareCoworkChat(request.draft);
     },
     [onPrepareCoworkChat],
   );
 
   const handleInternalPageChange = (
     page: EnterpriseLeadWorkspaceInternalPageType,
-    workspaceForCowork?: EnterpriseLeadWorkspace,
+    workspaceForCowork: EnterpriseLeadWorkspace,
   ): void => {
-    if (
-      page === EnterpriseLeadWorkspaceInternalPage.AiChat &&
-      workspaceForCowork &&
-      onPrepareCoworkChat
-    ) {
+    const pageRouting = getEnterpriseLeadWorkspacePageRouting(page);
+
+    if (pageRouting.target === EnterpriseLeadWorkspacePageTarget.EmbeddedCoworkChat) {
       prepareEmbeddedCoworkChat(workspaceForCowork);
       return;
     }
 
-    if (page === EnterpriseLeadWorkspaceInternalPage.AiChat) {
-      setActiveChatSessionId(null);
-    }
     setActiveInternalPage(page);
   };
 
-  const handleChatSessionSelect = useCallback(
-    (sessionId: string): void => {
-      if (onPrepareCoworkChat) {
-        void openEmbeddedCoworkConversationRecord({
-          sessionId,
-          setActiveSessionId: setActiveChatSessionId,
-          setActiveInternalPage,
-          loadSession: selectedSessionId => coworkService.loadSession(selectedSessionId),
-        });
-        return;
-      }
-
-      setActiveChatSessionId(sessionId);
-      setActiveInternalPage(EnterpriseLeadWorkspaceInternalPage.AiChat);
-    },
-    [onPrepareCoworkChat],
-  );
+  const handleChatSessionSelect = useCallback((sessionId: string): void => {
+    void openEmbeddedCoworkConversationRecord({
+      sessionId,
+      setActiveSessionId: setActiveChatSessionId,
+      setActiveInternalPage,
+      loadSession: selectedSessionId => coworkService.loadSession(selectedSessionId),
+    });
+  }, []);
 
   const visibleChatSessions = useMemo(
     () =>
-      isEmbeddedCoworkMode && activeWorkspaceId
+      activeWorkspaceId
         ? mapCoworkSessionsToEnterpriseLeadChatSessionSummaries(coworkSessions, activeWorkspaceId)
-        : chatSessions,
-    [activeWorkspaceId, chatSessions, coworkSessions, isEmbeddedCoworkMode],
+        : [],
+    [activeWorkspaceId, coworkSessions],
   );
   const visibleActiveChatSessionId = getWorkspaceSidebarActiveChatSessionId({
     activePage: activeInternalPage,
@@ -378,40 +347,14 @@ export const EnterpriseLeadWorkspaceView: React.FC<EnterpriseLeadWorkspaceViewPr
 
   const handleChatSessionDelete = useCallback(
     async (sessionId: string): Promise<boolean> => {
-      if (isEmbeddedCoworkMode) {
-        const deleted = await coworkService.deleteSession(sessionId);
-        if (deleted && activeChatSessionId === sessionId) {
-          setActiveChatSessionId(null);
-        }
-        return deleted;
-      }
-
-      if (!activeWorkspaceId) {
-        return false;
-      }
-
-      const deleted = await enterpriseLeadWorkspaceService.deleteChatSession(
-        activeWorkspaceId,
-        sessionId,
-      );
-      if (!deleted) {
-        return false;
-      }
-
-      setChatSessions(previous => previous.filter(session => session.id !== sessionId));
-      if (activeChatSessionId === sessionId) {
+      const deleted = await coworkService.deleteSession(sessionId);
+      if (deleted && activeChatSessionId === sessionId) {
         setActiveChatSessionId(null);
       }
-      return true;
+      return deleted;
     },
-    [activeChatSessionId, activeWorkspaceId, isEmbeddedCoworkMode],
+    [activeChatSessionId],
   );
-
-  const handleChatSessionsUpdated = (): void => {
-    if (activeWorkspaceId) {
-      void refreshChatSessions(activeWorkspaceId);
-    }
-  };
 
   const handleWorkspaceUpdated = (workspace: EnterpriseLeadWorkspace): void => {
     setActiveWorkspace(workspace);
@@ -456,6 +399,8 @@ export const EnterpriseLeadWorkspaceView: React.FC<EnterpriseLeadWorkspaceViewPr
     page: EnterpriseLeadWorkspaceInternalPageType,
     workspace: EnterpriseLeadWorkspace,
   ): React.ReactNode => {
+    const pageRouting = getEnterpriseLeadWorkspacePageRouting(page);
+
     if (page === EnterpriseLeadWorkspaceInternalPage.Workbench) {
       return (
         <WorkspaceStart
@@ -477,26 +422,14 @@ export const EnterpriseLeadWorkspaceView: React.FC<EnterpriseLeadWorkspaceViewPr
       );
     }
 
-    if (page === EnterpriseLeadWorkspaceInternalPage.AiChat) {
-      if (onPrepareCoworkChat) {
-        return (
-          <CoworkView
-            onRequestAppSettings={onRequestAppSettings}
-            onShowSkills={onShowSkills}
-            onShowKits={onShowKits}
-            isSidebarCollapsed={false}
-            onNewChat={() => prepareEmbeddedCoworkChat(workspace)}
-          />
-        );
-      }
-
+    if (pageRouting.target === EnterpriseLeadWorkspacePageTarget.EmbeddedCoworkChat) {
       return (
-        <WorkspaceAiChat
-          workspace={workspace}
-          activeSessionId={activeChatSessionId}
-          onSessionChange={setActiveChatSessionId}
-          onSessionsUpdated={handleChatSessionsUpdated}
-          onWorkspaceUpdated={handleWorkspaceUpdated}
+        <CoworkView
+          onRequestAppSettings={onRequestAppSettings}
+          onShowSkills={onShowSkills}
+          onShowKits={onShowKits}
+          isSidebarCollapsed={false}
+          onNewChat={() => prepareEmbeddedCoworkChat(workspace)}
         />
       );
     }

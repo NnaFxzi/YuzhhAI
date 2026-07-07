@@ -74,7 +74,7 @@ class FakeCoworkStore {
   }
 
   getAgent(id: string): Agent | null {
-    return this.agents.find((agent) => agent.id === id) ?? null;
+    return this.agents.find(agent => agent.id === id) ?? null;
   }
 
   createAgent(request: CreateAgentRequest): Agent {
@@ -104,7 +104,7 @@ class FakeCoworkStore {
   }
 
   updateAgent(id: string, updates: UpdateAgentRequest): Agent | null {
-    const index = this.agents.findIndex((agent) => agent.id === id);
+    const index = this.agents.findIndex(agent => agent.id === id);
     if (index < 0) return null;
     this.agents[index] = { ...this.agents[index], ...updates, updatedAt: Date.now() };
     return this.agents[index];
@@ -112,7 +112,7 @@ class FakeCoworkStore {
 
   deleteAgent(id: string): boolean {
     const before = this.agents.length;
-    this.agents = this.agents.filter((agent) => agent.id !== id);
+    this.agents = this.agents.filter(agent => agent.id !== id);
     return this.agents.length !== before;
   }
 
@@ -155,7 +155,7 @@ describe('AgentManager managed preset agents', () => {
     const manager = new AgentManager(store as unknown as CoworkStore);
 
     const agents = manager.listAgents();
-    const marketingAgent = agents.find((agent) => agent.id === MARKETING_AGENT_ID);
+    const marketingAgent = agents.find(agent => agent.id === MARKETING_AGENT_ID);
 
     expect(marketingAgent).toMatchObject({
       id: MARKETING_AGENT_ID,
@@ -176,14 +176,14 @@ describe('AgentManager managed preset agents', () => {
     const store = new FakeCoworkStore();
     const manager = new AgentManager(store as unknown as CoworkStore);
 
-    const marketingAgent = manager
-      .listAgents()
-      .find((agent) => agent.id === MARKETING_AGENT_ID);
+    const marketingAgent = manager.listAgents().find(agent => agent.id === MARKETING_AGENT_ID);
 
     expect(marketingAgent?.systemPrompt).toContain('长期记忆');
     expect(marketingAgent?.systemPrompt).toContain('我记住了');
     expect(marketingAgent?.systemPrompt).toContain('不要重复追问已经记住的信息');
-    expect(marketingAgent?.systemPrompt).toContain('地区、产品、客户行业、应用场景、卖点、渠道偏好');
+    expect(marketingAgent?.systemPrompt).toContain(
+      '地区、产品、客户行业、应用场景、卖点、渠道偏好',
+    );
     expect(marketingAgent?.systemPrompt).toContain('只追问最关键的 1-2 个问题');
     expect(marketingAgent?.systemPrompt).toContain('默认只维护一家工厂画像');
     expect(marketingAgent?.systemPrompt).toContain('本次任务临时要求');
@@ -191,10 +191,14 @@ describe('AgentManager managed preset agents', () => {
     expect(marketingAgent?.systemPrompt).toContain('原来记住的资料先保留');
     expect(marketingAgent?.systemPrompt).toContain('生成前用一句话确认');
     expect(marketingAgent?.systemPrompt).toContain('不要编造没有提供的硬事实');
-    expect(marketingAgent?.systemPrompt).toContain('成本降幅、承重范围、合作年限、交期承诺、认证资质、服务区域');
+    expect(marketingAgent?.systemPrompt).toContain(
+      '成本降幅、承重范围、合作年限、交期承诺、认证资质、服务区域',
+    );
     expect(marketingAgent?.systemPrompt).toContain('产品定位分析');
     expect(marketingAgent?.systemPrompt).toContain('百度关键词、1688 同行、内容平台');
-    expect(marketingAgent?.systemPrompt).toContain('市场需求、竞争机会、工厂匹配、成交可行、内容扩展');
+    expect(marketingAgent?.systemPrompt).toContain(
+      '市场需求、竞争机会、工厂匹配、成交可行、内容扩展',
+    );
     expect(marketingAgent?.systemPrompt).toContain('lobsterai_industry_positioning_save');
     expect(marketingAgent?.systemPrompt).toContain('lobsterai_industry_positioning_get_latest');
     expect(marketingAgent?.systemPrompt).toContain('Tavily');
@@ -209,6 +213,22 @@ describe('AgentManager managed preset agents', () => {
     expect(marketingAgent?.systemPrompt).toContain('事实保护检查');
     expect(marketingAgent?.systemPrompt).toContain('可直接复制的正文');
     expect(marketingAgent?.systemPrompt).toContain('下一步快捷改写');
+    expect(marketingAgent?.systemPrompt).toContain('内容质量自检评分');
+    expect(marketingAgent?.systemPrompt).toContain(
+      '渠道适配、工厂画像复用、真人感、转化动作、事实边界、空泛程度',
+    );
+    expect(marketingAgent?.systemPrompt).toContain('任一项低于 8 分，先静默重写一次');
+    expect(marketingAgent?.systemPrompt).toContain('不要把评分表、扣分项或自检过程展示给用户');
+    expect(marketingAgent?.systemPrompt).toContain('老板口吻也要保持事实边界');
+    expect(marketingAgent?.systemPrompt).toContain(
+      '不要把“能替代木箱、免熏蒸、成本更低、装柜率更高、防护不比木箱差”写成所有订单都成立的确定承诺',
+    );
+    expect(marketingAgent?.systemPrompt).toContain(
+      '优先写成“可评估替代木箱方案、减少熏蒸环节、根据尺寸优化包装空间、按产品结构设计防护”',
+    );
+    expect(marketingAgent?.systemPrompt).toContain(
+      '用户明确要求只输出改写结果时，不要输出解释、关键词、行动引导或下一步快捷改写',
+    );
     expect(marketingAgent?.systemPrompt).toContain(
       '先查知识库、长期记忆、工厂画像和已保存定位报告',
     );
@@ -219,12 +239,27 @@ describe('AgentManager managed preset agents', () => {
       '如果长期记忆、知识库、工厂画像或定位报告已经提供产品、客户或卖点',
     );
     expect(marketingAgent?.systemPrompt).toContain('先输出一版可直接复制的朋友圈正文');
+    expect(marketingAgent?.systemPrompt).toContain('如果已知是重型包装获客场景但客户行业不明确');
+    expect(marketingAgent?.systemPrompt).toContain(
+      '默认先按机械设备、汽配零部件、五金电机、外贸出口和大件异形件等通用重型包装采购场景写一版',
+    );
+    expect(marketingAgent?.systemPrompt).not.toContain('没说客户行业：问“主要想吸引哪类客户');
     expect(marketingAgent?.systemPrompt).not.toContain(
       '用户只说“帮我写文案”：先给 3 个方向让用户选',
     );
     const marketingPreset = PRESET_AGENTS.find(agent => agent.id === MARKETING_AGENT_ID);
     expect(marketingPreset?.systemPromptEn).toContain(
       'If long-term memory, knowledge base, factory profile, or saved positioning reports already provide product, customer, or selling-point context',
+    );
+    expect(marketingPreset?.systemPromptEn).toContain(
+      'If the heavy-packaging lead-generation context is known but the customer segment is not explicit',
+    );
+    expect(marketingPreset?.systemPromptEn).toContain('Content quality self-check');
+    expect(marketingPreset?.systemPromptEn).toContain(
+      'If any dimension scores below 8, silently rewrite once before answering',
+    );
+    expect(marketingPreset?.systemPromptEn).not.toContain(
+      'Missing customer industry: ask whether the target is',
     );
     expect(marketingPreset?.systemPromptEn).not.toContain('offer three directions to choose from');
   });
@@ -236,9 +271,7 @@ describe('AgentManager managed preset agents', () => {
     manager.listAgents();
     manager.listAgents();
 
-    const marketingAgents = manager
-      .listAgents()
-      .filter((agent) => agent.id === MARKETING_AGENT_ID);
+    const marketingAgents = manager.listAgents().filter(agent => agent.id === MARKETING_AGENT_ID);
     expect(marketingAgents).toHaveLength(1);
   });
 
@@ -258,9 +291,7 @@ describe('AgentManager managed preset agents', () => {
     const store = new FakeCoworkStore([createStoredAgent()]);
     const manager = new AgentManager(store as unknown as CoworkStore);
 
-    const marketingAgent = manager
-      .listAgents()
-      .find((agent) => agent.id === MARKETING_AGENT_ID);
+    const marketingAgent = manager.listAgents().find(agent => agent.id === MARKETING_AGENT_ID);
 
     expect(marketingAgent?.systemPrompt).toContain('长期记忆');
     expect(marketingAgent?.model).toBe('provider/model');

@@ -83,6 +83,10 @@ import {
   WorkspaceCreateStartMode,
 } from './enterpriseLeadWorkspaceUi';
 import {
+  EnterpriseLeadWorkspacePageTarget,
+  getEnterpriseLeadWorkspacePageRouting,
+} from './EnterpriseLeadWorkspaceView';
+import {
   buildWorkspaceAiChatAgentHabitBindings,
   buildWorkspaceAiChatAgentHabitPrompt,
   buildWorkspaceAiChatOutputPreferenceInstructions,
@@ -380,11 +384,345 @@ const createDeferred = <T>(): {
   };
 };
 
+class FakeDomNode {
+  parentNode: FakeDomNode | null = null;
+  childNodes: FakeDomNode[] = [];
+  ownerDocument: FakeDomDocument | null = null;
+  nodeValue: string | null = null;
+  textContent = '';
+
+  get firstChild(): FakeDomNode | null {
+    return this.childNodes[0] ?? null;
+  }
+
+  get lastChild(): FakeDomNode | null {
+    return this.childNodes[this.childNodes.length - 1] ?? null;
+  }
+
+  appendChild(node: FakeDomNode): FakeDomNode {
+    this.childNodes.push(node);
+    node.parentNode = this;
+    return node;
+  }
+
+  insertBefore(node: FakeDomNode, before: FakeDomNode | null): FakeDomNode {
+    if (!before) {
+      return this.appendChild(node);
+    }
+
+    const index = this.childNodes.indexOf(before);
+    if (index < 0) {
+      return this.appendChild(node);
+    }
+
+    this.childNodes.splice(index, 0, node);
+    node.parentNode = this;
+    return node;
+  }
+
+  removeChild(node: FakeDomNode): FakeDomNode {
+    const index = this.childNodes.indexOf(node);
+    if (index >= 0) {
+      this.childNodes.splice(index, 1);
+      node.parentNode = null;
+    }
+
+    return node;
+  }
+}
+
+class FakeDomText extends FakeDomNode {
+  nodeType = 3;
+  nodeName = '#text';
+
+  constructor(text: string) {
+    super();
+    this.nodeValue = text;
+    this.textContent = text;
+  }
+}
+
+class FakeDomComment extends FakeDomNode {
+  nodeType = 8;
+  nodeName = '#comment';
+
+  constructor(text: string) {
+    super();
+    this.nodeValue = text;
+    this.textContent = text;
+  }
+}
+
+class FakeDomElement extends FakeDomNode {
+  nodeType = 1;
+  style: Record<string, string> = {};
+  attributes = new Map<string, string>();
+  namespaceURI = 'http://www.w3.org/1999/xhtml';
+  nodeName: string;
+
+  constructor(
+    public tagName: string,
+    private readonly isSvg = false,
+  ) {
+    super();
+    this.nodeName = tagName.toUpperCase();
+    if (isSvg) {
+      this.namespaceURI = 'http://www.w3.org/2000/svg';
+    }
+  }
+
+  get textContent(): string {
+    return this.childNodes.map(node => node.textContent ?? '').join('');
+  }
+
+  set textContent(value: string) {
+    this.childNodes = value ? [new FakeDomText(value)] : [];
+  }
+
+  setAttribute(name: string, value: string): void {
+    this.attributes.set(name, value);
+  }
+
+  setAttributeNS(_namespace: string | null, name: string, value: string): void {
+    this.setAttribute(name, value);
+  }
+
+  removeAttribute(name: string): void {
+    this.attributes.delete(name);
+  }
+
+  addEventListener(): void {}
+
+  removeEventListener(): void {}
+
+  getAttribute(name: string): string | null {
+    return this.attributes.get(name) ?? null;
+  }
+
+  getAttributeNS(_namespace: string | null, name: string): string | null {
+    return this.getAttribute(name);
+  }
+}
+
+class FakeDomDocument extends FakeDomNode {
+  nodeType = 9;
+  nodeName = '#document';
+  documentElement: FakeDomElement;
+  body: FakeDomElement;
+  defaultView: Window & typeof globalThis;
+
+  constructor() {
+    super();
+    this.documentElement = new FakeDomElement('html');
+    this.body = new FakeDomElement('body');
+    this.documentElement.ownerDocument = this;
+    this.body.ownerDocument = this;
+    this.defaultView = globalThis as Window & typeof globalThis;
+  }
+
+  createElement(tagName: string): FakeDomElement {
+    const element = new FakeDomElement(tagName);
+    element.ownerDocument = this;
+    return element;
+  }
+
+  createElementNS(namespace: string | null, tagName: string): FakeDomElement {
+    const element = new FakeDomElement(tagName, namespace === 'http://www.w3.org/2000/svg');
+    element.ownerDocument = this;
+    return element;
+  }
+
+  createTextNode(text: string): FakeDomText {
+    const node = new FakeDomText(text);
+    node.ownerDocument = this;
+    return node;
+  }
+
+  createComment(text: string): FakeDomComment {
+    const node = new FakeDomComment(text);
+    node.ownerDocument = this;
+    return node;
+  }
+
+  addEventListener(): void {}
+
+  removeEventListener(): void {}
+
+  getElementById(): FakeDomElement | null {
+    return null;
+  }
+}
+
+const installFakeDom = (): (() => void) => {
+  const fakeDocument = new FakeDomDocument();
+  const fakeWindow = {
+    document: fakeDocument,
+    navigator: { userAgent: 'node' },
+    location: { href: 'http://localhost/', protocol: 'http:' },
+    window: undefined as unknown,
+    addEventListener: (): void => undefined,
+    removeEventListener: (): void => undefined,
+    requestAnimationFrame: (callback: FrameRequestCallback): number =>
+      setTimeout(() => callback(Date.now()), 0) as unknown as number,
+    cancelAnimationFrame: (handle: number): void => clearTimeout(handle),
+    getSelection: (): Selection | null => null,
+    HTMLElement: FakeDomElement,
+    HTMLIFrameElement: class FakeDomIFrameElement {},
+    Node: FakeDomNode,
+    Text: FakeDomText,
+    Comment: FakeDomComment,
+    SVGElement: class FakeDomSvgElement {},
+    event: undefined,
+    electron: {
+      platform: 'darwin',
+      log: {
+        fromRenderer: vi.fn(),
+      },
+    },
+    self: undefined as unknown,
+    top: undefined as unknown,
+    parent: undefined as unknown,
+  } as unknown as Window & typeof globalThis;
+
+  fakeWindow.self = fakeWindow;
+  fakeWindow.window = fakeWindow;
+  fakeWindow.top = fakeWindow;
+  fakeWindow.parent = fakeWindow;
+  fakeDocument.defaultView = fakeWindow;
+
+  vi.stubGlobal('window', fakeWindow);
+  vi.stubGlobal('document', fakeDocument);
+  vi.stubGlobal('navigator', fakeWindow.navigator);
+  vi.stubGlobal('Node', FakeDomNode);
+  vi.stubGlobal('Text', FakeDomText);
+  vi.stubGlobal('Comment', FakeDomComment);
+  vi.stubGlobal('HTMLElement', FakeDomElement);
+  vi.stubGlobal('SVGElement', class FakeDomSvgElement {});
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+
+  return () => {
+    vi.unstubAllGlobals();
+  };
+};
+
 afterEach(() => {
   vi.restoreAllMocks();
 });
 
 describe('enterprise lead workspace UI helpers', () => {
+  test('routes only AI Chat to embedded Cowork without dedicated chat-session APIs', () => {
+    expect(
+      getEnterpriseLeadWorkspacePageRouting(EnterpriseLeadWorkspaceInternalPage.AiChat),
+    ).toEqual({
+      target: EnterpriseLeadWorkspacePageTarget.EmbeddedCoworkChat,
+      usesDedicatedEnterpriseLeadChatSessions: false,
+    });
+
+    const nonAiChatRoutes = getWorkspaceInternalPages()
+      .filter(page => page.id !== EnterpriseLeadWorkspaceInternalPage.AiChat)
+      .map(page => getEnterpriseLeadWorkspacePageRouting(page.id));
+
+    expect(nonAiChatRoutes).toHaveLength(getWorkspaceInternalPages().length - 1);
+    expect(
+      nonAiChatRoutes.every(
+        route =>
+          route.target === EnterpriseLeadWorkspacePageTarget.WorkspacePanel &&
+          !route.usesDedicatedEnterpriseLeadChatSessions,
+      ),
+    ).toBe(true);
+  });
+
+  test('renders EnterpriseLeadWorkspaceView without dedicated chat-session loads when a workspace opens', async () => {
+    await vi.resetModules();
+    const restoreDom = installFakeDom();
+
+    const ReactInner = await import('react');
+    const { configureStore } = await import('@reduxjs/toolkit');
+    const { Provider } = await import('react-redux');
+    const { createRoot } = await import('react-dom/client');
+    const { act } = ReactInner;
+    const coworkModule = await import('../../services/cowork');
+    const enterpriseLeadWorkspaceModule = await import('../../services/enterpriseLeadWorkspace');
+    const { default: coworkReducer } = await import('../../store/slices/coworkSlice');
+
+    let entryHomeProps: { onOpen: (workspaceId: string) => void } | null = null;
+
+    vi.doMock('./WorkspaceEntryHome', () => ({
+      default: (props: { onOpen: (workspaceId: string) => void }) => {
+        entryHomeProps = props;
+        return ReactInner.createElement('div', { 'data-testid': 'workspace-entry-home' });
+      },
+    }));
+    vi.doMock('./WorkspaceShell', () => ({
+      default: ({ children }: { children?: React.ReactNode }) =>
+        ReactInner.createElement('div', { 'data-testid': 'workspace-shell' }, children),
+    }));
+    vi.doMock('./WorkspaceStart', () => ({
+      default: () => ReactInner.createElement('div', { 'data-testid': 'workspace-start' }),
+    }));
+    vi.doMock('./WorkspaceKnowledgeBase', () => ({
+      default: () => ReactInner.createElement('div', { 'data-testid': 'workspace-knowledge-base' }),
+    }));
+    vi.doMock('./WorkspaceWorkbench', () => ({
+      default: () => ReactInner.createElement('div', { 'data-testid': 'workspace-workbench' }),
+    }));
+    vi.doMock('./WorkspaceCreate', () => ({
+      default: () => ReactInner.createElement('div', { 'data-testid': 'workspace-create' }),
+    }));
+    vi.doMock('../cowork/CoworkSearchModal', () => ({
+      default: () => ReactInner.createElement('div', { 'data-testid': 'cowork-search-modal' }),
+    }));
+    vi.doMock('../cowork', () => ({
+      CoworkView: () => ReactInner.createElement('div', { 'data-testid': 'cowork-view' }),
+    }));
+
+    const { coworkService } = coworkModule;
+    const { enterpriseLeadWorkspaceService } = enterpriseLeadWorkspaceModule;
+    const { EnterpriseLeadWorkspaceView: IsolatedEnterpriseLeadWorkspaceView } =
+      await import('./EnterpriseLeadWorkspaceView');
+
+    const workspace = createWorkspace('workspace-1');
+    const testStore = configureStore({
+      reducer: {
+        cowork: coworkReducer,
+      },
+    });
+
+    vi.spyOn(enterpriseLeadWorkspaceService, 'listWorkspaces').mockResolvedValue([workspace]);
+    vi.spyOn(enterpriseLeadWorkspaceService, 'getWorkspace').mockResolvedValue(workspace);
+    vi.spyOn(enterpriseLeadWorkspaceService, 'listChatSessions').mockResolvedValue([]);
+    vi.spyOn(enterpriseLeadWorkspaceService, 'getChatSession').mockResolvedValue(null);
+    vi.spyOn(coworkService, 'loadSessions').mockResolvedValue(undefined);
+
+    const container = document.createElement('div');
+    const root = createRoot(container);
+
+    try {
+      await act(async () => {
+        root.render(
+          ReactInner.createElement(Provider, {
+            store: testStore,
+            children: ReactInner.createElement(IsolatedEnterpriseLeadWorkspaceView, {
+              onPrepareCoworkChat: vi.fn(),
+            }),
+          }),
+        );
+      });
+
+      expect(entryHomeProps).not.toBeNull();
+
+      await act(async () => {
+        entryHomeProps?.onOpen('workspace-1');
+      });
+
+      expect(enterpriseLeadWorkspaceService.listChatSessions).not.toHaveBeenCalled();
+      expect(enterpriseLeadWorkspaceService.getChatSession).not.toHaveBeenCalled();
+    } finally {
+      root.unmount();
+      restoreDom();
+    }
+  });
+
   test('uses entry home as the default enterprise lead workspace screen', () => {
     expect(EnterpriseLeadWorkspaceScreen.Entry).toBe('entry');
   });

@@ -3,6 +3,8 @@ import { describe, expect, test } from 'vitest';
 import { EnterpriseLeadKnowledgeItemKind } from './enterpriseLeadWorkspaceUi';
 import {
   confirmEnterpriseLeadKnowledgeItemInProfile,
+  confirmEnterpriseLeadKnowledgeItemsInProfile,
+  doesEnterpriseLeadKnowledgeSourceNeedVectorSync,
   enterpriseLeadKnowledgeActionButtonClassNames,
   enterpriseLeadKnowledgeConfirmBehavior,
   enterpriseLeadKnowledgeDocumentHeaderClassName,
@@ -20,10 +22,13 @@ import {
   getEnterpriseLeadKnowledgeMessageAutoDismissMs,
   getEnterpriseLeadKnowledgeMessageRole,
   getEnterpriseLeadKnowledgePendingItemCount,
+  getEnterpriseLeadKnowledgePendingItems,
   getEnterpriseLeadKnowledgeSelectedItemIdAfterViewChange,
   getEnterpriseLeadKnowledgeVectorIndexStatus,
   getEnterpriseLeadKnowledgeVectorIndexSummary,
+  getEnterpriseLeadNewExtractedKnowledgeKeys,
   isEnterpriseLeadKnowledgeItemConfirmed,
+  removeEnterpriseLeadKnowledgeKeysFromProfile,
 } from './WorkspaceKnowledgeBase';
 
 describe('WorkspaceKnowledgeBase layout', () => {
@@ -94,6 +99,119 @@ describe('WorkspaceKnowledgeBase layout', () => {
     ]);
     expect(isEnterpriseLeadKnowledgeItemConfirmed(confirmedProfile, item)).toBe(true);
     expect(getEnterpriseLeadKnowledgePendingItemCount(confirmedProfile, [item])).toBe(0);
+  });
+
+  test('bulk confirms pending AI knowledge items while ignoring read-only source rows', () => {
+    const profile = {
+      companySummary: '',
+      productList: ['重型纸箱'],
+      productCapabilities: [],
+      targetCustomers: ['汽配工厂'],
+      applicationScenarios: [],
+      sellingPoints: [],
+      channelPreferences: [],
+      prohibitedClaims: [],
+      contactRules: [],
+      missingInfo: [],
+    };
+    const items = [
+      {
+        id: 'product-0',
+        kind: EnterpriseLeadKnowledgeItemKind.Product,
+        text: '重型纸箱',
+      },
+      {
+        id: 'customer-0',
+        kind: EnterpriseLeadKnowledgeItemKind.Customer,
+        text: '汽配工厂',
+      },
+      {
+        id: 'source-0',
+        kind: EnterpriseLeadKnowledgeItemKind.Source,
+        text: '客户访谈原文',
+      },
+    ];
+
+    expect(getEnterpriseLeadKnowledgePendingItems(profile, items)).toEqual(items.slice(0, 2));
+
+    const confirmedProfile = confirmEnterpriseLeadKnowledgeItemsInProfile(profile, items);
+
+    expect(confirmedProfile.confirmedKnowledgeKeys).toEqual([
+      getEnterpriseLeadKnowledgeConfirmationKey(items[0]),
+      getEnterpriseLeadKnowledgeConfirmationKey(items[1]),
+    ]);
+    expect(getEnterpriseLeadKnowledgePendingItemCount(confirmedProfile, items)).toBe(0);
+  });
+
+  test('tracks only newly contributed knowledge keys from document extraction', () => {
+    const previousProfile = {
+      companySummary: '东莞工厂',
+      productList: ['重型纸箱'],
+      productCapabilities: [],
+      targetCustomers: [],
+      applicationScenarios: [],
+      sellingPoints: [],
+      channelPreferences: [],
+      prohibitedClaims: [],
+      contactRules: [],
+      missingInfo: [],
+    };
+    const extractedProfile = {
+      companySummary: '东莞工厂',
+      productList: ['重型纸箱', '蜂窝纸板'],
+      productCapabilities: [],
+      targetCustomers: ['机械设备厂'],
+      applicationScenarios: [],
+      sellingPoints: ['防破损'],
+      channelPreferences: [],
+      prohibitedClaims: [],
+      contactRules: [],
+      missingInfo: [],
+    };
+    const mergedProfile = {
+      ...previousProfile,
+      productList: ['重型纸箱', '蜂窝纸板'],
+      targetCustomers: ['机械设备厂'],
+      sellingPoints: ['防破损'],
+    };
+
+    expect(
+      getEnterpriseLeadNewExtractedKnowledgeKeys(previousProfile, extractedProfile, mergedProfile),
+    ).toEqual(['productList:蜂窝纸板', 'targetCustomers:机械设备厂', 'sellingPoints:防破损']);
+  });
+
+  test('removes only unpreserved source knowledge keys from profile and confirmations', () => {
+    const profile = {
+      companySummary: '东莞工厂',
+      productList: ['重型纸箱', '蜂窝纸板'],
+      productCapabilities: [],
+      targetCustomers: ['机械设备厂'],
+      applicationScenarios: [],
+      sellingPoints: ['防破损'],
+      channelPreferences: [],
+      prohibitedClaims: [],
+      contactRules: [],
+      missingInfo: [],
+      confirmedKnowledgeKeys: [
+        'productList:蜂窝纸板',
+        'targetCustomers:机械设备厂',
+        'sellingPoints:防破损',
+      ],
+    };
+
+    const nextProfile = removeEnterpriseLeadKnowledgeKeysFromProfile(
+      profile,
+      ['productList:蜂窝纸板', 'targetCustomers:机械设备厂'],
+      ['targetCustomers:机械设备厂'],
+    );
+
+    expect(nextProfile.productList).toEqual(['重型纸箱']);
+    expect(nextProfile.targetCustomers).toEqual(['机械设备厂']);
+    expect(nextProfile.sellingPoints).toEqual(['防破损']);
+    expect(nextProfile.confirmedKnowledgeKeys).toEqual([
+      'targetCustomers:机械设备厂',
+      'sellingPoints:防破损',
+    ]);
   });
 
   test('left aligns document table headers and centers AI knowledge table headers', () => {
@@ -175,6 +293,27 @@ describe('WorkspaceKnowledgeBase layout', () => {
         vectorIndexStatus: 'indexed',
       }),
     ).toContain('12');
+  });
+
+  test('detects stale readable documents that still need vector sync', () => {
+    expect(
+      doesEnterpriseLeadKnowledgeSourceNeedVectorSync({
+        text: '主营工业包装服务，客户是机械设备厂采购负责人。',
+      }),
+    ).toBe(true);
+    expect(
+      doesEnterpriseLeadKnowledgeSourceNeedVectorSync({
+        text: '主营工业包装服务，客户是机械设备厂采购负责人。',
+        vectorChunkCount: 4,
+        vectorIndexStatus: 'indexed',
+      }),
+    ).toBe(false);
+    expect(
+      doesEnterpriseLeadKnowledgeSourceNeedVectorSync({
+        text: '   ',
+        vectorIndexStatus: 'pending',
+      }),
+    ).toBe(false);
   });
 
   test('treats rich document uploads as readable knowledge sources', () => {

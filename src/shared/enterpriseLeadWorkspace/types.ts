@@ -1,5 +1,4 @@
-import type { DomesticResearchConfig } from '../agent/domesticResearch';
-import type { DomesticResearchSourceId } from '../agent/domesticResearch';
+import type { DomesticResearchConfig, DomesticResearchSourceId } from '../agent/domesticResearch';
 import type { ExternalResearchConfig } from '../agent/externalResearch';
 import type { ProviderConfig } from '../providers';
 import type {
@@ -51,6 +50,7 @@ export interface EnterpriseLeadExtractionSource {
   vectorIndexedAt?: string;
   vectorChunkCount?: number;
   vectorEmbeddingVersion?: string;
+  extractedKnowledgeKeys?: string[];
   createdAt?: string;
   updatedAt?: string;
 }

@@ -79,6 +79,24 @@ describe('buildAgentKnowledgeEvidencePrompt', () => {
     expect(prompt).toContain('不要调用阻断式选择');
     expect(prompt).toContain('没有命中足够相关知识时，不要假设生成');
     expect(prompt).toContain('小红书选题');
+    expect(prompt).toContain('内容质量自检评分');
+    expect(prompt).toContain('渠道适配、工厂画像复用、真人感、转化动作、事实边界、空泛程度');
+    expect(prompt).toContain('任一项低于 8 分，先静默重写一次');
+    expect(prompt).toContain('不要把评分表、扣分项或自检过程展示给用户');
+  });
+
+  test('treats heavy-packaging positioning context as enough for a WeChat Moments draft', () => {
+    const prompt = buildAgentKnowledgeEvidencePromptForRequest('帮我写一条朋友圈文案');
+
+    expect(prompt).toContain('重型包装行业包、定位报告');
+    expect(prompt).toContain('足够先写一版保守可用的朋友圈文案');
+    expect(prompt).toContain('不要把城市、具体产品、目标客户行业作为写作前的必填项');
+    expect(prompt).toContain('城市、联系方式、承重数据、客户细分');
+    expect(prompt).toContain('老板口吻也要保持事实边界');
+    expect(prompt).toContain(
+      '不要把替代木箱、免熏蒸、成本更低、装柜率更高或防护不比木箱差写成所有订单都成立的确定承诺',
+    );
+    expect(prompt).toContain('用户明确要求只输出改写结果时，只输出正文');
   });
 
   test('appends workspace knowledge snippets before content production answers', () => {
@@ -134,6 +152,10 @@ describe('buildAgentKnowledgeEvidencePrompt', () => {
     expect(prompt).toContain('重型纸箱、蜂窝箱、纸护角、纸托盘');
     expect(prompt).toContain('不要说“我目前还没记住你工厂的具体情况”');
     expect(prompt).toContain('先输出一条可直接复制的朋友圈文案草稿');
+    expect(prompt).toContain('内容质量自检评分');
+    expect(prompt).toContain('任一项低于 8 分，先静默重写一次');
+    expect(prompt).toContain('老板口吻也要保持事实边界');
+    expect(prompt).toContain('只输出正文，不要额外输出解释、关键词、行动引导或下一步快捷改写');
 
     fs.rmSync(stateDir, { recursive: true, force: true });
   });

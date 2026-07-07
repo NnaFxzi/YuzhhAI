@@ -3295,6 +3295,7 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadKnowledgeArchiveAction: '归档',
     enterpriseLeadKnowledgeConfirmAction: '确认入库',
     enterpriseLeadKnowledgeConfirmCompactAction: '确认',
+    enterpriseLeadKnowledgeConfirmFilteredAction: '确认当前列表 {count} 条',
     enterpriseLeadKnowledgeNoSelection: '选择一条知识后查看详情和维护动作。',
     enterpriseLeadKnowledgeCompanyModalTitle: '维护公司资料',
     enterpriseLeadKnowledgeCompanyGroupOverview: '基础资料',
@@ -3396,7 +3397,23 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadKnowledgeDocumentUpdatedAndExtracted: '文档已更新，AI 知识已重新提取。',
     enterpriseLeadKnowledgeDocumentExtractFailed: 'AI 知识提取失败，请检查文档内容后重试。',
     enterpriseLeadKnowledgeDocumentDeleted: '文档已删除。',
+    enterpriseLeadKnowledgeDocumentAndKnowledgeDeleted: '文档和相关 AI 知识已删除。',
     enterpriseLeadKnowledgeDeleteDocumentConfirm: '确定删除这份文档吗？相关 AI 知识不会自动删除。',
+    enterpriseLeadKnowledgeDeleteDocumentModalTitle: '删除文档',
+    enterpriseLeadKnowledgeDeleteDocumentModalSubtitle:
+      '选择删除范围。默认只删除文档，避免误删已确认知识。',
+    enterpriseLeadKnowledgeUnknownDocument: '未命名文档',
+    enterpriseLeadKnowledgeDeleteDocumentWarning: '删除后会清理这份文档的向量索引，操作不可恢复。',
+    enterpriseLeadKnowledgeDeleteDocumentOnlyTitle: '仅删除文档',
+    enterpriseLeadKnowledgeDeleteDocumentOnlyDesc:
+      '删除原始文档和向量索引；已提取、已确认的 AI 知识继续保留。',
+    enterpriseLeadKnowledgeDeleteWithKnowledgeTitle: '删除文档，并清除相关 AI 知识',
+    enterpriseLeadKnowledgeDeleteWithKnowledgeDesc:
+      '会同时移除这份文档贡献的 {count} 条 AI 知识和确认状态。其他文档也贡献过的同名知识会保留。',
+    enterpriseLeadKnowledgeDeleteWithKnowledgeUnavailable:
+      '这份文档没有安全的来源追踪记录，暂不能自动清除 AI 知识，避免误删。',
+    enterpriseLeadKnowledgeDeleteDocumentAction: '确认删除文档',
+    enterpriseLeadKnowledgeDeleteWithKnowledgeAction: '彻底删除',
     enterpriseLeadKnowledgeStartExtract: '开始提取',
     enterpriseLeadKnowledgeChooseDocumentFile: '选择知识库文档',
     enterpriseLeadKnowledgeFileSelectionUnavailable: '当前环境无法选择文件。',
@@ -3409,6 +3426,8 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadKnowledgeItemUpdated: '知识已更新。',
     enterpriseLeadKnowledgeItemArchived: '已归档，不再作为默认资料显示。',
     enterpriseLeadKnowledgeItemConfirmed: '已确认，后续任务可引用。',
+    enterpriseLeadKnowledgeBatchConfirmed: '已批量确认当前列表的 {count} 条知识。',
+    enterpriseLeadKnowledgeBatchConfirmEmpty: '当前列表没有待确认知识。',
     enterpriseLeadCreationRecordMetricTasks: '任务',
     enterpriseLeadCreationRecordMetricDeliverables: '成果',
     enterpriseLeadCreationRecordMetricTodos: '待办',
@@ -7490,6 +7509,7 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadKnowledgeArchiveAction: 'Archive',
     enterpriseLeadKnowledgeConfirmAction: 'Confirm',
     enterpriseLeadKnowledgeConfirmCompactAction: 'Confirm',
+    enterpriseLeadKnowledgeConfirmFilteredAction: 'Confirm current list {count}',
     enterpriseLeadKnowledgeNoSelection:
       'Select one knowledge item to see details and maintenance actions.',
     enterpriseLeadKnowledgeCompanyModalTitle: 'Maintain company material',
@@ -7604,8 +7624,27 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadKnowledgeDocumentExtractFailed:
       'AI knowledge extraction failed. Check the document content and try again.',
     enterpriseLeadKnowledgeDocumentDeleted: 'Document deleted.',
+    enterpriseLeadKnowledgeDocumentAndKnowledgeDeleted:
+      'Document and related AI knowledge deleted.',
     enterpriseLeadKnowledgeDeleteDocumentConfirm:
       'Delete this document? Related AI knowledge will not be deleted automatically.',
+    enterpriseLeadKnowledgeDeleteDocumentModalTitle: 'Delete document',
+    enterpriseLeadKnowledgeDeleteDocumentModalSubtitle:
+      'Choose the delete scope. Document-only is selected by default to avoid removing confirmed knowledge by mistake.',
+    enterpriseLeadKnowledgeUnknownDocument: 'Untitled document',
+    enterpriseLeadKnowledgeDeleteDocumentWarning:
+      'Deleting also clears this document from the vector index. This cannot be undone.',
+    enterpriseLeadKnowledgeDeleteDocumentOnlyTitle: 'Delete document only',
+    enterpriseLeadKnowledgeDeleteDocumentOnlyDesc:
+      'Remove the original document and vector index. Extracted and confirmed AI knowledge stays available.',
+    enterpriseLeadKnowledgeDeleteWithKnowledgeTitle:
+      'Delete document and clear related AI knowledge',
+    enterpriseLeadKnowledgeDeleteWithKnowledgeDesc:
+      'Also removes {count} AI knowledge items and confirmation state contributed by this document. Same knowledge contributed by other documents is kept.',
+    enterpriseLeadKnowledgeDeleteWithKnowledgeUnavailable:
+      'This document has no safe source tracking record, so AI knowledge cannot be cleared automatically without risking accidental deletion.',
+    enterpriseLeadKnowledgeDeleteDocumentAction: 'Delete document',
+    enterpriseLeadKnowledgeDeleteWithKnowledgeAction: 'Delete permanently',
     enterpriseLeadKnowledgeStartExtract: 'Start extraction',
     enterpriseLeadKnowledgeChooseDocumentFile: 'Choose knowledge base document',
     enterpriseLeadKnowledgeFileSelectionUnavailable:
@@ -7620,6 +7659,8 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadKnowledgeItemUpdated: 'Knowledge updated.',
     enterpriseLeadKnowledgeItemArchived: 'Archived and hidden from default material.',
     enterpriseLeadKnowledgeItemConfirmed: 'Confirmed. Future tasks can reference it.',
+    enterpriseLeadKnowledgeBatchConfirmed: 'Confirmed {count} knowledge items in the current list.',
+    enterpriseLeadKnowledgeBatchConfirmEmpty: 'No pending knowledge in the current list.',
     enterpriseLeadCreationRecordMetricTasks: 'Tasks',
     enterpriseLeadCreationRecordMetricDeliverables: 'Deliverables',
     enterpriseLeadCreationRecordMetricTodos: 'Todos',

@@ -64,13 +64,11 @@ Vitest, ESLint.
 ### Task 1: Lock AI Chat To Embedded Cowork
 
 **Files:**
-
 - Modify: `src/renderer/components/enterpriseLeadWorkspace/EnterpriseLeadWorkspaceView.tsx`
 - Modify: `src/renderer/components/enterpriseLeadWorkspace/workspaceCoworkHandoff.test.ts`
 - Test: `src/renderer/components/enterpriseLeadWorkspace/enterpriseLeadWorkspaceUi.test.ts`
 
 **Interfaces:**
-
 - Consumes: `onPrepareCoworkChat(draft: string): void` from `EnterpriseLeadWorkspaceViewProps`.
 - Produces: `EnterpriseLeadWorkspaceView` always renders `CoworkView` for `EnterpriseLeadWorkspaceInternalPage.AiChat`.
 
@@ -149,7 +147,6 @@ git commit -m "refactor(enterprise-lead): route workspace chat through cowork"
 ### Task 2: Replace Dedicated Chat Session Types In Renderer UI
 
 **Files:**
-
 - Modify: `src/renderer/components/enterpriseLeadWorkspace/workspaceCoworkSessionRecords.ts`
 - Modify: `src/renderer/components/enterpriseLeadWorkspace/workspaceCoworkSessionRecords.test.ts`
 - Modify: `src/renderer/components/enterpriseLeadWorkspace/WorkspaceShell.tsx`
@@ -158,7 +155,6 @@ git commit -m "refactor(enterprise-lead): route workspace chat through cowork"
 - Modify: `src/renderer/services/i18n.ts`
 
 **Interfaces:**
-
 - Produces:
 
 ```ts
@@ -298,7 +294,6 @@ git commit -m "refactor(enterprise-lead): use cowork conversation records"
 ### Task 3: Delete Dedicated WorkspaceAiChat Renderer Surface
 
 **Files:**
-
 - Delete: `src/renderer/components/enterpriseLeadWorkspace/WorkspaceAiChat.tsx`
 - Delete: `src/renderer/components/enterpriseLeadWorkspace/workspaceAiChatProcess.ts`
 - Delete: `src/renderer/components/enterpriseLeadWorkspace/workspaceAiChatProcess.test.ts`
@@ -391,14 +386,12 @@ git commit -m "refactor(enterprise-lead): remove dedicated workspace chat ui"
 ### Task 4: Remove Renderer Bridge Contract For Dedicated Chat
 
 **Files:**
-
 - Modify: `src/renderer/services/enterpriseLeadWorkspace.ts`
 - Modify: `src/renderer/services/enterpriseLeadWorkspace.test.ts`
 - Modify: `src/renderer/types/electron.d.ts`
 - Modify: `src/main/preload.ts`
 
 **Interfaces:**
-
 - Removes renderer API methods:
 
 ```ts
@@ -492,7 +485,6 @@ git commit -m "refactor(enterprise-lead): remove workspace chat bridge"
 ### Task 5: Remove Main IPC Chat Handlers And Shared IPC Constants
 
 **Files:**
-
 - Modify: `src/main/enterpriseLeadWorkspace/ipcHandlers.ts`
 - Modify: `src/main/enterpriseLeadWorkspace/ipcHandlers.test.ts`
 - Modify: `src/shared/enterpriseLeadWorkspace/constants.ts`
@@ -501,7 +493,6 @@ git commit -m "refactor(enterprise-lead): remove workspace chat bridge"
 - Modify: `src/shared/enterpriseLeadWorkspace/validation.test.ts`
 
 **Interfaces:**
-
 - Removes IPC constants:
 
 ```ts
@@ -606,13 +597,11 @@ git commit -m "refactor(enterprise-lead): remove workspace chat ipc contract"
 ### Task 6: Remove Main Service Chat Implementation And Prompt Templates
 
 **Files:**
-
 - Modify: `src/main/enterpriseLeadWorkspace/service.ts`
 - Modify: `src/main/enterpriseLeadWorkspace/service.test.ts`
 - Modify: `src/main/enterpriseLeadWorkspace/promptTemplates.ts`
 
 **Interfaces:**
-
 - Removes service methods:
 
 ```ts
@@ -753,12 +742,10 @@ git commit -m "refactor(enterprise-lead): remove dedicated chat service"
 ### Task 7: Remove Dedicated Chat Tables From Store Runtime
 
 **Files:**
-
 - Modify: `src/main/enterpriseLeadWorkspace/store.ts`
 - Modify: `src/main/enterpriseLeadWorkspace/store.test.ts`
 
 **Interfaces:**
-
 - Removes store methods:
 
 ```ts
@@ -854,7 +841,6 @@ git commit -m "refactor(enterprise-lead): stop creating workspace chat tables"
 ### Task 8: Final Reference Sweep, Lint, And Build Verification
 
 **Files:**
-
 - Verify all touched files from Tasks 1-7.
 
 **Interfaces:**

@@ -9,6 +9,7 @@ import {
   ContentKnowledgeSourceType,
   searchContentKnowledgeIndex,
 } from './contentKnowledgeRetrieval';
+import { CONTENT_QUALITY_REVIEW_PROMPT_ZH_LINES } from './contentQualityReviewPrompt';
 
 const KNOWLEDGE_CONTEXT_HIT_LIMIT = 8;
 const KNOWLEDGE_CONTEXT_CHARS = 420;
@@ -108,6 +109,11 @@ export const buildAgentKnowledgeEvidencePrompt = (): string =>
     '- 如果 `memory_search`、`MEMORY.md`、`USER.md` 或 `lobsterai_industry_positioning_get_latest` 已经命中相关行业、产品、客户或定位报告，就把这些结果当作证据包拼接到当前任务中回答。',
     '- 命中行业证据时，不要追问用户具体行业；先按证据识别的行业回答，并用一句话说明“我先按……行业分析”。',
     '- 命中内容生产证据时，不要追问用户具体领域、赛道、人群或风格；先按证据识别的产品、客户、渠道、卖点和历史定位回答，并用一句话说明“我先按……方向生成”。',
+    '- 对重型包装获客场景，重型包装行业包、定位报告、memory_search 或 lobsterai_industry_positioning_get_latest 命中重型纸箱、蜂窝箱、纸护角、纸托盘、替代木箱、机械设备、汽配、出口包装、防破损、降本或免熏蒸等信息时，已经足够先写一版保守可用的朋友圈文案。',
+    '- 用户只说“帮我写一条朋友圈文案”时，不要把城市、具体产品、目标客户行业作为写作前的必填项；城市、联系方式、承重数据、客户细分只能放在正文后的可选优化问题里。',
+    ...CONTENT_QUALITY_REVIEW_PROMPT_ZH_LINES,
+    '- 老板口吻也要保持事实边界；不要把替代木箱、免熏蒸、成本更低、装柜率更高或防护不比木箱差写成所有订单都成立的确定承诺；没有案例或参数支撑时，优先写成可评估、可减少、可优化、按产品结构设计。',
+    '- 用户明确要求只输出改写结果时，只输出正文，不要额外输出解释、关键词、行动引导或下一步快捷改写。',
     '- 不要调用阻断式选择、确认或用户输入弹窗来询问内容生产的领域、赛道、人群、风格或渠道；这些信息优先从当前提示词、知识库、长期记忆、工厂画像和已保存定位报告中推断。',
     '- 内容生产没有命中足够相关知识时，不要假设生成，不要暂按通用方向生成，也不要输出选题、脚本、文案、私域话术或销售转化内容；只用普通对话请用户补充领域/赛道、账号定位、目标人群、产品/服务、卖点或转化目标中的关键缺口。',
     '- 小红书选题默认输出标题或角度、目标人群、痛点、开头钩子、内容形式和转化意图；不要只输出标题列表，也不要只问“你做什么行业”。',
@@ -151,6 +157,9 @@ const buildKnowledgeContextPrompt = (result: ContentKnowledgeRetrievalResult): s
     'The following local workspace knowledge chunks were retrieved by LobsterAI before the model answered. Treat them as evidence for the current request.',
     '内容生产硬规则：如果命中片段里已经包含工厂、产品、客户或卖点信息，不要说“我目前还没记住你工厂的具体情况”，也不要说“没有存过你们工厂的具体资料”；不要重复询问命中片段已有的产品、客户或卖点。',
     '如果当前请求是朋友圈文案，先输出一条可直接复制的朋友圈文案草稿；如果是选题、脚本、私域话术或销售转化内容，也先输出可直接使用的成品，再把缺失信息放到末尾用 1-2 个问题追问。',
+    ...CONTENT_QUALITY_REVIEW_PROMPT_ZH_LINES,
+    '老板口吻也要保持事实边界；替代木箱、免熏蒸、成本更低、装柜率更高、防护不比木箱差等卖点，没有案例或参数支撑时要写成可评估、可减少、可优化、按产品结构设计。',
+    '用户明确要求只输出改写结果时，只输出正文，不要额外输出解释、关键词、行动引导或下一步快捷改写。',
     `检索方式：知识条目切片 + embedding 入库/索引 + 关键词/向量混合检索 + 重排；命中阈值 ${result.diagnostics.hitThreshold.toFixed(2)}，最低业务信号 ${result.diagnostics.minBusinessSignalCount}。`,
   ];
 

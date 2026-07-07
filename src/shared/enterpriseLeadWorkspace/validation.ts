@@ -54,8 +54,7 @@ const MAX_WORKSPACE_OUTPUT_PREFERENCE_INSTRUCTIONS = 12;
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 
-const cleanText = (value: unknown): string =>
-  typeof value === 'string' ? value.trim() : '';
+const cleanText = (value: unknown): string => (typeof value === 'string' ? value.trim() : '');
 
 const cleanOptionalText = (value: unknown): string | undefined => {
   const text = cleanText(value);
@@ -63,14 +62,11 @@ const cleanOptionalText = (value: unknown): string | undefined => {
 };
 
 const cleanTextList = (value: unknown): string[] =>
-  Array.isArray(value)
-    ? Array.from(new Set(value.map(cleanText).filter(Boolean)))
-    : [];
+  Array.isArray(value) ? Array.from(new Set(value.map(cleanText).filter(Boolean))) : [];
 
 const cleanSkillIds = (value: unknown): string[] => cleanTextList(value);
 
-const readRecord = (value: unknown): Record<string, unknown> =>
-  isRecord(value) ? value : {};
+const readRecord = (value: unknown): Record<string, unknown> => (isRecord(value) ? value : {});
 
 const hasOwn = (record: Record<string, unknown>, key: string): boolean =>
   Object.prototype.hasOwnProperty.call(record, key);
@@ -95,9 +91,7 @@ const readOptionalBoolean = (value: unknown): boolean | undefined =>
   typeof value === 'boolean' ? value : undefined;
 
 const readPositiveNumber = (value: unknown): number | undefined =>
-  typeof value === 'number' && Number.isFinite(value) && value > 0
-    ? value
-    : undefined;
+  typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : undefined;
 
 const isHttpUrl = (value: unknown): value is string => {
   const url = cleanText(value);
@@ -110,9 +104,7 @@ const isHttpUrl = (value: unknown): value is string => {
   }
 };
 
-const normalizeResearchProvider = (
-  value: unknown,
-): 'auto' | 'tavily' | 'firecrawl' => {
+const normalizeResearchProvider = (value: unknown): 'auto' | 'tavily' | 'firecrawl' => {
   if (value === 'tavily' || value === 'firecrawl') {
     return value;
   }
@@ -202,10 +194,13 @@ export function normalizeEnterpriseLeadWorkspaceAgents(
 ): EnterpriseLeadWorkspaceAgentBinding[] {
   if (!Array.isArray(value)) return [];
 
-  const bindingsByAgentId = new Map<string, {
-    binding: EnterpriseLeadWorkspaceAgentBinding;
-    index: number;
-  }>();
+  const bindingsByAgentId = new Map<
+    string,
+    {
+      binding: EnterpriseLeadWorkspaceAgentBinding;
+      index: number;
+    }
+  >();
 
   value.forEach((item, index) => {
     const record = readRecord(item);
@@ -264,10 +259,15 @@ export function normalizeWorkspaceChatResearchIntent(
 
   if (kind === 'extract') {
     const urls = Array.isArray(record.urls)
-      ? Array.from(new Set(record.urls.map(cleanText).filter(isHttpUrl))).slice(0, MAX_WORKSPACE_CHAT_EXTRACT_URLS)
+      ? Array.from(new Set(record.urls.map(cleanText).filter(isHttpUrl))).slice(
+          0,
+          MAX_WORKSPACE_CHAT_EXTRACT_URLS,
+        )
       : [];
     if (urls.length === 0) return { kind: 'none' };
-    const query = cleanOptionalText(cleanText(record.query).slice(0, MAX_WORKSPACE_CHAT_QUERY_LENGTH));
+    const query = cleanOptionalText(
+      cleanText(record.query).slice(0, MAX_WORKSPACE_CHAT_QUERY_LENGTH),
+    );
 
     return {
       kind: 'extract',
@@ -290,7 +290,10 @@ export function normalizeWorkspaceChatResearchIntent(
   return { kind: 'none' };
 }
 
-const normalizeApiFormat = (value: unknown, fallback?: ProviderConfig['apiFormat']): ProviderConfig['apiFormat'] => {
+const normalizeApiFormat = (
+  value: unknown,
+  fallback?: ProviderConfig['apiFormat'],
+): ProviderConfig['apiFormat'] => {
   if (value === ApiFormat.OpenAI || value === ApiFormat.Anthropic || value === ApiFormat.Gemini) {
     return value;
   }
@@ -311,7 +314,7 @@ const normalizeProviderModels = (
   value: unknown,
   fallback: ProviderConfig['models'] = [],
 ): NonNullable<ProviderConfig['models']> => {
-  const source = Array.isArray(value) ? value : fallback ?? [];
+  const source = Array.isArray(value) ? value : (fallback ?? []);
   return source
     .map(item => {
       const record = readRecord(item);
@@ -334,10 +337,7 @@ const normalizeProviderModels = (
     .filter((model): model is NonNullable<ProviderConfig['models']>[number] => Boolean(model));
 };
 
-const normalizeProviderConfig = (
-  value: unknown,
-  fallback?: ProviderConfig,
-): ProviderConfig => {
+const normalizeProviderConfig = (value: unknown, fallback?: ProviderConfig): ProviderConfig => {
   const record = readRecord(value);
   const base = fallback ?? {
     enabled: false,
@@ -353,13 +353,22 @@ const normalizeProviderConfig = (
   };
 
   const apiFormat = normalizeApiFormat(record.apiFormat, base.apiFormat);
-  const displayName = hasOwn(record, 'displayName') ? cleanText(record.displayName) : base.displayName;
+  const displayName = hasOwn(record, 'displayName')
+    ? cleanText(record.displayName)
+    : base.displayName;
   const codingPlanEnabled = readOptionalBoolean(record.codingPlanEnabled) ?? base.codingPlanEnabled;
   const authType = normalizeProviderAuthType(record.authType, base.authType);
-  const oauthAccessToken = hasOwn(record, 'oauthAccessToken') ? cleanText(record.oauthAccessToken) : base.oauthAccessToken;
-  const oauthBaseUrl = hasOwn(record, 'oauthBaseUrl') ? cleanText(record.oauthBaseUrl) : base.oauthBaseUrl;
-  const oauthRefreshToken = hasOwn(record, 'oauthRefreshToken') ? cleanText(record.oauthRefreshToken) : base.oauthRefreshToken;
-  const oauthTokenExpiresAt = readPositiveNumber(record.oauthTokenExpiresAt) ?? base.oauthTokenExpiresAt;
+  const oauthAccessToken = hasOwn(record, 'oauthAccessToken')
+    ? cleanText(record.oauthAccessToken)
+    : base.oauthAccessToken;
+  const oauthBaseUrl = hasOwn(record, 'oauthBaseUrl')
+    ? cleanText(record.oauthBaseUrl)
+    : base.oauthBaseUrl;
+  const oauthRefreshToken = hasOwn(record, 'oauthRefreshToken')
+    ? cleanText(record.oauthRefreshToken)
+    : base.oauthRefreshToken;
+  const oauthTokenExpiresAt =
+    readPositiveNumber(record.oauthTokenExpiresAt) ?? base.oauthTokenExpiresAt;
 
   if (apiFormat) normalized.apiFormat = apiFormat;
   if (displayName) normalized.displayName = displayName;
@@ -384,13 +393,14 @@ const normalizeModelSettings = (
     providers: {},
   };
   const rawProviders = readRecord(record.providers);
-  const providerKeys = Array.from(new Set([
-    ...Object.keys(fallbackModel.providers),
-    ...Object.keys(rawProviders),
-  ]));
+  const providerKeys = Array.from(
+    new Set([...Object.keys(fallbackModel.providers), ...Object.keys(rawProviders)]),
+  );
 
   return {
-    defaultModel: hasOwn(record, 'defaultModel') ? cleanText(record.defaultModel) : fallbackModel.defaultModel,
+    defaultModel: hasOwn(record, 'defaultModel')
+      ? cleanText(record.defaultModel)
+      : fallbackModel.defaultModel,
     defaultModelProvider: hasOwn(record, 'defaultModelProvider')
       ? cleanText(record.defaultModelProvider)
       : fallbackModel.defaultModelProvider,
@@ -403,7 +413,9 @@ const normalizeModelSettings = (
   };
 };
 
-const parseLegacyModelRef = (modelRef: unknown): Pick<EnterpriseLeadWorkspaceModelSettings, 'defaultModel' | 'defaultModelProvider'> => {
+const parseLegacyModelRef = (
+  modelRef: unknown,
+): Pick<EnterpriseLeadWorkspaceModelSettings, 'defaultModel' | 'defaultModelProvider'> => {
   const value = cleanText(modelRef);
   if (!value) return { defaultModel: '', defaultModelProvider: '' };
   const slashIndex = value.indexOf('/');
@@ -418,13 +430,17 @@ const parseLegacyModelRef = (modelRef: unknown): Pick<EnterpriseLeadWorkspaceMod
 
 const legacySkillIdsFromCapabilities = (value: unknown): string[] => {
   const capabilities = readRecord(value);
-  return EnterpriseLeadSkillCapabilityIds.filter(capabilityId =>
-    readRecord(capabilities[capabilityId]).enabled === true);
+  return EnterpriseLeadSkillCapabilityIds.filter(
+    capabilityId => readRecord(capabilities[capabilityId]).enabled === true,
+  );
 };
 
-const legacyExternalResearchFromCapabilities = (value: unknown): EnterpriseLeadWorkspaceSettings['externalResearch'] => {
+const legacyExternalResearchFromCapabilities = (
+  value: unknown,
+): EnterpriseLeadWorkspaceSettings['externalResearch'] => {
   const capabilities = readRecord(value);
-  const webSearchEnabled = readRecord(capabilities[EnterpriseLeadResearchCapabilityId.WebSearch]).enabled === true;
+  const webSearchEnabled =
+    readRecord(capabilities[EnterpriseLeadResearchCapabilityId.WebSearch]).enabled === true;
   return {
     ...buildDefaultExternalResearchConfig(AgentExternalResearchMode.Override),
     providers: {
@@ -440,7 +456,9 @@ const legacyExternalResearchFromCapabilities = (value: unknown): EnterpriseLeadW
   };
 };
 
-const legacyDomesticResearchFromPlatforms = (value: unknown): EnterpriseLeadWorkspaceSettings['domesticResearch'] => {
+const legacyDomesticResearchFromPlatforms = (
+  value: unknown,
+): EnterpriseLeadWorkspaceSettings['domesticResearch'] => {
   const platforms = readRecord(value);
   const domesticResearch = buildDefaultDomesticResearchConfig();
   const applyEnabled = (
@@ -456,7 +474,10 @@ const legacyDomesticResearchFromPlatforms = (value: unknown): EnterpriseLeadWork
   applyEnabled(EnterpriseLeadContentPlatformId.Xiaohongshu, DomesticResearchSourceId.Xiaohongshu);
   applyEnabled(EnterpriseLeadContentPlatformId.Douyin, DomesticResearchSourceId.Douyin);
   applyEnabled(EnterpriseLeadContentPlatformId.Kuaishou, DomesticResearchSourceId.Kuaishou);
-  applyEnabled(EnterpriseLeadContentPlatformId.WechatOfficial, DomesticResearchSourceId.WeChatOfficialAccounts);
+  applyEnabled(
+    EnterpriseLeadContentPlatformId.WechatOfficial,
+    DomesticResearchSourceId.WeChatOfficialAccounts,
+  );
 
   if (readRecord(platforms[EnterpriseLeadContentPlatformId.Wecom]).enabled === true) {
     domesticResearch.customSources.push({
@@ -474,7 +495,10 @@ const legacyDomesticResearchFromPlatforms = (value: unknown): EnterpriseLeadWork
 const buildDefaultContentPlatformConfig = (
   id: EnterpriseLeadContentOutputPlatformId,
 ): EnterpriseLeadWorkspaceContentPlatformConfig => {
-  const defaults: Record<EnterpriseLeadContentOutputPlatformId, Omit<EnterpriseLeadWorkspaceContentPlatformConfig, 'id'>> = {
+  const defaults: Record<
+    EnterpriseLeadContentOutputPlatformId,
+    Omit<EnterpriseLeadWorkspaceContentPlatformConfig, 'id'>
+  > = {
     [EnterpriseLeadContentOutputPlatformId.XiaohongshuDraft]: {
       enabled: true,
       deliveryMode: EnterpriseLeadContentDeliveryMode.DraftOnly,
@@ -537,14 +561,13 @@ export function buildDefaultContentPlatformSettings(): EnterpriseLeadWorkspaceCo
   };
 }
 
-const normalizeContentOutputLengthPolicy = (
-  value: unknown,
-  fallback: string,
-): string => {
+const normalizeContentOutputLengthPolicy = (value: unknown, fallback: string): string => {
   const policy = cleanText(value);
-  return Object.values(EnterpriseLeadContentOutputLengthPolicy).includes(policy as EnterpriseLeadContentOutputLengthPolicy)
+  return Object.values(EnterpriseLeadContentOutputLengthPolicy).includes(
+    policy as EnterpriseLeadContentOutputLengthPolicy,
+  )
     ? policy
-    : fallback
+    : fallback;
 };
 
 const normalizeContentPlatformConfig = (
@@ -588,7 +611,10 @@ const normalizeContentOutputRules = (
       ? defaultPlatformId
       : fallback.defaultPlatformId,
     lengthPolicy: normalizeContentOutputLengthPolicy(record.lengthPolicy, fallback.lengthPolicy),
-    riskCheckBeforeExport: readBoolean(record.riskCheckBeforeExport, fallback.riskCheckBeforeExport),
+    riskCheckBeforeExport: readBoolean(
+      record.riskCheckBeforeExport,
+      fallback.riskCheckBeforeExport,
+    ),
     variablePlaceholders: hasOwn(record, 'variablePlaceholders')
       ? cleanTextList(record.variablePlaceholders)
       : [...fallback.variablePlaceholders],
@@ -603,22 +629,29 @@ const normalizeContentPlatformSettings = (
   const record = readRecord(value);
   const base = fallback ?? buildDefaultContentPlatformSettings();
   const rawPlatforms = readRecord(record.platforms);
-  const platformIds = Array.from(new Set([
-    ...EnterpriseLeadContentOutputPlatformIds,
-    ...Object.keys(base.platforms),
-    ...Object.keys(rawPlatforms),
-  ]));
+  const platformIds = Array.from(
+    new Set([
+      ...EnterpriseLeadContentOutputPlatformIds,
+      ...Object.keys(base.platforms),
+      ...Object.keys(rawPlatforms),
+    ]),
+  );
   const platforms = Object.fromEntries(
     platformIds.map(platformId => [
       platformId,
       normalizeContentPlatformConfig(
         platformId,
         rawPlatforms[platformId],
-        base.platforms[platformId] ?? { ...buildDefaultContentPlatformConfig(
-          EnterpriseLeadContentOutputPlatformIds.includes(platformId as EnterpriseLeadContentOutputPlatformId)
-            ? platformId as EnterpriseLeadContentOutputPlatformId
-            : EnterpriseLeadContentOutputPlatformId.CustomWebhook,
-        ), id: platformId },
+        base.platforms[platformId] ?? {
+          ...buildDefaultContentPlatformConfig(
+            EnterpriseLeadContentOutputPlatformIds.includes(
+              platformId as EnterpriseLeadContentOutputPlatformId,
+            )
+              ? (platformId as EnterpriseLeadContentOutputPlatformId)
+              : EnterpriseLeadContentOutputPlatformId.CustomWebhook,
+          ),
+          id: platformId,
+        },
       ),
     ]),
   );
@@ -711,18 +744,19 @@ const mergeDomesticResearchConfigInput = (
   const sources = readRecord(record.sources);
 
   return normalizeDomesticResearchConfig({
-    sources: DomesticResearchSourceIds.reduce((mergedSources, sourceId) => ({
-      ...mergedSources,
-      [sourceId]: hasOwn(sources, sourceId)
-        ? {
-            ...base.sources[sourceId],
-            ...readRecord(sources[sourceId]),
-          }
-        : base.sources[sourceId],
-    }), {}),
-    customSources: hasOwn(record, 'customSources')
-      ? record.customSources
-      : base.customSources,
+    sources: DomesticResearchSourceIds.reduce(
+      (mergedSources, sourceId) => ({
+        ...mergedSources,
+        [sourceId]: hasOwn(sources, sourceId)
+          ? {
+              ...base.sources[sourceId],
+              ...readRecord(sources[sourceId]),
+            }
+          : base.sources[sourceId],
+      }),
+      {},
+    ),
+    customSources: hasOwn(record, 'customSources') ? record.customSources : base.customSources,
   });
 };
 
@@ -769,8 +803,8 @@ export function normalizeEnterpriseLeadWorkspaceSettings(
   const record = readRecord(value);
   const fallback = baseSettings ?? buildDefaultEnterpriseLeadWorkspaceSettings();
   const contentPlatformsRecord = readRecord(record.contentPlatforms);
-  const hasNewContentPlatformsShape = isRecord(contentPlatformsRecord.platforms)
-    || isRecord(contentPlatformsRecord.outputRules);
+  const hasNewContentPlatformsShape =
+    isRecord(contentPlatformsRecord.platforms) || isRecord(contentPlatformsRecord.outputRules);
   const hasNewShape =
     isRecord(record.model) ||
     Array.isArray(record.skillIds) ||
@@ -823,11 +857,9 @@ export function normalizeEnterpriseLeadWorkspaceSettingsUpdate(
   const record = readRecord(value);
   const normalized: EnterpriseLeadWorkspaceNormalizedSettingsUpdate = {};
   if (Array.isArray(record.enabledAgentRoles)) {
-    normalized.enabledAgentRoles = Array.from(new Set(
-      record.enabledAgentRoles
-        .map(cleanText)
-        .filter(Boolean),
-    ));
+    normalized.enabledAgentRoles = Array.from(
+      new Set(record.enabledAgentRoles.map(cleanText).filter(Boolean)),
+    );
   }
   if (hasOwn(record, 'workspaceAgents')) {
     normalized.workspaceAgents = normalizeEnterpriseLeadWorkspaceAgents(record.workspaceAgents);
@@ -874,6 +906,7 @@ export function normalizeEnterpriseLeadExtractionSource(
         ? Math.floor(record.vectorChunkCount)
         : undefined,
     vectorEmbeddingVersion: cleanOptionalText(record.vectorEmbeddingVersion),
+    extractedKnowledgeKeys: cleanTextList(record.extractedKnowledgeKeys),
     createdAt: cleanOptionalText(record.createdAt),
     updatedAt: cleanOptionalText(record.updatedAt),
   };
@@ -943,14 +976,14 @@ export function normalizeAgentTaskResultInput(value: unknown): EnterpriseLeadAge
     todos: Array.isArray(record.todos) ? record.todos.map(normalizeTodo) : [],
     risks: Array.isArray(record.risks)
       ? record.risks.map(item => {
-        const risk = readRecord(item);
-        return {
-          level: cleanText(risk.level) || EnterpriseLeadRiskLevel.Low,
-          title: cleanText(risk.title) || '风险提示',
-          description: cleanText(risk.description),
-          role: cleanText(risk.role) || undefined,
-        };
-      })
+          const risk = readRecord(item);
+          return {
+            level: cleanText(risk.level) || EnterpriseLeadRiskLevel.Low,
+            title: cleanText(risk.title) || '风险提示',
+            description: cleanText(risk.description),
+            role: cleanText(risk.role) || undefined,
+          };
+        })
       : [],
     handoffContext: readRecord(record.handoffContext),
     status: cleanText(record.status) || EnterpriseLeadTaskStatus.Completed,
@@ -974,8 +1007,7 @@ export function normalizeRiskReviewOutput(value: unknown): EnterpriseLeadRiskRev
       ? record.approvalTodos.map(normalizeTodo)
       : [],
     draftOnlyConfirmed: record.draftOnlyConfirmed === true,
-    canArchive: normalizedLevel === EnterpriseLeadRiskLevel.High
-      ? false
-      : record.canArchive !== false,
+    canArchive:
+      normalizedLevel === EnterpriseLeadRiskLevel.High ? false : record.canArchive !== false,
   };
 }
