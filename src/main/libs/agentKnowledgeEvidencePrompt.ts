@@ -14,9 +14,206 @@ import { CONTENT_QUALITY_REVIEW_PROMPT_ZH_LINES } from './contentQualityReviewPr
 
 const KNOWLEDGE_CONTEXT_HIT_LIMIT = 8;
 const KNOWLEDGE_CONTEXT_CHARS = 420;
+export const ENTERPRISE_WORKSPACE_DIGEST_HIT_LIMIT = 8;
+const ENTERPRISE_WORKSPACE_DIGEST_ITEM_LIMIT = 5;
+const ENTERPRISE_WORKSPACE_DIGEST_ITEM_CHARS = 96;
+const ENTERPRISE_WORKSPACE_DIGEST_COMPANY_CHARS = 160;
+export const ENTERPRISE_WORKSPACE_DIGEST_RETRIEVAL_PROMPT =
+  '公司概况 产品 产品能力 目标客户 应用场景 卖点 禁用承诺 联系规则';
+
+export type EnterpriseWorkspaceDigestChunk = {
+  sourceType?: string;
+  text?: string;
+};
+
+export type EnterpriseWorkspaceDigestInput = {
+  companySummary?: string;
+  productList?: string[];
+  productCapabilities?: string[];
+  targetCustomers?: string[];
+  applicationScenarios?: string[];
+  sellingPoints?: string[];
+  prohibitedClaims?: string[];
+  contactRules?: string[];
+  hardRules?: string[];
+  chunks?: EnterpriseWorkspaceDigestChunk[];
+};
+
+type EnterpriseWorkspaceDigestProfile = Required<
+  Omit<EnterpriseWorkspaceDigestInput, 'chunks' | 'companySummary'>
+> & {
+  companySummary: string;
+};
 
 const normalizeKnowledgePromptText = (value: string): string =>
   value.replace(/\s+/g, '').trim().toLowerCase();
+
+const cleanDigestText = (value: unknown): string =>
+  typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : '';
+
+const truncateDigestText = (value: string, maxChars: number): string =>
+  value.length > maxChars ? `${value.slice(0, maxChars - 1).trimEnd()}…` : value;
+
+const addUniqueDigestItem = (items: string[], value: unknown): void => {
+  const text = cleanDigestText(value);
+  if (text && !items.includes(text)) {
+    items.push(text);
+  }
+};
+
+const cleanDigestList = (value: unknown): string[] => {
+  const items: string[] = [];
+  if (Array.isArray(value)) {
+    value.forEach(item => addUniqueDigestItem(items, item));
+  }
+  return items;
+};
+
+const formatDigestItems = (
+  items: string[],
+  maxItems = ENTERPRISE_WORKSPACE_DIGEST_ITEM_LIMIT,
+): string =>
+  items
+    .slice(0, maxItems)
+    .map(item => truncateDigestText(item, ENTERPRISE_WORKSPACE_DIGEST_ITEM_CHARS))
+    .join('；');
+
+const createEmptyEnterpriseWorkspaceDigestProfile = (): EnterpriseWorkspaceDigestProfile => ({
+  companySummary: '',
+  productList: [],
+  productCapabilities: [],
+  targetCustomers: [],
+  applicationScenarios: [],
+  sellingPoints: [],
+  prohibitedClaims: [],
+  contactRules: [],
+  hardRules: [],
+});
+
+const ENTERPRISE_WORKSPACE_DIGEST_CHUNK_SOURCE_TYPES = new Set<string>([
+  ContentKnowledgeSourceType.WorkspaceConfirmedProfile,
+  ContentKnowledgeSourceType.WorkspaceRule,
+]);
+
+const mergeEnterpriseWorkspaceDigestLine = (
+  profile: EnterpriseWorkspaceDigestProfile,
+  line: string,
+): void => {
+  const separatorIndex = line.search(/[:：]/);
+  if (separatorIndex === -1) {
+    return;
+  }
+
+  const label = line.slice(0, separatorIndex).trim();
+  const value = cleanDigestText(line.slice(separatorIndex + 1));
+  if (!value) {
+    return;
+  }
+
+  switch (label) {
+    case '公司概况':
+      if (!profile.companySummary) {
+        profile.companySummary = value;
+      }
+      break;
+    case '产品':
+      addUniqueDigestItem(profile.productList, value);
+      break;
+    case '产品能力':
+      addUniqueDigestItem(profile.productCapabilities, value);
+      break;
+    case '目标客户':
+      addUniqueDigestItem(profile.targetCustomers, value);
+      break;
+    case '应用场景':
+      addUniqueDigestItem(profile.applicationScenarios, value);
+      break;
+    case '卖点':
+      addUniqueDigestItem(profile.sellingPoints, value);
+      break;
+    case '禁用承诺':
+      addUniqueDigestItem(profile.prohibitedClaims, value);
+      break;
+    case '联系规则':
+      addUniqueDigestItem(profile.contactRules, value);
+      break;
+  }
+};
+
+const mergeEnterpriseWorkspaceDigestChunk = (
+  profile: EnterpriseWorkspaceDigestProfile,
+  chunk: EnterpriseWorkspaceDigestChunk,
+): void => {
+  if (!chunk.sourceType || !ENTERPRISE_WORKSPACE_DIGEST_CHUNK_SOURCE_TYPES.has(chunk.sourceType)) {
+    return;
+  }
+
+  const text = typeof chunk.text === 'string' ? chunk.text : '';
+  text.split(/\r?\n/).forEach(line => mergeEnterpriseWorkspaceDigestLine(profile, line));
+};
+
+const buildEnterpriseWorkspaceDigestProfile = (
+  input: EnterpriseWorkspaceDigestInput,
+): EnterpriseWorkspaceDigestProfile => {
+  const profile = createEmptyEnterpriseWorkspaceDigestProfile();
+  profile.companySummary = cleanDigestText(input.companySummary);
+  profile.productList = cleanDigestList(input.productList);
+  profile.productCapabilities = cleanDigestList(input.productCapabilities);
+  profile.targetCustomers = cleanDigestList(input.targetCustomers);
+  profile.applicationScenarios = cleanDigestList(input.applicationScenarios);
+  profile.sellingPoints = cleanDigestList(input.sellingPoints);
+  profile.prohibitedClaims = cleanDigestList(input.prohibitedClaims);
+  profile.contactRules = cleanDigestList(input.contactRules);
+  profile.hardRules = cleanDigestList(input.hardRules);
+  input.chunks?.forEach(chunk => mergeEnterpriseWorkspaceDigestChunk(profile, chunk));
+  return profile;
+};
+
+export const buildEnterpriseWorkspaceDigestPrompt = (
+  input: EnterpriseWorkspaceDigestInput,
+): string => {
+  const profile = buildEnterpriseWorkspaceDigestProfile(input);
+  const lines = ['[Active workspace business facts]'];
+  const products = formatDigestItems([...profile.productList, ...profile.productCapabilities]);
+  const customers = formatDigestItems([
+    ...profile.targetCustomers,
+    ...profile.applicationScenarios,
+  ]);
+  const sellingPoints = formatDigestItems(profile.sellingPoints);
+  const prohibitedClaims = formatDigestItems(profile.prohibitedClaims);
+  const contactRules = formatDigestItems(profile.contactRules);
+  const hardRules = [...profile.hardRules];
+
+  if (prohibitedClaims) {
+    hardRules.push(`Prohibited claims: ${prohibitedClaims}`);
+  }
+  if (contactRules) {
+    hardRules.push(`Contact rules: ${contactRules}`);
+  }
+
+  if (profile.companySummary) {
+    lines.push(
+      `- Company: ${truncateDigestText(
+        profile.companySummary,
+        ENTERPRISE_WORKSPACE_DIGEST_COMPANY_CHARS,
+      )}`,
+    );
+  }
+  if (products) {
+    lines.push(`- Products: ${products}`);
+  }
+  if (customers) {
+    lines.push(`- Customers: ${customers}`);
+  }
+  if (sellingPoints) {
+    lines.push(`- Selling points: ${sellingPoints}`);
+  }
+  if (hardRules.length > 0) {
+    lines.push(`- Hard rules: ${formatDigestItems(hardRules)}`);
+  }
+
+  return lines.length > 1 ? lines.join('\n') : '';
+};
 
 const readKnowledgeFile = (filePath: string): string => {
   try {
@@ -156,19 +353,18 @@ const truncateKnowledgeContext = (text: string): string =>
 const buildKnowledgeContextPrompt = (result: ContentKnowledgeRetrievalResult): string => {
   const lines = [
     '[Knowledge base context matched before answering]',
-    'The following local workspace knowledge chunks were retrieved by LobsterAI before the model answered. Treat them as evidence for the current request.',
+    'Workspace knowledge for this request. Treat the items below as evidence for the current request.',
     '内容生产硬规则：如果命中片段里已经包含工厂、产品、客户或卖点信息，不要说“我目前还没记住你工厂的具体情况”，也不要说“没有存过你们工厂的具体资料”；不要重复询问命中片段已有的产品、客户或卖点。',
     '如果当前请求是朋友圈文案，先输出一条可直接复制的朋友圈文案草稿；如果是选题、脚本、私域话术或销售转化内容，也先输出可直接使用的成品，再把缺失信息放到末尾用 1-2 个问题追问。',
     VIDEO_GENERATION_HANDOFF_PROMPT,
     ...CONTENT_QUALITY_REVIEW_PROMPT_ZH_LINES,
     '老板口吻也要保持事实边界；替代木箱、免熏蒸、成本更低、装柜率更高、防护不比木箱差等卖点，没有案例或参数支撑时要写成可评估、可减少、可优化、按产品结构设计。',
     '用户明确要求只输出改写结果时，只输出正文，不要额外输出解释、关键词、行动引导或下一步快捷改写。',
-    `检索方式：知识条目切片 + embedding 入库/索引 + 关键词/向量混合检索 + 重排；命中阈值 ${result.diagnostics.hitThreshold.toFixed(2)}，最低业务信号 ${result.diagnostics.minBusinessSignalCount}。`,
   ];
 
   result.hits.slice(0, KNOWLEDGE_CONTEXT_HIT_LIMIT).forEach((hit, index) => {
     lines.push(
-      `[K${index + 1}] ${hit.chunk.sourceLabel} · score ${hit.scores.finalScore.toFixed(2)} · business signals ${hit.chunk.businessSignalCount}`,
+      `[K${index + 1}] ${hit.chunk.sourceLabel}`,
       `- ${truncateKnowledgeContext(hit.chunk.text.replace(/\s+/g, ' ').trim())}`,
     );
   });

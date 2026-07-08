@@ -1,3 +1,5 @@
+import crypto from 'node:crypto';
+
 import {
   buildEnterpriseLeadWorkspaceKnowledgeScopeId,
   EnterpriseLeadAgentRole,
@@ -43,6 +45,7 @@ import type { ModelClientAdapter } from '../industryPack/modelClientAdapter';
 import { resolveRawApiConfigFromAppConfig } from '../libs/claudeSettings';
 import {
   CONTENT_KNOWLEDGE_EMBEDDING_VERSION,
+  type ContentKnowledgeSource,
   ContentKnowledgeSourceType,
 } from '../libs/contentKnowledgeRetrieval';
 import type { ContentKnowledgeVectorStore } from '../libs/contentKnowledgeVectorStore';
@@ -65,6 +68,8 @@ interface EnterpriseLeadWorkspaceServiceOptions {
   modelClient: ModelClientAdapter;
   agentProvider?: EnterpriseLeadWorkspaceAgentProvider;
   contentKnowledgeVectorStore?: ContentKnowledgeVectorStore;
+  documentExtractionTimeoutMs?: number;
+  staleDocumentProcessingMs?: number;
 }
 
 export interface EnterpriseLeadWorkspaceAgentTemplate {
@@ -100,7 +105,56 @@ const noopAgentProvider: EnterpriseLeadWorkspaceAgentProvider = {
   getAgent: () => null,
 };
 
-const buildEnterpriseWorkspaceKnowledgeSourceId = (index: number): string => `source-${index}`;
+const DEFAULT_DOCUMENT_EXTRACTION_TIMEOUT_MS = 180_000;
+const DEFAULT_STALE_DOCUMENT_PROCESSING_MS = 10 * 60_000;
+const DOCUMENT_EXTRACTION_TIMEOUT_MESSAGE =
+  'Document extraction timed out. Please try again with a smaller file.';
+const STALE_DOCUMENT_PROCESSING_MESSAGE =
+  'Document processing was interrupted. Please retry this document.';
+
+const normalizePositiveTimeout = (value: number | undefined, fallback: number): number => {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
+    return fallback;
+  }
+  return Math.floor(value);
+};
+
+const buildEnterpriseLeadSourceId = (): string => `source_${crypto.randomUUID()}`;
+
+export const ensureEnterpriseLeadSourceIds = (
+  sources: EnterpriseLeadExtractionSource[],
+): EnterpriseLeadExtractionSource[] =>
+  sources.map(source => ({
+    ...source,
+    id: source.id?.trim() || buildEnterpriseLeadSourceId(),
+  }));
+
+const hasUsableVectorIndex = (source: EnterpriseLeadExtractionSource): boolean =>
+  source.vectorIndexStatus === EnterpriseLeadKnowledgeIndexStatus.Indexed &&
+  (source.vectorChunkCount ?? 0) > 0;
+
+const getQueuedDocumentVectorStatus = (
+  source: EnterpriseLeadExtractionSource,
+): Pick<
+  EnterpriseLeadExtractionSource,
+  'vectorChunkCount' | 'vectorEmbeddingVersion' | 'vectorIndexedAt' | 'vectorIndexStatus'
+> => {
+  if (hasUsableVectorIndex(source)) {
+    return {
+      vectorChunkCount: source.vectorChunkCount,
+      vectorEmbeddingVersion: source.vectorEmbeddingVersion,
+      vectorIndexedAt: source.vectorIndexedAt,
+      vectorIndexStatus: EnterpriseLeadKnowledgeIndexStatus.Indexed,
+    };
+  }
+
+  return {
+    vectorChunkCount: undefined,
+    vectorEmbeddingVersion: undefined,
+    vectorIndexedAt: undefined,
+    vectorIndexStatus: EnterpriseLeadKnowledgeIndexStatus.Pending,
+  };
+};
 
 const buildEnterpriseWorkspaceKnowledgeSourceContent = (
   source: EnterpriseLeadExtractionSource,
@@ -122,6 +176,22 @@ const enterpriseLeadProfileArrayFields = [
 ] as const;
 
 type EnterpriseLeadProfileArrayField = (typeof enterpriseLeadProfileArrayFields)[number];
+
+const enterpriseLeadProfileFactFieldLabels: Record<
+  EnterpriseLeadProfileArrayField | 'companySummary',
+  string
+> = {
+  companySummary: '公司概况',
+  productList: '产品',
+  productCapabilities: '产品能力',
+  targetCustomers: '目标客户',
+  applicationScenarios: '应用场景',
+  sellingPoints: '卖点',
+  channelPreferences: '渠道偏好',
+  prohibitedClaims: '禁用承诺',
+  contactRules: '联系规则',
+  missingInfo: '缺失信息',
+};
 
 const cloneWorkspaceProfile = (
   profile: EnterpriseLeadWorkspaceProfile,
@@ -146,6 +216,16 @@ const cloneWorkspaceProfile = (
 
 const normalizeWorkspaceKnowledgeKeyText = (value: string): string =>
   value.trim().replace(/\s+/g, ' ').toLowerCase();
+
+const normalizeWorkspaceKnowledgeKey = (value: string): string => {
+  const separatorIndex = value.indexOf(':');
+  if (separatorIndex === -1) {
+    return normalizeWorkspaceKnowledgeKeyText(value);
+  }
+  const field = value.slice(0, separatorIndex).trim();
+  const text = normalizeWorkspaceKnowledgeKeyText(value.slice(separatorIndex + 1));
+  return field && text ? `${field}:${text}` : '';
+};
 
 const getWorkspaceKnowledgeFieldKey = (
   field: keyof EnterpriseLeadWorkspaceProfile,
@@ -228,6 +308,87 @@ const mergeExtractedWorkspaceProfile = (
 
 const getSourceExtractedKnowledgeKeys = (source: EnterpriseLeadExtractionSource): string[] =>
   Array.isArray(source.extractedKnowledgeKeys) ? source.extractedKnowledgeKeys : [];
+
+const buildConfirmedWorkspaceProfileSourceContent = (
+  profile: EnterpriseLeadWorkspaceProfile,
+): string => {
+  const confirmedKeys = new Set(
+    (profile.confirmedKnowledgeKeys ?? []).map(normalizeWorkspaceKnowledgeKey).filter(Boolean),
+  );
+  if (confirmedKeys.size === 0) {
+    return '';
+  }
+
+  const lines: string[] = [];
+  const addConfirmedFact = (
+    field: EnterpriseLeadProfileArrayField | 'companySummary',
+    value: string,
+  ): void => {
+    const text = value.trim();
+    const key = getWorkspaceKnowledgeFieldKey(field, text);
+    if (!text || !key || !confirmedKeys.has(key)) {
+      return;
+    }
+    lines.push(`${enterpriseLeadProfileFactFieldLabels[field]}：${text}`);
+  };
+
+  addConfirmedFact('companySummary', profile.companySummary);
+  enterpriseLeadProfileArrayFields.forEach(field => {
+    profile[field].forEach(value => addConfirmedFact(field, value));
+  });
+
+  return lines.join('\n');
+};
+
+const buildWorkspaceRuleSourceContent = (profile: EnterpriseLeadWorkspaceProfile): string =>
+  [
+    ...profile.prohibitedClaims
+      .map(value => value.trim())
+      .filter(Boolean)
+      .map(value => `禁用承诺：${value}`),
+    ...profile.contactRules
+      .map(value => value.trim())
+      .filter(Boolean)
+      .map(value => `联系规则：${value}`),
+  ].join('\n');
+
+const buildDerivedWorkspaceKnowledgeSources = (
+  workspaceId: string,
+  profile?: EnterpriseLeadWorkspaceProfile,
+): ContentKnowledgeSource[] => {
+  if (!profile) {
+    return [];
+  }
+
+  const sources: ContentKnowledgeSource[] = [];
+  const confirmedProfileContent = buildConfirmedWorkspaceProfileSourceContent(profile);
+  if (confirmedProfileContent.trim()) {
+    sources.push({
+      sourceId: `profile-confirmed:${workspaceId}`,
+      sourceType: ContentKnowledgeSourceType.WorkspaceConfirmedProfile,
+      label: '已确认业务知识',
+      content: confirmedProfileContent,
+      priority: 0.18,
+      verifiedByUser: true,
+      evidenceTier: 'internal',
+    });
+  }
+
+  const ruleContent = buildWorkspaceRuleSourceContent(profile);
+  if (ruleContent.trim()) {
+    sources.push({
+      sourceId: `workspace-rules:${workspaceId}`,
+      sourceType: ContentKnowledgeSourceType.WorkspaceRule,
+      label: '硬性规则',
+      content: ruleContent,
+      priority: 0.2,
+      verifiedByUser: true,
+      evidenceTier: 'internal',
+    });
+  }
+
+  return sources;
+};
 
 const workflowRoles = (): EnterpriseLeadAgentRole[] =>
   ENTERPRISE_LEAD_AGENT_WORKFLOW.map(item => item.role);
@@ -352,6 +513,10 @@ export class EnterpriseLeadWorkspaceService {
 
   private readonly contentKnowledgeVectorStore?: ContentKnowledgeVectorStore;
 
+  private readonly documentExtractionTimeoutMs: number;
+
+  private readonly staleDocumentProcessingMs: number;
+
   private documentProcessingQueue: Promise<void> = Promise.resolve();
 
   constructor(options: EnterpriseLeadWorkspaceServiceOptions) {
@@ -359,14 +524,60 @@ export class EnterpriseLeadWorkspaceService {
     this.modelClient = options.modelClient;
     this.agentProvider = options.agentProvider ?? noopAgentProvider;
     this.contentKnowledgeVectorStore = options.contentKnowledgeVectorStore;
+    this.documentExtractionTimeoutMs = normalizePositiveTimeout(
+      options.documentExtractionTimeoutMs,
+      DEFAULT_DOCUMENT_EXTRACTION_TIMEOUT_MS,
+    );
+    this.staleDocumentProcessingMs = normalizePositiveTimeout(
+      options.staleDocumentProcessingMs,
+      DEFAULT_STALE_DOCUMENT_PROCESSING_MS,
+    );
   }
 
   listWorkspaces(): EnterpriseLeadWorkspace[] {
-    return this.store.listWorkspaces();
+    return this.store
+      .listWorkspaces()
+      .map(workspace => this.repairStaleWorkspaceDocumentProcessing(workspace));
   }
 
   getWorkspace(id: string): EnterpriseLeadWorkspace | null {
-    return this.store.getWorkspace(id);
+    const workspace = this.store.getWorkspace(id);
+    return workspace ? this.repairStaleWorkspaceDocumentProcessing(workspace) : null;
+  }
+
+  createWorkspace(draft: unknown): EnterpriseLeadWorkspace {
+    const normalizedDraft = normalizeWorkspaceDraftInput(draft);
+    const workspaceAgents =
+      normalizedDraft.workspaceAgents.length > 0
+        ? normalizedDraft.workspaceAgents
+        : buildDefaultEnterpriseLeadWorkspaceAgents(workflowRoles());
+
+    const workspace = this.store.createWorkspace({
+      name: normalizedDraft.name,
+      type: EnterpriseLeadWorkspaceType.EnterpriseLead,
+      profile: normalizedDraft.profile,
+      extractionSources: ensureEnterpriseLeadSourceIds([normalizedDraft.source]),
+      enabledAgentRoles: workflowRoles(),
+      settings: normalizedDraft.settings,
+      workspaceAgents,
+    });
+    if (!this.contentKnowledgeVectorStore) {
+      return workspace;
+    }
+    return this.store.updateWorkspaceSources(
+      workspace.id,
+      this.syncWorkspaceSourcesToVectorIndex(workspace.id, workspace.extractionSources),
+    );
+  }
+
+  deleteWorkspace(workspaceId: string): boolean {
+    const deleted = this.store.deleteWorkspace(workspaceId);
+    if (deleted) {
+      this.contentKnowledgeVectorStore?.deleteScope(
+        buildEnterpriseLeadWorkspaceKnowledgeScopeId(workspaceId),
+      );
+    }
+    return deleted;
   }
 
   async extractDraftFromConversation(sourceText: string): Promise<EnterpriseLeadWorkspaceDraft> {
@@ -383,66 +594,32 @@ export class EnterpriseLeadWorkspaceService {
     };
   }
 
-  private async extractDraftFromSource(
-    sourceText: string,
-    sourceLabel: string,
-  ): Promise<EnterpriseLeadWorkspaceDraft> {
-    const result = await this.modelClient.generate({
-      prompt: buildWorkspaceExtractionPrompt({ sourceText, sourceLabel }),
-    });
-    return normalizeWorkspaceDraftInput(parseModelJsonObject(result.text));
-  }
-
-  createWorkspace(draft: unknown): EnterpriseLeadWorkspace {
-    const normalizedDraft = normalizeWorkspaceDraftInput(draft);
-    const workspaceAgents =
-      normalizedDraft.workspaceAgents.length > 0
-        ? normalizedDraft.workspaceAgents
-        : buildDefaultEnterpriseLeadWorkspaceAgents(workflowRoles());
-
-    const workspace = this.store.createWorkspace({
-      name: normalizedDraft.name,
-      type: EnterpriseLeadWorkspaceType.EnterpriseLead,
-      profile: normalizedDraft.profile,
-      extractionSources: [normalizedDraft.source],
-      enabledAgentRoles: workflowRoles(),
-      settings: normalizedDraft.settings,
-      workspaceAgents,
-    });
-    if (!this.contentKnowledgeVectorStore) {
-      return workspace;
-    }
-    return this.store.updateWorkspaceSources(
-      workspace.id,
-      this.syncWorkspaceSourcesToVectorIndex(workspace.id, workspace.extractionSources),
-    );
-  }
-
-  deleteWorkspace(workspaceId: string): boolean {
-    return this.store.deleteWorkspace(workspaceId);
-  }
-
-  updateWorkspaceSettings(
-    workspaceId: string,
-    input: EnterpriseLeadWorkspaceSettingsUpdate,
-  ): EnterpriseLeadWorkspace {
-    return this.store.updateWorkspaceSettings(workspaceId, input);
-  }
-
   updateWorkspaceProfile(
     workspaceId: string,
     profile: EnterpriseLeadWorkspaceProfile,
   ): EnterpriseLeadWorkspace {
-    return this.store.updateWorkspaceProfile(workspaceId, profile);
+    const updatedWorkspace = this.store.updateWorkspaceProfile(workspaceId, profile);
+    if (!this.contentKnowledgeVectorStore) {
+      return updatedWorkspace;
+    }
+    return this.store.updateWorkspaceSources(
+      updatedWorkspace.id,
+      this.syncWorkspaceSourcesToVectorIndex(
+        updatedWorkspace.id,
+        updatedWorkspace.extractionSources,
+        updatedWorkspace.profile,
+      ),
+    );
   }
 
   updateWorkspaceSources(
     workspaceId: string,
     sources: EnterpriseLeadExtractionSource[],
   ): EnterpriseLeadWorkspace {
+    const sourcesWithIds = ensureEnterpriseLeadSourceIds(sources);
     return this.store.updateWorkspaceSources(
       workspaceId,
-      this.syncWorkspaceSourcesToVectorIndex(workspaceId, sources),
+      this.syncWorkspaceSourcesToVectorIndex(workspaceId, sourcesWithIds),
     );
   }
 
@@ -454,14 +631,15 @@ export class EnterpriseLeadWorkspaceService {
     if (!Number.isInteger(sourceIndex) || sourceIndex < 0 || sourceIndex >= sources.length) {
       throw new Error('Document source index is invalid');
     }
-    const source = sources[sourceIndex];
+    const sourcesWithIds = ensureEnterpriseLeadSourceIds(sources);
+    const source = sourcesWithIds[sourceIndex];
     const sourceText = source?.text?.trim() ?? '';
     if (!source || !sourceText) {
       throw new Error('Document source text is required');
     }
 
     const now = new Date().toISOString();
-    const queuedSources = sources.map((item, index): EnterpriseLeadExtractionSource => {
+    const queuedSources = sourcesWithIds.map((item, index): EnterpriseLeadExtractionSource => {
       if (index !== sourceIndex) {
         return item;
       }
@@ -470,13 +648,99 @@ export class EnterpriseLeadWorkspaceService {
         extractionError: undefined,
         extractionStatus: EnterpriseLeadDocumentExtractionStatus.Extracting,
         vectorIndexError: undefined,
-        vectorIndexStatus: EnterpriseLeadKnowledgeIndexStatus.Indexing,
+        ...getQueuedDocumentVectorStatus(item),
         updatedAt: now,
       };
     });
     const queuedWorkspace = this.store.updateWorkspaceSources(workspaceId, queuedSources);
     this.enqueueDocumentProcessingJob(workspaceId, sourceIndex);
     return queuedWorkspace;
+  }
+
+  private repairStaleWorkspaceDocumentProcessing(
+    workspace: EnterpriseLeadWorkspace,
+  ): EnterpriseLeadWorkspace {
+    const nowMs = Date.now();
+    const nextUpdatedAt = new Date(nowMs).toISOString();
+    let changed = false;
+    const nextSources = workspace.extractionSources.map(source => {
+      if (!this.isStaleDocumentProcessingSource(source, workspace.updatedAt, nowMs)) {
+        return source;
+      }
+
+      changed = true;
+      return {
+        ...source,
+        ...(source.extractionStatus === EnterpriseLeadDocumentExtractionStatus.Extracting
+          ? {
+              extractionError: STALE_DOCUMENT_PROCESSING_MESSAGE,
+              extractionStatus: EnterpriseLeadDocumentExtractionStatus.Failed,
+            }
+          : {}),
+        ...(source.vectorIndexStatus === EnterpriseLeadKnowledgeIndexStatus.Indexing
+          ? {
+              vectorIndexError: STALE_DOCUMENT_PROCESSING_MESSAGE,
+              vectorIndexStatus: EnterpriseLeadKnowledgeIndexStatus.Failed,
+            }
+          : {}),
+        updatedAt: nextUpdatedAt,
+      };
+    });
+
+    return changed ? this.store.updateWorkspaceSources(workspace.id, nextSources) : workspace;
+  }
+
+  updateWorkspaceSettings(
+    workspaceId: string,
+    input: EnterpriseLeadWorkspaceSettingsUpdate,
+  ): EnterpriseLeadWorkspace {
+    return this.store.updateWorkspaceSettings(workspaceId, input);
+  }
+
+  private isStaleDocumentProcessingSource(
+    source: EnterpriseLeadExtractionSource,
+    workspaceUpdatedAt: string,
+    nowMs: number,
+  ): boolean {
+    const isProcessing =
+      source.extractionStatus === EnterpriseLeadDocumentExtractionStatus.Extracting ||
+      source.vectorIndexStatus === EnterpriseLeadKnowledgeIndexStatus.Indexing;
+    if (!isProcessing) {
+      return false;
+    }
+
+    const updatedAtMs = Date.parse(source.updatedAt || workspaceUpdatedAt);
+    return Number.isFinite(updatedAtMs) && nowMs - updatedAtMs > this.staleDocumentProcessingMs;
+  }
+
+  private async extractDraftFromSource(
+    sourceText: string,
+    sourceLabel: string,
+  ): Promise<EnterpriseLeadWorkspaceDraft> {
+    const result = await this.withDocumentExtractionTimeout(
+      this.modelClient.generate({
+        prompt: buildWorkspaceExtractionPrompt({ sourceText, sourceLabel }),
+      }),
+    );
+    return normalizeWorkspaceDraftInput(parseModelJsonObject(result.text));
+  }
+
+  private async withDocumentExtractionTimeout<T>(operation: Promise<T>): Promise<T> {
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([
+        operation,
+        new Promise<never>((_resolve, reject) => {
+          timeoutId = setTimeout(() => {
+            reject(new Error(DOCUMENT_EXTRACTION_TIMEOUT_MESSAGE));
+          }, this.documentExtractionTimeoutMs);
+        }),
+      ]);
+    } finally {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+    }
   }
 
   async waitForDocumentProcessingIdle(): Promise<void> {
@@ -563,6 +827,7 @@ export class EnterpriseLeadWorkspaceService {
   private syncWorkspaceSourcesToVectorIndex(
     workspaceId: string,
     sources: EnterpriseLeadExtractionSource[],
+    profile = this.store.getWorkspace(workspaceId)?.profile,
   ): EnterpriseLeadExtractionSource[] {
     if (!this.contentKnowledgeVectorStore) {
       return sources;
@@ -571,21 +836,22 @@ export class EnterpriseLeadWorkspaceService {
     const now = new Date().toISOString();
     const contentSources = sources.map((source, index) => ({
       source,
-      sourceId: buildEnterpriseWorkspaceKnowledgeSourceId(index),
+      sourceId: source.id?.trim() || `legacy-source-${index}`,
       content: buildEnterpriseWorkspaceKnowledgeSourceContent(source),
     }));
 
     try {
+      const rawDocumentSources: ContentKnowledgeSource[] = contentSources
+        .filter(item => item.content.trim())
+        .map(item => ({
+          sourceId: item.sourceId,
+          sourceType: ContentKnowledgeSourceType.WorkspaceDocument,
+          label: item.source.label,
+          content: item.content,
+        }));
       const syncResult = this.contentKnowledgeVectorStore.replaceSources(
         buildEnterpriseLeadWorkspaceKnowledgeScopeId(workspaceId),
-        contentSources
-          .filter(item => item.content.trim())
-          .map(item => ({
-            sourceId: item.sourceId,
-            sourceType: ContentKnowledgeSourceType.WorkspaceDocument,
-            label: item.source.label,
-            content: item.content,
-          })),
+        [...rawDocumentSources, ...buildDerivedWorkspaceKnowledgeSources(workspaceId, profile)],
       );
       const chunkCountBySourceId = new Map(
         syncResult.sourceResults.map(item => [item.sourceId, item.chunkCount]),

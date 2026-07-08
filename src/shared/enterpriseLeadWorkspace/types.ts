@@ -34,6 +34,7 @@ export interface EnterpriseLeadWorkspaceProfile {
 }
 
 export interface EnterpriseLeadExtractionSource {
+  id?: string;
   kind: EnterpriseLeadExtractionSourceKind | string;
   label: string;
   filePath?: string;

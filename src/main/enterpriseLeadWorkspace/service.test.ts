@@ -6,6 +6,7 @@ import {
   ExternalResearchProviderId,
 } from '../../shared/agent/externalResearch';
 import {
+  buildEnterpriseLeadWorkspaceKnowledgeScopeId,
   EnterpriseLeadAgentRole,
   EnterpriseLeadContentDeliveryMode,
   EnterpriseLeadDocumentExtractionStatus,
@@ -21,6 +22,7 @@ import {
 import type { EnterpriseLeadWorkspaceDraft } from '../../shared/enterpriseLeadWorkspace/types';
 import { buildDefaultEnterpriseLeadWorkspaceSettings } from '../../shared/enterpriseLeadWorkspace/validation';
 import type { ModelClientAdapter, ModelGenerationInput } from '../industryPack/modelClientAdapter';
+import { ContentKnowledgeSourceType } from '../libs/contentKnowledgeRetrieval';
 import { ContentKnowledgeVectorStore } from '../libs/contentKnowledgeVectorStore';
 import { cleanModelJsonText, parseModelJsonObject } from './modelJson';
 import {
@@ -245,6 +247,14 @@ describe('EnterpriseLeadWorkspaceService', () => {
     expect(indexedSource.vectorChunkCount).toBeGreaterThan(0);
     expect(indexedSource.vectorEmbeddingVersion).toBe('lobsterai-content-keyword-hash-v1');
     expect(Date.parse(indexedSource.vectorIndexedAt ?? '')).not.toBeNaN();
+    const sourceId = updated.extractionSources[0]?.id;
+    expect(sourceId).toMatch(/^source_/);
+
+    const updatedAgain = setup.service.updateWorkspaceSources(
+      workspace.id,
+      updated.extractionSources,
+    );
+    expect(updatedAgain.extractionSources[0]?.id).toBe(sourceId);
 
     const searchResult = setup.contentKnowledgeVectorStore.search(
       `enterprise-workspace:${workspace.id}`,
@@ -274,11 +284,12 @@ describe('EnterpriseLeadWorkspaceService', () => {
       0,
     );
 
+    expect(queuedWorkspace.extractionSources[0]?.id).toMatch(/^source_/);
     expect(queuedWorkspace.extractionSources[0]?.extractionStatus).toBe(
       EnterpriseLeadDocumentExtractionStatus.Extracting,
     );
     expect(queuedWorkspace.extractionSources[0]?.vectorIndexStatus).toBe(
-      EnterpriseLeadKnowledgeIndexStatus.Indexing,
+      EnterpriseLeadKnowledgeIndexStatus.Pending,
     );
     expect(queuedWorkspace.profile.productList).not.toContain('精密金属支架');
 
@@ -305,6 +316,70 @@ describe('EnterpriseLeadWorkspaceService', () => {
     expect(processedWorkspace?.extractionSources[0]?.extractedKnowledgeKeys).toContain(
       'productList:精密金属支架',
     );
+  });
+
+  test('marks document processing failed when model extraction times out', async () => {
+    vi.useFakeTimers();
+    try {
+      const setup = createService();
+      db = setup.db;
+      const workspace = setup.service.createWorkspace(draftPayload());
+      setup.modelClient.enqueuePending();
+
+      setup.service.enqueueWorkspaceDocumentProcessing(
+        workspace.id,
+        [
+          {
+            kind: 'file',
+            label: '大文件资料',
+            fileName: 'large.md',
+            text: '我们主营精密金属支架，服务自动化设备厂。'.repeat(200),
+          },
+        ],
+        0,
+      );
+
+      await vi.advanceTimersByTimeAsync(180_001);
+      await Promise.resolve();
+
+      const processedWorkspace = setup.service.getWorkspace(workspace.id);
+      expect(processedWorkspace?.extractionSources[0]?.extractionStatus).toBe(
+        EnterpriseLeadDocumentExtractionStatus.Failed,
+      );
+      expect(processedWorkspace?.extractionSources[0]?.vectorIndexStatus).toBe(
+        EnterpriseLeadKnowledgeIndexStatus.Failed,
+      );
+      expect(processedWorkspace?.extractionSources[0]?.extractionError).toContain('timed out');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('repairs stale document processing status when loading a workspace', () => {
+    const setup = createService();
+    db = setup.db;
+    const workspace = setup.service.createWorkspace(draftPayload());
+    setup.store.updateWorkspaceSources(workspace.id, [
+      {
+        kind: 'file',
+        label: '中断资料',
+        fileName: 'interrupted.md',
+        text: '我们主营精密金属支架，服务自动化设备厂。',
+        extractionStatus: EnterpriseLeadDocumentExtractionStatus.Extracting,
+        vectorIndexStatus: EnterpriseLeadKnowledgeIndexStatus.Indexing,
+        updatedAt: '2000-01-01T00:00:00.000Z',
+      },
+    ]);
+
+    const repairedWorkspace = setup.service.getWorkspace(workspace.id);
+
+    expect(repairedWorkspace?.extractionSources[0]?.extractionStatus).toBe(
+      EnterpriseLeadDocumentExtractionStatus.Failed,
+    );
+    expect(repairedWorkspace?.extractionSources[0]?.vectorIndexStatus).toBe(
+      EnterpriseLeadKnowledgeIndexStatus.Failed,
+    );
+    expect(repairedWorkspace?.extractionSources[0]?.extractionError).toContain('interrupted');
   });
 
   test('does not merge document knowledge that the user has ignored', async () => {
@@ -346,7 +421,7 @@ describe('EnterpriseLeadWorkspaceService', () => {
     );
   });
 
-  test('clears stale workspace source vectors when documents are removed', () => {
+  test('clears stale raw workspace source vectors when documents are removed', () => {
     const setup = createService();
     db = setup.db;
     const workspace = setup.service.createWorkspace({
@@ -373,10 +448,26 @@ describe('EnterpriseLeadWorkspaceService', () => {
       `enterprise-workspace:${workspace.id}`,
       '帮我做 10 个小红书选题',
     );
+    const remainingRows = setup.db
+      .prepare(
+        `
+        SELECT source_type
+        FROM content_knowledge_chunks
+        WHERE scope_id = ?
+      `,
+      )
+      .all(buildEnterpriseLeadWorkspaceKnowledgeScopeId(workspace.id)) as Array<{
+      source_type: string;
+    }>;
 
     expect(updated.extractionSources).toEqual([]);
     expect(searchResult.matched).toBe(false);
-    expect(searchResult.diagnostics.candidateCount).toBe(0);
+    expect(
+      remainingRows.some(row => row.source_type === ContentKnowledgeSourceType.WorkspaceDocument),
+    ).toBe(false);
+    expect(
+      remainingRows.some(row => row.source_type === ContentKnowledgeSourceType.WorkspaceRule),
+    ).toBe(true);
   });
 
   test('indexes the initial workspace source when a workspace is created', () => {
@@ -400,6 +491,85 @@ describe('EnterpriseLeadWorkspaceService', () => {
         '帮我做 10 个小红书选题',
       ).matched,
     ).toBe(true);
+  });
+
+  test('indexes confirmed profile facts and hard rules as derived workspace sources', () => {
+    const setup = createService();
+    db = setup.db;
+    const baseDraft = draftPayload();
+
+    const workspace = setup.service.createWorkspace({
+      ...baseDraft,
+      profile: {
+        ...baseDraft.profile,
+        productList: ['重型纸箱', '蜂窝纸板'],
+        sellingPoints: ['可替代木箱'],
+        prohibitedClaims: ['绝对防损'],
+        contactRules: ['仅生成草稿，不要代替客户发送'],
+        confirmedKnowledgeKeys: ['productList:重型纸箱', 'sellingPoints:可替代木箱'],
+      },
+      source: {
+        kind: 'file',
+        label: '初始工业包装资料',
+        text: '主营工业包装服务，目标客户是机械设备厂采购负责人，卖点是防破损和免熏蒸。',
+      },
+    });
+    const scopeId = buildEnterpriseLeadWorkspaceKnowledgeScopeId(workspace.id);
+    const rows = setup.db
+      .prepare(
+        `
+        SELECT source_type, content
+        FROM content_knowledge_chunks
+        WHERE scope_id = ?
+        ORDER BY source_type, chunk_index
+      `,
+      )
+      .all(scopeId) as Array<{ source_type: string; content: string }>;
+    const confirmedSource = rows.find(
+      row => row.source_type === ContentKnowledgeSourceType.WorkspaceConfirmedProfile,
+    );
+    const ruleSource = rows.find(
+      row => row.source_type === ContentKnowledgeSourceType.WorkspaceRule,
+    );
+
+    expect(rows.some(row => row.source_type === ContentKnowledgeSourceType.WorkspaceDocument)).toBe(
+      true,
+    );
+    expect(confirmedSource).toBeDefined();
+    expect(confirmedSource?.content).toContain('重型纸箱');
+    expect(confirmedSource?.content).toContain('可替代木箱');
+    expect(confirmedSource?.content).not.toContain('蜂窝纸板');
+    expect(ruleSource).toBeDefined();
+    expect(ruleSource?.content).toContain('绝对防损');
+    expect(ruleSource?.content).toContain('仅生成草稿，不要代替客户发送');
+  });
+
+  test('clears indexed workspace source content when a workspace is deleted', () => {
+    const setup = createService();
+    db = setup.db;
+
+    const workspace = setup.service.createWorkspace({
+      ...draftPayload(),
+      source: {
+        kind: 'file',
+        label: '初始工业包装资料',
+        text: '主营工业包装服务，目标客户是机械设备厂采购负责人，卖点是防破损和免熏蒸。',
+      },
+    });
+    const scopeId = buildEnterpriseLeadWorkspaceKnowledgeScopeId(workspace.id);
+
+    expect(
+      setup.contentKnowledgeVectorStore.search(scopeId, '帮我做 10 个小红书选题').matched,
+    ).toBe(true);
+
+    expect(setup.service.deleteWorkspace(workspace.id)).toBe(true);
+    const searchResult = setup.contentKnowledgeVectorStore.search(
+      scopeId,
+      '帮我做 10 个小红书选题',
+    );
+
+    expect(searchResult.matched).toBe(false);
+    expect(searchResult.diagnostics.candidateCount).toBe(0);
   });
 
   test('preserves uploaded document metadata and pending extraction status on creation', () => {

@@ -54,6 +54,137 @@ describe('content knowledge retrieval', () => {
     expect(result.hits[0].scores.contextFitScore).toBeGreaterThan(0);
   });
 
+  test('metadata-free source types keep legacy ranking influence', () => {
+    const index = buildContentKnowledgeIndex([
+      {
+        sourceId: 'raw-workspace-doc',
+        sourceType: ContentKnowledgeSourceType.WorkspaceDocument,
+        label: '工业包装资料.md',
+        content: '公司主营工业包装服务，客户是机械设备厂采购负责人，卖点是防破损和免熏蒸。',
+      },
+      {
+        sourceId: 'user-profile',
+        sourceType: ContentKnowledgeSourceType.UserProfile,
+        label: 'USER.md',
+        content: '公司做工业包装服务，客户是机械设备厂。',
+      },
+    ]);
+
+    const result = searchContentKnowledgeIndex(index, '帮我写公司业务介绍', {
+      hitThreshold: 0,
+      minBusinessSignals: 0,
+    });
+
+    expect(result.hits[0].chunk.sourceId).toBe('raw-workspace-doc');
+  });
+
+  test('confirmed workspace profile facts rank ahead of equivalent raw workspace documents', () => {
+    const sourceContent =
+      '主营工业包装服务，客户是机械设备厂采购负责人，卖点是防破损、免熏蒸和替代木箱。';
+    const index = buildContentKnowledgeIndex([
+      {
+        sourceId: 'raw-workspace-doc',
+        sourceType: ContentKnowledgeSourceType.WorkspaceDocument,
+        label: '工业包装资料.md',
+        content: sourceContent,
+      },
+      {
+        sourceId: 'confirmed-profile',
+        sourceType: ContentKnowledgeSourceType.WorkspaceConfirmedProfile,
+        label: '已确认业务知识',
+        content: sourceContent,
+        priority: 0.18,
+        verifiedByUser: true,
+        evidenceTier: 'internal',
+      },
+    ]);
+
+    const result = searchContentKnowledgeIndex(index, '帮我做 10 个小红书选题');
+
+    expect(result.matched).toBe(true);
+    expect(result.hits[0].chunk.sourceId).toBe('confirmed-profile');
+  });
+
+  test('workspace hard rules rank ahead of generic raw sources for content generation', () => {
+    const index = buildContentKnowledgeIndex([
+      {
+        sourceId: 'raw-workspace-doc',
+        sourceType: ContentKnowledgeSourceType.WorkspaceDocument,
+        label: '工业包装资料.md',
+        content: '工业包装服务资料：服务机械设备厂客户，降低运输破损风险。',
+      },
+      {
+        sourceId: 'workspace-rules',
+        sourceType: ContentKnowledgeSourceType.WorkspaceRule,
+        label: '硬性规则',
+        content:
+          '硬性规则：禁止承诺绝对防损；工业包装内容面向机械设备厂客户时，只能说降低运输破损风险。',
+        priority: 0.2,
+        verifiedByUser: true,
+        evidenceTier: 'internal',
+      },
+    ]);
+
+    const result = searchContentKnowledgeIndex(index, '帮我做 10 个小红书选题');
+
+    expect(result.matched).toBe(true);
+    expect(result.hits[0].chunk.sourceId).toBe('workspace-rules');
+  });
+
+  test('diagnostics summarize confirmed and rule hits without exposing chunk internals', () => {
+    const index = buildContentKnowledgeIndex([
+      {
+        sourceId: 'raw-workspace-doc',
+        sourceType: ContentKnowledgeSourceType.WorkspaceDocument,
+        label: '工业包装资料.md',
+        content: '工业包装服务资料：服务机械设备厂客户，降低运输破损风险。',
+      },
+      {
+        sourceId: 'confirmed-profile',
+        sourceType: ContentKnowledgeSourceType.WorkspaceConfirmedProfile,
+        label: '已确认业务知识',
+        content:
+          '公司概况：工业包装供应商\n产品：重型纸箱\n目标客户：机械设备厂\n卖点：替代木箱、免熏蒸',
+        verifiedByUser: true,
+        evidenceTier: 'internal',
+      },
+      {
+        sourceId: 'workspace-rules',
+        sourceType: ContentKnowledgeSourceType.WorkspaceRule,
+        label: '硬性规则',
+        content:
+          '硬性规则：禁止承诺绝对防损；工业包装内容面向机械设备厂客户时，只能说降低运输破损风险。',
+        verifiedByUser: true,
+        evidenceTier: 'internal',
+      },
+    ]);
+
+    const result = searchContentKnowledgeIndex(index, '帮我做 10 个小红书选题', {
+      hitThreshold: 0,
+      minBusinessSignals: 0,
+      maxHits: 3,
+    });
+
+    expect(result.matched).toBe(true);
+    expect(result.diagnostics.confirmedHitCount).toBe(1);
+    expect(result.diagnostics.ruleHitCount).toBe(1);
+    expect(result.diagnostics.topSourceLabels).toEqual(
+      result.hits.map(hit => hit.chunk.sourceLabel),
+    );
+  });
+
+  test('diagnostics default to empty quality summaries when there are no candidates', () => {
+    const result = searchContentKnowledgeIndex(
+      buildContentKnowledgeIndex([]),
+      '帮我做 10 个小红书选题',
+    );
+
+    expect(result.matched).toBe(false);
+    expect(result.diagnostics.confirmedHitCount).toBe(0);
+    expect(result.diagnostics.ruleHitCount).toBe(0);
+    expect(result.diagnostics.topSourceLabels).toEqual([]);
+  });
+
   test('threshold rejects generic preferences even when they mention a content channel', () => {
     const index = buildContentKnowledgeIndex([
       {
@@ -115,6 +246,31 @@ describe('content knowledge retrieval', () => {
     expect(row.count).toBe(2);
     expect(store.search('enterprise-workspace:a', '写一段私域销售转化话术').matched).toBe(true);
     expect(store.search('enterprise-workspace:b', '写一段私域销售转化话术').matched).toBe(true);
+
+    db.close();
+  });
+
+  test('sqlite vector store deletes only the requested scope', () => {
+    const db = new Database(':memory:');
+    const store = new ContentKnowledgeVectorStore(db);
+    const source = {
+      sourceId: 'source-0',
+      sourceType: ContentKnowledgeSourceType.WorkspaceDocument,
+      label: '工业包装资料',
+      content: '主营工业包装服务，客户是机械设备厂采购负责人，卖点是防破损和免熏蒸。',
+    };
+
+    store.upsertSources('enterprise-workspace:a', [source]);
+    store.upsertSources('enterprise-workspace:b', [source]);
+
+    const deletedCount = store.deleteScope('enterprise-workspace:a');
+    const scopeAResult = store.search('enterprise-workspace:a', '写一段私域销售转化话术');
+    const scopeBResult = store.search('enterprise-workspace:b', '写一段私域销售转化话术');
+
+    expect(deletedCount).toBe(1);
+    expect(scopeAResult.matched).toBe(false);
+    expect(scopeAResult.diagnostics.candidateCount).toBe(0);
+    expect(scopeBResult.matched).toBe(true);
 
     db.close();
   });

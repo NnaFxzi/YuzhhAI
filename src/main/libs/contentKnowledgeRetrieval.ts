@@ -8,16 +8,22 @@ const DEFAULT_EMBEDDING_DIMENSIONS = 96;
 const DEFAULT_MAX_HITS = 8;
 const DEFAULT_HIT_THRESHOLD = 0.34;
 const DEFAULT_MIN_BUSINESS_SIGNALS = 2;
+const SOURCE_TYPE_SCORE_WEIGHT = 0.05;
+const SOURCE_METADATA_BOOST_WEIGHT = 0.18;
 
 export const ContentKnowledgeSourceType = {
   UserProfile: 'user_profile',
   Memory: 'memory',
   IndustryReport: 'industry_report',
   WorkspaceDocument: 'workspace_document',
+  WorkspaceConfirmedProfile: 'workspace_confirmed_profile',
+  WorkspaceRule: 'workspace_rule',
 } as const;
 
 export type ContentKnowledgeSourceType =
   (typeof ContentKnowledgeSourceType)[keyof typeof ContentKnowledgeSourceType];
+
+export type ContentKnowledgeEvidenceTier = 'A' | 'B' | 'C' | 'internal';
 
 type SignalCategory = 'business' | 'product' | 'audience' | 'sales' | 'channel' | 'style';
 
@@ -32,6 +38,9 @@ export type ContentKnowledgeSource = {
   label: string;
   content: string;
   updatedAt?: number;
+  priority?: number;
+  verifiedByUser?: boolean;
+  evidenceTier?: ContentKnowledgeEvidenceTier;
 };
 
 export type ContentKnowledgeChunk = {
@@ -48,6 +57,9 @@ export type ContentKnowledgeChunk = {
   signals: string[];
   businessSignals: string[];
   businessSignalCount: number;
+  sourcePriority?: number;
+  verifiedByUser?: boolean;
+  evidenceTier?: ContentKnowledgeEvidenceTier;
 };
 
 export type ContentKnowledgeIndex = {
@@ -73,6 +85,9 @@ export type ContentKnowledgeSearchHit = {
 export type ContentKnowledgeRetrievalDiagnostics = {
   candidateCount: number;
   rejectedCount: number;
+  confirmedHitCount: number;
+  ruleHitCount: number;
+  topSourceLabels: string[];
   hitThreshold: number;
   minBusinessSignalCount: number;
   embeddingVersion: string;
@@ -413,6 +428,9 @@ const createChunk = (
     signals,
     businessSignals,
     businessSignalCount: businessSignals.length,
+    sourcePriority: source.priority ?? 0,
+    verifiedByUser: source.verifiedByUser ?? false,
+    evidenceTier: source.evidenceTier,
   };
 };
 
@@ -440,6 +458,8 @@ const scoreChunk = (
   const contextFitScore = contentProductionPrompt
     ? Math.min(1, chunk.businessSignalCount / 4)
     : Math.min(1, chunk.businessSignalCount / 6);
+  const metadataBoost = Math.min(0.2, Math.max(0, chunk.sourcePriority ?? 0));
+  const verifiedBoost = chunk.verifiedByUser ? 0.08 : 0;
   const sourceScore = sourceScoreFor(chunk.sourceType);
   const rerankBoost =
     Math.min(0.14, chunk.businessSignalCount * 0.018) + (keywordScore > 0 ? 0.03 : 0);
@@ -448,7 +468,8 @@ const scoreChunk = (
     keywordScore * 0.24 +
       vectorScore * 0.2 +
       contextFitScore * 0.41 +
-      sourceScore * 0.05 +
+      sourceScore * SOURCE_TYPE_SCORE_WEIGHT +
+      (metadataBoost + verifiedBoost) * SOURCE_METADATA_BOOST_WEIGHT +
       rerankBoost,
   );
 
@@ -504,14 +525,23 @@ export const searchContentKnowledgeIndex = (
   const rejectedHits = scoredHits.filter(
     hit => !isEligibleHit(hit, prompt, hitThreshold, minBusinessSignals),
   );
+  const hits = eligibleHits.slice(0, maxHits);
+  const rejectedTopHits = rejectedHits.slice(0, maxHits);
 
   return {
     matched: eligibleHits.length > 0,
-    hits: eligibleHits.slice(0, maxHits),
-    rejectedHits: rejectedHits.slice(0, maxHits),
+    hits,
+    rejectedHits: rejectedTopHits,
     diagnostics: {
       candidateCount: index.chunks.length,
       rejectedCount: rejectedHits.length,
+      confirmedHitCount: hits.filter(
+        hit => hit.chunk.sourceType === ContentKnowledgeSourceType.WorkspaceConfirmedProfile,
+      ).length,
+      ruleHitCount: hits.filter(
+        hit => hit.chunk.sourceType === ContentKnowledgeSourceType.WorkspaceRule,
+      ).length,
+      topSourceLabels: unique(hits.map(hit => hit.chunk.sourceLabel)),
       hitThreshold,
       minBusinessSignalCount: minBusinessSignals,
       embeddingVersion: index.embeddingVersion,

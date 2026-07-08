@@ -725,6 +725,78 @@ test('outbound prompt uses indexed knowledge from the active enterprise workspac
   fs.rmSync(stateDir, { recursive: true, force: true });
 });
 
+test('outbound prompt injects active workspace digest for ordinary edit requests', async () => {
+  const db = new Database(':memory:');
+  const vectorStore = new ContentKnowledgeVectorStore(db);
+  vectorStore.replaceSources('enterprise-workspace:factory-a', [
+    {
+      sourceId: 'confirmed-profile',
+      sourceType: ContentKnowledgeSourceType.WorkspaceConfirmedProfile,
+      label: '已确认业务知识',
+      content: [
+        '公司概况：工业包装供应商',
+        '产品：重型纸箱',
+        '目标客户：机械设备厂',
+        '卖点：替代木箱',
+      ].join('\n'),
+      priority: 0.18,
+      verifiedByUser: true,
+      evidenceTier: 'internal',
+    },
+    {
+      sourceId: 'workspace-rules',
+      sourceType: ContentKnowledgeSourceType.WorkspaceRule,
+      label: '硬性规则',
+      content: ['禁用承诺：绝对防损', '联系规则：仅生成草稿'].join('\n'),
+      priority: 0.2,
+      verifiedByUser: true,
+      evidenceTier: 'internal',
+    },
+  ]);
+  const adapter = new OpenClawRuntimeAdapter(
+    {
+      getSession: () => null,
+      getAgent: () => null,
+    } as never,
+    {} as never,
+    {},
+    undefined,
+    undefined,
+    vectorStore,
+  );
+  const internal = adapter as unknown as {
+    bridgedSessions: Set<string>;
+    enterpriseWorkspaceKnowledgeScopeBySession: Map<string, string>;
+    buildOutboundPrompt: (
+      sessionId: string,
+      prompt: string,
+      systemPrompt?: string,
+      agentId?: string,
+    ) => Promise<string>;
+  };
+  internal.bridgedSessions.add('session-1');
+  internal.enterpriseWorkspaceKnowledgeScopeBySession.set(
+    'session-1',
+    'enterprise-workspace:factory-a',
+  );
+
+  const prompt = await internal.buildOutboundPrompt('session-1', '帮我改一下这段话');
+
+  expect(prompt).toContain('[Active workspace business facts]');
+  expect(prompt).toContain('- Company: 工业包装供应商');
+  expect(prompt).toContain('- Products: 重型纸箱');
+  expect(prompt).toContain('- Customers: 机械设备厂');
+  expect(prompt).toContain('- Selling points: 替代木箱');
+  expect(prompt).toContain('- Hard rules: Prohibited claims: 绝对防损；Contact rules: 仅生成草稿');
+  expect(prompt).not.toContain('[Knowledge base context matched before answering]');
+  expect(prompt).not.toContain('[Knowledge evidence usage contract]');
+  expect(prompt.indexOf('[Active workspace business facts]')).toBeLessThan(
+    prompt.indexOf('[Current user request]'),
+  );
+
+  db.close();
+});
+
 test('enterprise workspace scope clears when the session no longer selects a workspace', async () => {
   const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lobsterai-indexed-knowledge-clear-'));
   const workspaceDir = path.join(stateDir, 'workspace-main');

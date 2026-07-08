@@ -44,6 +44,9 @@ import type { SubagentRunStore } from '../../subagentRunStore';
 import {
   buildAgentKnowledgeEvidencePromptForRequest,
   buildAgentKnowledgeFileContextPrompt,
+  buildEnterpriseWorkspaceDigestPrompt,
+  ENTERPRISE_WORKSPACE_DIGEST_HIT_LIMIT,
+  ENTERPRISE_WORKSPACE_DIGEST_RETRIEVAL_PROMPT,
 } from '../agentKnowledgeEvidencePrompt';
 import { sanitizeAgentVisibleOutput } from '../agentOutputSanitizer';
 import {
@@ -4115,6 +4118,40 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
     } catch (error) {
       console.warn(
         '[OpenClawRuntime] failed to build knowledge file context bridge; continuing without it:',
+        error,
+      );
+      return '';
+    }
+  }
+
+  private buildEnterpriseWorkspaceDigestBridge(sessionId?: string): string {
+    const scopeId = sessionId ? this.enterpriseWorkspaceKnowledgeScopeBySession.get(sessionId) : '';
+    if (!scopeId || !this.contentKnowledgeRetriever) {
+      return '';
+    }
+
+    try {
+      const retrievalResult = this.contentKnowledgeRetriever.retrieveFromSources({
+        scopeId,
+        prompt: ENTERPRISE_WORKSPACE_DIGEST_RETRIEVAL_PROMPT,
+        sources: [],
+        sharedScopeIds: [scopeId],
+        options: {
+          maxHits: ENTERPRISE_WORKSPACE_DIGEST_HIT_LIMIT,
+          hitThreshold: 0,
+          minBusinessSignals: 0,
+        },
+      });
+
+      return buildEnterpriseWorkspaceDigestPrompt({
+        chunks: retrievalResult.hits.map(hit => ({
+          sourceType: hit.chunk.sourceType,
+          text: hit.chunk.text,
+        })),
+      });
+    } catch (error) {
+      console.warn(
+        '[OpenClawRuntime] failed to build enterprise workspace digest bridge; continuing without it:',
         error,
       );
       return '';
@@ -9758,6 +9795,7 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
     const continuityCapsuleBridge = this.buildContinuityCapsuleBridge(sessionId);
     const workspaceRehydrationBridge = await this.buildWorkspaceRehydrationBridge(sessionId);
     const topKEvidenceBridge = this.buildTopKEvidenceBridge(sessionId, prompt);
+    const enterpriseWorkspaceDigestBridge = this.buildEnterpriseWorkspaceDigestBridge(sessionId);
     const knowledgeEvidencePrompt = buildAgentKnowledgeEvidencePromptForRequest(prompt);
     const knowledgeFileContextBridge = this.buildKnowledgeFileContextBridge(
       prompt,
@@ -9781,6 +9819,9 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
       }
       if (selectedTextSection) {
         sections.push(selectedTextSection);
+      }
+      if (enterpriseWorkspaceDigestBridge) {
+        sections.push(enterpriseWorkspaceDigestBridge);
       }
       if (knowledgeEvidencePrompt) {
         sections.push(knowledgeEvidencePrompt);
@@ -9864,6 +9905,9 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
     }
     if (selectedTextSection) {
       sections.push(selectedTextSection);
+    }
+    if (enterpriseWorkspaceDigestBridge) {
+      sections.push(enterpriseWorkspaceDigestBridge);
     }
     if (knowledgeEvidencePrompt) {
       sections.push(knowledgeEvidencePrompt);

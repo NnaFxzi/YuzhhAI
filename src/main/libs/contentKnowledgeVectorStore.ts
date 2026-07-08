@@ -5,6 +5,7 @@ import {
   buildContentKnowledgeIndex,
   CONTENT_KNOWLEDGE_EMBEDDING_VERSION,
   type ContentKnowledgeChunk,
+  type ContentKnowledgeEvidenceTier,
   type ContentKnowledgeRetrievalResult,
   type ContentKnowledgeRetrieverInput,
   type ContentKnowledgeSearchOptions,
@@ -37,6 +38,9 @@ type ContentKnowledgeChunkRow = {
   signals_json: string;
   business_signals_json: string;
   business_signal_count: number;
+  source_priority: number | null;
+  verified_by_user: number | null;
+  evidence_tier: ContentKnowledgeEvidenceTier | null;
 };
 
 const parseJsonArray = <T>(value: string, fallback: T[]): T[] => {
@@ -65,39 +69,18 @@ const mapRowToChunk = (row: ContentKnowledgeChunkRow): ContentKnowledgeChunk => 
   signals: parseJsonArray<string>(row.signals_json, []),
   businessSignals: parseJsonArray<string>(row.business_signals_json, []),
   businessSignalCount: row.business_signal_count,
+  sourcePriority: row.source_priority ?? 0,
+  verifiedByUser: row.verified_by_user === 1,
+  evidenceTier: row.evidence_tier ?? undefined,
 });
+
+type TableInfoRow = {
+  name: string;
+};
 
 export class ContentKnowledgeVectorStore {
   constructor(private readonly db: Database.Database) {
     this.initialize();
-  }
-
-  private initialize(): void {
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS content_knowledge_chunks (
-        id TEXT PRIMARY KEY,
-        scope_id TEXT NOT NULL,
-        source_type TEXT NOT NULL,
-        source_id TEXT NOT NULL,
-        source_label TEXT NOT NULL,
-        chunk_index INTEGER NOT NULL,
-        content TEXT NOT NULL,
-        checksum TEXT NOT NULL,
-        embedding_version TEXT NOT NULL,
-        embedding_json TEXT NOT NULL,
-        tokens_json TEXT NOT NULL,
-        signals_json TEXT NOT NULL,
-        business_signals_json TEXT NOT NULL,
-        business_signal_count INTEGER NOT NULL,
-        updated_at INTEGER NOT NULL
-      );
-
-      CREATE INDEX IF NOT EXISTS idx_content_knowledge_chunks_scope
-      ON content_knowledge_chunks(scope_id);
-
-      CREATE INDEX IF NOT EXISTS idx_content_knowledge_chunks_source
-      ON content_knowledge_chunks(scope_id, source_id);
-    `);
   }
 
   upsertSources(scopeId: string, sources: ContentKnowledgeSource[]): number {
@@ -123,9 +106,12 @@ export class ContentKnowledgeVectorStore {
         signals_json,
         business_signals_json,
         business_signal_count,
+        source_priority,
+        verified_by_user,
+        evidence_tier,
         updated_at
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const transaction = this.db.transaction(() => {
@@ -149,6 +135,9 @@ export class ContentKnowledgeVectorStore {
             JSON.stringify(chunk.signals),
             JSON.stringify(chunk.businessSignals),
             chunk.businessSignalCount,
+            chunk.sourcePriority ?? 0,
+            chunk.verifiedByUser ? 1 : 0,
+            chunk.evidenceTier ?? null,
             now,
           );
           chunkCount += 1;
@@ -186,9 +175,12 @@ export class ContentKnowledgeVectorStore {
         signals_json,
         business_signals_json,
         business_signal_count,
+        source_priority,
+        verified_by_user,
+        evidence_tier,
         updated_at
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const transaction = this.db.transaction((): ContentKnowledgeScopeSyncResult => {
@@ -218,6 +210,9 @@ export class ContentKnowledgeVectorStore {
             JSON.stringify(chunk.signals),
             JSON.stringify(chunk.businessSignals),
             chunk.businessSignalCount,
+            chunk.sourcePriority ?? 0,
+            chunk.verifiedByUser ? 1 : 0,
+            chunk.evidenceTier ?? null,
             now,
           );
           totalChunkCount += 1;
@@ -232,6 +227,14 @@ export class ContentKnowledgeVectorStore {
     });
 
     return transaction() as ContentKnowledgeScopeSyncResult;
+  }
+
+  deleteScope(scopeId: string): number {
+    const normalizedScopeId = scopeId.trim() || 'default';
+    const result = this.db
+      .prepare('DELETE FROM content_knowledge_chunks WHERE scope_id = ?')
+      .run(normalizedScopeId);
+    return result.changes;
   }
 
   search(
@@ -256,7 +259,10 @@ export class ContentKnowledgeVectorStore {
           tokens_json,
           signals_json,
           business_signals_json,
-          business_signal_count
+          business_signal_count,
+          source_priority,
+          verified_by_user,
+          evidence_tier
         FROM content_knowledge_chunks
         WHERE scope_id = ?
         ORDER BY source_label, chunk_index
@@ -302,7 +308,10 @@ export class ContentKnowledgeVectorStore {
           tokens_json,
           signals_json,
           business_signals_json,
-          business_signal_count
+          business_signal_count,
+          source_priority,
+          verified_by_user,
+          evidence_tier
         FROM content_knowledge_chunks
         WHERE scope_id IN (${placeholders})
         ORDER BY scope_id, source_label, chunk_index
@@ -320,5 +329,58 @@ export class ContentKnowledgeVectorStore {
       input.prompt,
       input.options,
     );
+  }
+
+  private initialize(): void {
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS content_knowledge_chunks (
+        id TEXT PRIMARY KEY,
+        scope_id TEXT NOT NULL,
+        source_type TEXT NOT NULL,
+        source_id TEXT NOT NULL,
+        source_label TEXT NOT NULL,
+        chunk_index INTEGER NOT NULL,
+        content TEXT NOT NULL,
+        checksum TEXT NOT NULL,
+        embedding_version TEXT NOT NULL,
+        embedding_json TEXT NOT NULL,
+        tokens_json TEXT NOT NULL,
+        signals_json TEXT NOT NULL,
+        business_signals_json TEXT NOT NULL,
+        business_signal_count INTEGER NOT NULL,
+        source_priority REAL DEFAULT 0,
+        verified_by_user INTEGER DEFAULT 0,
+        evidence_tier TEXT,
+        updated_at INTEGER NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_content_knowledge_chunks_scope
+      ON content_knowledge_chunks(scope_id);
+
+      CREATE INDEX IF NOT EXISTS idx_content_knowledge_chunks_source
+      ON content_knowledge_chunks(scope_id, source_id);
+    `);
+    this.ensureMetadataColumns();
+  }
+
+  private ensureMetadataColumns(): void {
+    const columns = new Set(
+      (this.db.prepare('PRAGMA table_info(content_knowledge_chunks)').all() as TableInfoRow[]).map(
+        column => column.name,
+      ),
+    );
+    if (!columns.has('source_priority')) {
+      this.db.exec(
+        'ALTER TABLE content_knowledge_chunks ADD COLUMN source_priority REAL DEFAULT 0',
+      );
+    }
+    if (!columns.has('verified_by_user')) {
+      this.db.exec(
+        'ALTER TABLE content_knowledge_chunks ADD COLUMN verified_by_user INTEGER DEFAULT 0',
+      );
+    }
+    if (!columns.has('evidence_tier')) {
+      this.db.exec('ALTER TABLE content_knowledge_chunks ADD COLUMN evidence_tier TEXT');
+    }
   }
 }

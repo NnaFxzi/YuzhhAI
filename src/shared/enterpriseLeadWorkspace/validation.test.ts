@@ -1,13 +1,7 @@
 import { describe, expect, test } from 'vitest';
 
-import {
-  DomesticResearchMode,
-  DomesticResearchSourceId,
-} from '../agent/domesticResearch';
-import {
-  AgentExternalResearchMode,
-  ExternalResearchProviderId,
-} from '../agent/externalResearch';
+import { DomesticResearchMode, DomesticResearchSourceId } from '../agent/domesticResearch';
+import { AgentExternalResearchMode, ExternalResearchProviderId } from '../agent/externalResearch';
 import {
   EnterpriseLeadAgentRole,
   EnterpriseLeadContentPlatformId,
@@ -18,6 +12,7 @@ import {
 import {
   buildDefaultEnterpriseLeadWorkspaceSettings,
   normalizeAgentTaskResultInput,
+  normalizeEnterpriseLeadExtractionSource,
   normalizeEnterpriseLeadRunAgentSnapshot,
   normalizeEnterpriseLeadWorkspaceAgents,
   normalizeEnterpriseLeadWorkspaceSettings,
@@ -47,12 +42,24 @@ describe('enterprise lead workspace validation', () => {
     expect(draft.source.kind).toBe('conversation');
   });
 
+  test('preserves enterprise lead extraction source ids', () => {
+    expect(
+      normalizeEnterpriseLeadExtractionSource({
+        id: 'src_existing',
+        kind: 'file',
+        label: '资料',
+      }).id,
+    ).toBe('src_existing');
+  });
+
   test('rejects a workspace draft without a name', () => {
-    expect(() => normalizeWorkspaceDraftInput({
-      name: '',
-      profile: {},
-      source: { kind: 'conversation', label: '用户描述' },
-    })).toThrow('workspace draft name is required');
+    expect(() =>
+      normalizeWorkspaceDraftInput({
+        name: '',
+        profile: {},
+        source: { kind: 'conversation', label: '用户描述' },
+      }),
+    ).toThrow('workspace draft name is required');
   });
 
   test('normalizes an Agent task result envelope', () => {
@@ -61,11 +68,13 @@ describe('enterprise lead workspace validation', () => {
       summary: '已识别产品和客户方向',
       outputs: { productProfile: { name: '重型纸箱' } },
       missingInfo: ['承重范围'],
-      todos: [{
-        kind: EnterpriseLeadTodoKind.MissingInfo,
-        title: '补充承重范围',
-        description: '用于避免编造具体参数',
-      }],
+      todos: [
+        {
+          kind: EnterpriseLeadTodoKind.MissingInfo,
+          title: '补充承重范围',
+          description: '用于避免编造具体参数',
+        },
+      ],
       risks: [],
       handoffContext: { product: '重型纸箱' },
       status: 'completed',
@@ -105,11 +114,13 @@ describe('enterprise lead workspace validation', () => {
       apiKey: '',
     });
     expect(settings.domesticResearch.sources.bilibili.enabled).toBe(true);
-    expect(settings.contentPlatforms.platforms.xiaohongshu_draft).toEqual(expect.objectContaining({
-      id: 'xiaohongshu_draft',
-      enabled: true,
-      deliveryMode: 'draft_only',
-    }));
+    expect(settings.contentPlatforms.platforms.xiaohongshu_draft).toEqual(
+      expect.objectContaining({
+        id: 'xiaohongshu_draft',
+        enabled: true,
+        deliveryMode: 'draft_only',
+      }),
+    );
     expect(settings.contentPlatforms.outputRules).toEqual({
       defaultPlatformId: 'sales_message',
       lengthPolicy: 'compress',
@@ -287,26 +298,31 @@ describe('enterprise lead workspace validation', () => {
       skillIds: ['docx'],
     });
 
-    const update = normalizeEnterpriseLeadWorkspaceSettingsUpdate({
-      settings: {
-        model: {
-          providers: {
-            moonshot: {
-              apiKey: ' sk-new ',
+    const update = normalizeEnterpriseLeadWorkspaceSettingsUpdate(
+      {
+        settings: {
+          model: {
+            providers: {
+              moonshot: {
+                apiKey: ' sk-new ',
+              },
             },
           },
+          skillIds: ['docx', 'web-search'],
         },
-        skillIds: ['docx', 'web-search'],
       },
-    }, current);
+      current,
+    );
 
     const updatedProviders = update.settings?.model?.providers;
     expect(updatedProviders).toBeDefined();
-    expect(updatedProviders?.moonshot).toEqual(expect.objectContaining({
-      enabled: true,
-      apiKey: 'sk-new',
-      baseUrl: 'https://api.moonshot.cn/v1',
-    }));
+    expect(updatedProviders?.moonshot).toEqual(
+      expect.objectContaining({
+        enabled: true,
+        apiKey: 'sk-new',
+        baseUrl: 'https://api.moonshot.cn/v1',
+      }),
+    );
     expect(update.settings?.skillIds).toEqual(['docx', 'web-search']);
   });
 
@@ -334,14 +350,17 @@ describe('enterprise lead workspace validation', () => {
   test('preserves custom enabled agent role strings during settings updates', () => {
     const current = buildDefaultEnterpriseLeadWorkspaceSettings();
 
-    const update = normalizeEnterpriseLeadWorkspaceSettingsUpdate({
-      enabledAgentRoles: [
-        EnterpriseLeadAgentRole.ContentPlanning,
-        ' workspace-agent-alpha ',
-        '',
-        'workspace-agent-alpha',
-      ],
-    }, current);
+    const update = normalizeEnterpriseLeadWorkspaceSettingsUpdate(
+      {
+        enabledAgentRoles: [
+          EnterpriseLeadAgentRole.ContentPlanning,
+          ' workspace-agent-alpha ',
+          '',
+          'workspace-agent-alpha',
+        ],
+      },
+      current,
+    );
 
     expect(update.enabledAgentRoles).toEqual([
       EnterpriseLeadAgentRole.ContentPlanning,
@@ -360,15 +379,18 @@ describe('enterprise lead workspace validation', () => {
       },
     });
 
-    const update = normalizeEnterpriseLeadWorkspaceSettingsUpdate({
-      settings: {
-        externalResearch: {
-          providers: {
-            [ExternalResearchProviderId.Tavily]: { enabled: true, apiKey: ' new-tavily ' },
+    const update = normalizeEnterpriseLeadWorkspaceSettingsUpdate(
+      {
+        settings: {
+          externalResearch: {
+            providers: {
+              [ExternalResearchProviderId.Tavily]: { enabled: true, apiKey: ' new-tavily ' },
+            },
           },
         },
       },
-    }, current);
+      current,
+    );
 
     expect(update.settings?.externalResearch).toEqual({
       mode: AgentExternalResearchMode.Override,
@@ -394,27 +416,32 @@ describe('enterprise lead workspace validation', () => {
             urls: ['https://www.bilibili.com/video/BV1'],
           },
         },
-        customSources: [{
-          id: 'industry-forum',
-          name: '行业论坛',
-          enabled: true,
-          modes: [DomesticResearchMode.UrlImport],
-          urls: ['https://forum.example.com/a'],
-        }],
+        customSources: [
+          {
+            id: 'industry-forum',
+            name: '行业论坛',
+            enabled: true,
+            modes: [DomesticResearchMode.UrlImport],
+            urls: ['https://forum.example.com/a'],
+          },
+        ],
       },
     });
 
-    const update = normalizeEnterpriseLeadWorkspaceSettingsUpdate({
-      settings: {
-        domesticResearch: {
-          sources: {
-            [DomesticResearchSourceId.Xiaohongshu]: {
-              enabled: true,
+    const update = normalizeEnterpriseLeadWorkspaceSettingsUpdate(
+      {
+        settings: {
+          domesticResearch: {
+            sources: {
+              [DomesticResearchSourceId.Xiaohongshu]: {
+                enabled: true,
+              },
             },
           },
         },
       },
-    }, current);
+      current,
+    );
 
     expect(update.settings?.domesticResearch.sources.xiaohongshu).toEqual({
       enabled: true,
@@ -426,13 +453,15 @@ describe('enterprise lead workspace validation', () => {
       modes: [DomesticResearchMode.Search],
       urls: ['https://www.bilibili.com/video/BV1'],
     });
-    expect(update.settings?.domesticResearch.customSources).toEqual([{
-      id: 'industry-forum',
-      name: '行业论坛',
-      enabled: true,
-      modes: [DomesticResearchMode.UrlImport],
-      urls: ['https://forum.example.com/a'],
-    }]);
+    expect(update.settings?.domesticResearch.customSources).toEqual([
+      {
+        id: 'industry-forum',
+        name: '行业论坛',
+        enabled: true,
+        modes: [DomesticResearchMode.UrlImport],
+        urls: ['https://forum.example.com/a'],
+      },
+    ]);
   });
 
   test('normalizes workspace agent bindings with local overrides', () => {
@@ -549,16 +578,18 @@ describe('enterprise lead workspace validation', () => {
   });
 
   test('normalizes immutable run Agent snapshots', () => {
-    expect(normalizeEnterpriseLeadRunAgentSnapshot({
-      agentId: ' global-agent-1 ',
-      name: '  Space Writer  ',
-      description: '  Writes workspace leads  ',
-      identity: '  Workspace identity  ',
-      systemPrompt: '  Workspace prompt  ',
-      icon: '  briefcase  ',
-      model: '  deepseek/deepseek-chat  ',
-      skillIds: [' docx ', '', 'docx', 'web-search'],
-    })).toEqual({
+    expect(
+      normalizeEnterpriseLeadRunAgentSnapshot({
+        agentId: ' global-agent-1 ',
+        name: '  Space Writer  ',
+        description: '  Writes workspace leads  ',
+        identity: '  Workspace identity  ',
+        systemPrompt: '  Workspace prompt  ',
+        icon: '  briefcase  ',
+        model: '  deepseek/deepseek-chat  ',
+        skillIds: [' docx ', '', 'docx', 'web-search'],
+      }),
+    ).toEqual({
       agentId: 'global-agent-1',
       name: 'Space Writer',
       description: 'Writes workspace leads',
@@ -569,10 +600,12 @@ describe('enterprise lead workspace validation', () => {
       skillIds: ['docx', 'web-search'],
     });
 
-    expect(normalizeEnterpriseLeadRunAgentSnapshot({
-      agentId: ' global-agent-2 ',
-      name: ' ',
-    })).toEqual({
+    expect(
+      normalizeEnterpriseLeadRunAgentSnapshot({
+        agentId: ' global-agent-2 ',
+        name: ' ',
+      }),
+    ).toEqual({
       agentId: 'global-agent-2',
       name: 'global-agent-2',
       description: '',
@@ -587,16 +620,23 @@ describe('enterprise lead workspace validation', () => {
   });
 
   test('drops workspace agent bindings without an agent id', () => {
-    expect(normalizeEnterpriseLeadWorkspaceAgents([
-      { agentId: ' ', enabled: true, order: 0, overrides: { name: 'Missing' } },
-    ])).toEqual([]);
+    expect(
+      normalizeEnterpriseLeadWorkspaceAgents([
+        { agentId: ' ', enabled: true, order: 0, overrides: { name: 'Missing' } },
+      ]),
+    ).toEqual([]);
   });
 
   test('sorts workspace agent bindings and remaps contiguous order', () => {
     const normalized = normalizeEnterpriseLeadWorkspaceAgents([
       { agentId: ' agent-three ', enabled: true, order: 3, overrides: { name: 'Third' } },
       { agentId: ' ', enabled: true, order: 0, overrides: { name: 'Missing' } },
-      { agentId: ' agent-invalid ', enabled: true, order: 'later', overrides: { name: 'Fallback' } },
+      {
+        agentId: ' agent-invalid ',
+        enabled: true,
+        order: 'later',
+        overrides: { name: 'Fallback' },
+      },
       { agentId: ' agent-one ', enabled: true, order: 1, overrides: { name: 'First' } },
       { agentId: ' agent-one ', enabled: false, order: 4, overrides: { name: 'Replacement' } },
     ]);
@@ -618,5 +658,4 @@ describe('enterprise lead workspace validation', () => {
       },
     });
   });
-
 });

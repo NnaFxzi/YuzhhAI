@@ -802,6 +802,7 @@ export function normalizeEnterpriseLeadExtractionSource(
     '未命名资料';
 
   return {
+    id: cleanOptionalText(record.id),
     kind,
     label,
     filePath: cleanOptionalText(record.filePath),

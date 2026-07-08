@@ -7,8 +7,14 @@ import {
   buildAgentKnowledgeEvidencePrompt,
   buildAgentKnowledgeEvidencePromptForRequest,
   buildAgentKnowledgeFileContextPrompt,
+  buildEnterpriseWorkspaceDigestPrompt,
   isKnowledgeEvidenceRequest,
 } from './agentKnowledgeEvidencePrompt';
+import {
+  type ContentKnowledgeRetrievalResult,
+  type ContentKnowledgeRetriever,
+  ContentKnowledgeSourceType,
+} from './contentKnowledgeRetrieval';
 
 describe('buildAgentKnowledgeEvidencePrompt', () => {
   test('requires sourced numbers and hides internal diagnostics in industry answers', () => {
@@ -33,6 +39,62 @@ describe('buildAgentKnowledgeEvidencePrompt', () => {
     expect(prompt).toContain('docs.openclaw.ai');
     expect(prompt).toContain('不要在最终回答中提及“历史记忆”“索引”“检索暂不可用”');
     expect(prompt).not.toContain('统一转译为“部分历史记忆');
+  });
+
+  test('builds an active workspace digest for ordinary edit requests without raw chunk diagnostics', () => {
+    const request = '帮我改一下这段';
+    expect(isKnowledgeEvidenceRequest(request)).toBe(false);
+    expect(buildAgentKnowledgeFileContextPrompt({ prompt: request })).toBe('');
+
+    const digest = buildEnterpriseWorkspaceDigestPrompt({
+      companySummary: '东莞工厂，做重型纸箱和蜂窝箱。',
+      productList: ['重型纸箱', '蜂窝纸箱'],
+      productCapabilities: ['按尺寸定制'],
+      targetCustomers: ['机械设备厂', '汽配出口工厂'],
+      sellingPoints: ['替代木箱', '免熏蒸'],
+      prohibitedClaims: ['不能承诺绝对防损'],
+      contactRules: ['只生成草稿，不代替客户发送'],
+    });
+
+    expect(digest).toContain('[Active workspace business facts]');
+    expect(digest).toContain('- Company: 东莞工厂，做重型纸箱和蜂窝箱。');
+    expect(digest).toContain('- Products: 重型纸箱；蜂窝纸箱；按尺寸定制');
+    expect(digest).toContain('- Customers: 机械设备厂；汽配出口工厂');
+    expect(digest).toContain('- Selling points: 替代木箱；免熏蒸');
+    expect(digest).toContain('Prohibited claims: 不能承诺绝对防损');
+    expect(digest).toContain('Contact rules: 只生成草稿，不代替客户发送');
+    expect(digest).not.toContain('[Knowledge base context matched before answering]');
+    expect(digest).not.toContain('[K1]');
+    expect(digest).not.toContain('命中阈值');
+  });
+
+  test('builds active workspace digest from confirmed profile and rule chunks', () => {
+    const digest = buildEnterpriseWorkspaceDigestPrompt({
+      chunks: [
+        {
+          sourceType: ContentKnowledgeSourceType.WorkspaceConfirmedProfile,
+          text: [
+            '公司概况：工业包装供应商',
+            '产品：重型纸箱',
+            '目标客户：机械设备厂',
+            '卖点：替代木箱',
+          ].join('\n'),
+        },
+        {
+          sourceType: ContentKnowledgeSourceType.WorkspaceRule,
+          text: ['禁用承诺：绝对防损', '联系规则：仅生成草稿'].join('\n'),
+        },
+      ],
+    });
+
+    expect(digest).toContain('- Company: 工业包装供应商');
+    expect(digest).toContain('- Products: 重型纸箱');
+    expect(digest).toContain('- Customers: 机械设备厂');
+    expect(digest).toContain('- Selling points: 替代木箱');
+    expect(digest).toContain(
+      '- Hard rules: Prohibited claims: 绝对防损；Contact rules: 仅生成草稿',
+    );
+    expect(digest).not.toContain('检索方式');
   });
 
   test('requires source quality tiers and forbids overconfident data-ready wording', () => {
@@ -170,6 +232,93 @@ describe('buildAgentKnowledgeEvidencePrompt', () => {
     fs.rmSync(stateDir, { recursive: true, force: true });
   });
 
+  test('keeps retrieval diagnostics internal when building matched knowledge context', () => {
+    const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lobsterai-diagnostics-internal-'));
+    const workspaceDir = path.join(stateDir, 'workspace-main');
+    fs.mkdirSync(workspaceDir, { recursive: true });
+    const retrievalResult: ContentKnowledgeRetrievalResult = {
+      matched: true,
+      hits: [
+        {
+          chunk: {
+            id: 'chunk-1',
+            sourceId: 'confirmed-profile',
+            sourceType: ContentKnowledgeSourceType.WorkspaceConfirmedProfile,
+            sourceLabel: '已确认业务知识',
+            chunkIndex: 0,
+            text: '公司概况：工业包装供应商\n产品：重型纸箱\n目标客户：机械设备厂\n卖点：替代木箱',
+            checksum: 'a'.repeat(40),
+            embeddingVersion: 'test',
+            embedding: [],
+            tokens: [],
+            signals: [],
+            businessSignals: [],
+            businessSignalCount: 4,
+            verifiedByUser: true,
+            evidenceTier: 'internal',
+          },
+          scores: {
+            keywordScore: 0,
+            vectorScore: 0,
+            contextFitScore: 1,
+            sourceScore: 0.05,
+            rerankBoost: 0,
+            finalScore: 0.8,
+          },
+        },
+      ],
+      rejectedHits: [],
+      diagnostics: {
+        candidateCount: 1,
+        rejectedCount: 0,
+        hitThreshold: 0.34,
+        minBusinessSignalCount: 2,
+        embeddingVersion: 'embedding-error: failed to build vector',
+        confirmedHitCount: 1,
+        ruleHitCount: 0,
+        topSourceLabels: [
+          'content_knowledge_chunks',
+          '/private/tmp/lobsterai.sqlite',
+          'SELECT * FROM content_knowledge_chunks',
+        ],
+      },
+    };
+    const knowledgeRetriever: ContentKnowledgeRetriever = {
+      retrieveFromSources: () => retrievalResult,
+    };
+
+    const prompt = buildAgentKnowledgeFileContextPrompt({
+      prompt: '帮我做 10 个小红书选题',
+      stateDir,
+      agentId: 'main',
+      knowledgeRetriever,
+    });
+
+    expect(prompt).toContain('[Knowledge base context matched before answering]');
+    expect(prompt).toContain(
+      'Workspace knowledge for this request. Treat the items below as evidence for the current request.',
+    );
+    expect(prompt).toContain('[K1] 已确认业务知识');
+    expect(prompt).toContain('重型纸箱');
+    expect(prompt).not.toContain('knowledge chunks were retrieved');
+    expect(prompt).not.toContain('content_knowledge_chunks');
+    expect(prompt).not.toContain('/private/tmp');
+    expect(prompt).not.toContain('SELECT *');
+    expect(prompt).not.toContain('embedding-error');
+    expect(prompt).not.toContain('score');
+    expect(prompt).not.toContain('business signals');
+    expect(prompt).not.toContain('0.80');
+    expect(prompt).not.toContain('business signals 4');
+    expect(prompt).not.toContain('检索方式');
+    expect(prompt).not.toContain('embedding');
+    expect(prompt).not.toContain('索引');
+    expect(prompt).not.toContain('命中阈值');
+    expect(prompt).not.toContain('0.34');
+    expect(prompt).not.toContain('最低业务信号 2');
+
+    fs.rmSync(stateDir, { recursive: true, force: true });
+  });
+
   test('matches business profile context even without exact content channel keywords', () => {
     const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lobsterai-business-profile-'));
     const workspaceDir = path.join(stateDir, 'workspace-main');
@@ -192,7 +341,10 @@ describe('buildAgentKnowledgeEvidencePrompt', () => {
     expect(prompt).toContain('[Knowledge base context matched before answering]');
     expect(prompt).toContain('注塑模具维护服务');
     expect(prompt).toContain('生产主管');
-    expect(prompt).toContain('命中阈值');
+    expect(prompt).not.toContain('检索方式');
+    expect(prompt).not.toContain('embedding');
+    expect(prompt).not.toContain('索引');
+    expect(prompt).not.toContain('命中阈值');
 
     fs.rmSync(stateDir, { recursive: true, force: true });
   });

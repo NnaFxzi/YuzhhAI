@@ -84,6 +84,7 @@ import {
 import {
   EnterpriseLeadWorkspacePageTarget,
   getEnterpriseLeadWorkspacePageRouting,
+  hasEnterpriseLeadWorkspaceProcessingSources,
 } from './EnterpriseLeadWorkspaceView';
 import type { WorkspaceConversationRecord } from './workspaceCoworkSessionRecords';
 import WorkspaceCreate, { createWorkspaceFromUploadedMaterial } from './WorkspaceCreate';
@@ -1188,6 +1189,49 @@ describe('enterprise lead workspace UI helpers', () => {
     expect(getWorkspaceCreateBranchScreen(WorkspaceCreateStartMode.Blank)).toBe(
       WorkspaceCreateBranchScreen.Blank,
     );
+  });
+
+  test('detects workspaces that need processing refresh after document upload', () => {
+    const extractingWorkspace = {
+      ...createWorkspace('extracting'),
+      extractionSources: [
+        {
+          kind: EnterpriseLeadExtractionSourceKind.File,
+          label: 'factory.md',
+          text: '主营精密五金加工。',
+          extractionStatus: EnterpriseLeadDocumentExtractionStatus.Extracting,
+          vectorIndexStatus: EnterpriseLeadKnowledgeIndexStatus.Pending,
+        },
+      ],
+    };
+    const indexingWorkspace = {
+      ...createWorkspace('indexing'),
+      extractionSources: [
+        {
+          kind: EnterpriseLeadExtractionSourceKind.File,
+          label: 'factory.md',
+          text: '主营精密五金加工。',
+          extractionStatus: EnterpriseLeadDocumentExtractionStatus.Extracted,
+          vectorIndexStatus: EnterpriseLeadKnowledgeIndexStatus.Indexing,
+        },
+      ],
+    };
+    const indexedWorkspace = {
+      ...createWorkspace('indexed'),
+      extractionSources: [
+        {
+          kind: EnterpriseLeadExtractionSourceKind.File,
+          label: 'factory.md',
+          text: '主营精密五金加工。',
+          extractionStatus: EnterpriseLeadDocumentExtractionStatus.Extracted,
+          vectorIndexStatus: EnterpriseLeadKnowledgeIndexStatus.Indexed,
+        },
+      ],
+    };
+
+    expect(hasEnterpriseLeadWorkspaceProcessingSources(extractingWorkspace)).toBe(true);
+    expect(hasEnterpriseLeadWorkspaceProcessingSources(indexingWorkspace)).toBe(true);
+    expect(hasEnterpriseLeadWorkspaceProcessingSources(indexedWorkspace)).toBe(false);
   });
 
   test('renders escape controls on the workspace creation start step', () => {

@@ -1,6 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSelector } from 'react-redux';
 
+import {
+  EnterpriseLeadDocumentExtractionStatus,
+  EnterpriseLeadKnowledgeIndexStatus,
+} from '../../../shared/enterpriseLeadWorkspace/constants';
 import type { EnterpriseLeadWorkspace } from '../../../shared/enterpriseLeadWorkspace/types';
 import { coworkService } from '../../services/cowork';
 import { enterpriseLeadWorkspaceService } from '../../services/enterpriseLeadWorkspace';
@@ -72,6 +76,18 @@ export const getEnterpriseLeadWorkspacePageRouting = (
       : EnterpriseLeadWorkspacePageTarget.WorkspacePanel,
   usesDedicatedEnterpriseLeadChatSessions: false,
 });
+
+const WORKSPACE_PROCESSING_REFRESH_INTERVAL_MS = 1500;
+const WORKSPACE_PROCESSING_REFRESH_MAX_ATTEMPTS = 120;
+
+export const hasEnterpriseLeadWorkspaceProcessingSources = (
+  workspace: EnterpriseLeadWorkspace,
+): boolean =>
+  workspace.extractionSources.some(
+    source =>
+      source.extractionStatus === EnterpriseLeadDocumentExtractionStatus.Extracting ||
+      source.vectorIndexStatus === EnterpriseLeadKnowledgeIndexStatus.Indexing,
+  );
 
 export const EnterpriseLeadWorkspaceView: React.FC<EnterpriseLeadWorkspaceViewProps> = ({
   isSidebarCollapsed,
@@ -217,6 +233,64 @@ export const EnterpriseLeadWorkspaceView: React.FC<EnterpriseLeadWorkspaceViewPr
       isCancelled = true;
     };
   }, [activeWorkspaceId, workspaces]);
+
+  useEffect(() => {
+    if (
+      !activeWorkspaceId ||
+      !activeWorkspace ||
+      !hasEnterpriseLeadWorkspaceProcessingSources(activeWorkspace)
+    ) {
+      return undefined;
+    }
+
+    let isCancelled = false;
+    let attemptCount = 0;
+    let timeoutId: number | undefined;
+
+    const scheduleNextRefresh = (): void => {
+      if (isCancelled || attemptCount >= WORKSPACE_PROCESSING_REFRESH_MAX_ATTEMPTS) {
+        return;
+      }
+      timeoutId = window.setTimeout(() => {
+        void refreshProcessingWorkspace();
+      }, WORKSPACE_PROCESSING_REFRESH_INTERVAL_MS);
+    };
+
+    const refreshProcessingWorkspace = async (): Promise<void> => {
+      attemptCount += 1;
+      try {
+        const workspace = await enterpriseLeadWorkspaceService.getWorkspace(activeWorkspaceId);
+        if (isCancelled || !workspace || workspace.id !== activeWorkspaceId) {
+          scheduleNextRefresh();
+          return;
+        }
+
+        setActiveWorkspace(workspace);
+        setWorkspaces(previous => {
+          const hasWorkspace = previous.some(item => item.id === workspace.id);
+          const nextWorkspaces = hasWorkspace
+            ? previous.map(item => (item.id === workspace.id ? workspace : item))
+            : [workspace, ...previous];
+          return sortWorkspacesByRecentUpdate(nextWorkspaces);
+        });
+
+        if (hasEnterpriseLeadWorkspaceProcessingSources(workspace)) {
+          scheduleNextRefresh();
+        }
+      } catch {
+        scheduleNextRefresh();
+      }
+    };
+
+    scheduleNextRefresh();
+
+    return () => {
+      isCancelled = true;
+      if (timeoutId !== undefined) {
+        window.clearTimeout(timeoutId);
+      }
+    };
+  }, [activeWorkspace, activeWorkspaceId]);
 
   const handleCreate = (): void => {
     navigationRevisionRef.current += 1;
