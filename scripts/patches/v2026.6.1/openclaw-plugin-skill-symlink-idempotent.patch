@@ -1,0 +1,126 @@
+diff --git a/src/skills/loading/plugin-skills.test.ts b/src/skills/loading/plugin-skills.test.ts
+index f7533faf..57a4ddc7 100644
+--- a/src/skills/loading/plugin-skills.test.ts
++++ b/src/skills/loading/plugin-skills.test.ts
+@@ -458,6 +458,49 @@ describe("publishPluginSkills", () => {
+     expect(fsSync.readlinkSync(path.join(managedDir, "my-skill"))).toBe(dir);
+   });
+ 
++  it("keeps existing generated plugin skill symlinks that already point at the target", async () => {
++    const skillParent = await tempDirs.make("plugin-skills-");
++    const managedDir = await tempDirs.make("managed-plugin-skills-");
++    const warnSpy = vi.spyOn(testing.logger, "warn").mockImplementation(() => undefined);
++
++    try {
++      await writeSkillDir(skillParent, "browser-automation");
++      const target = path.join(skillParent, "browser-automation");
++      const linkPath = path.join(managedDir, "browser-automation");
++      fsSync.symlinkSync(target, linkPath, "dir");
++
++      publishPluginSkills([skillParent], { pluginSkillsDir: managedDir });
++
++      expect(fsSync.realpathSync(linkPath)).toBe(fsSync.realpathSync(target));
++      expect(warnSpy).not.toHaveBeenCalledWith(
++        expect.stringContaining("failed to create plugin skill symlink"),
++      );
++    } finally {
++      warnSpy.mockRestore();
++    }
++  });
++
++  it("warns when an unmanaged plugin skill entry blocks symlink creation", async () => {
++    const skillParent = await tempDirs.make("plugin-skills-");
++    const managedDir = await tempDirs.make("managed-plugin-skills-");
++    const warnSpy = vi.spyOn(testing.logger, "warn").mockImplementation(() => undefined);
++
++    try {
++      await writeSkillDir(skillParent, "browser-automation");
++      const linkPath = path.join(managedDir, "browser-automation");
++      await fs.writeFile(linkPath, "user-owned placeholder", "utf8");
++
++      publishPluginSkills([skillParent], { pluginSkillsDir: managedDir });
++
++      expect(warnSpy).toHaveBeenCalledWith(
++        expect.stringContaining(`plugin skill entry is not a generated symlink: ${linkPath}`),
++      );
++      expect(fsSync.lstatSync(linkPath).isFile()).toBe(true);
++    } finally {
++      warnSpy.mockRestore();
++    }
++  });
++
+   it("replaces owned generated symlinks when a plugin skill target moves", async () => {
+     const skillParent1 = await tempDirs.make("plugin-skills-1-");
+     const skillParent2 = await tempDirs.make("plugin-skills-2-");
+diff --git a/src/skills/loading/plugin-skills.ts b/src/skills/loading/plugin-skills.ts
+index 24470c4e..b3407b8f 100644
+--- a/src/skills/loading/plugin-skills.ts
++++ b/src/skills/loading/plugin-skills.ts
+@@ -197,6 +197,7 @@ function hasPublishableSkillFile(params: { skillDir: string; rootDir: string }):
+ function publishPluginSkills(skillDirs: string[], opts?: { pluginSkillsDir?: string }): void {
+   const pluginSkillsDir = opts?.pluginSkillsDir ?? resolveDefaultPluginSkillsDir();
+   const managedTargets = new Map<string, string>();
++  const activeLinkPaths = new Set<string>();
+ 
+   // Collect basename → target mappings, reporting collisions.
+   // Directories that contain SKILL.md are published as-is.
+@@ -220,10 +221,19 @@ function publishPluginSkills(skillDirs: string[], opts?: { pluginSkillsDir?: str
+       if (existingEntry.isSymbolicLink()) {
+         const existingTarget = fs.readlinkSync(linkPath);
+         if (existingTarget === target) {
++          activeLinkPaths.add(linkPath);
+           continue;
+         }
+         removeGeneratedPluginSkillEntry(linkPath);
+       } else if (isGeneratedPluginSkillEntry(existingEntry)) {
++        try {
++          if (fs.realpathSync(linkPath) === fs.realpathSync(target)) {
++            activeLinkPaths.add(linkPath);
++            continue;
++          }
++        } catch {
++          // Fall through to replacement for broken or unreadable generated entries.
++        }
+         removeGeneratedPluginSkillEntry(linkPath);
+       } else {
+         log.warn(`plugin skill entry is not a generated symlink: ${linkPath}`);
+@@ -237,7 +247,22 @@ function publishPluginSkills(skillDirs: string[], opts?: { pluginSkillsDir?: str
+     }
+     try {
+       fs.symlinkSync(target, linkPath, resolvePluginSkillLinkType());
++      activeLinkPaths.add(linkPath);
+     } catch (err) {
++      if ((err as NodeJS.ErrnoException).code === "EEXIST") {
++        try {
++          const existingEntry = fs.lstatSync(linkPath);
++          if (
++            isGeneratedPluginSkillEntry(existingEntry) &&
++            fs.realpathSync(linkPath) === fs.realpathSync(target)
++          ) {
++            activeLinkPaths.add(linkPath);
++            continue;
++          }
++        } catch {
++          // Fall through to the existing warning for broken or unreadable entries.
++        }
++      }
+       log.warn(`failed to create plugin skill symlink "${linkPath}" → "${target}": ${String(err)}`);
+     }
+   }
+@@ -255,7 +280,7 @@ function publishPluginSkills(skillDirs: string[], opts?: { pluginSkillsDir?: str
+     if (!isGeneratedPluginSkillEntry(entry)) {
+       continue;
+     }
+-    if (managedTargets.has(entry.name)) {
++    if (managedTargets.has(entry.name) && activeLinkPaths.has(path.join(pluginSkillsDir, entry.name))) {
+       continue;
+     }
+     const linkPath = path.join(pluginSkillsDir, entry.name);
+@@ -289,6 +314,7 @@ function isNotFoundError(err: unknown): boolean {
+ export const testing = {
+   isGeneratedPluginSkillEntry,
+   publishPluginSkills,
++  logger: log,
+   resolvePluginSkillLinkType,
+ };
+ export { testing as __testing };
