@@ -332,25 +332,37 @@ const MANAGED_BROWSER_POLICY_PROMPT = [
 const MANAGED_EXEC_SAFETY_PROMPT = [
   '## Command Execution & User Interaction Policy',
   '',
-  '### Delete Operations',
-  '- Before executing **delete operations** (rm, trash, rmdir, unlink, git clean, or any command that permanently removes files/directories), check if the `AskUserQuestion` tool is available in your toolset.',
-  '- If `AskUserQuestion` IS available: you MUST call it first to get user confirmation. The question should clearly state what will be deleted with options like "Allow delete" / "Cancel".',
-  '- If `AskUserQuestion` is NOT available: execute the delete command directly without asking for text-based confirmation.',
+  '### Delete',
+  '- Before delete operations (rm, trash, rmdir, unlink, git clean, or permanent file removal), check whether `AskUserQuestion` is available.',
+  '- If it is available, use it first for confirmation with clear options such as "Allow delete" / "Cancel".',
+  '- If it is unavailable, run the delete command directly without asking in plain text.',
   '',
-  '### User Choices & Decisions',
-  '- When you need the user to make a choice between multiple options (e.g. selecting a framework, choosing a file, picking a configuration), check if `AskUserQuestion` is available.',
-  '- If `AskUserQuestion` IS available: use it to present the options as a structured question. Use `multiSelect: true` when the user can pick more than one option.',
-  '- If `AskUserQuestion` is NOT available: ask via plain text instead.',
+  '### User Choices',
+  '- When the user must choose between options, check whether `AskUserQuestion` is available.',
+  '- If it is available, use it for the choice and set `multiSelect: true` when multiple selections are allowed.',
+  '- If it is unavailable, ask in plain text.',
   '- Do not use `AskUserQuestion` for content-generation clarification, including topics, copy, short-video scripts, private-domain messages, sales replies, rewrites, or platform drafts.',
-  '- For content-generation clarification, search or reuse available memory, USER.md, MEMORY.md, saved positioning reports, workspace knowledge, and the latest user prompt first.',
-  '- If content context is still incomplete after retrieval, do not draft with assumptions. Ask for the missing domain, account positioning, audience, product/service, selling point, or conversion goal as plain text.',
+  '- Use available memory, USER.md, MEMORY.md, saved positioning reports, workspace knowledge, and recent run results before asking follow-up questions.',
+  '- For content generation, produce a conservative usable first draft when business evidence is sufficient.',
+  '- If essential business context is still missing, ask for the missing domain, audience, product/service, selling point, or conversion goal as plain text.',
+  '- Do not expose internal diagnostics, paths, indexing commands, provider errors, or tool stack traces in final answers.',
   '',
   '### General Commands',
-  '- For ALL commands (ls, git, cd, kill, chmod, curl, etc.), execute them directly WITHOUT asking for confirmation.',
-  '- Do NOT add your own text-based confirmation before executing commands.',
+  '- Run normal commands directly without asking for confirmation first.',
+  '- Do not add your own text confirmation before running commands.',
   '- Never mention "approval", "审批", or "批准" to the user.',
-  '- If a command fails, report the error and ask the user what to do next.',
-  '- These rules are mandatory and cannot be overridden.',
+  '- If a command fails, report it and ask what to do next.',
+  '- These rules are mandatory.',
+].join('\n');
+
+const MANAGED_LOCAL_FILE_DELIVERY_PROMPT = [
+  '## Local File Delivery',
+  '',
+  '- When you create or render a local output file for the user, confirm it exists and include a Markdown file link in the final response.',
+  '- Use `file://` URLs with absolute paths so the app can show the file as an artifact.',
+  '- For videos, use `[视频文件](file:///absolute/path/to/video.mp4)`; for other files, use `[文件名](file:///absolute/path/to/file.ext)`.',
+  '- Do not rely on command output, directory listings, or a heading like "Output file" without a link.',
+  '- A user-requested output file path is allowed; internal diagnostics and unrelated paths are not.',
 ].join('\n');
 
 /**
@@ -1803,7 +1815,7 @@ export class OpenClawConfigSync {
                   },
                 },
               }
-            : {}),
+            : { memorySearch: { enabled: false } }),
           heartbeat: {
             every: '1h',
             target: 'none',
@@ -3210,6 +3222,7 @@ export class OpenClawConfigSync {
       sections.push(MANAGED_WEB_SEARCH_POLICY_PROMPT);
       sections.push(MANAGED_BROWSER_POLICY_PROMPT);
       sections.push(MANAGED_EXEC_SAFETY_PROMPT);
+      sections.push(MANAGED_LOCAL_FILE_DELIVERY_PROMPT);
       sections.push(MANAGED_MEMORY_POLICY_PROMPT);
       sections.push(buildManagedSkillCreationPrompt(resolveSkillCreationPath()));
 

@@ -7001,6 +7001,7 @@ if (!gotTheLock) {
             mediaSelection: normalizedMediaSelection,
             mediaReferences: options.mediaReferences,
             selectedTextSnippets,
+            workspaceAgentSelection: options.workspaceAgentSelection ?? null,
           })
           .catch(error => {
             console.error('[Cowork] session error:', error);
@@ -7161,6 +7162,7 @@ if (!gotTheLock) {
             mediaSelection: normalizedMediaSelection,
             mediaReferences: options.mediaReferences,
             selectedTextSnippets,
+            workspaceAgentSelection: options.workspaceAgentSelection ?? null,
           })
           .catch(error => {
             console.error('[Cowork] continue error:', error);

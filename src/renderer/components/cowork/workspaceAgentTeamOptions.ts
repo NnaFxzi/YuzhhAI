@@ -94,3 +94,19 @@ export const deriveWorkspaceAgentTeamChoices = (
     selectedChoice,
   };
 };
+
+export const resolveWorkspaceSelectionForCoworkKnowledge = (
+  workspace: EnterpriseLeadWorkspace | null | undefined,
+  selection: CoworkWorkspaceAgentSelection | null | undefined,
+): CoworkWorkspaceAgentSelection | null => {
+  if (!workspace) {
+    return null;
+  }
+  if (selection?.workspaceId === workspace.id) {
+    return selection;
+  }
+  return {
+    workspaceId: workspace.id,
+    mode: CoworkWorkspaceAgentMode.Auto,
+  };
+};

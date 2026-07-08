@@ -1,4 +1,5 @@
 import {
+  buildEnterpriseLeadWorkspaceKnowledgeScopeId,
   EnterpriseLeadAgentRole,
   EnterpriseLeadDeliverableKind,
   EnterpriseLeadDocumentExtractionStatus,
@@ -99,11 +100,6 @@ const noopAgentProvider: EnterpriseLeadWorkspaceAgentProvider = {
   getAgent: () => null,
 };
 
-const ENTERPRISE_WORKSPACE_KNOWLEDGE_SCOPE_PREFIX = 'enterprise-workspace';
-
-const buildEnterpriseWorkspaceKnowledgeScopeId = (workspaceId: string): string =>
-  `${ENTERPRISE_WORKSPACE_KNOWLEDGE_SCOPE_PREFIX}:${workspaceId}`;
-
 const buildEnterpriseWorkspaceKnowledgeSourceId = (index: number): string => `source-${index}`;
 
 const buildEnterpriseWorkspaceKnowledgeSourceContent = (
@@ -142,6 +138,9 @@ const cloneWorkspaceProfile = (
   missingInfo: [...profile.missingInfo],
   ...(profile.confirmedKnowledgeKeys && profile.confirmedKnowledgeKeys.length > 0
     ? { confirmedKnowledgeKeys: [...profile.confirmedKnowledgeKeys] }
+    : {}),
+  ...(profile.ignoredKnowledgeKeys && profile.ignoredKnowledgeKeys.length > 0
+    ? { ignoredKnowledgeKeys: [...profile.ignoredKnowledgeKeys] }
     : {}),
 });
 
@@ -209,12 +208,19 @@ const mergeExtractedWorkspaceProfile = (
   extractedProfile: EnterpriseLeadWorkspaceProfile,
 ): EnterpriseLeadWorkspaceProfile => {
   const nextProfile = cloneWorkspaceProfile(currentProfile);
+  const ignoredKeys = new Set(currentProfile.ignoredKnowledgeKeys ?? []);
+  const extractedCompanySummary = extractedProfile.companySummary.trim();
   nextProfile.companySummary =
-    currentProfile.companySummary.trim() || extractedProfile.companySummary.trim();
+    currentProfile.companySummary.trim() ||
+    (ignoredKeys.has(getWorkspaceKnowledgeFieldKey('companySummary', extractedCompanySummary))
+      ? ''
+      : extractedCompanySummary);
   enterpriseLeadProfileArrayFields.forEach((field: EnterpriseLeadProfileArrayField) => {
     nextProfile[field] = mergeWorkspaceProfileValues(
       currentProfile[field],
-      extractedProfile[field],
+      extractedProfile[field].filter(
+        value => !ignoredKeys.has(getWorkspaceKnowledgeFieldKey(field, value)),
+      ),
     );
   });
   return nextProfile;
@@ -571,7 +577,7 @@ export class EnterpriseLeadWorkspaceService {
 
     try {
       const syncResult = this.contentKnowledgeVectorStore.replaceSources(
-        buildEnterpriseWorkspaceKnowledgeScopeId(workspaceId),
+        buildEnterpriseLeadWorkspaceKnowledgeScopeId(workspaceId),
         contentSources
           .filter(item => item.content.trim())
           .map(item => ({

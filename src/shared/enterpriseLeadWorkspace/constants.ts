@@ -4,6 +4,15 @@ export const EnterpriseLeadWorkspaceType = {
 export type EnterpriseLeadWorkspaceType =
   (typeof EnterpriseLeadWorkspaceType)[keyof typeof EnterpriseLeadWorkspaceType];
 
+export const EnterpriseLeadKnowledgeScope = {
+  Workspace: 'enterprise-workspace',
+} as const;
+export type EnterpriseLeadKnowledgeScope =
+  (typeof EnterpriseLeadKnowledgeScope)[keyof typeof EnterpriseLeadKnowledgeScope];
+
+export const buildEnterpriseLeadWorkspaceKnowledgeScopeId = (workspaceId: string): string =>
+  `${EnterpriseLeadKnowledgeScope.Workspace}:${workspaceId}`;
+
 export const EnterpriseLeadAgentRole = {
   ProductSellingPoint: 'product_selling_point',
   TopicPlanning: 'topic_planning',

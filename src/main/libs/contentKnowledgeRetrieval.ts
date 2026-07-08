@@ -95,6 +95,7 @@ export type ContentKnowledgeRetrieverInput = {
   scopeId: string;
   prompt: string;
   sources: ContentKnowledgeSource[];
+  sharedScopeIds?: string[];
   options?: ContentKnowledgeSearchOptions;
 };
 

@@ -285,6 +285,9 @@ const cloneProfile = (profile: EnterpriseLeadWorkspaceProfile): EnterpriseLeadWo
   ...(profile.confirmedKnowledgeKeys && profile.confirmedKnowledgeKeys.length > 0
     ? { confirmedKnowledgeKeys: [...profile.confirmedKnowledgeKeys] }
     : {}),
+  ...(profile.ignoredKnowledgeKeys && profile.ignoredKnowledgeKeys.length > 0
+    ? { ignoredKnowledgeKeys: [...profile.ignoredKnowledgeKeys] }
+    : {}),
 });
 
 const cleanLines = (value: string): string[] =>
@@ -334,6 +337,14 @@ export const isEnterpriseLeadKnowledgeItemConfirmed = (
   return Boolean(key && profile.confirmedKnowledgeKeys?.includes(key));
 };
 
+export const isEnterpriseLeadKnowledgeItemIgnored = (
+  profile: EnterpriseLeadWorkspaceProfile,
+  item: WorkspaceKnowledgeItem,
+): boolean => {
+  const key = getEnterpriseLeadKnowledgeConfirmationKey(item);
+  return Boolean(key && profile.ignoredKnowledgeKeys?.includes(key));
+};
+
 export const confirmEnterpriseLeadKnowledgeItemInProfile = (
   profile: EnterpriseLeadWorkspaceProfile,
   item: WorkspaceKnowledgeItem,
@@ -346,6 +357,16 @@ export const confirmEnterpriseLeadKnowledgeItemInProfile = (
   nextProfile.confirmedKnowledgeKeys = Array.from(
     new Set([...(nextProfile.confirmedKnowledgeKeys ?? []), key]),
   );
+  if (nextProfile.ignoredKnowledgeKeys) {
+    const nextIgnoredKeys = nextProfile.ignoredKnowledgeKeys.filter(
+      ignoredKey => ignoredKey !== key,
+    );
+    if (nextIgnoredKeys.length > 0) {
+      nextProfile.ignoredKnowledgeKeys = nextIgnoredKeys;
+    } else {
+      delete nextProfile.ignoredKnowledgeKeys;
+    }
+  }
   return nextProfile;
 };
 
@@ -363,6 +384,17 @@ export const confirmEnterpriseLeadKnowledgeItemsInProfile = (
   nextProfile.confirmedKnowledgeKeys = Array.from(
     new Set([...(nextProfile.confirmedKnowledgeKeys ?? []), ...confirmedKeys]),
   );
+  if (nextProfile.ignoredKnowledgeKeys) {
+    const confirmedKeySet = new Set(confirmedKeys);
+    const nextIgnoredKeys = nextProfile.ignoredKnowledgeKeys.filter(
+      ignoredKey => !confirmedKeySet.has(ignoredKey),
+    );
+    if (nextIgnoredKeys.length > 0) {
+      nextProfile.ignoredKnowledgeKeys = nextIgnoredKeys;
+    } else {
+      delete nextProfile.ignoredKnowledgeKeys;
+    }
+  }
   return nextProfile;
 };
 
@@ -391,6 +423,7 @@ export const getEnterpriseLeadKnowledgePendingItems = (
   items.filter(
     item =>
       Boolean(getEnterpriseLeadKnowledgeConfirmationKey(item)) &&
+      !isEnterpriseLeadKnowledgeItemIgnored(profile, item) &&
       !isEnterpriseLeadKnowledgeItemConfirmed(profile, item),
   );
 
@@ -482,6 +515,21 @@ export const removeEnterpriseLeadKnowledgeKeysFromProfile = (
       delete nextProfile.confirmedKnowledgeKeys;
     }
   }
+  return nextProfile;
+};
+
+export const ignoreEnterpriseLeadKnowledgeItemInProfile = (
+  profile: EnterpriseLeadWorkspaceProfile,
+  item: WorkspaceKnowledgeItem,
+): EnterpriseLeadWorkspaceProfile => {
+  const key = getEnterpriseLeadKnowledgeConfirmationKey(item);
+  if (!key) {
+    return cloneProfile(profile);
+  }
+  const nextProfile = removeEnterpriseLeadKnowledgeKeysFromProfile(profile, [key]);
+  nextProfile.ignoredKnowledgeKeys = Array.from(
+    new Set([...(nextProfile.ignoredKnowledgeKeys ?? []), key]),
+  );
   return nextProfile;
 };
 
@@ -1822,21 +1870,14 @@ export const WorkspaceKnowledgeBase: React.FC<WorkspaceKnowledgeBaseProps> = ({
   };
 
   const archiveKnowledgeItem = async (item: WorkspaceKnowledgeItem): Promise<void> => {
-    const editableField = getEditableItemField(item);
-    if (!editableField) {
+    if (!getEditableItemField(item)) {
       return;
     }
-    const nextProfile = cloneProfile(currentWorkspace.profile);
-    if (editableField.field === 'companySummary') {
-      nextProfile.companySummary = '';
-    } else if (isEditableArrayField(editableField.field)) {
-      const index = getArrayIndexFromItemId(item);
-      if (index >= 0) {
-        nextProfile[editableField.field].splice(index, 1);
-      }
-    }
     setSelectedItemId('');
-    await saveProfile(nextProfile, 'enterpriseLeadKnowledgeItemArchived');
+    await saveProfile(
+      ignoreEnterpriseLeadKnowledgeItemInProfile(currentWorkspace.profile, item),
+      'enterpriseLeadKnowledgeItemArchived',
+    );
   };
 
   const confirmKnowledgeItem = async (item: WorkspaceKnowledgeItem): Promise<void> => {

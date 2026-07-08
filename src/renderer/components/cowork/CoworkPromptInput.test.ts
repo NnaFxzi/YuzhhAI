@@ -53,4 +53,27 @@ describe('CoworkPromptInput', () => {
     expect(markup).not.toContain('/Users/me/project');
     expect(markup).not.toContain('marketing-agent');
   });
+
+  test('omits kits and media model buttons from the large prompt toolbar', async () => {
+    Object.defineProperty(globalThis, 'navigator', {
+      value: { platform: 'MacIntel' },
+      configurable: true,
+    });
+
+    i18nService.setLanguage('zh', { persist: false });
+
+    const { default: CoworkPromptInput } = await import('./CoworkPromptInput');
+    const markup = renderToStaticMarkup(
+      React.createElement(Provider, {
+        store,
+        children: React.createElement(CoworkPromptInput, {
+          onSubmit: () => undefined,
+          size: 'large',
+        }),
+      }),
+    );
+
+    expect(markup).not.toContain('专家套件');
+    expect(markup).not.toContain('clip0_magic');
+  });
 });

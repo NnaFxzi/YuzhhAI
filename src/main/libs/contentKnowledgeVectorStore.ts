@@ -1,4 +1,5 @@
 import Database from 'better-sqlite3';
+import crypto from 'crypto';
 
 import {
   buildContentKnowledgeIndex,
@@ -10,8 +11,6 @@ import {
   type ContentKnowledgeSource,
   searchContentKnowledgeIndex,
 } from './contentKnowledgeRetrieval';
-
-const SHARED_WORKSPACE_KNOWLEDGE_SCOPE_PATTERN = 'enterprise-workspace:%';
 
 export type ContentKnowledgeSourceSyncResult = {
   sourceId: string;
@@ -48,6 +47,9 @@ const parseJsonArray = <T>(value: string, fallback: T[]): T[] => {
     return fallback;
   }
 };
+
+const buildStoredChunkId = (scopeId: string, chunkId: string): string =>
+  crypto.createHash('sha1').update(scopeId).update('\0').update(chunkId).digest('hex');
 
 const mapRowToChunk = (row: ContentKnowledgeChunkRow): ContentKnowledgeChunk => ({
   id: row.id,
@@ -133,7 +135,7 @@ export class ContentKnowledgeVectorStore {
         const index = buildContentKnowledgeIndex([source]);
         for (const chunk of index.chunks) {
           insertChunk.run(
-            chunk.id,
+            buildStoredChunkId(normalizedScopeId, chunk.id),
             normalizedScopeId,
             chunk.sourceType,
             chunk.sourceId,
@@ -202,7 +204,7 @@ export class ContentKnowledgeVectorStore {
         });
         for (const chunk of index.chunks) {
           insertChunk.run(
-            chunk.id,
+            buildStoredChunkId(normalizedScopeId, chunk.id),
             normalizedScopeId,
             chunk.sourceType,
             chunk.sourceId,
@@ -277,6 +279,13 @@ export class ContentKnowledgeVectorStore {
   retrieveFromSources(input: ContentKnowledgeRetrieverInput): ContentKnowledgeRetrievalResult {
     const normalizedScopeId = input.scopeId.trim() || 'default';
     this.upsertSources(normalizedScopeId, input.sources);
+    const scopeIds = Array.from(
+      new Set([
+        normalizedScopeId,
+        ...(input.sharedScopeIds ?? []).map(scopeId => scopeId.trim()).filter(Boolean),
+      ]),
+    );
+    const placeholders = scopeIds.map(() => '?').join(', ');
     const rows = this.db
       .prepare(
         `
@@ -295,14 +304,11 @@ export class ContentKnowledgeVectorStore {
           business_signals_json,
           business_signal_count
         FROM content_knowledge_chunks
-        WHERE scope_id = ? OR scope_id LIKE ?
+        WHERE scope_id IN (${placeholders})
         ORDER BY scope_id, source_label, chunk_index
       `,
       )
-      .all(
-        normalizedScopeId,
-        SHARED_WORKSPACE_KNOWLEDGE_SCOPE_PATTERN,
-      ) as ContentKnowledgeChunkRow[];
+      .all(...scopeIds) as ContentKnowledgeChunkRow[];
 
     const chunks = rows.map(mapRowToChunk);
     return searchContentKnowledgeIndex(

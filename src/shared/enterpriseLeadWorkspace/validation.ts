@@ -677,6 +677,7 @@ const mergeDomesticResearchConfigInput = (
 export function normalizeWorkspaceProfile(value: unknown): EnterpriseLeadWorkspaceProfile {
   const record = readRecord(value);
   const confirmedKnowledgeKeys = cleanTextList(record.confirmedKnowledgeKeys);
+  const ignoredKnowledgeKeys = cleanTextList(record.ignoredKnowledgeKeys);
   return {
     ...defaultProfile(),
     companySummary: cleanText(record.companySummary),
@@ -690,6 +691,7 @@ export function normalizeWorkspaceProfile(value: unknown): EnterpriseLeadWorkspa
     contactRules: cleanTextList(record.contactRules),
     missingInfo: cleanTextList(record.missingInfo),
     ...(confirmedKnowledgeKeys.length > 0 ? { confirmedKnowledgeKeys } : {}),
+    ...(ignoredKnowledgeKeys.length > 0 ? { ignoredKnowledgeKeys } : {}),
   };
 }
 

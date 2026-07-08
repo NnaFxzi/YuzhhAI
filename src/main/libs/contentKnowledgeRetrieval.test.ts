@@ -95,6 +95,30 @@ describe('content knowledge retrieval', () => {
     db.close();
   });
 
+  test('sqlite vector store isolates deterministic chunk ids by scope', () => {
+    const db = new Database(':memory:');
+    const store = new ContentKnowledgeVectorStore(db);
+    const source = {
+      sourceId: 'source-0',
+      sourceType: ContentKnowledgeSourceType.WorkspaceDocument,
+      label: '相关公司资料.md',
+      content: '主营工业包装服务，客户是机械设备厂采购负责人，卖点是防破损和免熏蒸。',
+    };
+
+    expect(() => store.upsertSources('enterprise-workspace:a', [source])).not.toThrow();
+    expect(() => store.upsertSources('enterprise-workspace:b', [source])).not.toThrow();
+
+    const row = db.prepare('SELECT COUNT(*) AS count FROM content_knowledge_chunks').get() as {
+      count: number;
+    };
+
+    expect(row.count).toBe(2);
+    expect(store.search('enterprise-workspace:a', '写一段私域销售转化话术').matched).toBe(true);
+    expect(store.search('enterprise-workspace:b', '写一段私域销售转化话术').matched).toBe(true);
+
+    db.close();
+  });
+
   test('sqlite vector store clears stale chunks when a source becomes empty', () => {
     const db = new Database(':memory:');
     const store = new ContentKnowledgeVectorStore(db);
@@ -122,6 +146,68 @@ describe('content knowledge retrieval', () => {
 
     expect(result.matched).toBe(false);
     expect(result.diagnostics.candidateCount).toBe(0);
+
+    db.close();
+  });
+
+  test('retrieving agent sources does not leak enterprise workspace knowledge by default', () => {
+    const db = new Database(':memory:');
+    const store = new ContentKnowledgeVectorStore(db);
+
+    store.replaceSources('enterprise-workspace:factory-a', [
+      {
+        sourceId: 'source-0',
+        sourceType: ContentKnowledgeSourceType.WorkspaceDocument,
+        label: '工厂 A 资料',
+        content: '工厂 A 主营重型纸箱和蜂窝箱，客户是机械设备厂，卖点是防破损、免熏蒸和替代木箱。',
+      },
+    ]);
+
+    const result = store.retrieveFromSources({
+      scopeId: 'agent:main:/tmp/workspace-main',
+      prompt: '帮我写一条朋友圈文案',
+      sources: [],
+    });
+
+    expect(result.matched).toBe(false);
+    expect(result.diagnostics.candidateCount).toBe(0);
+
+    db.close();
+  });
+
+  test('retrieving agent sources can include only the active enterprise workspace scope', () => {
+    const db = new Database(':memory:');
+    const store = new ContentKnowledgeVectorStore(db);
+
+    store.replaceSources('enterprise-workspace:factory-a', [
+      {
+        sourceId: 'source-0',
+        sourceType: ContentKnowledgeSourceType.WorkspaceDocument,
+        label: '工厂 A 资料',
+        content: '工厂 A 主营重型纸箱和蜂窝箱，客户是机械设备厂，卖点是防破损、免熏蒸和替代木箱。',
+      },
+    ]);
+    store.replaceSources('enterprise-workspace:factory-b', [
+      {
+        sourceId: 'source-0',
+        sourceType: ContentKnowledgeSourceType.WorkspaceDocument,
+        label: '工厂 B 资料',
+        content: '工厂 B 主营美妆护肤服务，客户是敏感肌用户，卖点是温和修护、复购和社群转化。',
+      },
+    ]);
+
+    const result = store.retrieveFromSources({
+      scopeId: 'agent:main:/tmp/workspace-main',
+      prompt: '帮我写一条朋友圈文案',
+      sources: [],
+      sharedScopeIds: ['enterprise-workspace:factory-a'],
+    } as Parameters<ContentKnowledgeVectorStore['retrieveFromSources']>[0] & {
+      sharedScopeIds: string[];
+    });
+
+    expect(result.matched).toBe(true);
+    expect(result.hits.some(hit => hit.chunk.text.includes('重型纸箱'))).toBe(true);
+    expect(result.hits.some(hit => hit.chunk.text.includes('美妆护肤'))).toBe(false);
 
     db.close();
   });

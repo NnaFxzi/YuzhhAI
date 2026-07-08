@@ -4,17 +4,6 @@ import path from 'node:path';
 
 import Database from 'better-sqlite3';
 import { expect, test, vi } from 'vitest';
-
-vi.mock('electron', () => ({
-  app: {
-    getAppPath: () => process.cwd(),
-    getPath: () => process.cwd(),
-  },
-  BrowserWindow: {
-    getAllWindows: () => [],
-  },
-}));
-
 import {
   ContextCompactionStatus,
   CoworkSystemMessageKind,
@@ -42,6 +31,16 @@ import {
   resolveOpenClawRuntimeErrorMessage,
   resolveToolEventIsError,
 } from './openclawRuntimeAdapter';
+
+vi.mock('electron', () => ({
+  app: {
+    getAppPath: () => process.cwd(),
+    getPath: () => process.cwd(),
+  },
+  BrowserWindow: {
+    getAllWindows: () => [],
+  },
+}));
 
 test('plan mode allows read-only shell inspection on macOS and Windows', () => {
   expect(isPlanModeSafeExecCommand('rg --files src')).toBe(true);
@@ -610,7 +609,7 @@ test('outbound prompt appends matched workspace knowledge snippets for content p
   fs.rmSync(stateDir, { recursive: true, force: true });
 });
 
-test('outbound prompt uses indexed workspace knowledge when agent memory files are empty', async () => {
+test('outbound prompt uses indexed knowledge from the active enterprise workspace only', async () => {
   const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lobsterai-indexed-knowledge-context-'));
   const workspaceDir = path.join(stateDir, 'workspace-main');
   fs.mkdirSync(workspaceDir, { recursive: true });
@@ -619,13 +618,21 @@ test('outbound prompt uses indexed workspace knowledge when agent memory files a
 
   const db = new Database(':memory:');
   const vectorStore = new ContentKnowledgeVectorStore(db);
-  vectorStore.replaceSources('enterprise-workspace:factory-profile', [
+  vectorStore.replaceSources('enterprise-workspace:factory-a', [
     {
       sourceId: 'source-0',
       sourceType: ContentKnowledgeSourceType.WorkspaceDocument,
       label: '工厂知识库',
       content:
         '工厂主要做重型纸箱、蜂窝箱、纸护角、纸托盘，可按尺寸定制，主要服务机械设备和汽配出口客户。',
+    },
+  ]);
+  vectorStore.replaceSources('enterprise-workspace:factory-b', [
+    {
+      sourceId: 'source-0',
+      sourceType: ContentKnowledgeSourceType.WorkspaceDocument,
+      label: '其他知识库',
+      content: '另一家企业主营美妆护肤服务，客户是敏感肌用户，卖点是温和修护和社群复购。',
     },
   ]);
   const adapter = new OpenClawRuntimeAdapter(
@@ -643,6 +650,7 @@ test('outbound prompt uses indexed workspace knowledge when agent memory files a
   );
   const internal = adapter as unknown as {
     bridgedSessions: Set<string>;
+    enterpriseWorkspaceKnowledgeScopeBySession: Map<string, string>;
     buildOutboundPrompt: (
       sessionId: string,
       prompt: string,
@@ -651,11 +659,16 @@ test('outbound prompt uses indexed workspace knowledge when agent memory files a
     ) => Promise<string>;
   };
   internal.bridgedSessions.add('session-1');
+  internal.enterpriseWorkspaceKnowledgeScopeBySession.set(
+    'session-1',
+    'enterprise-workspace:factory-a',
+  );
 
   const prompt = await internal.buildOutboundPrompt('session-1', '帮我写一条朋友圈文案');
 
   expect(prompt).toContain('[Knowledge base context matched before answering]');
   expect(prompt).toContain('重型纸箱、蜂窝箱、纸护角、纸托盘');
+  expect(prompt).not.toContain('美妆护肤');
   expect(prompt).toContain('不要说“我目前还没记住你工厂的具体情况”');
   expect(prompt.indexOf('[Knowledge base context matched before answering]')).toBeLessThan(
     prompt.indexOf('[Current user request]'),
@@ -663,6 +676,109 @@ test('outbound prompt uses indexed workspace knowledge when agent memory files a
 
   db.close();
   fs.rmSync(stateDir, { recursive: true, force: true });
+});
+
+test('enterprise workspace scope clears when the session no longer selects a workspace', async () => {
+  const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lobsterai-indexed-knowledge-clear-'));
+  const workspaceDir = path.join(stateDir, 'workspace-main');
+  fs.mkdirSync(workspaceDir, { recursive: true });
+  fs.writeFileSync(path.join(workspaceDir, 'USER.md'), '', 'utf8');
+  fs.writeFileSync(path.join(workspaceDir, 'MEMORY.md'), '', 'utf8');
+
+  const db = new Database(':memory:');
+  const vectorStore = new ContentKnowledgeVectorStore(db);
+  vectorStore.replaceSources('enterprise-workspace:factory-a', [
+    {
+      sourceId: 'source-0',
+      sourceType: ContentKnowledgeSourceType.WorkspaceDocument,
+      label: '工厂知识库',
+      content: '工厂 A 主要做重型纸箱、蜂窝箱和纸护角。',
+    },
+  ]);
+  const adapter = new OpenClawRuntimeAdapter(
+    {
+      getSession: () => null,
+      getAgent: () => null,
+    } as never,
+    {
+      getStateDir: () => stateDir,
+    } as never,
+    {},
+    undefined,
+    undefined,
+    vectorStore,
+  );
+  const internal = adapter as unknown as {
+    bridgedSessions: Set<string>;
+    enterpriseWorkspaceKnowledgeScopeBySession: Map<string, string>;
+    rememberEnterpriseWorkspaceKnowledgeScope: (
+      sessionId: string,
+      selection?: { workspaceId: string; mode: 'auto' | 'manual'; agentId?: string } | null,
+    ) => void;
+    buildOutboundPrompt: (
+      sessionId: string,
+      prompt: string,
+      systemPrompt?: string,
+      agentId?: string,
+    ) => Promise<string>;
+  };
+  internal.bridgedSessions.add('session-1');
+  internal.rememberEnterpriseWorkspaceKnowledgeScope('session-1', {
+    workspaceId: 'factory-a',
+    mode: 'auto',
+  });
+
+  const promptWithWorkspace = await internal.buildOutboundPrompt(
+    'session-1',
+    '帮我写一条朋友圈文案',
+  );
+  expect(promptWithWorkspace).toContain('工厂 A 主要做重型纸箱、蜂窝箱和纸护角');
+
+  internal.rememberEnterpriseWorkspaceKnowledgeScope('session-1', null);
+  const promptWithoutWorkspace = await internal.buildOutboundPrompt(
+    'session-1',
+    '帮我写一条朋友圈文案',
+  );
+
+  expect(internal.enterpriseWorkspaceKnowledgeScopeBySession.has('session-1')).toBe(false);
+  expect(promptWithoutWorkspace).not.toContain('工厂 A 主要做重型纸箱、蜂窝箱和纸护角');
+  expect(promptWithoutWorkspace).toContain('[Content knowledge retrieval preflight]');
+
+  db.close();
+  fs.rmSync(stateDir, { recursive: true, force: true });
+});
+
+test('enterprise workspace scope switches to the latest selected workspace', async () => {
+  const adapter = new OpenClawRuntimeAdapter(
+    {
+      getSession: () => null,
+      getAgent: () => null,
+    } as never,
+    {},
+  );
+  const internal = adapter as unknown as {
+    enterpriseWorkspaceKnowledgeScopeBySession: Map<string, string>;
+    rememberEnterpriseWorkspaceKnowledgeScope: (
+      sessionId: string,
+      selection?: { workspaceId: string; mode: 'auto' | 'manual'; agentId?: string } | null,
+    ) => void;
+  };
+  internal.rememberEnterpriseWorkspaceKnowledgeScope('session-1', {
+    workspaceId: 'factory-a',
+    mode: 'auto',
+  });
+  expect(internal.enterpriseWorkspaceKnowledgeScopeBySession.get('session-1')).toBe(
+    'enterprise-workspace:factory-a',
+  );
+
+  internal.rememberEnterpriseWorkspaceKnowledgeScope('session-1', {
+    workspaceId: 'factory-b',
+    mode: 'auto',
+  });
+
+  expect(internal.enterpriseWorkspaceKnowledgeScopeBySession.get('session-1')).toBe(
+    'enterprise-workspace:factory-b',
+  );
 });
 
 test('outbound prompt blocks content production when no relevant workspace knowledge is found', async () => {
@@ -6905,8 +7021,15 @@ test('onSessionDeleted deletes gateway transcripts for all session keys', async 
     isChannelSessionKey: (key: string) => key === channelSessionKey,
     onSessionDeleted: vi.fn(),
   } as never;
+  const internal = adapter as unknown as {
+    enterpriseWorkspaceKnowledgeScopeBySession: Map<string, string>;
+  };
   adapter.sessionIdBySessionKey.set(channelSessionKey, 'session-1');
   adapter.sessionIdBySessionKey.set(managedSessionKey, 'session-1');
+  internal.enterpriseWorkspaceKnowledgeScopeBySession.set(
+    'session-1',
+    'enterprise-workspace:factory-a',
+  );
 
   adapter.onSessionDeleted('session-1');
 
@@ -6925,6 +7048,7 @@ test('onSessionDeleted deletes gateway transcripts for all session keys', async 
   });
   expect(adapter.deletedChannelKeys.has(channelSessionKey)).toBe(true);
   expect(adapter.deletedChannelKeys.has(managedSessionKey)).toBe(false);
+  expect(internal.enterpriseWorkspaceKnowledgeScopeBySession.has('session-1')).toBe(false);
 });
 
 test('child lifecycle end marks matching subagent done before local session resolution', () => {

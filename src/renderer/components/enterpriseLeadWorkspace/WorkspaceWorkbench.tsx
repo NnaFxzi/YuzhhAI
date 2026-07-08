@@ -1,8 +1,4 @@
-import {
-  EllipsisHorizontalIcon,
-  PlusIcon,
-  XMarkIcon,
-} from '@heroicons/react/24/outline';
+import { EllipsisHorizontalIcon, PlusIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import {
   EnterpriseLeadAgentRole,
   EnterpriseLeadContentAgentRoles,
@@ -38,9 +34,7 @@ import {
   getEffectiveWorkspaceAgent,
 } from './enterpriseLeadWorkspaceUi';
 
-export {
-  buildEnterpriseLeadWorkspaceSettingsFromCurrentConfig,
-} from './WorkspaceSettings';
+export { buildEnterpriseLeadWorkspaceSettingsFromCurrentConfig } from './WorkspaceSettings';
 
 interface WorkspaceWorkbenchProps {
   workspace: EnterpriseLeadWorkspace;
@@ -116,22 +110,6 @@ export const getWorkspaceAgentOperationFeedbackLabelKey = (
 
   return workspaceAgentOperationFeedbackLabelKeys[operation][saveState];
 };
-
-const WorkspaceAgentStatusFilter = {
-  All: 'all',
-  Enabled: 'enabled',
-  Disabled: 'disabled',
-} as const;
-type WorkspaceAgentStatusFilter =
-  typeof WorkspaceAgentStatusFilter[keyof typeof WorkspaceAgentStatusFilter];
-
-const WorkspaceAgentModelFilter = {
-  All: 'all',
-  Default: 'default',
-  Custom: 'custom',
-} as const;
-type WorkspaceAgentModelFilter =
-  typeof WorkspaceAgentModelFilter[keyof typeof WorkspaceAgentModelFilter];
 
 const isEnterpriseLeadAgentRole = (role: string): role is EnterpriseLeadAgentRole =>
   Object.values(EnterpriseLeadAgentRole).includes(role as EnterpriseLeadAgentRole);
@@ -313,8 +291,7 @@ export const saveWorkbenchWorkspaceAgents = async ({
     workspaceId,
     workspaceAgents: prepareWorkspaceAgentBindings(workspaceAgents),
     isCurrentSave: () =>
-      workspaceIdRef.current === workspaceId
-      && saveSequenceRef.current === saveSequence,
+      workspaceIdRef.current === workspaceId && saveSequenceRef.current === saveSequence,
     onSaved,
     onError,
     saveInFlightRef,
@@ -324,10 +301,13 @@ export const saveWorkbenchWorkspaceAgents = async ({
 export const prepareWorkspaceAgentBindings = (
   bindings: EnterpriseLeadWorkspaceAgentBinding[],
 ): EnterpriseLeadWorkspaceAgentBinding[] => {
-  const lastBindingByAgentId = new Map<string, {
-    binding: EnterpriseLeadWorkspaceAgentBinding;
-    sourceIndex: number;
-  }>();
+  const lastBindingByAgentId = new Map<
+    string,
+    {
+      binding: EnterpriseLeadWorkspaceAgentBinding;
+      sourceIndex: number;
+    }
+  >();
 
   bindings.forEach((binding, sourceIndex) => {
     const agentId = binding.agentId.trim();
@@ -356,9 +336,7 @@ export const prepareWorkspaceAgentBindings = (
   });
 
   return Array.from(lastBindingByAgentId.values())
-    .sort((a, b) =>
-      a.binding.order - b.binding.order
-      || a.sourceIndex - b.sourceIndex)
+    .sort((a, b) => a.binding.order - b.binding.order || a.sourceIndex - b.sourceIndex)
     .map(({ binding }, index) => ({
       ...binding,
       order: index,
@@ -775,7 +753,9 @@ export const parseWorkspaceAgentStabilityDraft = (
   };
 };
 
-export const buildWorkspaceAgentStabilityPrompt = (stabilityDraft: WorkspaceAgentStabilityDraft): string =>
+export const buildWorkspaceAgentStabilityPrompt = (
+  stabilityDraft: WorkspaceAgentStabilityDraft,
+): string =>
   [
     i18nService.t('enterpriseLeadWorkbenchStabilityPromptTitle'),
     ...workspaceAgentStabilityRuleSpecs.map(spec =>
@@ -1497,11 +1477,12 @@ const createWorkspaceAgentId = (
   name: string,
   existingAgents: EnterpriseLeadWorkspaceAgentBinding[],
 ): string => {
-  const baseId = name
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9\u4e00-\u9fa5]+/g, '-')
-    .replace(/^-+|-+$/g, '') || 'workspace-agent';
+  const baseId =
+    name
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9\u4e00-\u9fa5]+/g, '-')
+      .replace(/^-+|-+$/g, '') || 'workspace-agent';
   const existingIds = new Set(existingAgents.map(agent => agent.agentId));
 
   if (!existingIds.has(baseId)) {
@@ -1609,13 +1590,6 @@ export const WorkspaceWorkbench: React.FC<WorkspaceWorkbenchProps> = ({
   >([]);
   const [openAgentMenuId, setOpenAgentMenuId] = useState<string | null>(null);
   const [confirmingRemoveAgentId, setConfirmingRemoveAgentId] = useState<string | null>(null);
-  const [agentSearchQuery, setAgentSearchQuery] = useState('');
-  const [agentStatusFilter, setAgentStatusFilter] = useState<WorkspaceAgentStatusFilter>(
-    WorkspaceAgentStatusFilter.All,
-  );
-  const [agentModelFilter, setAgentModelFilter] = useState<WorkspaceAgentModelFilter>(
-    WorkspaceAgentModelFilter.All,
-  );
   const [isTemplateLibraryOpen, setIsTemplateLibraryOpen] = useState(false);
   const [saveState, setSaveState] = useState<WorkspaceWorkbenchSaveState>('idle');
   const [agentOperation, setAgentOperation] = useState<WorkspaceAgentOperation | null>(null);
@@ -1627,9 +1601,6 @@ export const WorkspaceWorkbench: React.FC<WorkspaceWorkbenchProps> = ({
     setCreateAgentDraft(emptyWorkspaceAgentDraft());
     setOpenAgentMenuId(null);
     setConfirmingRemoveAgentId(null);
-    setAgentSearchQuery('');
-    setAgentStatusFilter(WorkspaceAgentStatusFilter.All);
-    setAgentModelFilter(WorkspaceAgentModelFilter.All);
     setIsTemplateLibraryOpen(false);
     saveInFlightRef.current = false;
     setSaveState('idle');
@@ -1647,9 +1618,10 @@ export const WorkspaceWorkbench: React.FC<WorkspaceWorkbenchProps> = ({
     [workspace.enabledAgentRoles],
   );
   const workspaceAgentBindings = useMemo(
-    () => storedBindings.length > 0
-      ? storedBindings
-      : prepareWorkspaceAgentBindings(buildDefaultWorkspaceAgentBindings(legacyEnabledRoles)),
+    () =>
+      storedBindings.length > 0
+        ? storedBindings
+        : prepareWorkspaceAgentBindings(buildDefaultWorkspaceAgentBindings(legacyEnabledRoles)),
     [legacyEnabledRoles, storedBindings],
   );
   const systemTemplateBindings = useMemo(
@@ -1671,24 +1643,6 @@ export const WorkspaceWorkbench: React.FC<WorkspaceWorkbenchProps> = ({
   const effectiveWorkspaceAgents = useMemo(
     () => workspaceAgentBindings.map(binding => getEffectiveWorkspaceAgent(binding)),
     [workspaceAgentBindings],
-  );
-  const filteredWorkspaceAgents = useMemo(
-    () => effectiveWorkspaceAgents.filter(agent => {
-      const normalizedSearch = agentSearchQuery.trim().toLowerCase();
-      const matchesSearch = !normalizedSearch
-        || `${agent.name} ${agent.description} ${agent.model}`.toLowerCase()
-          .includes(normalizedSearch);
-      const matchesStatus = agentStatusFilter === WorkspaceAgentStatusFilter.All
-        || (agentStatusFilter === WorkspaceAgentStatusFilter.Enabled && agent.enabled)
-        || (agentStatusFilter === WorkspaceAgentStatusFilter.Disabled && !agent.enabled);
-      const hasModelOverride = agent.model.trim().length > 0;
-      const matchesModel = agentModelFilter === WorkspaceAgentModelFilter.All
-        || (agentModelFilter === WorkspaceAgentModelFilter.Default && !hasModelOverride)
-        || (agentModelFilter === WorkspaceAgentModelFilter.Custom && hasModelOverride);
-
-      return matchesSearch && matchesStatus && matchesModel;
-    }),
-    [agentModelFilter, agentSearchQuery, agentStatusFilter, effectiveWorkspaceAgents],
   );
   const editingBinding = workspaceAgentBindings.find(binding => binding.agentId === editingAgentId);
   const availableModelRefs = useMemo(
@@ -1773,8 +1727,7 @@ export const WorkspaceWorkbench: React.FC<WorkspaceWorkbenchProps> = ({
       workspaceAgents: workspaceAgentBindings,
       ...createAgentDraft,
       isCurrentSave: () =>
-        workspaceIdRef.current === saveWorkspaceId
-        && saveSequenceRef.current === saveSequence,
+        workspaceIdRef.current === saveWorkspaceId && saveSequenceRef.current === saveSequence,
       onSaved: updated => {
         setSaveState('saved');
         setIsCreatingAgent(false);
@@ -1894,9 +1847,7 @@ export const WorkspaceWorkbench: React.FC<WorkspaceWorkbenchProps> = ({
     setCreateAgentValidationErrors([]);
   };
 
-  const renderWorkspaceAgentRow = (
-    agent: ReturnType<typeof getEffectiveWorkspaceAgent>,
-  ) => {
+  const renderWorkspaceAgentRow = (agent: ReturnType<typeof getEffectiveWorkspaceAgent>) => {
     const agentIndex = effectiveWorkspaceAgents.findIndex(item => item.id === agent.id);
     const agentStatusClassName = agent.enabled
       ? statusBadgeClassNames[EnterpriseLeadWorkbenchStatusTone.Enabled]
@@ -2078,68 +2029,6 @@ export const WorkspaceWorkbench: React.FC<WorkspaceWorkbenchProps> = ({
             </div>
           </header>
 
-          <div className="border-b border-border px-5 py-3">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h3 className="text-sm font-semibold text-foreground">
-                  {i18nService.t('enterpriseLeadWorkbenchWorkspaceAgentsTitle')}
-                </h3>
-                <p className="mt-1 text-xs leading-5 text-secondary">
-                  {i18nService.t('enterpriseLeadWorkbenchWorkspaceAgentsDesc')}
-                </p>
-                <p className="mt-2 text-xs font-medium text-primary">
-                  {i18nService.t('enterpriseLeadWorkbenchAgentScopeNotice')}
-                </p>
-                <p className="mt-1 text-xs leading-5 text-secondary">
-                  {i18nService.t('enterpriseLeadWorkbenchRuntimeEffectNotice')}
-                </p>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <input
-                  type="search"
-                  value={agentSearchQuery}
-                  onChange={event => setAgentSearchQuery(event.target.value)}
-                  placeholder={i18nService.t('enterpriseLeadWorkbenchAgentSearchPlaceholder')}
-                  className="h-9 w-64 max-w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground outline-none transition-colors placeholder:text-secondary/70 focus:ring-2 focus:ring-primary/20"
-                />
-                <select
-                  value={agentStatusFilter}
-                  onChange={event =>
-                    setAgentStatusFilter(event.target.value as WorkspaceAgentStatusFilter)
-                  }
-                  className="h-9 rounded-lg border border-border bg-background px-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-primary/20"
-                >
-                  <option value={WorkspaceAgentStatusFilter.All}>
-                    {i18nService.t('enterpriseLeadWorkbenchAgentStatusFilterAll')}
-                  </option>
-                  <option value={WorkspaceAgentStatusFilter.Enabled}>
-                    {i18nService.t('enterpriseLeadWorkbenchAgentStatusFilterEnabled')}
-                  </option>
-                  <option value={WorkspaceAgentStatusFilter.Disabled}>
-                    {i18nService.t('enterpriseLeadWorkbenchAgentStatusFilterDisabled')}
-                  </option>
-                </select>
-                <select
-                  value={agentModelFilter}
-                  onChange={event =>
-                    setAgentModelFilter(event.target.value as WorkspaceAgentModelFilter)
-                  }
-                  className="h-9 rounded-lg border border-border bg-background px-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-primary/20"
-                >
-                  <option value={WorkspaceAgentModelFilter.All}>
-                    {i18nService.t('enterpriseLeadWorkbenchAgentModelFilterAll')}
-                  </option>
-                  <option value={WorkspaceAgentModelFilter.Default}>
-                    {i18nService.t('enterpriseLeadWorkbenchAgentModelFilterDefault')}
-                  </option>
-                  <option value={WorkspaceAgentModelFilter.Custom}>
-                    {i18nService.t('enterpriseLeadWorkbenchAgentModelFilterCustom')}
-                  </option>
-                </select>
-              </div>
-            </div>
-          </div>
-
           <div className="min-h-0 overflow-x-auto">
             {workspaceAgentBindings.length === 0 ? (
               <div className="m-5 rounded-lg border border-dashed border-border bg-surface px-4 py-5">
@@ -2178,18 +2067,7 @@ export const WorkspaceWorkbench: React.FC<WorkspaceWorkbenchProps> = ({
                   </div>
                 </div>
                 <div role="rowgroup" className="divide-y divide-border/70">
-                  {filteredWorkspaceAgents.length > 0 ? (
-                    filteredWorkspaceAgents.map(agent => renderWorkspaceAgentRow(agent))
-                  ) : (
-                    <div className="px-4 py-8">
-                      <h3 className="text-sm font-semibold text-foreground">
-                        {i18nService.t('enterpriseLeadWorkbenchNoAgentFilterResultsTitle')}
-                      </h3>
-                      <p className="mt-1 text-sm leading-6 text-secondary">
-                        {i18nService.t('enterpriseLeadWorkbenchNoAgentFilterResultsDesc')}
-                      </p>
-                    </div>
-                  )}
+                  {effectiveWorkspaceAgents.map(agent => renderWorkspaceAgentRow(agent))}
                 </div>
               </div>
             )}

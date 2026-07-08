@@ -1,4 +1,4 @@
-import { type ProviderConfig,ProviderRegistry } from '@shared/providers';
+import { type ProviderConfig, ProviderRegistry } from '@shared/providers';
 
 import {
   type BrowserWebAccessConfig,
@@ -50,7 +50,7 @@ export const ShortcutAction = {
   OpenSettingsAbout: 'openSettingsAbout',
 } as const;
 
-export type ShortcutAction = typeof ShortcutAction[keyof typeof ShortcutAction];
+export type ShortcutAction = (typeof ShortcutAction)[keyof typeof ShortcutAction];
 
 export type ShortcutConfig = Record<ShortcutAction, string> & {
   [key: string]: string | undefined;
@@ -89,6 +89,7 @@ export interface AppConfig {
   notificationSettings?: NotificationSettings;
   // 浏览器与网页访问配置
   browserWebAccess: BrowserWebAccessConfig;
+  browserWebAccessMigrationVersion?: number;
   // 语言初始化标记 (用于判断是否是首次启动)
   language_initialized?: boolean;
   // 应用配置
@@ -126,9 +127,7 @@ export const defaultConfig: AppConfig = {
     baseUrl: 'https://api.deepseek.com',
   },
   model: {
-    availableModels: [
-      { id: 'deepseek-reasoner', name: 'DeepSeek Reasoner', supportsImage: false },
-    ],
+    availableModels: [{ id: 'deepseek-reasoner', name: 'DeepSeek Reasoner', supportsImage: false }],
     defaultModel: 'deepseek-reasoner',
     defaultModelProvider: 'deepseek',
   },
@@ -189,7 +188,7 @@ export const defaultConfig: AppConfig = {
     [ShortcutAction.OpenSettingsPlugins]: '',
     [ShortcutAction.OpenSettingsShortcuts]: '',
     [ShortcutAction.OpenSettingsAbout]: '',
-  }
+  },
 };
 
 // 配置存储键
@@ -236,9 +235,10 @@ export const getProviderDisplayName = (
   providerConfig?: { displayName?: string },
 ): string => {
   if (isCustomProvider(providerKey)) {
-    const name = providerConfig && typeof providerConfig.displayName === 'string'
-      ? providerConfig.displayName
-      : '';
+    const name =
+      providerConfig && typeof providerConfig.displayName === 'string'
+        ? providerConfig.displayName
+        : '';
     return name || getCustomProviderDefaultName(providerKey);
   }
   const def = ProviderRegistry.get(providerKey);

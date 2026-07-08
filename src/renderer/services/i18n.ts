@@ -3225,7 +3225,7 @@ const translations: Record<LanguageType, Record<string, string>> = {
       '可以直接编辑、归档或确认入库，保存后会更新当前空间资料。',
     enterpriseLeadKnowledgeSuggestedReadonly:
       '如需长期维护，建议复制关键信息后添加为公司资料或手动知识。',
-    enterpriseLeadKnowledgeArchiveAction: '归档',
+    enterpriseLeadKnowledgeArchiveAction: '忽略',
     enterpriseLeadKnowledgeConfirmAction: '确认入库',
     enterpriseLeadKnowledgeConfirmCompactAction: '确认',
     enterpriseLeadKnowledgeConfirmFilteredAction: '确认当前列表 {count} 条',
@@ -3381,7 +3381,8 @@ const translations: Record<LanguageType, Record<string, string>> = {
       '该文件类型暂不能直接读取内容，可保存后稍后处理或补充摘要。',
     enterpriseLeadKnowledgeItemAdded: '知识已添加到当前空间。',
     enterpriseLeadKnowledgeItemUpdated: '知识已更新。',
-    enterpriseLeadKnowledgeItemArchived: '已归档，不再作为默认资料显示。',
+    enterpriseLeadKnowledgeItemArchived:
+      '已忽略，不再作为默认资料显示，也不会被同一资料重复自动加入。',
     enterpriseLeadKnowledgeItemConfirmed: '已确认，后续任务可引用。',
     enterpriseLeadKnowledgeBatchConfirmed: '已批量确认当前列表的 {count} 条知识。',
     enterpriseLeadKnowledgeBatchConfirmEmpty: '当前列表没有待确认知识。',
@@ -7392,7 +7393,7 @@ const translations: Record<LanguageType, Record<string, string>> = {
       'Edit, archive, or confirm it. Saving updates the current workspace material.',
     enterpriseLeadKnowledgeSuggestedReadonly:
       'To maintain it long term, copy the key facts into company material or manual knowledge.',
-    enterpriseLeadKnowledgeArchiveAction: 'Archive',
+    enterpriseLeadKnowledgeArchiveAction: 'Ignore',
     enterpriseLeadKnowledgeConfirmAction: 'Confirm',
     enterpriseLeadKnowledgeConfirmCompactAction: 'Confirm',
     enterpriseLeadKnowledgeConfirmFilteredAction: 'Confirm current list {count}',
@@ -7572,7 +7573,8 @@ const translations: Record<LanguageType, Record<string, string>> = {
       'This file type cannot be read directly yet. Save it for later or add a summary.',
     enterpriseLeadKnowledgeItemAdded: 'Knowledge added to this workspace.',
     enterpriseLeadKnowledgeItemUpdated: 'Knowledge updated.',
-    enterpriseLeadKnowledgeItemArchived: 'Archived and hidden from default material.',
+    enterpriseLeadKnowledgeItemArchived:
+      'Ignored and hidden from default material. The same fact will not be auto-added again from this material.',
     enterpriseLeadKnowledgeItemConfirmed: 'Confirmed. Future tasks can reference it.',
     enterpriseLeadKnowledgeBatchConfirmed: 'Confirmed {count} knowledge items in the current list.',
     enterpriseLeadKnowledgeBatchConfirmEmpty: 'No pending knowledge in the current list.',

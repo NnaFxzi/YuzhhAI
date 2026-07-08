@@ -30,6 +30,7 @@ export interface EnterpriseLeadWorkspaceProfile {
   contactRules: string[];
   missingInfo: string[];
   confirmedKnowledgeKeys?: string[];
+  ignoredKnowledgeKeys?: string[];
 }
 
 export interface EnterpriseLeadExtractionSource {

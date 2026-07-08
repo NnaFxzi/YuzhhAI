@@ -62,7 +62,10 @@ import { buildCoworkRuntimeSkillSelection } from './coworkSkillRouting';
 import { reportPromptTemplateAction } from './promptAnalytics';
 import { buildCoworkContinuationSystemPrompt, buildCoworkSystemPrompt } from './skillSystemPrompt';
 import SubagentSessionDetail from './SubagentSessionDetail';
-import { deriveWorkspaceAgentTeamChoices } from './workspaceAgentTeamOptions';
+import {
+  deriveWorkspaceAgentTeamChoices,
+  resolveWorkspaceSelectionForCoworkKnowledge,
+} from './workspaceAgentTeamOptions';
 
 const logCoworkViewModel = (message: string): void => {
   console.debug(`[CoworkView] ${message}`);
@@ -72,7 +75,6 @@ const logCoworkViewModel = (message: string): void => {
 export interface CoworkViewProps {
   onRequestAppSettings?: (options?: SettingsOpenOptions) => void;
   onShowSkills?: () => void;
-  onShowKits?: () => void;
   isSidebarCollapsed?: boolean;
   onToggleSidebar?: () => void;
   onNewChat?: () => void;
@@ -83,7 +85,6 @@ export interface CoworkViewProps {
 const CoworkView: React.FC<CoworkViewProps> = ({
   onRequestAppSettings,
   onShowSkills,
-  onShowKits,
   isSidebarCollapsed,
   onToggleSidebar,
   onNewChat,
@@ -454,7 +455,10 @@ const CoworkView: React.FC<CoworkViewProps> = ({
         ? toOpenClawModelRef(currentAgentSelectedModel)
         : '';
       const effectiveWorkspaceAgentSelection =
-        submittedWorkspaceAgentSelection ?? workspaceAgentTeamState.selection ?? undefined;
+        resolveWorkspaceSelectionForCoworkKnowledge(
+          enterpriseLeadWorkspace,
+          submittedWorkspaceAgentSelection ?? workspaceAgentTeamState.selection,
+        ) ?? undefined;
       logCoworkViewModel(
         `creating session with model ${sessionModelOverride || 'default'}; agent model is ${currentAgent?.model || 'empty'}; server model is ${currentAgentSelectedModel?.isServerModel === true}`,
       );
@@ -579,7 +583,10 @@ const CoworkView: React.FC<CoworkViewProps> = ({
         config.systemPrompt,
       );
       const effectiveWorkspaceAgentSelection =
-        submittedWorkspaceAgentSelection ?? workspaceAgentTeamState.selection ?? undefined;
+        resolveWorkspaceSelectionForCoworkKnowledge(
+          enterpriseLeadWorkspace,
+          submittedWorkspaceAgentSelection ?? workspaceAgentTeamState.selection,
+        ) ?? undefined;
 
       const sent = await coworkService.continueSession({
         sessionId: currentSession.id,
@@ -873,7 +880,6 @@ const CoworkView: React.FC<CoworkViewProps> = ({
         <div className="min-h-0 flex-1">
           <CoworkSessionDetail
             onManageSkills={() => onShowSkills?.()}
-            onManageKits={() => onShowKits?.()}
             onContinue={handleContinueSession}
             onStop={handleStopSession}
             isSidebarCollapsed={isSidebarCollapsed}
@@ -943,7 +949,6 @@ const CoworkView: React.FC<CoworkViewProps> = ({
                   showModelSelector={true}
                   showAgentSelector={true}
                   onManageSkills={() => onShowSkills?.()}
-                  onManageKits={() => onShowKits?.()}
                   workspaceAgentTeamState={workspaceAgentTeamState}
                   onWorkspaceAgentSelectionChange={setWorkspaceAgentSelection}
                 />

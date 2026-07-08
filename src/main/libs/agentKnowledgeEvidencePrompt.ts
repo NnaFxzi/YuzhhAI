@@ -196,11 +196,13 @@ const retrieveKnowledgeContext = ({
   workspaceDir,
   agentId,
   knowledgeRetriever,
+  sharedScopeIds,
 }: {
   prompt: string;
   workspaceDir: string;
   agentId?: string;
   knowledgeRetriever?: ContentKnowledgeRetriever;
+  sharedScopeIds?: string[];
 }): ContentKnowledgeRetrievalResult => {
   const sources = buildKnowledgeSources(workspaceDir);
   const scopeId = `agent:${agentId?.trim() || 'main'}:${workspaceDir}`;
@@ -209,6 +211,7 @@ const retrieveKnowledgeContext = ({
       scopeId,
       prompt,
       sources,
+      sharedScopeIds,
       options: { maxHits: KNOWLEDGE_CONTEXT_HIT_LIMIT },
     });
   }
@@ -223,11 +226,13 @@ export const buildAgentKnowledgeFileContextPrompt = ({
   stateDir,
   agentId,
   knowledgeRetriever,
+  sharedScopeIds,
 }: {
   prompt: string;
   stateDir?: string;
   agentId?: string;
   knowledgeRetriever?: ContentKnowledgeRetriever;
+  sharedScopeIds?: string[];
 }): string => {
   const normalizedStateDir = stateDir?.trim();
   if (!isKnowledgeEvidenceRequest(prompt)) {
@@ -245,6 +250,7 @@ export const buildAgentKnowledgeFileContextPrompt = ({
     workspaceDir,
     agentId,
     knowledgeRetriever,
+    sharedScopeIds,
   });
 
   if (!retrievalResult.matched) {

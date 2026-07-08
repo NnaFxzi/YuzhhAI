@@ -1,6 +1,10 @@
 import { ApiFormat, type ProviderConfig, ProviderName, ProviderRegistry } from '@shared/providers';
 
-import { normalizeBrowserWebAccessConfig } from '../../shared/browserWebAccess/constants';
+import {
+  BrowserNetworkMode,
+  type BrowserWebAccessConfig,
+  normalizeBrowserWebAccessConfig,
+} from '../../shared/browserWebAccess/constants';
 import { normalizeNotificationSettings } from '../../shared/notifications/constants';
 import {
   AppConfig,
@@ -13,6 +17,30 @@ import {
 import { localStore } from './store';
 
 type ProviderModel = NonNullable<ProviderConfig['models']>[number];
+
+const BROWSER_WEB_ACCESS_MIGRATION_VERSION = 1;
+
+const getBrowserWebAccessMigrationVersion = (config: Partial<AppConfig>): number =>
+  typeof config.browserWebAccessMigrationVersion === 'number'
+    ? config.browserWebAccessMigrationVersion
+    : 0;
+
+const migrateBrowserWebAccessConfig = (config: Partial<AppConfig>): BrowserWebAccessConfig => {
+  const normalized = normalizeBrowserWebAccessConfig(config.browserWebAccess);
+  const migrationVersion = getBrowserWebAccessMigrationVersion(config);
+
+  if (
+    migrationVersion < BROWSER_WEB_ACCESS_MIGRATION_VERSION &&
+    config.browserWebAccess?.networkMode === BrowserNetworkMode.ProxyCompatible
+  ) {
+    return {
+      ...normalized,
+      networkMode: BrowserNetworkMode.Strict,
+    };
+  }
+
+  return normalized;
+};
 
 const getFixedProviderApiFormat = (providerKey: string): ApiFormat | null => {
   const def = ProviderRegistry.get(providerKey);
@@ -53,7 +81,10 @@ const normalizeProviderBaseUrl = (providerKey: string, baseUrl: unknown): string
   return 'https://generativelanguage.googleapis.com/v1beta';
 };
 
-const normalizeProviderApiFormat = (providerKey: string, apiFormat: unknown): 'anthropic' | 'openai' | 'gemini' => {
+const normalizeProviderApiFormat = (
+  providerKey: string,
+  apiFormat: unknown,
+): 'anthropic' | 'openai' | 'gemini' => {
   const fixed = getFixedProviderApiFormat(providerKey);
   if (fixed) {
     return fixed;
@@ -67,28 +98,29 @@ const normalizeProviderApiFormat = (providerKey: string, apiFormat: unknown): 'a
 const normalizeProviderModels = (
   providerKey: string,
   models: ProviderConfig['models'],
-): ProviderConfig['models'] => models?.map(model => {
-  const contextWindow = ProviderRegistry.resolveModelContextWindow(
-    providerKey,
-    model.id,
-    model.contextWindow,
-  );
-  const supportsThinking = ProviderRegistry.resolveModelSupportsThinking(
-    providerKey,
-    model.id,
-    model.supportsThinking,
-  );
-  return {
-    ...model,
-    supportsImage: ProviderRegistry.resolveModelSupportsImage(
+): ProviderConfig['models'] =>
+  models?.map(model => {
+    const contextWindow = ProviderRegistry.resolveModelContextWindow(
       providerKey,
       model.id,
-      model.supportsImage,
-    ),
-    ...(supportsThinking ? { supportsThinking } : {}),
-    ...(contextWindow !== undefined ? { contextWindow } : {}),
-  };
-});
+      model.contextWindow,
+    );
+    const supportsThinking = ProviderRegistry.resolveModelSupportsThinking(
+      providerKey,
+      model.id,
+      model.supportsThinking,
+    );
+    return {
+      ...model,
+      supportsImage: ProviderRegistry.resolveModelSupportsImage(
+        providerKey,
+        model.id,
+        model.supportsImage,
+      ),
+      ...(supportsThinking ? { supportsThinking } : {}),
+      ...(contextWindow !== undefined ? { contextWindow } : {}),
+    };
+  });
 
 const normalizeProvidersConfig = (providers: AppConfig['providers']): AppConfig['providers'] => {
   if (!providers) {
@@ -104,7 +136,7 @@ const normalizeProvidersConfig = (providers: AppConfig['providers']): AppConfig[
         apiFormat: normalizeProviderApiFormat(providerKey, providerConfig.apiFormat),
         models: normalizeProviderModels(providerKey, providerConfig.models),
       },
-    ])
+    ]),
   ) as AppConfig['providers'];
 };
 
@@ -146,7 +178,7 @@ const normalizeShortcutsConfig = (storedShortcuts?: AppConfig['shortcuts']): Sho
     return shortcuts;
   }
 
-  Object.values(ShortcutAction).forEach((action) => {
+  Object.values(ShortcutAction).forEach(action => {
     if (legacyShortcutDefaults[action]?.includes(storedShortcuts[action] ?? '')) {
       shortcuts[action] = defaultConfig.shortcuts![action];
     }
@@ -155,12 +187,15 @@ const normalizeShortcutsConfig = (storedShortcuts?: AppConfig['shortcuts']): Sho
   return shortcuts;
 };
 
-const LEGACY_PROVIDER_API_FORMAT_DEFAULTS: Record<string, {
-  fromBaseUrl: string;
-  fromApiFormat: typeof ApiFormat.Anthropic;
-  toBaseUrl: string;
-  toApiFormat: typeof ApiFormat.OpenAI;
-}> = {
+const LEGACY_PROVIDER_API_FORMAT_DEFAULTS: Record<
+  string,
+  {
+    fromBaseUrl: string;
+    fromApiFormat: typeof ApiFormat.Anthropic;
+    toBaseUrl: string;
+    toApiFormat: typeof ApiFormat.OpenAI;
+  }
+> = {
   [ProviderName.DeepSeek]: {
     fromBaseUrl: 'https://api.deepseek.com/anthropic',
     fromApiFormat: ApiFormat.Anthropic,
@@ -186,11 +221,8 @@ const migrateProviderDefaultApiFormat = (
 
   const normalizedBaseUrl = normalizeProviderBaseUrl(providerKey, providerConfig.baseUrl);
   if (
-    normalizedBaseUrl !== migration.fromBaseUrl
-    || (
-      providerConfig.apiFormat !== undefined
-      && providerConfig.apiFormat !== migration.fromApiFormat
-    )
+    normalizedBaseUrl !== migration.fromBaseUrl ||
+    (providerConfig.apiFormat !== undefined && providerConfig.apiFormat !== migration.fromApiFormat)
   ) {
     return providerConfig;
   }
@@ -249,31 +281,46 @@ const REMOVED_PROVIDER_MODELS: Record<string, string[]> = {
 // must be respected across restarts.
 // position: 'start' inserts at the beginning, 'end' appends at the end.
 const ADDED_PROVIDER_MODELS_MIGRATION_VERSION = 1;
-const ADDED_PROVIDER_MODELS: Record<string, { models: ProviderModel[]; position: 'start' | 'end' }> = {
+const ADDED_PROVIDER_MODELS: Record<
+  string,
+  { models: ProviderModel[]; position: 'start' | 'end' }
+> = {
   deepseek: {
     models: [
-      { id: 'deepseek-v4-flash', name: 'DeepSeek V4 Flash', supportsImage: false, supportsThinking: true },
-      { id: 'deepseek-v4-pro', name: 'DeepSeek V4 Pro', supportsImage: false, supportsThinking: true },
+      {
+        id: 'deepseek-v4-flash',
+        name: 'DeepSeek V4 Flash',
+        supportsImage: false,
+        supportsThinking: true,
+      },
+      {
+        id: 'deepseek-v4-pro',
+        name: 'DeepSeek V4 Pro',
+        supportsImage: false,
+        supportsThinking: true,
+      },
     ],
     position: 'start',
   },
   moonshot: {
-    models: [
-      { id: 'kimi-k2.6', name: 'Kimi K2.6', supportsImage: true, supportsThinking: true },
-    ],
+    models: [{ id: 'kimi-k2.6', name: 'Kimi K2.6', supportsImage: true, supportsThinking: true }],
     position: 'start',
   },
   minimax: {
     models: [
-      { id: 'MiniMax-M3', name: 'MiniMax M3', supportsImage: true, supportsThinking: true, contextWindow: 1_000_000 },
+      {
+        id: 'MiniMax-M3',
+        name: 'MiniMax M3',
+        supportsImage: true,
+        supportsThinking: true,
+        contextWindow: 1_000_000,
+      },
       { id: 'MiniMax-M2.7', name: 'MiniMax M2.7', supportsImage: false },
     ],
     position: 'start',
   },
   zhipu: {
-    models: [
-      { id: 'glm-5.1', name: 'GLM 5.1', supportsImage: false, supportsThinking: true },
-    ],
+    models: [{ id: 'glm-5.1', name: 'GLM 5.1', supportsImage: false, supportsThinking: true }],
     position: 'start',
   },
   qianfan: {
@@ -281,15 +328,32 @@ const ADDED_PROVIDER_MODELS: Record<string, { models: ProviderModel[]; position:
       { id: 'kimi-k2.5', name: 'Kimi K2.5', supportsImage: false },
       { id: 'glm-5.1', name: 'GLM 5.1', supportsImage: false, supportsThinking: true },
       { id: 'minimax-m2.5', name: 'MiniMax M2.5', supportsImage: false },
-      { id: 'deepseek-v4-flash', name: 'DeepSeek V4 Flash', supportsImage: false, supportsThinking: true },
+      {
+        id: 'deepseek-v4-flash',
+        name: 'DeepSeek V4 Flash',
+        supportsImage: false,
+        supportsThinking: true,
+      },
       { id: 'ernie-4.5-turbo-20260402', name: 'ERNIE 4.5 Turbo', supportsImage: false },
     ],
     position: 'start',
   },
   [ProviderName.Xiaomi]: {
     models: [
-      { id: 'mimo-v2.5-pro', name: 'MiMo V2.5 Pro', supportsImage: false, supportsThinking: true, contextWindow: 1_000_000 },
-      { id: 'mimo-v2.5', name: 'MiMo V2.5', supportsImage: true, supportsThinking: true, contextWindow: 1_000_000 },
+      {
+        id: 'mimo-v2.5-pro',
+        name: 'MiMo V2.5 Pro',
+        supportsImage: false,
+        supportsThinking: true,
+        contextWindow: 1_000_000,
+      },
+      {
+        id: 'mimo-v2.5',
+        name: 'MiMo V2.5',
+        supportsImage: true,
+        supportsThinking: true,
+        contextWindow: 1_000_000,
+      },
     ],
     position: 'start',
   },
@@ -302,22 +366,47 @@ const ADDED_PROVIDER_MODELS: Record<string, { models: ProviderModel[]; position:
   },
   gemini: {
     models: [
-      { id: 'gemini-3.1-flash-lite', name: 'Gemini 3.1 Flash Lite', supportsImage: true, supportsThinking: true },
+      {
+        id: 'gemini-3.1-flash-lite',
+        name: 'Gemini 3.1 Flash Lite',
+        supportsImage: true,
+        supportsThinking: true,
+      },
     ],
     position: 'end',
   },
   anthropic: {
     models: [
-      { id: 'claude-opus-4-7', name: 'Claude Opus 4.7', supportsImage: true, supportsThinking: true },
+      {
+        id: 'claude-opus-4-7',
+        name: 'Claude Opus 4.7',
+        supportsImage: true,
+        supportsThinking: true,
+      },
     ],
     position: 'start',
   },
   openrouter: {
     models: [
-      { id: 'anthropic/claude-sonnet-4.6', name: 'Claude Sonnet 4.6', supportsImage: true, supportsThinking: true },
-      { id: 'anthropic/claude-opus-4.7', name: 'Claude Opus 4.7', supportsImage: true, supportsThinking: true },
+      {
+        id: 'anthropic/claude-sonnet-4.6',
+        name: 'Claude Sonnet 4.6',
+        supportsImage: true,
+        supportsThinking: true,
+      },
+      {
+        id: 'anthropic/claude-opus-4.7',
+        name: 'Claude Opus 4.7',
+        supportsImage: true,
+        supportsThinking: true,
+      },
       { id: 'openai/gpt-5.5', name: 'GPT 5.5', supportsImage: true, supportsThinking: true },
-      { id: 'google/gemini-3.1-pro-preview', name: 'Gemini 3.1 Pro', supportsImage: true, supportsThinking: true },
+      {
+        id: 'google/gemini-3.1-pro-preview',
+        name: 'Gemini 3.1 Pro',
+        supportsImage: true,
+        supportsThinking: true,
+      },
     ],
     position: 'start',
   },
@@ -327,7 +416,7 @@ const markCurrentProviderModelMigrationsApplied = (
   versions: AppConfig['providerModelMigrationVersions'],
 ): NonNullable<AppConfig['providerModelMigrationVersions']> => {
   const nextVersions = { ...(versions ?? {}) };
-  Object.keys(ADDED_PROVIDER_MODELS).forEach((providerKey) => {
+  Object.keys(ADDED_PROVIDER_MODELS).forEach(providerKey => {
     nextVersions[providerKey] = Math.max(
       nextVersions[providerKey] ?? 0,
       ADDED_PROVIDER_MODELS_MIGRATION_VERSION,
@@ -339,10 +428,12 @@ const markCurrentProviderModelMigrationsApplied = (
 const getNewlyAppliedProviderModelMigrations = (
   previousVersions: AppConfig['providerModelMigrationVersions'],
   nextVersions: AppConfig['providerModelMigrationVersions'],
-): string[] => Object.keys(ADDED_PROVIDER_MODELS).filter(
-  providerKey => (previousVersions?.[providerKey] ?? 0) < ADDED_PROVIDER_MODELS_MIGRATION_VERSION
-    && (nextVersions?.[providerKey] ?? 0) >= ADDED_PROVIDER_MODELS_MIGRATION_VERSION
-);
+): string[] =>
+  Object.keys(ADDED_PROVIDER_MODELS).filter(
+    providerKey =>
+      (previousVersions?.[providerKey] ?? 0) < ADDED_PROVIDER_MODELS_MIGRATION_VERSION &&
+      (nextVersions?.[providerKey] ?? 0) >= ADDED_PROVIDER_MODELS_MIGRATION_VERSION,
+  );
 
 const PROVIDER_MODEL_CONTEXT_WINDOW_OVERRIDES: Record<string, Record<string, number>> = {
   [ProviderName.Minimax]: {
@@ -366,8 +457,10 @@ const applyProviderModelContextWindowOverrides = (
   return models.map(model => {
     const contextWindow = overrides[model.id];
     if (
-      contextWindow === undefined
-      || (typeof model.contextWindow === 'number' && Number.isFinite(model.contextWindow) && model.contextWindow > 0)
+      contextWindow === undefined ||
+      (typeof model.contextWindow === 'number' &&
+        Number.isFinite(model.contextWindow) &&
+        model.contextWindow > 0)
     ) {
       return model;
     }
@@ -431,31 +524,38 @@ const hydrateStoredConfig = (storedConfig: AppConfig): AppConfig => {
           providerKey,
           (() => {
             const mergedProvider = {
-              ...((defaultConfig.providers as Record<string, unknown>)?.[providerKey] as Record<string, unknown> ?? {}),
+              ...(((defaultConfig.providers as Record<string, unknown>)?.[providerKey] as Record<
+                string,
+                unknown
+              >) ?? {}),
               ...providerConfig,
             };
             // Filter out removed models
             const removedIds = REMOVED_PROVIDER_MODELS[providerKey];
             if (removedIds && mergedProvider.models) {
               mergedProvider.models = mergedProvider.models.filter(
-                (m: { id: string }) => !removedIds.includes(m.id)
+                (m: { id: string }) => !removedIds.includes(m.id),
               );
             }
             // Inject added models (for existing users who already have saved config)
             const addedConfig = ADDED_PROVIDER_MODELS[providerKey];
             const existingIds = new Set(
-              (mergedProvider.models as Array<{ id: string }> | undefined)?.map(model => model.id) ?? []
+              (mergedProvider.models as Array<{ id: string }> | undefined)?.map(
+                model => model.id,
+              ) ?? [],
             );
-            const hasAnyAddedModel = addedConfig?.models.some(model => existingIds.has(model.id)) ?? false;
+            const hasAnyAddedModel =
+              addedConfig?.models.some(model => existingIds.has(model.id)) ?? false;
             const hasAppliedAddedModelsMigration =
-              (providerModelMigrationVersions[providerKey] ?? 0) >= ADDED_PROVIDER_MODELS_MIGRATION_VERSION
-              || hasAnyAddedModel;
+              (providerModelMigrationVersions[providerKey] ?? 0) >=
+                ADDED_PROVIDER_MODELS_MIGRATION_VERSION || hasAnyAddedModel;
             if (addedConfig && mergedProvider.models && !hasAppliedAddedModelsMigration) {
               const newModels = addedConfig.models.filter(m => !existingIds.has(m.id));
               if (newModels.length > 0) {
-                mergedProvider.models = addedConfig.position === 'start'
-                  ? [...newModels, ...mergedProvider.models]
-                  : [...mergedProvider.models, ...newModels];
+                mergedProvider.models =
+                  addedConfig.position === 'start'
+                    ? [...newModels, ...mergedProvider.models]
+                    : [...mergedProvider.models, ...newModels];
               }
             }
             if (addedConfig && mergedProvider.models) {
@@ -482,7 +582,7 @@ const hydrateStoredConfig = (storedConfig: AppConfig): AppConfig => {
               ),
             };
           })(),
-        ])
+        ]),
       )
     : defaultConfig.providers;
 
@@ -494,7 +594,7 @@ const hydrateStoredConfig = (storedConfig: AppConfig): AppConfig => {
   }
   if (migratedModel.availableModels) {
     migratedModel.availableModels = migratedModel.availableModels.filter(
-      (m: { id: string }) => !allRemovedIds.includes(m.id)
+      (m: { id: string }) => !allRemovedIds.includes(m.id),
     );
   }
 
@@ -513,7 +613,8 @@ const hydrateStoredConfig = (storedConfig: AppConfig): AppConfig => {
     shortcuts: normalizeShortcutsConfig(storedConfig.shortcuts),
     providers: mergedProviders as AppConfig['providers'],
     providerModelMigrationVersions,
-    browserWebAccess: normalizeBrowserWebAccessConfig(storedConfig.browserWebAccess),
+    browserWebAccess: migrateBrowserWebAccessConfig(storedConfig),
+    browserWebAccessMigrationVersion: BROWSER_WEB_ACCESS_MIGRATION_VERSION,
     notificationSettings: normalizeNotificationSettings(storedConfig.notificationSettings),
   });
 };
@@ -538,7 +639,9 @@ class ConfigService {
               this.config.providerModelMigrationVersions,
             );
             if (appliedProviders.length > 0) {
-              console.log(`[ConfigService] applied provider model migrations for ${appliedProviders.join(', ')}`);
+              console.log(
+                `[ConfigService] applied provider model migrations for ${appliedProviders.join(', ')}`,
+              );
             }
           } catch (persistError) {
             console.warn('[ConfigService] init: failed to persist migrated config:', persistError);
@@ -555,7 +658,9 @@ class ConfigService {
   }
 
   async updateConfig(newConfig: Partial<AppConfig>) {
-    const normalizedProviders = normalizeProvidersConfig(newConfig.providers as AppConfig['providers'] | undefined);
+    const normalizedProviders = normalizeProvidersConfig(
+      newConfig.providers as AppConfig['providers'] | undefined,
+    );
 
     // Read-modify-write: use the latest stored value as the base to avoid
     // overwriting fields (e.g. providers) with stale in-memory defaults when
@@ -568,11 +673,16 @@ class ConfigService {
       ...newConfig,
       ...(normalizedProviders ? { providers: normalizedProviders } : {}),
       ...(normalizedProviders
-        ? { providerModelMigrationVersions: markCurrentProviderModelMigrationsApplied(base.providerModelMigrationVersions) }
+        ? {
+            providerModelMigrationVersions: markCurrentProviderModelMigrationsApplied(
+              base.providerModelMigrationVersions,
+            ),
+          }
         : {}),
       browserWebAccess: normalizeBrowserWebAccessConfig(
         newConfig.browserWebAccess ?? base.browserWebAccess,
       ),
+      browserWebAccessMigrationVersion: BROWSER_WEB_ACCESS_MIGRATION_VERSION,
       notificationSettings: normalizeNotificationSettings(
         newConfig.notificationSettings ?? base.notificationSettings,
       ),
@@ -589,4 +699,4 @@ class ConfigService {
   }
 }
 
-export const configService = new ConfigService(); 
+export const configService = new ConfigService();

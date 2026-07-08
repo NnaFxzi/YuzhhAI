@@ -87,6 +87,8 @@ describe('OpenClawConfigSync runtime config output', () => {
   let tmpDir: string;
   let configPath: string;
   let stateDir: string;
+  const countOccurrences = (content: string, needle: string): number =>
+    content.split(needle).length - 1;
 
   beforeEach(() => {
     mockRuntimeState.proxyPort = null;
@@ -217,6 +219,117 @@ describe('OpenClawConfigSync runtime config output', () => {
 
     const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
     expect(config.models.pricing).toEqual({ enabled: false });
+  });
+
+  test('emits an explicit disabled memory search policy when embeddings are off', async () => {
+    const { SettingScope } = await import('../../shared/cowork/layeredSettings');
+    const sync = await createSync({
+      getEffectiveSettings: () => ({
+        values: {
+          workingDirectory: tmpDir,
+          executionMode: 'local',
+          memoryEnabled: false,
+          embeddingEnabled: false,
+          dreamingEnabled: false,
+          skillIds: [],
+          defaultModel: '',
+        },
+        sources: {
+          workingDirectory: SettingScope.Global,
+          executionMode: SettingScope.Global,
+          memoryEnabled: SettingScope.Global,
+          embeddingEnabled: SettingScope.Global,
+          dreamingEnabled: SettingScope.Global,
+          skillIds: SettingScope.Default,
+          defaultModel: SettingScope.Default,
+        },
+      }),
+      getCoworkConfig: () => ({
+        workingDirectory: tmpDir,
+        systemPrompt: '',
+        executionMode: 'local',
+        agentEngine: 'openclaw',
+        memoryEnabled: false,
+        memoryImplicitUpdateEnabled: false,
+        memoryLlmJudgeEnabled: false,
+        memoryGuardLevel: 'balanced',
+        memoryUserMemoriesMaxItems: 100,
+        skipMissedJobs: false,
+        embeddingEnabled: false,
+      }),
+    });
+
+    const result = sync.sync('memory-search-disabled');
+    expect(result.ok).toBe(true);
+
+    const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    expect(config.agents.defaults.memorySearch).toEqual({ enabled: false });
+  });
+
+  test('emits configured memory search provider and model when embeddings are on', async () => {
+    const { SettingScope } = await import('../../shared/cowork/layeredSettings');
+    const sync = await createSync({
+      getEffectiveSettings: () => ({
+        values: {
+          workingDirectory: tmpDir,
+          executionMode: 'local',
+          memoryEnabled: true,
+          embeddingEnabled: true,
+          dreamingEnabled: false,
+          skillIds: [],
+          defaultModel: '',
+        },
+        sources: {
+          workingDirectory: SettingScope.Global,
+          executionMode: SettingScope.Global,
+          memoryEnabled: SettingScope.Global,
+          embeddingEnabled: SettingScope.Global,
+          dreamingEnabled: SettingScope.Global,
+          skillIds: SettingScope.Default,
+          defaultModel: SettingScope.Default,
+        },
+      }),
+      getCoworkConfig: () => ({
+        workingDirectory: tmpDir,
+        systemPrompt: '',
+        executionMode: 'local',
+        agentEngine: 'openclaw',
+        memoryEnabled: true,
+        memoryImplicitUpdateEnabled: false,
+        memoryLlmJudgeEnabled: false,
+        memoryGuardLevel: 'balanced',
+        memoryUserMemoriesMaxItems: 100,
+        skipMissedJobs: false,
+        embeddingEnabled: true,
+        embeddingProvider: 'voyage',
+        embeddingModel: 'voyage-3',
+        embeddingRemoteBaseUrl: 'https://embeddings.example.com/v1',
+        embeddingRemoteApiKey: 'embedding-secret',
+        embeddingVectorWeight: 0.42,
+      }),
+    });
+
+    const result = sync.sync('memory-search-enabled');
+    expect(result.ok).toBe(true);
+
+    const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    expect(config.agents.defaults.memorySearch).toEqual({
+      enabled: true,
+      provider: 'voyage',
+      model: 'voyage-3',
+      remote: {
+        baseUrl: 'https://embeddings.example.com/v1',
+        apiKey: 'embedding-secret',
+      },
+      store: {
+        fts: { tokenizer: 'trigram' },
+      },
+      query: {
+        hybrid: {
+          vectorWeight: 0.42,
+        },
+      },
+    });
   });
 
   test('configures OpenClaw chat image attachment limit to 30MB', async () => {
@@ -565,41 +678,53 @@ describe('OpenClawConfigSync runtime config output', () => {
         modelName: 'Kimi K2.5',
       },
     };
-    mockRuntimeState.enabledProviders = [{
-      providerName: ProviderName.Moonshot,
-      baseURL: 'https://api.moonshot.cn/anthropic',
-      apiKey: 'sk-moonshot',
-      apiType: 'anthropic',
-      codingPlanEnabled: false,
-      models: [{
-        id: 'kimi-k2.5',
-        name: 'Kimi K2.5',
-        supportsImage: true,
-        supportsThinking: true,
-      }],
-    }];
+    mockRuntimeState.enabledProviders = [
+      {
+        providerName: ProviderName.Moonshot,
+        baseURL: 'https://api.moonshot.cn/anthropic',
+        apiKey: 'sk-moonshot',
+        apiType: 'anthropic',
+        codingPlanEnabled: false,
+        models: [
+          {
+            id: 'kimi-k2.5',
+            name: 'Kimi K2.5',
+            supportsImage: true,
+            supportsThinking: true,
+          },
+        ],
+      },
+    ];
 
     const sessionsDir = path.join(stateDir, 'agents', 'main', 'sessions');
     fs.mkdirSync(sessionsDir, { recursive: true });
-    fs.writeFileSync(path.join(sessionsDir, 'sessions.json'), `${JSON.stringify({
-      'agent:main:lobsterai:current-session': {
-        sessionId: 'session-current',
-        modelProvider: 'lobster',
-        model: 'kimi-k2.5',
-        systemPromptReport: {
-          provider: 'lobster',
-          model: 'kimi-k2.5',
+    fs.writeFileSync(
+      path.join(sessionsDir, 'sessions.json'),
+      `${JSON.stringify(
+        {
+          'agent:main:lobsterai:current-session': {
+            sessionId: 'session-current',
+            modelProvider: 'lobster',
+            model: 'kimi-k2.5',
+            systemPromptReport: {
+              provider: 'lobster',
+              model: 'kimi-k2.5',
+            },
+          },
+          'agent:main:wecom:direct:wangning': {
+            sessionId: 'session-wecom',
+            execSecurity: 'deny',
+            skillsSnapshot: {
+              prompt: '<skill><name>feishu-cron-reminder</name></skill>',
+              resolvedSkills: [{ name: 'feishu-cron-reminder' }],
+            },
+          },
         },
-      },
-      'agent:main:wecom:direct:wangning': {
-        sessionId: 'session-wecom',
-        execSecurity: 'deny',
-        skillsSnapshot: {
-          prompt: '<skill><name>feishu-cron-reminder</name></skill>',
-          resolvedSkills: [{ name: 'feishu-cron-reminder' }],
-        },
-      },
-    }, null, 2)}\n`, 'utf8');
+        null,
+        2,
+      )}\n`,
+      'utf8',
+    );
 
     const sync = await createSync();
     const result = sync.sync('current-provider-session-store');
@@ -611,7 +736,9 @@ describe('OpenClawConfigSync runtime config output', () => {
     expect(config.models.providers.moonshot.apiKey).toBe('${LOBSTER_APIKEY_MOONSHOT}');
     expect(config.agents.defaults.model.primary).toBe('moonshot/kimi-k2.5');
 
-    const sessionStore = JSON.parse(fs.readFileSync(path.join(sessionsDir, 'sessions.json'), 'utf8'));
+    const sessionStore = JSON.parse(
+      fs.readFileSync(path.join(sessionsDir, 'sessions.json'), 'utf8'),
+    );
     expect(sessionStore['agent:main:lobsterai:current-session']).toMatchObject({
       modelProvider: 'moonshot',
       model: 'kimi-k2.5',
@@ -640,14 +767,16 @@ describe('OpenClawConfigSync runtime config output', () => {
         modelName: 'llama3',
       },
     };
-    mockRuntimeState.enabledProviders = [{
-      providerName: ProviderName.Ollama,
-      baseURL: 'http://localhost:11434/v1',
-      apiKey: '',
-      apiType: 'openai',
-      codingPlanEnabled: false,
-      models: [{ id: 'llama3', name: 'llama3', supportsImage: false }],
-    }];
+    mockRuntimeState.enabledProviders = [
+      {
+        providerName: ProviderName.Ollama,
+        baseURL: 'http://localhost:11434/v1',
+        apiKey: '',
+        apiType: 'openai',
+        codingPlanEnabled: false,
+        models: [{ id: 'llama3', name: 'llama3', supportsImage: false }],
+      },
+    ];
 
     const sync = await createSync();
     const result = sync.sync('ollama-provider');
@@ -815,85 +944,89 @@ describe('OpenClawConfigSync runtime config output', () => {
     expect(provider.baseUrl).toBe('http://127.0.0.1:56646/v1');
     expect(provider.apiKey).toBe('${LOBSTER_PROXY_TOKEN}');
     expect(JSON.stringify(config)).not.toContain('LOBSTER_APIKEY_SERVER');
-    expect(provider.models).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        id: 'qwen3.5-plus-YoudaoInner',
-        api: 'openai-completions',
-        input: ['text', 'image'],
-      }),
-      expect.objectContaining({
-        id: 'qwen3.6-plus-YoudaoInner',
-        api: 'openai-completions',
-        input: ['text', 'image'],
-      }),
-      expect.objectContaining({
-        id: 'claude-sonnet-4-6-YoudaoInner',
-        api: 'anthropic-messages',
-        input: ['text', 'image'],
-        reasoning: true,
-        contextWindow: 1_000_000,
-      }),
-      expect.objectContaining({
-        id: 'claude-opus-4-YoudaoInner',
-        api: 'anthropic-messages',
-        input: ['text', 'image'],
-        reasoning: true,
-      }),
-      expect.objectContaining({
-        id: 'claude-sonnet-4-6',
-        api: 'openai-completions',
-        input: ['text', 'image'],
-        reasoning: true,
-        contextWindow: 1_000_000,
-      }),
-      expect.objectContaining({
-        id: 'glm-5.1-YoudaoInner',
-        api: 'openai-completions',
-        input: ['text'],
-        reasoning: true,
-      }),
-      expect.objectContaining({
-        id: 'deepseek-v3.2-YoudaoInner',
-        api: 'openai-completions',
-        input: ['text'],
-      }),
-    ]));
+    expect(provider.models).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'qwen3.5-plus-YoudaoInner',
+          api: 'openai-completions',
+          input: ['text', 'image'],
+        }),
+        expect.objectContaining({
+          id: 'qwen3.6-plus-YoudaoInner',
+          api: 'openai-completions',
+          input: ['text', 'image'],
+        }),
+        expect.objectContaining({
+          id: 'claude-sonnet-4-6-YoudaoInner',
+          api: 'anthropic-messages',
+          input: ['text', 'image'],
+          reasoning: true,
+          contextWindow: 1_000_000,
+        }),
+        expect.objectContaining({
+          id: 'claude-opus-4-YoudaoInner',
+          api: 'anthropic-messages',
+          input: ['text', 'image'],
+          reasoning: true,
+        }),
+        expect.objectContaining({
+          id: 'claude-sonnet-4-6',
+          api: 'openai-completions',
+          input: ['text', 'image'],
+          reasoning: true,
+          contextWindow: 1_000_000,
+        }),
+        expect.objectContaining({
+          id: 'glm-5.1-YoudaoInner',
+          api: 'openai-completions',
+          input: ['text'],
+          reasoning: true,
+        }),
+        expect.objectContaining({
+          id: 'deepseek-v3.2-YoudaoInner',
+          api: 'openai-completions',
+          input: ['text'],
+        }),
+      ]),
+    );
     expect(provider.models).toHaveLength(7);
     expect(JSON.stringify(provider.models)).not.toContain('cacheControlFormat');
     expect(JSON.stringify(provider.models)).not.toContain('supportsLongCacheRetention');
-    expect(config.agents.defaults.models).toEqual(expect.objectContaining({
-      'lobsterai-server/qwen3.5-plus-YoudaoInner': {
-        params: {
-          cacheRetention: 'short',
-          contextCacheProvider: 'dashscope',
-          contextCacheMode: 'explicit',
+    expect(config.agents.defaults.models).toEqual(
+      expect.objectContaining({
+        'lobsterai-server/qwen3.5-plus-YoudaoInner': {
+          params: {
+            cacheRetention: 'short',
+            contextCacheProvider: 'dashscope',
+            contextCacheMode: 'explicit',
+          },
         },
-      },
-      'lobsterai-server/qwen3.6-plus-YoudaoInner': {
-        params: {
-          cacheRetention: 'short',
-          contextCacheProvider: 'dashscope',
-          contextCacheMode: 'explicit',
+        'lobsterai-server/qwen3.6-plus-YoudaoInner': {
+          params: {
+            cacheRetention: 'short',
+            contextCacheProvider: 'dashscope',
+            contextCacheMode: 'explicit',
+          },
         },
-      },
-      'lobsterai-server/claude-sonnet-4-6-YoudaoInner': {
-        params: {
-          cacheRetention: 'short',
+        'lobsterai-server/claude-sonnet-4-6-YoudaoInner': {
+          params: {
+            cacheRetention: 'short',
+          },
         },
-      },
-      'lobsterai-server/claude-opus-4-YoudaoInner': {
-        params: {
-          cacheRetention: 'short',
+        'lobsterai-server/claude-opus-4-YoudaoInner': {
+          params: {
+            cacheRetention: 'short',
+          },
         },
-      },
-      'lobsterai-server/claude-sonnet-4-6': {
-        params: {
-          cacheRetention: 'short',
-          contextCacheProvider: 'anthropic-compatible',
-          contextCacheMode: 'explicit',
+        'lobsterai-server/claude-sonnet-4-6': {
+          params: {
+            cacheRetention: 'short',
+            contextCacheProvider: 'anthropic-compatible',
+            contextCacheMode: 'explicit',
+          },
         },
-      },
-    }));
+      }),
+    );
   });
 
   test('writes Claude OpenAI-compatible explicit cache params when server metadata is not loaded', async () => {
@@ -921,21 +1054,25 @@ describe('OpenClawConfigSync runtime config output', () => {
     expect(result.ok).toBe(true);
 
     const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-    expect(config.models.providers['lobsterai-server'].models).toEqual(expect.arrayContaining([
+    expect(config.models.providers['lobsterai-server'].models).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'claude-sonnet-4-6',
+          api: 'openai-completions',
+        }),
+      ]),
+    );
+    expect(config.agents.defaults.models).toEqual(
       expect.objectContaining({
-        id: 'claude-sonnet-4-6',
-        api: 'openai-completions',
-      }),
-    ]));
-    expect(config.agents.defaults.models).toEqual(expect.objectContaining({
-      'lobsterai-server/claude-sonnet-4-6': {
-        params: {
-          cacheRetention: 'short',
-          contextCacheProvider: 'anthropic-compatible',
-          contextCacheMode: 'explicit',
+        'lobsterai-server/claude-sonnet-4-6': {
+          params: {
+            cacheRetention: 'short',
+            contextCacheProvider: 'anthropic-compatible',
+            contextCacheMode: 'explicit',
+          },
         },
-      },
-    }));
+      }),
+    );
   });
 
   test('writes explicit cache params for Anthropic, Qwen, and custom providers', async () => {
@@ -975,8 +1112,18 @@ describe('OpenClawConfigSync runtime config output', () => {
         apiType: 'anthropic',
         codingPlanEnabled: false,
         models: [
-          { id: 'claude-opus-4-7', name: 'Claude Opus 4.7', supportsImage: true, supportsThinking: true },
-          { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6', supportsImage: true, supportsThinking: true },
+          {
+            id: 'claude-opus-4-7',
+            name: 'Claude Opus 4.7',
+            supportsImage: true,
+            supportsThinking: true,
+          },
+          {
+            id: 'claude-sonnet-4-6',
+            name: 'Claude Sonnet 4.6',
+            supportsImage: true,
+            supportsThinking: true,
+          },
         ],
       },
       {
@@ -992,7 +1139,11 @@ describe('OpenClawConfigSync runtime config output', () => {
             supportsImage: true,
             customParams: { metadata: 'custom-cache' },
           },
-          { id: 'anthropic/claude-sonnet-4-6', name: 'Namespaced Claude Sonnet 4.6', supportsImage: true },
+          {
+            id: 'anthropic/claude-sonnet-4-6',
+            name: 'Namespaced Claude Sonnet 4.6',
+            supportsImage: true,
+          },
           { id: 'qwen3.5-plus', name: 'Qwen3.5 Plus', supportsImage: true },
           { id: 'qwen3.6-plus', name: 'Qwen3.6 Plus', supportsImage: true },
           { id: 'deepseek-v4-pro', name: 'DeepSeek V4 Pro', supportsImage: false },
@@ -1009,66 +1160,68 @@ describe('OpenClawConfigSync runtime config output', () => {
     const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
     const modelDefaults = config.agents.defaults.models;
 
-    expect(modelDefaults).toEqual(expect.objectContaining({
-      'qwen/qwen3.5-plus': {
-        params: {
-          cacheRetention: 'short',
-          contextCacheProvider: 'dashscope',
-          contextCacheMode: 'explicit',
-        },
-      },
-      'qwen/qwen3.6-plus': {
-        params: {
-          cacheRetention: 'short',
-          contextCacheProvider: 'dashscope',
-          contextCacheMode: 'explicit',
-        },
-      },
-      'qwen/qwen3.7-plus': {},
-      'anthropic/claude-opus-4-7': {
-        params: {
-          cacheRetention: 'short',
-        },
-      },
-      'anthropic/claude-sonnet-4-6': {
-        params: {
-          cacheRetention: 'short',
-        },
-      },
-      'custom_0/claude-opus-4-6': {
-        params: {
-          cacheRetention: 'short',
-          contextCacheProvider: 'anthropic-compatible',
-          contextCacheMode: 'explicit',
-          extra_body: {
-            metadata: 'custom-cache',
+    expect(modelDefaults).toEqual(
+      expect.objectContaining({
+        'qwen/qwen3.5-plus': {
+          params: {
+            cacheRetention: 'short',
+            contextCacheProvider: 'dashscope',
+            contextCacheMode: 'explicit',
           },
         },
-      },
-      'custom_0/anthropic/claude-sonnet-4-6': {
-        params: {
-          cacheRetention: 'short',
-          contextCacheProvider: 'anthropic-compatible',
-          contextCacheMode: 'explicit',
+        'qwen/qwen3.6-plus': {
+          params: {
+            cacheRetention: 'short',
+            contextCacheProvider: 'dashscope',
+            contextCacheMode: 'explicit',
+          },
         },
-      },
-      'custom_0/qwen3.5-plus': {
-        params: {
-          cacheRetention: 'short',
-          contextCacheProvider: 'dashscope',
-          contextCacheMode: 'explicit',
+        'qwen/qwen3.7-plus': {},
+        'anthropic/claude-opus-4-7': {
+          params: {
+            cacheRetention: 'short',
+          },
         },
-      },
-      'custom_0/qwen3.6-plus': {
-        params: {
-          cacheRetention: 'short',
-          contextCacheProvider: 'dashscope',
-          contextCacheMode: 'explicit',
+        'anthropic/claude-sonnet-4-6': {
+          params: {
+            cacheRetention: 'short',
+          },
         },
-      },
-      'custom_0/deepseek-v4-pro': {},
-      'custom_0/gpt-5.5-2026-04-24': {},
-    }));
+        'custom_0/claude-opus-4-6': {
+          params: {
+            cacheRetention: 'short',
+            contextCacheProvider: 'anthropic-compatible',
+            contextCacheMode: 'explicit',
+            extra_body: {
+              metadata: 'custom-cache',
+            },
+          },
+        },
+        'custom_0/anthropic/claude-sonnet-4-6': {
+          params: {
+            cacheRetention: 'short',
+            contextCacheProvider: 'anthropic-compatible',
+            contextCacheMode: 'explicit',
+          },
+        },
+        'custom_0/qwen3.5-plus': {
+          params: {
+            cacheRetention: 'short',
+            contextCacheProvider: 'dashscope',
+            contextCacheMode: 'explicit',
+          },
+        },
+        'custom_0/qwen3.6-plus': {
+          params: {
+            cacheRetention: 'short',
+            contextCacheProvider: 'dashscope',
+            contextCacheMode: 'explicit',
+          },
+        },
+        'custom_0/deepseek-v4-pro': {},
+        'custom_0/gpt-5.5-2026-04-24': {},
+      }),
+    );
   });
 
   test('writes a complete agent model allowlist when any model has custom params', async () => {
@@ -1138,62 +1291,77 @@ describe('OpenClawConfigSync runtime config output', () => {
     expect(result.ok).toBe(true);
 
     const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-    expect(config.models.providers.deepseek.models).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        id: 'deepseek-v4-flash',
-        contextWindow: 1_000_000,
-      }),
-      expect.objectContaining({
-        id: 'deepseek-v4-pro',
-        contextWindow: 1_000_000,
-      }),
-    ]));
-    expect(config.models.providers.custom_0.models).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        id: 'custom-thinking-model',
-        reasoning: true,
-      }),
-    ]));
+    expect(config.models.providers.deepseek.models).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'deepseek-v4-flash',
+          contextWindow: 1_000_000,
+        }),
+        expect.objectContaining({
+          id: 'deepseek-v4-pro',
+          contextWindow: 1_000_000,
+        }),
+      ]),
+    );
+    expect(config.models.providers.custom_0.models).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'custom-thinking-model',
+          reasoning: true,
+        }),
+      ]),
+    );
     const modelDefaults = config.agents.defaults.models;
 
-    expect(modelDefaults).toEqual(expect.objectContaining({
-      'deepseek/deepseek-v4-flash': {
-        params: {
-          extra_body: {
-            reasoning_effort: 'high',
+    expect(modelDefaults).toEqual(
+      expect.objectContaining({
+        'deepseek/deepseek-v4-flash': {
+          params: {
+            extra_body: {
+              reasoning_effort: 'high',
+            },
           },
         },
-      },
-      'custom_0/custom-thinking-model': {
-        params: {
-          extra_body: {
-            reasoning_effort: 'high',
+        'custom_0/custom-thinking-model': {
+          params: {
+            extra_body: {
+              reasoning_effort: 'high',
+            },
           },
         },
-      },
-      'deepseek/deepseek-v4-pro': {},
-      'lobsterai-server/MiniMax-M2.7-YoudaoInner': {},
-      'lobsterai-server/kimi-k2.6-inhouse-ZhiYun': {},
-    }));
-    expect(Object.keys(modelDefaults)).toEqual(expect.arrayContaining([
-      'deepseek/deepseek-v4-flash',
-      'deepseek/deepseek-v4-pro',
-      'custom_0/custom-thinking-model',
-      'lobsterai-server/MiniMax-M2.7-YoudaoInner',
-      'lobsterai-server/kimi-k2.6-inhouse-ZhiYun',
-    ]));
+        'deepseek/deepseek-v4-pro': {},
+        'lobsterai-server/MiniMax-M2.7-YoudaoInner': {},
+        'lobsterai-server/kimi-k2.6-inhouse-ZhiYun': {},
+      }),
+    );
+    expect(Object.keys(modelDefaults)).toEqual(
+      expect.arrayContaining([
+        'deepseek/deepseek-v4-flash',
+        'deepseek/deepseek-v4-pro',
+        'custom_0/custom-thinking-model',
+        'lobsterai-server/MiniMax-M2.7-YoudaoInner',
+        'lobsterai-server/kimi-k2.6-inhouse-ZhiYun',
+      ]),
+    );
   });
 
   test('removes stale agent model allowlist when no model has custom params', async () => {
-    fs.writeFileSync(configPath, JSON.stringify({
-      agents: {
-        defaults: {
-          models: {
-            'lobsterai-server/MiniMax-M2.7-YoudaoInner': {},
+    fs.writeFileSync(
+      configPath,
+      JSON.stringify(
+        {
+          agents: {
+            defaults: {
+              models: {
+                'lobsterai-server/MiniMax-M2.7-YoudaoInner': {},
+              },
+            },
           },
         },
-      },
-    }, null, 2));
+        null,
+        2,
+      ),
+    );
 
     const sync = await createSync();
 
@@ -1250,7 +1418,8 @@ describe('OpenClawConfigSync runtime config output', () => {
 
   test('enables industry positioning plugin when callback endpoint is available', async () => {
     const sync = await createSync({
-      getIndustryPositioningCallbackUrl: () => 'http://127.0.0.1:5175/industry-positioning-callback',
+      getIndustryPositioningCallbackUrl: () =>
+        'http://127.0.0.1:5175/industry-positioning-callback',
     });
 
     const result = sync.sync('industry-positioning-enabled');
@@ -1268,7 +1437,8 @@ describe('OpenClawConfigSync runtime config output', () => {
   });
 
   test('maps OpenAI OAuth mode to the ChatGPT Responses provider', async () => {
-    const { AuthType, OpenClawApi, OpenClawProviderId, ProviderName } = await import('../../shared/providers');
+    const { AuthType, OpenClawApi, OpenClawProviderId, ProviderName } =
+      await import('../../shared/providers');
     const { buildProviderSelection } = await import('./openclawConfigSync');
 
     const selection = buildProviderSelection({
@@ -1293,7 +1463,8 @@ describe('OpenClawConfigSync runtime config output', () => {
   });
 
   test('maps MiniMax OAuth mode to the MiniMax portal provider', async () => {
-    const { AuthType, OpenClawApi, OpenClawProviderId, ProviderName } = await import('../../shared/providers');
+    const { AuthType, OpenClawApi, OpenClawProviderId, ProviderName } =
+      await import('../../shared/providers');
     const { buildProviderSelection } = await import('./openclawConfigSync');
 
     const selection = buildProviderSelection({
@@ -1318,7 +1489,8 @@ describe('OpenClawConfigSync runtime config output', () => {
   });
 
   test('keeps MiniMax API key mode on the standard MiniMax provider', async () => {
-    const { AuthType, OpenClawApi, OpenClawProviderId, ProviderName } = await import('../../shared/providers');
+    const { AuthType, OpenClawApi, OpenClawProviderId, ProviderName } =
+      await import('../../shared/providers');
     const { buildProviderSelection } = await import('./openclawConfigSync');
 
     const selection = buildProviderSelection({
@@ -1562,26 +1734,28 @@ describe('OpenClawConfigSync runtime config output', () => {
         skipMissedJobs: false,
       }),
       isEnterprise: () => false,
-      getTelegramInstances: () => [{
-        enabled: true,
-        botToken: 'tg-token',
-        instanceId: 'tg-inst-001',
-        instanceName: 'Test Telegram',
-        dmPolicy: 'open',
-        allowFrom: ['*'],
-        groupPolicy: 'allowlist',
-        groupAllowFrom: [],
-        groups: { '*': { requireMention: true } },
-        historyLimit: 50,
-        replyToMode: 'off',
-        linkPreview: true,
-        streaming: 'off',
-        mediaMaxMb: 5,
-        proxy: '',
-        webhookUrl: '',
-        webhookSecret: '',
-        debug: false,
-      }],
+      getTelegramInstances: () => [
+        {
+          enabled: true,
+          botToken: 'tg-token',
+          instanceId: 'tg-inst-001',
+          instanceName: 'Test Telegram',
+          dmPolicy: 'open',
+          allowFrom: ['*'],
+          groupPolicy: 'allowlist',
+          groupAllowFrom: [],
+          groups: { '*': { requireMention: true } },
+          historyLimit: 50,
+          replyToMode: 'off',
+          linkPreview: true,
+          streaming: 'off',
+          mediaMaxMb: 5,
+          proxy: '',
+          webhookUrl: '',
+          webhookSecret: '',
+          debug: false,
+        },
+      ],
       getDiscordOpenClawConfig: () => null,
       getDingTalkInstances: () => [],
       getFeishuInstances: () => [],
@@ -1631,22 +1805,24 @@ describe('OpenClawConfigSync runtime config output', () => {
       isEnterprise: () => false,
       getTelegramOpenClawConfig: () => null,
       getDiscordOpenClawConfig: () => null,
-      getDingTalkInstances: () => [{
-        enabled: true,
-        clientId: 'ding-client-id',
-        clientSecret: 'ding-secret',
-        dmPolicy: 'open',
-        allowFrom: ['*'],
-        groupPolicy: 'open',
-        sessionTimeout: 0,
-        separateSessionByConversation: false,
-        groupSessionScope: 'group',
-        sharedMemoryAcrossConversations: false,
-        gatewayBaseUrl: '',
-        debug: false,
-        instanceId: 'b8a32c47-c852-4ad2-bbfa-631797fc56ea',
-        instanceName: 'DingTalk Bot 1',
-      }],
+      getDingTalkInstances: () => [
+        {
+          enabled: true,
+          clientId: 'ding-client-id',
+          clientSecret: 'ding-secret',
+          dmPolicy: 'open',
+          allowFrom: ['*'],
+          groupPolicy: 'open',
+          sessionTimeout: 0,
+          separateSessionByConversation: false,
+          groupSessionScope: 'group',
+          sharedMemoryAcrossConversations: false,
+          gatewayBaseUrl: '',
+          debug: false,
+          instanceId: 'b8a32c47-c852-4ad2-bbfa-631797fc56ea',
+          instanceName: 'DingTalk Bot 1',
+        },
+      ],
       getFeishuInstances: () => [],
       getQQInstances: () => [],
       getWecomConfig: () => null,
@@ -1656,14 +1832,16 @@ describe('OpenClawConfigSync runtime config output', () => {
       getNeteaseBeeChanConfig: () => null,
       getWeixinConfig: () => null,
       getSkillsList: () => [],
-      getAgents: () => [{
-        id: 'worker-agent',
-        enabled: true,
-        name: 'Worker Agent',
-        prompt: '',
-        model: 'openai/gpt-test',
-        source: 'user',
-      }],
+      getAgents: () => [
+        {
+          id: 'worker-agent',
+          enabled: true,
+          name: 'Worker Agent',
+          prompt: '',
+          model: 'openai/gpt-test',
+          source: 'user',
+        },
+      ],
     };
 
     let currentBindings: Record<string, string> = {};
@@ -1699,10 +1877,8 @@ describe('OpenClawConfigSync runtime config output', () => {
   });
 
   test('writes platform-level agent bindings with account wildcard and keeps instance bindings exact', async () => {
-    const {
-      OpenClawConfigSync,
-      OPENCLAW_BINDING_ANY_ACCOUNT_ID,
-    } = await import('./openclawConfigSync');
+    const { OpenClawConfigSync, OPENCLAW_BINDING_ANY_ACCOUNT_ID } =
+      await import('./openclawConfigSync');
 
     const dingTalkInstance = {
       enabled: true,
@@ -1826,15 +2002,22 @@ describe('OpenClawConfigSync runtime config output', () => {
   test('prefers external lark for feishu without stale feishu entry and keeps bundled qqbot entry', async () => {
     const { OpenClawConfigSync } = await import('./openclawConfigSync');
 
-    fs.writeFileSync(configPath, JSON.stringify({
-      plugins: {
-        entries: {
-          feishu: { enabled: false },
-          'openclaw-qqbot': { enabled: false },
-          qqbot: { enabled: false },
+    fs.writeFileSync(
+      configPath,
+      JSON.stringify(
+        {
+          plugins: {
+            entries: {
+              feishu: { enabled: false },
+              'openclaw-qqbot': { enabled: false },
+              qqbot: { enabled: false },
+            },
+          },
         },
-      },
-    }, null, 2));
+        null,
+        2,
+      ),
+    );
 
     const sync = new OpenClawConfigSync({
       engineManager: {
@@ -1859,34 +2042,38 @@ describe('OpenClawConfigSync runtime config output', () => {
       getTelegramOpenClawConfig: () => null,
       getDiscordOpenClawConfig: () => null,
       getDingTalkInstances: () => [],
-      getFeishuInstances: () => [{
-        enabled: true,
-        appId: 'cli_feishu_app',
-        appSecret: 'secret',
-        instanceId: 'feishu-instance-1',
-        instanceName: 'Feishu Bot 1',
-        domain: 'feishu',
-        dmPolicy: 'open',
-        allowFrom: ['*'],
-        groupPolicy: 'allowlist',
-        groupAllowFrom: [],
-        groups: { '*': { requireMention: true } },
-        historyLimit: 50,
-        streaming: true,
-        replyMode: 'auto',
-        blockStreaming: false,
-        mediaMaxMb: 30,
-      }],
-      getQQInstances: () => [{
-        enabled: true,
-        appId: 'qq-app-id',
-        clientSecret: 'qq-secret',
-        instanceId: 'qq-instance-1',
-        instanceName: 'QQ Bot 1',
-        allowFrom: ['*'],
-        dmPolicy: 'open',
-        markdownSupport: true,
-      }],
+      getFeishuInstances: () => [
+        {
+          enabled: true,
+          appId: 'cli_feishu_app',
+          appSecret: 'secret',
+          instanceId: 'feishu-instance-1',
+          instanceName: 'Feishu Bot 1',
+          domain: 'feishu',
+          dmPolicy: 'open',
+          allowFrom: ['*'],
+          groupPolicy: 'allowlist',
+          groupAllowFrom: [],
+          groups: { '*': { requireMention: true } },
+          historyLimit: 50,
+          streaming: true,
+          replyMode: 'auto',
+          blockStreaming: false,
+          mediaMaxMb: 30,
+        },
+      ],
+      getQQInstances: () => [
+        {
+          enabled: true,
+          appId: 'qq-app-id',
+          clientSecret: 'qq-secret',
+          instanceId: 'qq-instance-1',
+          instanceName: 'QQ Bot 1',
+          allowFrom: ['*'],
+          dmPolicy: 'open',
+          markdownSupport: true,
+        },
+      ],
       getWecomConfig: () => null,
       getWecomInstances: () => [],
       getPopoInstances: () => [],
@@ -1916,14 +2103,21 @@ describe('OpenClawConfigSync runtime config output', () => {
   test('writes plugin entries using manifest ids and removes stale package ids', async () => {
     const { OpenClawConfigSync } = await import('./openclawConfigSync');
 
-    fs.writeFileSync(configPath, JSON.stringify({
-      plugins: {
-        entries: {
-          'clawemail-email': { enabled: true },
-          'openclaw-nim-channel': { enabled: true },
+    fs.writeFileSync(
+      configPath,
+      JSON.stringify(
+        {
+          plugins: {
+            entries: {
+              'clawemail-email': { enabled: true },
+              'openclaw-nim-channel': { enabled: true },
+            },
+          },
         },
-      },
-    }, null, 2));
+        null,
+        2,
+      ),
+    );
 
     const sync = new OpenClawConfigSync({
       engineManager: {
@@ -1954,24 +2148,28 @@ describe('OpenClawConfigSync runtime config output', () => {
       getWecomInstances: () => [],
       getPopoInstances: () => [],
       getEmailOpenClawConfig: () => ({
-        instances: [{
-          instanceId: 'email-work',
-          instanceName: 'Work Email',
-          enabled: true,
-          transport: 'ws',
-          email: 'user@example.com',
-          apiKey: 'ck_test',
-          agentId: 'main',
-        }],
+        instances: [
+          {
+            instanceId: 'email-work',
+            instanceName: 'Work Email',
+            enabled: true,
+            transport: 'ws',
+            email: 'user@example.com',
+            apiKey: 'ck_test',
+            agentId: 'main',
+          },
+        ],
       }),
-      getNimInstances: () => [{
-        instanceId: 'nim-work',
-        instanceName: 'NIM Work',
-        enabled: true,
-        appKey: 'nim-app-key',
-        account: 'nim-account',
-        token: 'nim-token',
-      }],
+      getNimInstances: () => [
+        {
+          instanceId: 'nim-work',
+          instanceName: 'NIM Work',
+          enabled: true,
+          appKey: 'nim-app-key',
+          account: 'nim-account',
+          token: 'nim-token',
+        },
+      ],
       getNeteaseBeeChanConfig: () => null,
       getWeixinConfig: () => null,
       getIMSettings: () => null,
@@ -2127,7 +2325,9 @@ describe('OpenClawConfigSync runtime config output', () => {
 
     const agentsMdPath = path.join(stateDir, 'workspace-main', 'AGENTS.md');
     const agentsMd = fs.readFileSync(agentsMdPath, 'utf8');
-    expect(agentsMd).toContain('宇智汇和 AI 助手 does not support sandbox browser execution in this version.');
+    expect(agentsMd).toContain(
+      '宇智汇和 AI 助手 does not support sandbox browser execution in this version.',
+    );
     expect(agentsMd).toContain('For every `browser` tool call, set `target="host"` explicitly.');
   });
 
@@ -2172,12 +2372,103 @@ describe('OpenClawConfigSync runtime config output', () => {
       'topics, copy, short-video scripts, private-domain messages, sales replies',
     );
     expect(agentsMd).toContain(
-      'search or reuse available memory, USER.md, MEMORY.md, saved positioning reports',
+      'Use available memory, USER.md, MEMORY.md, saved positioning reports, workspace knowledge, and recent run results before asking follow-up questions.',
     );
-    expect(agentsMd).toContain('do not draft with assumptions');
     expect(agentsMd).toContain(
-      'Ask for the missing domain, account positioning, audience, product/service, selling point, or conversion goal as plain text',
+      'For content generation, produce a conservative usable first draft when business evidence is sufficient.',
     );
+    expect(agentsMd).toContain(
+      'If essential business context is still missing, ask for the missing domain, audience, product/service, selling point, or conversion goal as plain text.',
+    );
+    expect(agentsMd).toContain(
+      'Do not expose internal diagnostics, paths, indexing commands, provider errors, or tool stack traces in final answers.',
+    );
+  });
+
+  test('writes local file delivery policy so rendered videos appear as artifacts', async () => {
+    const sync = await createSync();
+
+    const result = sync.sync('local-file-delivery-policy');
+    expect(result.ok).toBe(true);
+
+    const agentsMdPath = path.join(stateDir, 'workspace-main', 'AGENTS.md');
+    const agentsMd = fs.readFileSync(agentsMdPath, 'utf8');
+    expect(agentsMd).toContain('## Local File Delivery');
+    expect(agentsMd).toContain(
+      'When you create or render a local output file for the user, confirm it exists and include a Markdown file link in the final response.',
+    );
+    expect(agentsMd).toContain('[视频文件](file:///absolute/path/to/video.mp4)');
+  });
+
+  test('keeps generated agent AGENTS.md under the OpenClaw injection budget', async () => {
+    const { OpenClawConfigSync } = await import('./openclawConfigSync');
+
+    const sync = new OpenClawConfigSync({
+      engineManager: {
+        getConfigPath: () => configPath,
+        getGatewayToken: () => 'gateway-token',
+        getStateDir: () => stateDir,
+        getBaseDir: () => tmpDir,
+      } as never,
+      getCoworkConfig: () => ({
+        workingDirectory: tmpDir,
+        systemPrompt: [
+          'You help marketing users create copy-ready answers.',
+          'Reuse available knowledge before asking follow-up questions.',
+        ].join('\n'),
+        executionMode: 'local',
+        agentEngine: 'openclaw',
+        memoryEnabled: true,
+        memoryImplicitUpdateEnabled: true,
+        memoryLlmJudgeEnabled: false,
+        memoryGuardLevel: 'balanced',
+        memoryUserMemoriesMaxItems: 100,
+        skipMissedJobs: false,
+      }),
+      getBrowserWebAccessConfig: () => ({}),
+      isEnterprise: () => false,
+      getPopoInstances: () => [],
+      getNeteaseBeeChanConfig: () => null,
+      getWeixinConfig: () => null,
+      getIMSettings: () => null,
+      getSkillsList: () => [],
+      getAgents: () => [
+        {
+          id: 'marketing-agent',
+          name: 'Marketing Agent',
+          enabled: true,
+          model: 'openai/gpt-test',
+          systemPrompt: 'Create concise marketing copy with concrete business context.',
+          identity: 'Marketing copy specialist',
+          skillIds: [],
+        },
+      ],
+    } as never);
+
+    const result = sync.sync('agents-md-budget');
+    expect(result.ok).toBe(true);
+
+    const mainAgentsMd = fs.readFileSync(
+      path.join(stateDir, 'workspace-main', 'AGENTS.md'),
+      'utf8',
+    );
+    const marketingAgentsMd = fs.readFileSync(
+      path.join(stateDir, 'workspace-marketing-agent', 'AGENTS.md'),
+      'utf8',
+    );
+    const requiredUniqueStrings = [
+      'Use available memory, USER.md, MEMORY.md, saved positioning reports, workspace knowledge, and recent run results before asking follow-up questions.',
+      'For content generation, produce a conservative usable first draft when business evidence is sufficient.',
+      'Do not expose internal diagnostics, paths, indexing commands, provider errors, or tool stack traces in final answers.',
+    ];
+
+    expect(mainAgentsMd.length).toBeLessThanOrEqual(20000);
+    expect(marketingAgentsMd.length).toBeLessThanOrEqual(20000);
+
+    for (const requiredString of requiredUniqueStrings) {
+      expect(countOccurrences(mainAgentsMd, requiredString)).toBe(1);
+      expect(countOccurrences(marketingAgentsMd, requiredString)).toBe(1);
+    }
   });
 
   test('enables managed OpenClaw tool loop detection', async () => {
@@ -2204,12 +2495,8 @@ describe('OpenClawConfigSync runtime config output', () => {
 
   test('writes browser and web fetch access settings', async () => {
     const { setSystemProxyEnabled } = await import('./systemProxy');
-    const {
-      BrowserNetworkMode,
-      BrowserProfileMode,
-      BrowserRuntimeProfile,
-      BrowserSnapshotMode,
-    } = await import('../../shared/browserWebAccess/constants');
+    const { BrowserNetworkMode, BrowserProfileMode, BrowserRuntimeProfile, BrowserSnapshotMode } =
+      await import('../../shared/browserWebAccess/constants');
     const { OpenClawConfigSync } = await import('./openclawConfigSync');
     setSystemProxyEnabled(true);
 
@@ -2267,18 +2554,25 @@ describe('OpenClawConfigSync runtime config output', () => {
       getAgents: () => [],
     } as never);
 
-    fs.writeFileSync(configPath, JSON.stringify({
-      gateway: { mode: 'local' },
-      tools: {
-        web: {
-          fetch: {
-            enabled: true,
-            useEnvProxy: true,
-            useTrustedEnvProxy: true,
+    fs.writeFileSync(
+      configPath,
+      JSON.stringify(
+        {
+          gateway: { mode: 'local' },
+          tools: {
+            web: {
+              fetch: {
+                enabled: true,
+                useEnvProxy: true,
+                useTrustedEnvProxy: true,
+              },
+            },
           },
         },
-      },
-    }, null, 2));
+        null,
+        2,
+      ),
+    );
 
     const result = sync.sync('browser-web-access');
     expect(result.ok).toBe(true);
@@ -2315,16 +2609,59 @@ describe('OpenClawConfigSync runtime config output', () => {
     expect(config.tools.web.fetch.useTrustedEnvProxy).toBeUndefined();
   });
 
+  test('defaults browser ssrf policy to private-network blocked', async () => {
+    const { OpenClawConfigSync } = await import('./openclawConfigSync');
+
+    const sync = new OpenClawConfigSync({
+      engineManager: {
+        getConfigPath: () => configPath,
+        getGatewayToken: () => 'gateway-token',
+        getStateDir: () => stateDir,
+        getBaseDir: () => tmpDir,
+      } as never,
+      getCoworkConfig: () => ({
+        workingDirectory: tmpDir,
+        systemPrompt: '',
+        executionMode: 'local',
+        agentEngine: 'openclaw',
+        memoryEnabled: false,
+        memoryImplicitUpdateEnabled: false,
+        memoryLlmJudgeEnabled: false,
+        memoryGuardLevel: 'balanced',
+        memoryUserMemoriesMaxItems: 100,
+        skipMissedJobs: false,
+      }),
+      getBrowserWebAccessConfig: () => ({}),
+      isEnterprise: () => false,
+      getPopoInstances: () => [],
+      getNeteaseBeeChanConfig: () => null,
+      getWeixinConfig: () => null,
+      getIMSettings: () => null,
+      getSkillsList: () => [],
+      getAgents: () => [],
+    } as never);
+
+    const result = sync.sync('browser-default-security');
+    expect(result.ok).toBe(true);
+
+    const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    expect(config.browser.ssrfPolicy).toMatchObject({
+      dangerouslyAllowPrivateNetwork: false,
+    });
+  });
+
   test('marks MCP server config changes as restart impact', async () => {
     const { OpenClawConfigImpact } = await import('./openclawConfigImpact');
     const sync = await createSync({
-      getResolvedMcpServers: () => [{
-        name: 'Tavily',
-        transportType: 'stdio',
-        command: 'node',
-        args: ['server.js'],
-        env: { TAVILY_API_KEY: '${LOBSTER_TAVILY_API_KEY}' },
-      }],
+      getResolvedMcpServers: () => [
+        {
+          name: 'Tavily',
+          transportType: 'stdio',
+          command: 'node',
+          args: ['server.js'],
+          env: { TAVILY_API_KEY: '${LOBSTER_TAVILY_API_KEY}' },
+        },
+      ],
     });
 
     const result = sync.sync('mcp-server-toggled');

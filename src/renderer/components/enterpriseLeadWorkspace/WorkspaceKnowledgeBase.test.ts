@@ -37,8 +37,10 @@ import {
   getEnterpriseLeadKnowledgeVectorIndexStatus,
   getEnterpriseLeadKnowledgeVectorIndexSummary,
   getEnterpriseLeadNewExtractedKnowledgeKeys,
+  ignoreEnterpriseLeadKnowledgeItemInProfile,
   isEnterpriseLeadDocumentProcessing,
   isEnterpriseLeadKnowledgeItemConfirmed,
+  isEnterpriseLeadKnowledgeItemIgnored,
   isEnterpriseLeadKnowledgeSectionShownInAiKnowledgeTable,
   removeEnterpriseLeadKnowledgeKeysFromProfile,
   shouldShowEnterpriseLeadKnowledgeSelectionToolbar,
@@ -112,6 +114,36 @@ describe('WorkspaceKnowledgeBase layout', () => {
     ]);
     expect(isEnterpriseLeadKnowledgeItemConfirmed(confirmedProfile, item)).toBe(true);
     expect(getEnterpriseLeadKnowledgePendingItemCount(confirmedProfile, [item])).toBe(0);
+  });
+
+  test('ignores an AI knowledge item and removes it from the maintained profile', () => {
+    const profile = {
+      companySummary: '',
+      productList: ['重型纸箱'],
+      productCapabilities: [],
+      targetCustomers: [],
+      applicationScenarios: [],
+      sellingPoints: [],
+      channelPreferences: [],
+      prohibitedClaims: [],
+      contactRules: [],
+      missingInfo: [],
+      confirmedKnowledgeKeys: ['productList:重型纸箱'],
+    };
+    const item = {
+      id: 'product-0',
+      kind: EnterpriseLeadKnowledgeItemKind.Product,
+      text: '重型纸箱',
+    };
+
+    const ignoredProfile = ignoreEnterpriseLeadKnowledgeItemInProfile(profile, item);
+
+    expect(ignoredProfile.productList).toEqual([]);
+    expect(ignoredProfile.confirmedKnowledgeKeys).toBeUndefined();
+    expect(ignoredProfile.ignoredKnowledgeKeys).toEqual([
+      getEnterpriseLeadKnowledgeConfirmationKey(item),
+    ]);
+    expect(isEnterpriseLeadKnowledgeItemIgnored(ignoredProfile, item)).toBe(true);
   });
 
   test('bulk confirms pending AI knowledge items while ignoring read-only source rows', () => {

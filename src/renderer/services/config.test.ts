@@ -1,6 +1,7 @@
 import { ProviderName } from '@shared/providers';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 
+import { BrowserNetworkMode } from '../../shared/browserWebAccess/constants';
 import { type AppConfig, CONFIG_KEYS, defaultConfig, ShortcutAction } from '../config';
 
 const makeLegacyConfigWithoutMiniMaxAddedModels = (): AppConfig => ({
@@ -12,7 +13,7 @@ const makeLegacyConfigWithoutMiniMaxAddedModels = (): AppConfig => ({
       enabled: true,
       apiKey: 'sk-minimax',
       models: defaultConfig.providers![ProviderName.Minimax].models?.filter(
-        model => model.id !== 'MiniMax-M3' && model.id !== 'MiniMax-M2.7'
+        model => model.id !== 'MiniMax-M3' && model.id !== 'MiniMax-M2.7',
       ),
     },
   },
@@ -67,8 +68,18 @@ const makeConfigWithCustomContextWindows = (): AppConfig => ({
       enabled: true,
       apiKey: 'sk-deepseek',
       models: [
-        { id: 'deepseek-v4-flash', name: 'DeepSeek V4 Flash', supportsImage: false, contextWindow: 256_000 },
-        { id: 'deepseek-v4-pro', name: 'DeepSeek V4 Pro', supportsImage: false, contextWindow: 384_000 },
+        {
+          id: 'deepseek-v4-flash',
+          name: 'DeepSeek V4 Flash',
+          supportsImage: false,
+          contextWindow: 256_000,
+        },
+        {
+          id: 'deepseek-v4-pro',
+          name: 'DeepSeek V4 Pro',
+          supportsImage: false,
+          contextWindow: 384_000,
+        },
       ],
     },
     [ProviderName.Xiaomi]: {
@@ -76,7 +87,12 @@ const makeConfigWithCustomContextWindows = (): AppConfig => ({
       enabled: true,
       apiKey: 'sk-xiaomi',
       models: [
-        { id: 'mimo-v2.5-pro', name: 'MiMo V2.5 Pro', supportsImage: false, contextWindow: 640_000 },
+        {
+          id: 'mimo-v2.5-pro',
+          name: 'MiMo V2.5 Pro',
+          supportsImage: false,
+          contextWindow: 640_000,
+        },
         { id: 'mimo-v2.5', name: 'MiMo V2.5', supportsImage: true, contextWindow: 768_000 },
       ],
     },
@@ -84,9 +100,7 @@ const makeConfigWithCustomContextWindows = (): AppConfig => ({
       ...defaultConfig.providers![ProviderName.Volcengine],
       enabled: true,
       apiKey: 'sk-volcengine',
-      models: [
-        { id: 'ark-code-latest', name: 'Auto', supportsImage: true },
-      ],
+      models: [{ id: 'ark-code-latest', name: 'Auto', supportsImage: true }],
     },
   },
 });
@@ -106,7 +120,7 @@ const makeConfigWithDeletedProviderModel = (
       enabled: true,
       apiKey: `sk-${providerName}`,
       models: defaultConfig.providers![providerName].models?.filter(
-        model => model.id !== deletedModelId
+        model => model.id !== deletedModelId,
       ),
     },
   },
@@ -210,14 +224,62 @@ describe('configService shortcut migrations', () => {
 
     await configService.init();
 
-    expect(configService.getConfig().shortcuts?.[ShortcutAction.PreviousAgent]).toBe('CommandOrControl+Alt+Left');
+    expect(configService.getConfig().shortcuts?.[ShortcutAction.PreviousAgent]).toBe(
+      'CommandOrControl+Alt+Left',
+    );
+  });
+});
+
+describe('configService browser web access migrations', () => {
+  test('migrates the legacy proxy-compatible browser default to strict mode', async () => {
+    const storedConfig: AppConfig = {
+      ...defaultConfig,
+      browserWebAccessMigrationVersion: undefined,
+      browserWebAccess: {
+        ...defaultConfig.browserWebAccess,
+        networkMode: BrowserNetworkMode.ProxyCompatible,
+      },
+    };
+    const { configService, storeData, setItem } =
+      await loadConfigServiceWithStoredConfig(storedConfig);
+
+    await configService.init();
+
+    const savedConfig = storeData[CONFIG_KEYS.APP_CONFIG] as AppConfig;
+    expect(configService.getConfig().browserWebAccess.networkMode).toBe(BrowserNetworkMode.Strict);
+    expect(savedConfig.browserWebAccess.networkMode).toBe(BrowserNetworkMode.Strict);
+    expect(savedConfig.browserWebAccessMigrationVersion).toBe(1);
+    expect(setItem).toHaveBeenCalledWith(CONFIG_KEYS.APP_CONFIG, expect.any(Object));
+  });
+
+  test('preserves an explicit proxy-compatible opt-in after browser migration is applied', async () => {
+    const storedConfig: AppConfig = {
+      ...defaultConfig,
+      browserWebAccessMigrationVersion: 1,
+      browserWebAccess: {
+        ...defaultConfig.browserWebAccess,
+        networkMode: BrowserNetworkMode.Strict,
+      },
+    };
+    const { configService, storeData } = await loadConfigServiceWithStoredConfig(storedConfig);
+
+    await configService.updateConfig({
+      browserWebAccess: {
+        ...defaultConfig.browserWebAccess,
+        networkMode: BrowserNetworkMode.ProxyCompatible,
+      },
+    });
+
+    const savedConfig = storeData[CONFIG_KEYS.APP_CONFIG] as AppConfig;
+    expect(savedConfig.browserWebAccess.networkMode).toBe(BrowserNetworkMode.ProxyCompatible);
+    expect(savedConfig.browserWebAccessMigrationVersion).toBe(1);
   });
 });
 
 describe('configService provider migrations', () => {
   test('persists injected provider models during init', async () => {
     const { configService, storeData, setItem } = await loadConfigServiceWithStoredConfig(
-      makeLegacyConfigWithoutMiniMaxAddedModels()
+      makeLegacyConfigWithoutMiniMaxAddedModels(),
     );
 
     await configService.init();
@@ -243,7 +305,9 @@ describe('configService provider migrations', () => {
     });
 
     const savedConfig = storeData[CONFIG_KEYS.APP_CONFIG] as AppConfig;
-    expect(savedConfig.providers?.[ProviderName.Minimax].models?.map(model => model.id)).toContain('MiniMax-M3');
+    expect(savedConfig.providers?.[ProviderName.Minimax].models?.map(model => model.id)).toContain(
+      'MiniMax-M3',
+    );
     expect(savedConfig.model.defaultModel).toBe('MiniMax-M3');
     expect(savedConfig.model.defaultModelProvider).toBe(ProviderName.Minimax);
   });
@@ -262,8 +326,20 @@ describe('configService provider migrations', () => {
 
     const savedConfig = storeData[CONFIG_KEYS.APP_CONFIG] as AppConfig;
     expect(savedConfig.providers?.[ProviderName.DeepSeek].models).toEqual([
-      { id: 'deepseek-v4-flash', name: 'DeepSeek V4 Flash', supportsImage: false, supportsThinking: true, contextWindow: 1_000_000 },
-      { id: 'deepseek-v4-pro', name: 'DeepSeek V4 Pro', supportsImage: false, supportsThinking: true, contextWindow: 1_000_000 },
+      {
+        id: 'deepseek-v4-flash',
+        name: 'DeepSeek V4 Flash',
+        supportsImage: false,
+        supportsThinking: true,
+        contextWindow: 1_000_000,
+      },
+      {
+        id: 'deepseek-v4-pro',
+        name: 'DeepSeek V4 Pro',
+        supportsImage: false,
+        supportsThinking: true,
+        contextWindow: 1_000_000,
+      },
     ]);
   });
 
@@ -282,8 +358,20 @@ describe('configService provider migrations', () => {
 
     const savedConfig = storeData[CONFIG_KEYS.APP_CONFIG] as AppConfig;
     expect(savedConfig.providers?.[ProviderName.Xiaomi].models).toEqual([
-      { id: 'mimo-v2.5-pro', name: 'MiMo V2.5 Pro', supportsImage: false, supportsThinking: true, contextWindow: 1_000_000 },
-      { id: 'mimo-v2.5', name: 'MiMo V2.5', supportsImage: true, supportsThinking: true, contextWindow: 1_000_000 },
+      {
+        id: 'mimo-v2.5-pro',
+        name: 'MiMo V2.5 Pro',
+        supportsImage: false,
+        supportsThinking: true,
+        contextWindow: 1_000_000,
+      },
+      {
+        id: 'mimo-v2.5',
+        name: 'MiMo V2.5',
+        supportsImage: true,
+        supportsThinking: true,
+        contextWindow: 1_000_000,
+      },
       { id: 'mimo-v2-pro', name: 'MiMo V2 Pro', supportsImage: false, contextWindow: 128_000 },
       { id: 'mimo-v2-flash', name: 'MiMo V2 Flash', supportsImage: false, contextWindow: 64_000 },
     ]);
@@ -293,19 +381,44 @@ describe('configService provider migrations', () => {
 
   test('preserves user-configured context windows for known models', async () => {
     const { configService, storeData } = await loadConfigServiceWithStoredConfig(
-      makeConfigWithCustomContextWindows()
+      makeConfigWithCustomContextWindows(),
     );
 
     await configService.init();
 
     const savedConfig = storeData[CONFIG_KEYS.APP_CONFIG] as AppConfig;
-    expect(savedConfig.providers?.[ProviderName.Minimax].models?.find(model => model.id === 'MiniMax-M3')?.contextWindow).toBe(512_000);
-    expect(savedConfig.providers?.[ProviderName.Minimax].models?.find(model => model.id === 'MiniMax-M3')?.supportsThinking).toBe(true);
-    expect(savedConfig.providers?.[ProviderName.DeepSeek].models?.find(model => model.id === 'deepseek-v4-flash')?.contextWindow).toBe(256_000);
-    expect(savedConfig.providers?.[ProviderName.DeepSeek].models?.find(model => model.id === 'deepseek-v4-pro')?.contextWindow).toBe(384_000);
-    expect(savedConfig.providers?.[ProviderName.Xiaomi].models?.find(model => model.id === 'mimo-v2.5-pro')?.contextWindow).toBe(640_000);
-    expect(savedConfig.providers?.[ProviderName.Xiaomi].models?.find(model => model.id === 'mimo-v2.5')?.contextWindow).toBe(768_000);
-    expect(savedConfig.providers?.[ProviderName.Volcengine].models?.find(model => model.id === 'ark-code-latest')?.supportsThinking).toBe(true);
+    expect(
+      savedConfig.providers?.[ProviderName.Minimax].models?.find(model => model.id === 'MiniMax-M3')
+        ?.contextWindow,
+    ).toBe(512_000);
+    expect(
+      savedConfig.providers?.[ProviderName.Minimax].models?.find(model => model.id === 'MiniMax-M3')
+        ?.supportsThinking,
+    ).toBe(true);
+    expect(
+      savedConfig.providers?.[ProviderName.DeepSeek].models?.find(
+        model => model.id === 'deepseek-v4-flash',
+      )?.contextWindow,
+    ).toBe(256_000);
+    expect(
+      savedConfig.providers?.[ProviderName.DeepSeek].models?.find(
+        model => model.id === 'deepseek-v4-pro',
+      )?.contextWindow,
+    ).toBe(384_000);
+    expect(
+      savedConfig.providers?.[ProviderName.Xiaomi].models?.find(
+        model => model.id === 'mimo-v2.5-pro',
+      )?.contextWindow,
+    ).toBe(640_000);
+    expect(
+      savedConfig.providers?.[ProviderName.Xiaomi].models?.find(model => model.id === 'mimo-v2.5')
+        ?.contextWindow,
+    ).toBe(768_000);
+    expect(
+      savedConfig.providers?.[ProviderName.Volcengine].models?.find(
+        model => model.id === 'ark-code-latest',
+      )?.supportsThinking,
+    ).toBe(true);
   });
 
   test('preserves custom model thinking metadata and custom params', async () => {
@@ -353,14 +466,16 @@ describe('configService provider migrations', () => {
     'does not re-inject a deleted $providerName model after migration is applied',
     async ({ providerName, deletedModelId }) => {
       const { configService, storeData } = await loadConfigServiceWithStoredConfig(
-        makeConfigWithDeletedProviderModel(providerName, deletedModelId)
+        makeConfigWithDeletedProviderModel(providerName, deletedModelId),
       );
 
       await configService.init();
 
       const savedConfig = storeData[CONFIG_KEYS.APP_CONFIG] as AppConfig;
-      expect(savedConfig.providers?.[providerName].models?.map(model => model.id)).not.toContain(deletedModelId);
-    }
+      expect(savedConfig.providers?.[providerName].models?.map(model => model.id)).not.toContain(
+        deletedModelId,
+      );
+    },
   );
 
   test('treats a provider with any migrated model as already migrated', async () => {
@@ -375,7 +490,7 @@ describe('configService provider migrations', () => {
           enabled: true,
           apiKey: 'sk-qianfan',
           models: defaultConfig.providers![ProviderName.Qianfan].models?.filter(
-            model => model.id !== deletedModelId
+            model => model.id !== deletedModelId,
           ),
         },
       },
@@ -386,7 +501,9 @@ describe('configService provider migrations', () => {
 
     const savedConfig = storeData[CONFIG_KEYS.APP_CONFIG] as AppConfig;
     expect(savedConfig.providerModelMigrationVersions?.[ProviderName.Qianfan]).toBe(1);
-    expect(savedConfig.providers?.[ProviderName.Qianfan].models?.map(model => model.id)).not.toContain(deletedModelId);
+    expect(
+      savedConfig.providers?.[ProviderName.Qianfan].models?.map(model => model.id),
+    ).not.toContain(deletedModelId);
   });
 
   test('does not re-inject a deleted Xiaomi model after migration is applied', async () => {
@@ -403,7 +520,9 @@ describe('configService provider migrations', () => {
     });
 
     const savedConfig = storeData[CONFIG_KEYS.APP_CONFIG] as AppConfig;
-    expect(savedConfig.providers?.[ProviderName.Xiaomi].models?.map(model => model.id)).not.toContain(deletedModelId);
+    expect(
+      savedConfig.providers?.[ProviderName.Xiaomi].models?.map(model => model.id),
+    ).not.toContain(deletedModelId);
     expect(savedConfig.model.defaultModel).toBe('mimo-v2.5');
     expect(savedConfig.model.defaultModelProvider).toBe(ProviderName.Xiaomi);
   });
@@ -443,7 +562,7 @@ describe('configService provider migrations', () => {
         [ProviderName.Qianfan]: {
           ...defaultConfig.providers![ProviderName.Qianfan],
           models: defaultConfig.providers![ProviderName.Qianfan].models?.filter(
-            model => model.id !== deletedModelId
+            model => model.id !== deletedModelId,
           ),
         },
       },
@@ -451,6 +570,8 @@ describe('configService provider migrations', () => {
 
     const savedConfig = storeData[CONFIG_KEYS.APP_CONFIG] as AppConfig;
     expect(savedConfig.providerModelMigrationVersions?.[ProviderName.Qianfan]).toBe(1);
-    expect(savedConfig.providers?.[ProviderName.Qianfan].models?.map(model => model.id)).not.toContain(deletedModelId);
+    expect(
+      savedConfig.providers?.[ProviderName.Qianfan].models?.map(model => model.id),
+    ).not.toContain(deletedModelId);
   });
 });

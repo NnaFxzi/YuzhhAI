@@ -11,16 +11,18 @@ import {
 
 describe('browser web access constants', () => {
   test('normalizes hostname lists into browser URL entries', () => {
-    expect(normalizeBrowserHostnameList([
-      ' https://Example.com/docs ',
-      'example.com:443',
-      '*.Internal.local/path',
-      'localhost:123',
-      'youdao.com',
-      'https://api.baidu.com/path',
-      '',
-      'https://Example.com/other',
-    ])).toEqual([
+    expect(
+      normalizeBrowserHostnameList([
+        ' https://Example.com/docs ',
+        'example.com:443',
+        '*.Internal.local/path',
+        'localhost:123',
+        'youdao.com',
+        'https://api.baidu.com/path',
+        '',
+        'https://Example.com/other',
+      ]),
+    ).toEqual([
       'https://www.example.com',
       'https://www.example.com:443',
       '*.internal.local',
@@ -31,12 +33,14 @@ describe('browser web access constants', () => {
   });
 
   test('builds hostname policy lists from browser URL entries', () => {
-    expect(normalizeBrowserHostnamePolicyList([
-      'https://www.baidu.com',
-      'https://localhost:123',
-      '*.internal.local',
-      'https://api.baidu.com/path',
-    ])).toEqual(['www.baidu.com', 'localhost', '*.internal.local', 'api.baidu.com']);
+    expect(
+      normalizeBrowserHostnamePolicyList([
+        'https://www.baidu.com',
+        'https://localhost:123',
+        '*.internal.local',
+        'https://api.baidu.com/path',
+      ]),
+    ).toEqual(['www.baidu.com', 'localhost', '*.internal.local', 'api.baidu.com']);
   });
 
   test('accepts only HTTP and WebSocket CDP URLs', () => {
@@ -76,5 +80,11 @@ describe('browser web access constants', () => {
       timeoutSeconds: 30,
       readability: false,
     });
+  });
+
+  test('defaults browser network access to strict mode', () => {
+    const config = normalizeBrowserWebAccessConfig({});
+
+    expect(config.networkMode).toBe(BrowserNetworkMode.Strict);
   });
 });

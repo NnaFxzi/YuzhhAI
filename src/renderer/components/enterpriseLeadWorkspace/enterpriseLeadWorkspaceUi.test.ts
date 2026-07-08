@@ -1952,7 +1952,7 @@ describe('enterprise lead workspace UI helpers', () => {
     expect(markup).toContain('模型 / 技能');
     expect(markup).toContain('状态');
     expect(markup).toContain('操作');
-    expect(markup).toContain('系统 Agent 只作为内置模板');
+    expect(markup).not.toContain('系统 Agent 只作为内置模板');
     expect(markup).toContain('本空间自建');
     expect(markup).toContain('已启用');
     expect(markup).toContain('继承空间技能');
@@ -1973,7 +1973,7 @@ describe('enterprise lead workspace UI helpers', () => {
     expect(markup).not.toContain('DeepSeek');
   });
 
-  test('renders workspace Agent section without the capability and template summary panel', () => {
+  test('renders workspace Agent table without the secondary intro and filters', () => {
     const markup = renderWorkbench({
       workspace: createWorkspace(
         'workspace-1',
@@ -2002,8 +2002,13 @@ describe('enterprise lead workspace UI helpers', () => {
     });
 
     expect(markup).toContain('从模板添加');
-    expect(markup).toContain('本工作空间 Agent');
-    expect(markup).toContain('只在当前空间中执行和维护');
+    expect(markup).not.toContain('本工作空间 Agent');
+    expect(markup).not.toContain('只在当前空间中执行和维护');
+    expect(markup).not.toContain('系统 Agent 只作为内置模板');
+    expect(markup).not.toContain('对新的对话和新运行生效');
+    expect(markup).not.toContain('搜索 Agent 名称、职责或模型');
+    expect(markup).not.toContain('全部状态');
+    expect(markup).not.toContain('全部模型');
     expect(markup).not.toContain('空间能力检查');
     expect(markup).not.toContain('系统 Agent 模板');
     expect(markup).not.toContain('产品内置的只读模板');

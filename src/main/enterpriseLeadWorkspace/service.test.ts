@@ -307,6 +307,45 @@ describe('EnterpriseLeadWorkspaceService', () => {
     );
   });
 
+  test('does not merge document knowledge that the user has ignored', async () => {
+    const setup = createService();
+    db = setup.db;
+    const workspace = setup.service.createWorkspace(draftPayload());
+    setup.service.updateWorkspaceProfile(workspace.id, {
+      ...workspace.profile,
+      productList: [],
+      ignoredKnowledgeKeys: ['productList:精密金属支架'],
+    });
+    setup.modelClient.enqueue({
+      ...draftPayload(),
+      profile: {
+        ...draftPayload().profile,
+        productList: ['精密金属支架'],
+      },
+    });
+
+    setup.service.enqueueWorkspaceDocumentProcessing(
+      workspace.id,
+      [
+        {
+          kind: 'file',
+          label: '工厂资料',
+          fileName: 'factory.md',
+          text: '我们主营精密金属支架，服务自动化设备厂，卖点是来图定制。',
+        },
+      ],
+      0,
+    );
+    await setup.service.waitForDocumentProcessingIdle();
+
+    const processedWorkspace = setup.service.getWorkspace(workspace.id);
+    expect(processedWorkspace?.profile.productList).not.toContain('精密金属支架');
+    expect(processedWorkspace?.profile.ignoredKnowledgeKeys).toContain('productList:精密金属支架');
+    expect(processedWorkspace?.extractionSources[0]?.extractedKnowledgeKeys ?? []).not.toContain(
+      'productList:精密金属支架',
+    );
+  });
+
   test('clears stale workspace source vectors when documents are removed', () => {
     const setup = createService();
     db = setup.db;

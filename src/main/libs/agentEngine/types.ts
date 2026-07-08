@@ -1,10 +1,8 @@
 import type { OpenClawSessionPatch } from '../../../common/openclawSession';
 import type { CoworkImageAttachmentPayload } from '../../../shared/cowork/imageAttachments';
 import type { CoworkSelectedTextSnippet } from '../../../shared/cowork/selectedText';
-import type {
-  KitReference,
-  ResolvedKitCapabilities,
-} from '../../../shared/kit/constants';
+import type { CoworkWorkspaceAgentSelection } from '../../../shared/cowork/workspaceAgentSelection';
+import type { KitReference, ResolvedKitCapabilities } from '../../../shared/kit/constants';
 import type { CoworkMessage, CoworkSessionStatus } from '../../coworkStore';
 
 export type CoworkAgentEngine = 'openclaw';
@@ -34,7 +32,12 @@ export interface PermissionRequest {
 
 export interface CoworkRuntimeEvents {
   message: (sessionId: string, message: CoworkMessage, beforeMessageId?: string) => void;
-  messageUpdate: (sessionId: string, messageId: string, content: string, metadata?: Record<string, unknown>) => void;
+  messageUpdate: (
+    sessionId: string,
+    messageId: string,
+    content: string,
+    metadata?: Record<string, unknown>,
+  ) => void;
   sessionStatus: (sessionId: string, status: CoworkSessionStatus) => void;
   contextUsageUpdate: (sessionId: string, usage: CoworkContextUsage) => void;
   contextMaintenance: (sessionId: string, active: boolean) => void;
@@ -109,6 +112,7 @@ export type CoworkStartOptions = {
   mediaSelection?: CoworkMediaSelection;
   mediaReferences?: CoworkMediaAttachmentRef[];
   selectedTextSnippets?: CoworkSelectedTextSnippet[];
+  workspaceAgentSelection?: CoworkWorkspaceAgentSelection | null;
 };
 
 export type CoworkContinueOptions = {
@@ -122,23 +126,27 @@ export type CoworkContinueOptions = {
   mediaSelection?: CoworkMediaSelection;
   mediaReferences?: CoworkMediaAttachmentRef[];
   selectedTextSnippets?: CoworkSelectedTextSnippet[];
+  workspaceAgentSelection?: CoworkWorkspaceAgentSelection | null;
 };
 
 export interface CoworkRuntime {
-  on<U extends keyof CoworkRuntimeEvents>(
-    event: U,
-    listener: CoworkRuntimeEvents[U],
-  ): this;
-  off<U extends keyof CoworkRuntimeEvents>(
-    event: U,
-    listener: CoworkRuntimeEvents[U],
-  ): this;
+  on<U extends keyof CoworkRuntimeEvents>(event: U, listener: CoworkRuntimeEvents[U]): this;
+  off<U extends keyof CoworkRuntimeEvents>(event: U, listener: CoworkRuntimeEvents[U]): this;
   startSession(sessionId: string, prompt: string, options?: CoworkStartOptions): Promise<void>;
-  continueSession(sessionId: string, prompt: string, options?: CoworkContinueOptions): Promise<void>;
+  continueSession(
+    sessionId: string,
+    prompt: string,
+    options?: CoworkContinueOptions,
+  ): Promise<void>;
   patchSession?(sessionId: string, patch: OpenClawSessionPatch): Promise<void>;
   getContextUsage?(sessionId: string): Promise<CoworkContextUsage | null>;
-  compactContext?(sessionId: string): Promise<{ compacted: boolean; reason?: string; usage?: CoworkContextUsage | null }>;
-  getForkCompactionSummary?(sessionId: string, beforeCreatedAt?: number): Promise<CoworkForkCompactionSummary | null>;
+  compactContext?(
+    sessionId: string,
+  ): Promise<{ compacted: boolean; reason?: string; usage?: CoworkContextUsage | null }>;
+  getForkCompactionSummary?(
+    sessionId: string,
+    beforeCreatedAt?: number,
+  ): Promise<CoworkForkCompactionSummary | null>;
   stopSession(sessionId: string): void;
   stopAllSessions(): void;
   respondToPermission(requestId: string, result: PermissionResult): void;

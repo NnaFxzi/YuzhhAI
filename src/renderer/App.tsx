@@ -1,6 +1,6 @@
 import { ChatBubbleLeftRightIcon } from '@heroicons/react/24/outline';
-import React, { useCallback, useEffect, useMemo,useRef, useState } from 'react';
-import { useDispatch,useSelector } from 'react-redux';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useDispatch, useSelector } from 'react-redux';
 
 import {
   APP_UPDATE_HEARTBEAT_INTERVAL_MS,
@@ -50,7 +50,11 @@ import {
   selectCurrentSessionId,
   selectFirstPendingPermission,
 } from './store/selectors/coworkSelectors';
-import { setDraftCollaborationMode, setDraftKitIds, setDraftPrompt } from './store/slices/coworkSlice';
+import {
+  setDraftCollaborationMode,
+  setDraftKitIds,
+  setDraftPrompt,
+} from './store/slices/coworkSlice';
 import { setActiveKitIds } from './store/slices/kitSlice';
 import { setAvailableModels, setDefaultSelectedModel } from './store/slices/modelSlice';
 import { clearSelection } from './store/slices/quickActionSlice';
@@ -94,7 +98,9 @@ type MainView = 'cowork' | 'skills' | 'scheduledTasks' | 'enterpriseLeadWorkspac
 
 const App: React.FC = () => {
   const [showSettings, setShowSettings] = useState(false);
-  const [settingsOptions, setSettingsOptions] = useState<SettingsOpenOptions & { requestId: number }>({ requestId: 0 });
+  const [settingsOptions, setSettingsOptions] = useState<
+    SettingsOpenOptions & { requestId: number }
+  >({ requestId: 0 });
   const [mainView, setMainView] = useState<MainView>('enterpriseLeadWorkspace');
   const [isInitialized, setIsInitialized] = useState(false);
   const [initError, setInitError] = useState<string | null>(null);
@@ -139,18 +145,18 @@ const App: React.FC = () => {
         }, timeoutMs);
 
         promise.then(
-          (value) => {
+          value => {
             window.clearTimeout(timer);
             resolve(value);
           },
-          (error) => {
+          error => {
             window.clearTimeout(timer);
             reject(error);
-          }
+          },
         );
       });
     },
-    []
+    [],
   );
 
   // 初始化应用
@@ -166,7 +172,11 @@ const App: React.FC = () => {
         const elapsed = Math.round(performance.now() - t0);
         const msg = `initializeApp: ${label} (+${elapsed}ms)`;
         console.info(`[App] ${msg}`);
-        try { window.electron?.log?.fromRenderer?.('info', 'App', msg); } catch { /* preload may not expose this yet */ }
+        try {
+          window.electron?.log?.fromRenderer?.('info', 'App', msg);
+        } catch {
+          /* preload may not expose this yet */
+        }
       };
 
       try {
@@ -215,34 +225,52 @@ const App: React.FC = () => {
         };
         apiService.setConfig(apiConfig);
 
-        const providerModels: { id: string; name: string; provider?: string; providerKey?: string; openClawProviderId?: string; supportsImage?: boolean }[] = [];
+        const providerModels: {
+          id: string;
+          name: string;
+          provider?: string;
+          providerKey?: string;
+          openClawProviderId?: string;
+          supportsImage?: boolean;
+        }[] = [];
         if (config.providers) {
           Object.entries(config.providers).forEach(([providerName, providerConfig]) => {
             if (providerConfig.enabled && providerConfig.models) {
-              const openClawProviderId = ProviderRegistry.getOpenClawProviderIdForConfig(providerName, providerConfig);
-              if (providerName === ProviderName.Minimax && providerConfig.authType === ProviderAuthType.OAuth) {
+              const openClawProviderId = ProviderRegistry.getOpenClawProviderIdForConfig(
+                providerName,
+                providerConfig,
+              );
+              if (
+                providerName === ProviderName.Minimax &&
+                providerConfig.authType === ProviderAuthType.OAuth
+              ) {
                 mark('MiniMax OAuth provider resolved to OpenClaw minimax-portal');
               }
-              providerConfig.models.forEach((model: { id: string; name: string; supportsImage?: boolean }) => {
-                providerModels.push({
-                  id: model.id,
-                  name: model.name,
-                  provider: getProviderDisplayName(providerName, providerConfig),
-                  providerKey: providerName,
-                  openClawProviderId,
-                  supportsImage: model.supportsImage ?? false,
-                });
-              });
+              providerConfig.models.forEach(
+                (model: { id: string; name: string; supportsImage?: boolean }) => {
+                  providerModels.push({
+                    id: model.id,
+                    name: model.name,
+                    provider: getProviderDisplayName(providerName, providerConfig),
+                    providerKey: providerName,
+                    openClawProviderId,
+                    supportsImage: model.supportsImage ?? false,
+                  });
+                },
+              );
             }
           });
         }
         dispatch(setAvailableModels(providerModels));
         if (providerModels.length > 0) {
           const allModels = store.getState().model.availableModels;
-          const preferredModel = allModels.find(
-            model => model.id === config.model.defaultModel
-              && (!config.model.defaultModelProvider || model.providerKey === config.model.defaultModelProvider)
-          ) ?? allModels[0];
+          const preferredModel =
+            allModels.find(
+              model =>
+                model.id === config.model.defaultModel &&
+                (!config.model.defaultModelProvider ||
+                  model.providerKey === config.model.defaultModelProvider),
+            ) ?? allModels[0];
           dispatch(setDefaultSelectedModel(preferredModel));
         }
         mark('model resolution done');
@@ -262,16 +290,21 @@ const App: React.FC = () => {
           });
         }
 
-        void waitWithTimeout(scheduledTaskService.init(), 5000, 'scheduledTaskService.init').catch((error) => {
-          console.error('[App] initializeApp: scheduledTaskService.init failed:', error);
-        });
-
+        void waitWithTimeout(scheduledTaskService.init(), 5000, 'scheduledTaskService.init').catch(
+          error => {
+            console.error('[App] initializeApp: scheduledTaskService.init failed:', error);
+          },
+        );
       } catch (error) {
         const elapsed = Math.round(performance.now() - t0);
         const msg = error instanceof Error ? error.message : String(error);
         const detail = `initializeApp FAILED after ${elapsed}ms: ${msg}`;
         console.error(`[App] ${detail}`);
-        try { window.electron?.log?.fromRenderer?.('error', 'App', detail); } catch { /* best-effort */ }
+        try {
+          window.electron?.log?.fromRenderer?.('error', 'App', detail);
+        } catch {
+          /* best-effort */
+        }
         setInitError(i18nService.t('initializationError'));
         setIsInitialized(true);
       }
@@ -282,7 +315,7 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const unsubscribe = i18nService.subscribe(() => {
-      forceLanguageRefresh((prev) => prev + 1);
+      forceLanguageRefresh(prev => prev + 1);
     });
     return () => {
       unsubscribe();
@@ -332,8 +365,8 @@ const App: React.FC = () => {
     if (!isInitialized || !defaultSelectedModel?.id) return;
     const config = configService.getConfig();
     if (
-      config.model.defaultModel === defaultSelectedModel.id
-      && (config.model.defaultModelProvider ?? '') === (defaultSelectedModel.providerKey ?? '')
+      config.model.defaultModel === defaultSelectedModel.id &&
+      (config.model.defaultModelProvider ?? '') === (defaultSelectedModel.providerKey ?? '')
     ) {
       return;
     }
@@ -347,7 +380,7 @@ const App: React.FC = () => {
   }, [isInitialized, defaultSelectedModel?.id, defaultSelectedModel?.providerKey]);
 
   const handleShowSettings = useCallback((options?: SettingsOpenOptions) => {
-    setSettingsOptions((current) => ({
+    setSettingsOptions(current => ({
       initialTab: options?.initialTab,
       notice: options?.notice,
       noticeI18nKey: options?.noticeI18nKey,
@@ -382,25 +415,32 @@ const App: React.FC = () => {
     setMainView('kits');
   }, []);
 
-  const handleKitTryAsking = useCallback((text: string, kitId: string) => {
-    dispatch(setActiveKitIds([kitId]));
-    coworkService.clearSession({ restoreAgentSkills: true });
-    dispatch(clearSelection());
-    dispatch(setDraftCollaborationMode({
-      draftKey: '__home__',
-      mode: CoworkCollaborationMode.Default,
-    }));
-    // Set the draft prompt and kit selection in store BEFORE switching view, so that when
-    // CoworkPromptInput mounts/updates with draftKey='__home__', it picks up both.
-    dispatch(setDraftPrompt({ sessionId: '__home__', draft: text }));
-    dispatch(setDraftKitIds({ draftKey: '__home__', kitIds: [kitId] }));
-    setMainView('cowork');
-    window.setTimeout(() => {
-      window.dispatchEvent(new CustomEvent(CoworkUiEvent.FocusInput, {
-        detail: { resetCollaborationMode: true, text },
-      }));
-    }, 0);
-  }, [dispatch]);
+  const handleKitTryAsking = useCallback(
+    (text: string, kitId: string) => {
+      dispatch(setActiveKitIds([kitId]));
+      coworkService.clearSession({ restoreAgentSkills: true });
+      dispatch(clearSelection());
+      dispatch(
+        setDraftCollaborationMode({
+          draftKey: '__home__',
+          mode: CoworkCollaborationMode.Default,
+        }),
+      );
+      // Set the draft prompt and kit selection in store BEFORE switching view, so that when
+      // CoworkPromptInput mounts/updates with draftKey='__home__', it picks up both.
+      dispatch(setDraftPrompt({ sessionId: '__home__', draft: text }));
+      dispatch(setDraftKitIds({ draftKey: '__home__', kitIds: [kitId] }));
+      setMainView('cowork');
+      window.setTimeout(() => {
+        window.dispatchEvent(
+          new CustomEvent(CoworkUiEvent.FocusInput, {
+            detail: { resetCollaborationMode: true, text },
+          }),
+        );
+      }, 0);
+    },
+    [dispatch],
+  );
 
   const handlePrepareEnterpriseLeadCoworkChat = useCallback(
     (draft: string) => {
@@ -419,7 +459,7 @@ const App: React.FC = () => {
   );
 
   const handleToggleSidebar = useCallback(() => {
-    setIsSidebarCollapsed((prev) => !prev);
+    setIsSidebarCollapsed(prev => !prev);
   }, []);
 
   const handleNewChat = useCallback(() => {
@@ -427,15 +467,19 @@ const App: React.FC = () => {
     const shouldClearInput = mainView === 'cowork' && !currentSessionId;
     coworkService.clearSession({ restoreAgentSkills: true });
     dispatch(clearSelection());
-    dispatch(setDraftCollaborationMode({
-      draftKey: '__home__',
-      mode: CoworkCollaborationMode.Default,
-    }));
+    dispatch(
+      setDraftCollaborationMode({
+        draftKey: '__home__',
+        mode: CoworkCollaborationMode.Default,
+      }),
+    );
     setMainView('cowork');
     window.setTimeout(() => {
-      window.dispatchEvent(new CustomEvent(CoworkUiEvent.FocusInput, {
-        detail: { clear: shouldClearInput, resetCollaborationMode: true },
-      }));
+      window.dispatchEvent(
+        new CustomEvent(CoworkUiEvent.FocusInput, {
+          detail: { clear: shouldClearInput, resetCollaborationMode: true },
+        }),
+      );
     }, 0);
   }, [dispatch, mainView, currentSessionId]);
 
@@ -443,10 +487,12 @@ const App: React.FC = () => {
     dispatch(setDraftPrompt({ sessionId: '__home__', draft: i18nService.t('skillCreatorPrompt') }));
     coworkService.clearSession();
     dispatch(clearSelection());
-    dispatch(setDraftCollaborationMode({
-      draftKey: '__home__',
-      mode: CoworkCollaborationMode.Default,
-    }));
+    dispatch(
+      setDraftCollaborationMode({
+        draftKey: '__home__',
+        mode: CoworkCollaborationMode.Default,
+      }),
+    );
     setMainView('cowork');
   }, [dispatch]);
 
@@ -483,7 +529,7 @@ const App: React.FC = () => {
 
     void loadInitialUpdateState();
 
-    const unsubscribe = window.electron.appUpdate.onStateChanged((state) => {
+    const unsubscribe = window.electron.appUpdate.onStateChanged(state => {
       const previousStatus = previousUpdateStatusRef.current;
       previousUpdateStatusRef.current = state.status;
       setAppUpdateState(state);
@@ -491,7 +537,7 @@ const App: React.FC = () => {
       if (state.status === AppUpdateStatus.Ready && previousStatus !== AppUpdateStatus.Ready) {
         if (shouldInstallReadyUpdateRef.current && state.readyFilePath) {
           shouldInstallReadyUpdateRef.current = false;
-          void window.electron.appUpdate.installReady().then((installResult) => {
+          void window.electron.appUpdate.installReady().then(installResult => {
             if (!installResult.success) {
               showToast(installResult.error || i18nService.t('updateInstallFailed'));
             }
@@ -545,7 +591,10 @@ const App: React.FC = () => {
       return;
     }
 
-    if (appUpdateState.status === AppUpdateStatus.Error || appUpdateState.status === AppUpdateStatus.Available) {
+    if (
+      appUpdateState.status === AppUpdateStatus.Error ||
+      appUpdateState.status === AppUpdateStatus.Available
+    ) {
       if (!isManualDownloadUrl(updateInfo.url)) {
         shouldInstallReadyUpdateRef.current = appUpdateState.status === AppUpdateStatus.Available;
         const retryResult = await window.electron.appUpdate.retryDownload();
@@ -611,10 +660,13 @@ const App: React.FC = () => {
     handleShowSettings({ initialTab: 'model' });
   }, [handleShowSettings]);
 
-  const handlePermissionResponse = useCallback(async (result: CoworkPermissionResult) => {
-    if (!pendingPermission) return;
-    await coworkService.respondToPermission(pendingPermission.requestId, result);
-  }, [pendingPermission]);
+  const handlePermissionResponse = useCallback(
+    async (result: CoworkPermissionResult) => {
+      if (!pendingPermission) return;
+      await coworkService.respondToPermission(pendingPermission.requestId, result);
+    },
+    [pendingPermission],
+  );
 
   const handleCloseSettings = () => {
     setShowSettings(false);
@@ -625,20 +677,32 @@ const App: React.FC = () => {
     });
 
     if (config.providers) {
-      const allModels: { id: string; name: string; provider?: string; providerKey?: string; openClawProviderId?: string; supportsImage?: boolean }[] = [];
+      const allModels: {
+        id: string;
+        name: string;
+        provider?: string;
+        providerKey?: string;
+        openClawProviderId?: string;
+        supportsImage?: boolean;
+      }[] = [];
       Object.entries(config.providers).forEach(([providerName, providerConfig]) => {
         if (providerConfig.enabled && providerConfig.models) {
-          const openClawProviderId = ProviderRegistry.getOpenClawProviderIdForConfig(providerName, providerConfig);
-          providerConfig.models.forEach((model: { id: string; name: string; supportsImage?: boolean }) => {
-            allModels.push({
-              id: model.id,
-              name: model.name,
-              provider: getProviderDisplayName(providerName, providerConfig),
-              providerKey: providerName,
-              openClawProviderId,
-              supportsImage: model.supportsImage ?? false,
-            });
-          });
+          const openClawProviderId = ProviderRegistry.getOpenClawProviderIdForConfig(
+            providerName,
+            providerConfig,
+          );
+          providerConfig.models.forEach(
+            (model: { id: string; name: string; supportsImage?: boolean }) => {
+              allModels.push({
+                id: model.id,
+                name: model.name,
+                provider: getProviderDisplayName(providerName, providerConfig),
+                providerKey: providerName,
+                openClawProviderId,
+                supportsImage: model.supportsImage ?? false,
+              });
+            },
+          );
         }
       });
       dispatch(setAvailableModels(allModels));
@@ -670,7 +734,8 @@ const App: React.FC = () => {
         ...(shortcuts ?? {}),
       };
 
-      const matchesAction = (action: ShortcutAction) => matchesShortcut(event, activeShortcuts[action]);
+      const matchesAction = (action: ShortcutAction) =>
+        matchesShortcut(event, activeShortcuts[action]);
 
       if (showSettings) {
         if (matchesAction(ShortcutAction.ShowShortcuts)) {
@@ -706,7 +771,9 @@ const App: React.FC = () => {
         return;
       }
 
-      const settingsTabShortcut = SETTINGS_TAB_SHORTCUT_ACTIONS.find(({ action }) => matchesAction(action));
+      const settingsTabShortcut = SETTINGS_TAB_SHORTCUT_ACTIONS.find(({ action }) =>
+        matchesAction(action),
+      );
       if (settingsTabShortcut) {
         event.preventDefault();
         handleShowSettings({ initialTab: settingsTabShortcut.initialTab });
@@ -717,9 +784,11 @@ const App: React.FC = () => {
         event.preventDefault();
         setMainView('cowork');
         window.setTimeout(() => {
-          window.dispatchEvent(new CustomEvent(CoworkUiEvent.FocusInput, {
-            detail: { clear: false },
-          }));
+          window.dispatchEvent(
+            new CustomEvent(CoworkUiEvent.FocusInput, {
+              detail: { clear: false },
+            }),
+          );
         }, 0);
         return;
       }
@@ -753,9 +822,11 @@ const App: React.FC = () => {
         event.preventDefault();
         setMainView('cowork');
         setIsSidebarCollapsed(false);
-        window.dispatchEvent(new CustomEvent(CoworkUiEvent.ShortcutSwitchAgent, {
-          detail: { direction: CoworkShortcutDirection.Previous },
-        }));
+        window.dispatchEvent(
+          new CustomEvent(CoworkUiEvent.ShortcutSwitchAgent, {
+            detail: { direction: CoworkShortcutDirection.Previous },
+          }),
+        );
         return;
       }
 
@@ -763,9 +834,11 @@ const App: React.FC = () => {
         event.preventDefault();
         setMainView('cowork');
         setIsSidebarCollapsed(false);
-        window.dispatchEvent(new CustomEvent(CoworkUiEvent.ShortcutSwitchAgent, {
-          detail: { direction: CoworkShortcutDirection.Next },
-        }));
+        window.dispatchEvent(
+          new CustomEvent(CoworkUiEvent.ShortcutSwitchAgent, {
+            detail: { direction: CoworkShortcutDirection.Next },
+          }),
+        );
         return;
       }
 
@@ -777,14 +850,18 @@ const App: React.FC = () => {
         return;
       }
 
-      const taskSlotIndex = AGENT_TASK_SLOT_SHORTCUT_ACTIONS.findIndex(action => matchesAction(action));
+      const taskSlotIndex = AGENT_TASK_SLOT_SHORTCUT_ACTIONS.findIndex(action =>
+        matchesAction(action),
+      );
       if (taskSlotIndex >= 0) {
         event.preventDefault();
         setMainView('cowork');
         setIsSidebarCollapsed(false);
-        window.dispatchEvent(new CustomEvent(CoworkUiEvent.ShortcutOpenAgentTaskSlot, {
-          detail: { slot: taskSlotIndex + 1 },
-        }));
+        window.dispatchEvent(
+          new CustomEvent(CoworkUiEvent.ShortcutOpenAgentTaskSlot, {
+            detail: { slot: taskSlotIndex + 1 },
+          }),
+        );
         return;
       }
 
@@ -920,7 +997,9 @@ const App: React.FC = () => {
       const now = Date.now();
       if (lastCheckTime > 0 && now - lastCheckTime < APP_UPDATE_POLL_INTERVAL_MS) return;
       lastCheckTime = now;
-      console.log(`[App] auto update check triggered, reason=${reason}, at=${new Date(now).toISOString()}`);
+      console.log(
+        `[App] auto update check triggered, reason=${reason}, at=${new Date(now).toISOString()}`,
+      );
       await runUpdateCheck();
     };
 
@@ -969,10 +1048,7 @@ const App: React.FC = () => {
 
     // 其他情况使用原有的权限模态框
     return (
-      <CoworkPermissionModal
-        permission={pendingPermission}
-        onRespond={handlePermissionResponse}
-      />
+      <CoworkPermissionModal permission={pendingPermission} onRespond={handlePermissionResponse} />
     );
   }, [pendingPermission, handlePermissionResponse]);
 
@@ -1144,7 +1220,6 @@ const App: React.FC = () => {
                   privacyAgreed === true && !showWelcome ? handleShowSettings : undefined
                 }
                 onShowSkills={handleShowSkills}
-                onShowKits={handleShowKits}
                 isSidebarCollapsed={viewSidebarCollapsed}
                 onToggleSidebar={handleToggleSidebar}
                 onNewChat={handleNewChat}

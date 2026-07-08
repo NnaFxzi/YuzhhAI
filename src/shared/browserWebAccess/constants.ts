@@ -100,7 +100,7 @@ export interface BrowserDiagnosticResult {
 export const defaultBrowserWebAccessConfig: BrowserWebAccessConfig = {
   browserEnabled: true,
   profileMode: BrowserProfileMode.Managed,
-  networkMode: BrowserNetworkMode.ProxyCompatible,
+  networkMode: BrowserNetworkMode.Strict,
   followGlobalProxy: true,
   allowedHostnames: [],
   blockedHostnames: [],

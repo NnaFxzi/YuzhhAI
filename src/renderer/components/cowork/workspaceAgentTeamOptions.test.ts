@@ -8,7 +8,10 @@ import type {
   EnterpriseLeadWorkspace,
   EnterpriseLeadWorkspaceAgentBinding,
 } from '../../../shared/enterpriseLeadWorkspace/types';
-import { deriveWorkspaceAgentTeamChoices } from './workspaceAgentTeamOptions';
+import {
+  deriveWorkspaceAgentTeamChoices,
+  resolveWorkspaceSelectionForCoworkKnowledge,
+} from './workspaceAgentTeamOptions';
 
 const binding = (
   agentId: string,
@@ -104,5 +107,28 @@ describe('deriveWorkspaceAgentTeamChoices', () => {
     expect(result.shouldShow).toBe(false);
     expect(result.selection).toBeNull();
     expect(result.choices).toEqual([]);
+  });
+});
+
+describe('resolveWorkspaceSelectionForCoworkKnowledge', () => {
+  test('keeps the workspace boundary available when no agent selector is shown', () => {
+    expect(
+      resolveWorkspaceSelectionForCoworkKnowledge(
+        workspaceWithAgents([binding('disabled', 'Disabled Agent', 0, false)]),
+        null,
+      ),
+    ).toEqual({
+      workspaceId: 'workspace-1',
+      mode: CoworkWorkspaceAgentMode.Auto,
+    });
+  });
+
+  test('preserves a concrete workspace agent selection when available', () => {
+    expect(
+      resolveWorkspaceSelectionForCoworkKnowledge(
+        workspaceWithAgents([binding('risk_review', 'Risk Agent', 0)]),
+        manualSelection('risk_review'),
+      ),
+    ).toEqual(manualSelection('risk_review'));
   });
 });

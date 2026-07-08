@@ -28,7 +28,7 @@ import { coworkService } from '../../services/cowork';
 import { getPortalPricingUrl } from '../../services/endpoints';
 import { i18nService } from '../../services/i18n';
 import { LogReporterAction, LogReporterEntry, reportYdAnalyzer } from '../../services/logReporter';
-import { resolveLocalizedText, skillService } from '../../services/skill';
+import { skillService } from '../../services/skill';
 import { RootState } from '../../store';
 import { selectDraftPrompts } from '../../store/selectors/coworkSelectors';
 import {
@@ -53,7 +53,7 @@ import {
   setPlanConfirmationHandled,
   updateCurrentSessionModelOverride,
 } from '../../store/slices/coworkSlice';
-import { setActiveKitIds, toggleActiveKit } from '../../store/slices/kitSlice';
+import { setActiveKitIds } from '../../store/slices/kitSlice';
 import type { Model } from '../../store/slices/modelSlice';
 import { setActiveSkillIds, setSkills, toggleActiveSkill } from '../../store/slices/skillSlice';
 import { CoworkCollaborationMode, CoworkImageAttachment } from '../../types/cowork';
@@ -78,7 +78,7 @@ import PromptAddIcon from '../icons/PromptAddIcon';
 import SkillIcon from '../icons/SkillIcon';
 import TaskPauseIcon from '../icons/TaskPauseIcon';
 import XMarkIcon from '../icons/XMarkIcon';
-import { ActiveKitBadge, KitsButton } from '../kits';
+import { ActiveKitBadge } from '../kits';
 import ModelSelector, {
   ModelAccessPromptKind,
   ModelAccessPromptModal,
@@ -104,7 +104,6 @@ import {
   MediaMentionSegmentKind,
   resolveMediaMentionTrigger,
 } from './mediaMentionUtils';
-import MediaModelPicker from './MediaModelPicker';
 import { resolvePromptAgentSelectorState } from './promptAgentOptions';
 import {
   getAttachmentAnalyticsParams,
@@ -364,7 +363,6 @@ interface CoworkPromptInputProps {
   readOnlyContextTrailingText?: string;
   contextAgentId?: string;
   onManageSkills?: () => void;
-  onManageKits?: () => void;
   sessionId?: string;
   contextUsageControl?: React.ReactNode;
   workspaceAgentTeamState?: WorkspaceAgentTeamChoiceState;
@@ -391,7 +389,6 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
       showAgentSelector = false,
       showReadOnlyContext = false,
       onManageSkills,
-      onManageKits,
       sessionId,
       contextUsageControl,
       workspaceAgentTeamState,
@@ -1438,50 +1435,6 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
         onManageSkills();
       }
     }, [activeSkillIds.length, onManageSkills, reportPromptControl]);
-
-    const handleSelectKit = useCallback(
-      (kitId: string) => {
-        const willSelect = !activeKitIds.includes(kitId);
-        const marketplaceKit = marketplaceKits.find(kit => kit.id === kitId);
-        const installedKit = installedKits[kitId];
-        reportPromptControl('kit_toggle', {
-          kitId,
-          kitName: marketplaceKit
-            ? resolveLocalizedText(marketplaceKit.name)
-            : (installedKit?.id ?? kitId),
-          kitSource: marketplaceKit ? 'lobsterai-kits' : 'installed',
-          targetEnabled: willSelect,
-          isInstalled: !!installedKit,
-          skillCount: installedKit?.skills?.skillIds.length ?? marketplaceKit?.skills?.list.length,
-          mcpServerCount: installedKit?.mcpServers.length ?? marketplaceKit?.mcpServers?.length,
-          connectorCount: installedKit?.connectors.length ?? marketplaceKit?.connectors?.length,
-        });
-        dispatch(toggleActiveKit(kitId));
-        if (willSelect) {
-          void reportYdAnalyzer({
-            action: LogReporterAction.ExpertKitSelected,
-            kitId,
-            kitName: marketplaceKit ? resolveLocalizedText(marketplaceKit.name) : undefined,
-            kitSource: marketplaceKit ? 'lobsterai-kits' : 'installed',
-            isInstalled: !!installedKit,
-            skillCount:
-              installedKit?.skills?.skillIds.length ?? marketplaceKit?.skills?.list.length,
-            mcpServerCount: installedKit?.mcpServers.length ?? marketplaceKit?.mcpServers?.length,
-            connectorCount: installedKit?.connectors.length ?? marketplaceKit?.connectors?.length,
-          });
-        }
-      },
-      [activeKitIds, dispatch, installedKits, marketplaceKits, reportPromptControl],
-    );
-
-    const handleManageKits = useCallback(() => {
-      reportPromptControl('manage_kits_click', {
-        activeKitCount: activeKitIds.length,
-      });
-      if (onManageKits) {
-        onManageKits();
-      }
-    }, [activeKitIds.length, onManageKits, reportPromptControl]);
 
     const handleSelectAgent = useCallback(
       (agentId: string) => {
@@ -2583,19 +2536,8 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
       </div>
     ) : null;
 
-    const largeInputActions = !remoteManaged ? (
-      <div className="flex items-center gap-0.5">
-        {addMenuAction}
-        <KitsButton
-          onSelectKit={handleSelectKit}
-          onManageKits={handleManageKits}
-          onOpenChange={open => {
-            reportPromptControl(open ? 'kit_menu_open' : 'kit_menu_close', {
-              activeKitCount: activeKitIds.length,
-            });
-          }}
-        />
-      </div>
+    const largeInputToolActions = !remoteManaged ? (
+      <div className="flex items-center gap-0.5">{addMenuAction}</div>
     ) : null;
 
     const renderVoiceInputButton = (buttonClassName: string, iconClassName: string) => (
@@ -2617,12 +2559,6 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
       isVoiceRecording,
     });
 
-    const largeInputToolActions = (
-      <div className="flex items-center gap-0.5">
-        {largeInputActions}
-        <MediaModelPicker draftKey={draftKey} disabled={disabled || voiceInputLocksEditing} />
-      </div>
-    );
     const largeSendButtonSizeClass = useCompactSendButton ? 'h-7 w-7' : 'h-8 w-8';
     const largeSendIconSizeClass = useCompactSendButton ? 'h-4 w-4' : 'h-[18px] w-[18px]';
     const largeVoiceInputButton = !remoteManaged

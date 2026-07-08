@@ -1,8 +1,4 @@
-import {
-  ArrowDownIcon,
-  DocumentArrowDownIcon,
-  PhotoIcon,
-} from '@heroicons/react/24/outline';
+import { ArrowDownIcon, DocumentArrowDownIcon, PhotoIcon } from '@heroicons/react/24/outline';
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useDispatch, useSelector } from 'react-redux';
@@ -19,7 +15,20 @@ import {
   normalizeCoworkSelectedTextSnippets,
 } from '../../../shared/cowork/selectedText';
 import type { CoworkWorkspaceAgentSelection } from '../../../shared/cowork/workspaceAgentSelection';
-import { dedupeArtifactsForDisplay, normalizeFilePathForDedup, normalizeLocalServiceUrlForDedup, parseFileLinksFromMessage, parseFilePathsFromText, parseLocalServiceUrlsFromText, parseMediaTokensFromText, parseRemoteImageArtifactsFromText, parseToolArtifact, parseToolResultMediaArtifacts, shouldParseFilePathsFromToolResult, stripFileLinksFromText } from '../../services/artifactParser';
+import {
+  dedupeArtifactsForDisplay,
+  normalizeFilePathForDedup,
+  normalizeLocalServiceUrlForDedup,
+  parseFileLinksFromMessage,
+  parseFilePathsFromText,
+  parseLocalServiceUrlsFromText,
+  parseMediaTokensFromText,
+  parseRemoteImageArtifactsFromText,
+  parseToolArtifact,
+  parseToolResultMediaArtifacts,
+  shouldParseFilePathsFromToolResult,
+  stripFileLinksFromText,
+} from '../../services/artifactParser';
 import { coworkService } from '../../services/cowork';
 import { i18nService } from '../../services/i18n';
 import { RootState } from '../../store';
@@ -57,7 +66,11 @@ import { setActiveKitIds } from '../../store/slices/kitSlice';
 import { setActiveSkillIds } from '../../store/slices/skillSlice';
 import type { Artifact } from '../../types/artifact';
 import { ArtifactTypeValue, PREVIEWABLE_ARTIFACT_TYPES } from '../../types/artifact';
-import type { CoworkImageAttachment, CoworkMessage, CoworkMessageMetadata } from '../../types/cowork';
+import type {
+  CoworkImageAttachment,
+  CoworkMessage,
+  CoworkMessageMetadata,
+} from '../../types/cowork';
 import {
   CoworkCollaborationMode,
   type CoworkCollaborationMode as CoworkCollaborationModeType,
@@ -110,9 +123,9 @@ import {
 import UserMessageContent from './UserMessageContent';
 import UserMessageItem from './UserMessageItem';
 import type { WorkspaceAgentTeamChoiceState } from './workspaceAgentTeamOptions';
+
 interface CoworkSessionDetailProps {
   onManageSkills?: () => void;
-  onManageKits?: () => void;
   onContinue: (
     prompt: string,
     skillPrompt?: string,
@@ -230,22 +243,23 @@ type ExpandedConversationPreview = {
   items: ExpandedConversationPreviewItem[];
 };
 
-const stripRailLabelMarkdown = (value: string): string => value
-  .replace(MEDIA_TOKEN_DISPLAY_RE, ' ')
-  .replace(/^#+\s+/gm, '')
-  .replace(/```[\s\S]*?```/g, ' ')
-  .replace(/`[^`]*`/g, ' ')
-  .replace(/<\/?proposed_?plan\b[^>]*>/gi, ' ')
-  .replace(/<\/?proposed_?plan\b\s*/gi, ' ')
-  .replace(/[*_~>]/g, '')
-  .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
-  .replace(/\s+/g, ' ')
-  .trim()
-  .replace(
-    /^(?:#{1,6}\s*)?(?:Summary|Implementation Approach|Key Changes|Validation|Assumptions or Questions)(?:\s*[:：]|\s+|(?=为))\s*/i,
-    '',
-  )
-  .trim();
+const stripRailLabelMarkdown = (value: string): string =>
+  value
+    .replace(MEDIA_TOKEN_DISPLAY_RE, ' ')
+    .replace(/^#+\s+/gm, '')
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/`[^`]*`/g, ' ')
+    .replace(/<\/?proposed_?plan\b[^>]*>/gi, ' ')
+    .replace(/<\/?proposed_?plan\b\s*/gi, ' ')
+    .replace(/[*_~>]/g, '')
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(
+      /^(?:#{1,6}\s*)?(?:Summary|Implementation Approach|Key Changes|Validation|Assumptions or Questions)(?:\s*[:：]|\s+|(?=为))\s*/i,
+      '',
+    )
+    .trim();
 
 const getRailLabel = (content: string, fallback: string, maxLength = 50): string => {
   const proposedPlan = parseProposedPlanBlock(content);
@@ -256,11 +270,8 @@ const getRailLabel = (content: string, fallback: string, maxLength = 50): string
   return stripped.slice(0, maxLength) || fallback;
 };
 
-const isAssistantRailContentMessage = (message: CoworkMessage): boolean => (
-  message.type === 'assistant'
-  && !message.metadata?.isThinking
-  && Boolean(message.content)
-);
+const isAssistantRailContentMessage = (message: CoworkMessage): boolean =>
+  message.type === 'assistant' && !message.metadata?.isThinking && Boolean(message.content);
 
 const getAssistantRailMessageId = (turn: ConversationTurn): string | null => {
   for (const item of turn.assistantItems) {
@@ -296,9 +307,15 @@ const buildRailItems = (
       messageId: primaryMessageId,
       turnIndex: index,
       absoluteIndex: messageOffsetById.get(primaryMessageId) ?? items.length,
-      label: turn.userMessage ? getRailLabel(userContent, `Turn ${index + 1}`) : i18nService.t('cowork'),
+      label: turn.userMessage
+        ? getRailLabel(userContent, `Turn ${index + 1}`)
+        : i18nService.t('cowork'),
       summary: assistantContent
-        ? getRailLabel(assistantContent, i18nService.t('cowork'), COWORK_RAIL_TOOLTIP_PREVIEW_MAX_LENGTH)
+        ? getRailLabel(
+            assistantContent,
+            i18nService.t('cowork'),
+            COWORK_RAIL_TOOLTIP_PREVIEW_MAX_LENGTH,
+          )
         : '',
       contentLen: userContent.length + assistantContent.length,
       isUser: false,
@@ -344,7 +361,8 @@ const buildRailItemsFromIndex = (
       const loadedAssistantTurnIndex = assistantItems
         .map(item => loadedTurnByMessageId.get(item.messageId))
         .find((turnIndex): turnIndex is number => turnIndex !== undefined);
-      const loadedTurnIndex = loadedTurnByMessageId.get(current.messageId) ?? loadedAssistantTurnIndex ?? -1;
+      const loadedTurnIndex =
+        loadedTurnByMessageId.get(current.messageId) ?? loadedAssistantTurnIndex ?? -1;
       items.push({
         key: [current.messageId, ...assistantItems.map(item => item.messageId)].join(':'),
         messageId: current.messageId,
@@ -352,7 +370,8 @@ const buildRailItemsFromIndex = (
         absoluteIndex: current.messageOffset,
         label: current.preview,
         summary: assistantItems.map(item => item.preview).join(' '),
-        contentLen: current.contentLen + assistantItems.reduce((acc, item) => acc + item.contentLen, 0),
+        contentLen:
+          current.contentLen + assistantItems.reduce((acc, item) => acc + item.contentLen, 0),
         isUser: false,
         isLoaded: loadedTurnIndex >= 0,
       });
@@ -378,16 +397,13 @@ const buildRailItemsFromIndex = (
   return items;
 };
 
-const buildPlaceholderRailItems = (
-  totalMessages: number,
-  localItems: RailItem[],
-): RailItem[] => {
+const buildPlaceholderRailItems = (totalMessages: number, localItems: RailItem[]): RailItem[] => {
   const count = Math.max(0, Math.floor(totalMessages));
   if (count <= localItems.length) return localItems;
   const estimatedTurnCount = Math.max(localItems.length, Math.ceil(count / 2));
 
   const localByRailIndex = new Map<number, RailItem>();
-  localItems.forEach((item) => {
+  localItems.forEach(item => {
     localByRailIndex.set(Math.floor(item.absoluteIndex / 2), item);
   });
 
@@ -426,10 +442,9 @@ const buildTurnToRailRange = (railItems: RailItem[]): { first: number; last: num
   return rangeMap;
 };
 
-const prefersReducedMotion = (): boolean => (
-  typeof window.matchMedia === 'function'
-    && window.matchMedia('(prefers-reduced-motion: reduce)').matches
-);
+const prefersReducedMotion = (): boolean =>
+  typeof window.matchMedia === 'function' &&
+  window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 const getRailNavigationDecision = (
   container: HTMLDivElement,
@@ -481,7 +496,9 @@ function truncateExpandedConversationPreviewText(value: string, maxLength: numbe
   return `${characters.slice(0, maxLength).join('')}...`;
 }
 
-function getExpandedConversationPreview(messages: CoworkMessage[]): ExpandedConversationPreview | null {
+function getExpandedConversationPreview(
+  messages: CoworkMessage[],
+): ExpandedConversationPreview | null {
   const items: ExpandedConversationPreviewItem[] = [];
 
   for (let index = messages.length - 1; index >= 0; index -= 1) {
@@ -489,9 +506,8 @@ function getExpandedConversationPreview(messages: CoworkMessage[]): ExpandedConv
     if (message.type !== 'user' && message.type !== 'assistant') continue;
     if (message.metadata?.isThinking) continue;
 
-    const content = message.type === 'user'
-      ? parseUserMessageForDisplay(message.content || '')
-      : message.content;
+    const content =
+      message.type === 'user' ? parseUserMessageForDisplay(message.content || '') : message.content;
     const text = normalizeExpandedConversationPreviewText(content);
     if (!text) continue;
 
@@ -499,7 +515,10 @@ function getExpandedConversationPreview(messages: CoworkMessage[]): ExpandedConv
       id: message.id,
       role: message.type,
       content,
-      summary: truncateExpandedConversationPreviewText(text, EXPANDED_CONVERSATION_PREVIEW_ITEM_MAX_LENGTH),
+      summary: truncateExpandedConversationPreviewText(
+        text,
+        EXPANDED_CONVERSATION_PREVIEW_ITEM_MAX_LENGTH,
+      ),
     });
 
     if (items.length >= EXPANDED_CONVERSATION_PREVIEW_ITEM_LIMIT) break;
@@ -534,7 +553,9 @@ function normalizeBrowserPreviewUrlForMatch(value: string): string {
 
 function isSameBrowserPreviewUrl(value: string, previewUrl: string): boolean {
   if (!value || !previewUrl) return false;
-  return normalizeBrowserPreviewUrlForMatch(value) === normalizeBrowserPreviewUrlForMatch(previewUrl);
+  return (
+    normalizeBrowserPreviewUrlForMatch(value) === normalizeBrowserPreviewUrlForMatch(previewUrl)
+  );
 }
 
 type SelectedAssistantTextRange = {
@@ -551,7 +572,9 @@ const SELECTED_TEXT_ERROR_I18N_KEYS: Record<CoworkSelectedTextValidationError, s
   duplicate: 'coworkSelectedTextDuplicate',
 };
 
-const extractBase64FromDataUrl = (dataUrl: string): { mimeType: string; base64Data: string } | null => {
+const extractBase64FromDataUrl = (
+  dataUrl: string,
+): { mimeType: string; base64Data: string } | null => {
   const match = /^data:(.+);base64,(.*)$/s.exec(dataUrl);
   if (!match) return null;
   return { mimeType: match[1], base64Data: match[2] };
@@ -582,8 +605,9 @@ const logRailNavigationDiagnostic = (message: string): void => {
 };
 
 const getSelectionAnchorRect = (range: Range): DOMRect => {
-  const lineRects = Array.from(range.getClientRects())
-    .filter(rect => rect.width > 0 && rect.height > 0);
+  const lineRects = Array.from(range.getClientRects()).filter(
+    rect => rect.width > 0 && rect.height > 0,
+  );
   return lineRects[0] ?? range.getBoundingClientRect();
 };
 
@@ -618,10 +642,7 @@ const getSelectedTextActionLeft = (rect: DOMRect, container: HTMLDivElement): nu
   );
 };
 
-const getSelectedTextActionTop = (
-  rect: DOMRect,
-  container: HTMLDivElement,
-): number => {
+const getSelectedTextActionTop = (rect: DOMRect, container: HTMLDivElement): number => {
   const containerRect = container.getBoundingClientRect();
   const rawTop = container.scrollTop + rect.top - containerRect.top - 42;
   const minTop = container.scrollTop + 8;
@@ -635,7 +656,7 @@ const MAX_EXPORT_CANVAS_HEIGHT = 32760;
 const MAX_EXPORT_SEGMENTS = 240;
 
 const waitForNextFrame = (): Promise<void> =>
-  new Promise((resolve) => {
+  new Promise(resolve => {
     window.requestAnimationFrame(() => resolve());
   });
 
@@ -663,7 +684,11 @@ const formatExportDate = (ts: number): string => {
 /** Draw a rounded-rectangle path (for card clipping / filling). */
 const roundRectPath = (
   ctx: CanvasRenderingContext2D,
-  x: number, y: number, w: number, h: number, r: number,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  r: number,
 ) => {
   ctx.beginPath();
   ctx.moveTo(x + r, y);
@@ -689,19 +714,20 @@ const composeExportCanvas = async (
 ): Promise<HTMLCanvasElement> => {
   const isDark = document.documentElement.classList.contains('dark');
   const dpr = window.devicePixelRatio || 1;
-  const fontStack = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif';
+  const fontStack =
+    '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif';
 
-  const contentW = contentCanvas.width;   // CSS px
-  const contentH = contentCanvas.height;  // CSS px
+  const contentW = contentCanvas.width; // CSS px
+  const contentH = contentCanvas.height; // CSS px
 
   // ── Layout constants (CSS px) ──
-  const outerPadX = 24;          // horizontal breathing room around card
-  const outerPadTop = 28;        // top breathing room
-  const outerPadBottom = 28;     // bottom breathing room
-  const cardRadius = 16;         // card corner radius
-  const cardInnerPadX = 28;      // text indent inside card
-  const headerHeight = 80;       // header area inside card
-  const footerHeight = 80;       // footer area inside card
+  const outerPadX = 24; // horizontal breathing room around card
+  const outerPadTop = 28; // top breathing room
+  const outerPadBottom = 28; // bottom breathing room
+  const cardRadius = 16; // card corner radius
+  const cardInnerPadX = 28; // text indent inside card
+  const headerHeight = 80; // header area inside card
+  const footerHeight = 80; // footer area inside card
   const dividerThick = 1;
   const logoCssSize = 34;
 
@@ -749,8 +775,8 @@ const composeExportCanvas = async (
   ctx.clip();
 
   // card-local origin helpers
-  const cx = outerPadX;           // card left
-  const cy = outerPadTop;         // card top
+  const cx = outerPadX; // card left
+  const cy = outerPadTop; // card top
 
   // ── Header ──
   const titleFontSize = 17;
@@ -774,7 +800,11 @@ const composeExportCanvas = async (
   // Date
   ctx.fillStyle = dateColor;
   ctx.font = `400 ${dateFontSize}px ${fontStack}`;
-  ctx.fillText(formatExportDate(createdAt), cx + cardInnerPadX, headerCenterY + titleFontSize / 2 + 3);
+  ctx.fillText(
+    formatExportDate(createdAt),
+    cx + cardInnerPadX,
+    headerCenterY + titleFontSize / 2 + 3,
+  );
 
   // ── Top divider ──
   ctx.fillStyle = dividerColor;
@@ -827,25 +857,48 @@ const composeExportCanvas = async (
 
   ctx.fillStyle = subtitleColor;
   ctx.font = `400 ${taglineFontSize}px ${fontStack}`;
-  ctx.fillText('7×24 小时帮你干活的全场景个人助理，由宇智汇和（东莞）科技有限公司开发', textX, footerCenterY + brandFontSize / 2 + 3);
+  ctx.fillText(
+    '7×24 小时帮你干活的全场景个人助理，由宇智汇和（东莞）科技有限公司开发',
+    textX,
+    footerCenterY + brandFontSize / 2 + 3,
+  );
 
   ctx.restore(); // card clip
 
   return final;
 };
 
-const ArtifactPanelIcon: React.FC<React.SVGProps<SVGSVGElement> & { open?: boolean }> = ({ open, ...props }) => {
+const ArtifactPanelIcon: React.FC<React.SVGProps<SVGSVGElement> & { open?: boolean }> = ({
+  open,
+  ...props
+}) => {
   const dividerX = open ? 10.5 : 12.5;
   return (
-    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" {...props}>
+    <svg
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.25"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      {...props}
+    >
       <rect x="1.5" y="2" width="13" height="12" rx="2" />
       <line x1={dividerX} y1="2" x2={dividerX} y2="14" />
     </svg>
   );
 };
 
-const PanelExpandIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
-  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" {...props}>
+const PanelExpandIcon: React.FC<React.SVGProps<SVGSVGElement>> = props => (
+  <svg
+    viewBox="0 0 16 16"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.5"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    {...props}
+  >
     <path d="M10 3h3v3" />
     <path d="M6 13H3v-3" />
     <path d="M9 7l4-4" />
@@ -853,8 +906,16 @@ const PanelExpandIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
   </svg>
 );
 
-const PanelRestoreIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
-  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" {...props}>
+const PanelRestoreIcon: React.FC<React.SVGProps<SVGSVGElement>> = props => (
+  <svg
+    viewBox="0 0 16 16"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.5"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    {...props}
+  >
     <path d="M13.25 2.75l-4 4" />
     <path d="M9.25 3.75v3h3" />
     <path d="M2.75 13.25l4-4" />
@@ -862,32 +923,70 @@ const PanelRestoreIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
   </svg>
 );
 
-const PromptInputCollapseIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
-  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" {...props}>
+const PromptInputCollapseIcon: React.FC<React.SVGProps<SVGSVGElement>> = props => (
+  <svg
+    viewBox="0 0 16 16"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.7"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    {...props}
+  >
     <path d="M4.5 6.25L8 9.75l3.5-3.5" />
   </svg>
 );
 
-const PromptInputExpandIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
-  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" {...props}>
+const PromptInputExpandIcon: React.FC<React.SVGProps<SVGSVGElement>> = props => (
+  <svg
+    viewBox="0 0 16 16"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.7"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    {...props}
+  >
     <path d="M4.5 9.75L8 6.25l3.5 3.5" />
   </svg>
 );
 
-const ArtifactTabCloseIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
-  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" {...props}>
+const ArtifactTabCloseIcon: React.FC<React.SVGProps<SVGSVGElement>> = props => (
+  <svg
+    viewBox="0 0 16 16"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.5"
+    strokeLinecap="round"
+    {...props}
+  >
     <path d="M4.5 4.5l7 7M11.5 4.5l-7 7" />
   </svg>
 );
 
-const ArtifactTabPlusIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
-  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" {...props}>
+const ArtifactTabPlusIcon: React.FC<React.SVGProps<SVGSVGElement>> = props => (
+  <svg
+    viewBox="0 0 16 16"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.5"
+    strokeLinecap="round"
+    {...props}
+  >
     <path d="M8 3.5v9M3.5 8h9" />
   </svg>
 );
 
-const ArtifactBrowserTabIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
-  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" {...props}>
+const ArtifactBrowserTabIcon: React.FC<React.SVGProps<SVGSVGElement>> = props => (
+  <svg
+    viewBox="0 0 16 16"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.25"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    {...props}
+  >
     <circle cx="8" cy="8" r="6" />
     <ellipse cx="8" cy="8" rx="2.5" ry="6" />
     <path d="M2 8h12" />
@@ -917,7 +1016,10 @@ class ArtifactPanelErrorBoundary extends React.Component<
             {this.state.error?.message}
           </pre>
           <button
-            onClick={() => { this.setState({ hasError: false, error: null }); this.props.onClose(); }}
+            onClick={() => {
+              this.setState({ hasError: false, error: null });
+              this.props.onClose();
+            }}
             className="px-3 py-1.5 text-xs rounded-lg bg-surface hover:bg-surface-hover text-foreground"
           >
             Close
@@ -930,10 +1032,10 @@ class ArtifactPanelErrorBoundary extends React.Component<
 }
 
 // Streaming activity bar shown between messages and input
-const StreamingActivityBar: React.FC<{ messages: CoworkMessage[]; isContextMaintenance?: boolean }> = ({
-  messages,
-  isContextMaintenance = false,
-}) => {
+const StreamingActivityBar: React.FC<{
+  messages: CoworkMessage[];
+  isContextMaintenance?: boolean;
+}> = ({ messages, isContextMaintenance = false }) => {
   const statusText = getStreamingActivityStatusText(messages, isContextMaintenance);
 
   return (
@@ -942,9 +1044,7 @@ const StreamingActivityBar: React.FC<{ messages: CoworkMessage[]; isContextMaint
         <div className="streaming-bar" />
         {statusText && (
           <div className="py-1">
-            <span className="text-xs text-secondary">
-              {statusText}
-            </span>
+            <span className="text-xs text-secondary">{statusText}</span>
           </div>
         )}
       </div>
@@ -974,9 +1074,8 @@ const stripFileProtocol = (value: string): string => {
 
 const hasScheme = (value: string): boolean => /^[a-z][a-z0-9+.-]*:/i.test(value);
 
-const isAbsolutePath = (value: string): boolean => (
-  value.startsWith('/') || /^[A-Za-z]:[\\/]/.test(value)
-);
+const isAbsolutePath = (value: string): boolean =>
+  value.startsWith('/') || /^[A-Za-z]:[\\/]/.test(value);
 
 const isRelativePath = (value: string): boolean => !isAbsolutePath(value) && !hasScheme(value);
 
@@ -1002,7 +1101,7 @@ const parseRootRelativePath = (value: string): string | null => {
 };
 
 const normalizeLocalPath = (
-  value: string
+  value: string,
 ): { path: string; isRelative: boolean; isAbsolute: boolean } | null => {
   const trimmed = value.trim();
   if (!trimmed) return null;
@@ -1037,7 +1136,6 @@ const EMPTY_PREVIEW_TABS: ArtifactPreviewTab[] = [];
 
 const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
   onManageSkills,
-  onManageKits,
   onContinue,
   onStop,
   isSidebarCollapsed,
@@ -4938,7 +5036,6 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
                 size={isArtifactPanelExpanded ? 'compact' : 'large'}
                 remoteManaged={remoteManaged}
                 onManageSkills={remoteManaged ? undefined : onManageSkills}
-                onManageKits={remoteManaged ? undefined : onManageKits}
                 showModelSelector={true}
                 showReadOnlyContext={!isArtifactPanelExpanded}
                 readOnlyContextTrailingText={

@@ -20,6 +20,14 @@ const { execFileSync } = require('child_process');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const {
+  OpenClawPatchCheckState,
+  assertOpenClawSourcePatchApplyAllowed,
+  assertOpenClawSourceResetAllowed,
+  isOpenClawPatchResetAllowed,
+  parseOpenClawPatchAffectedPaths,
+  resolveOpenClawPatchCheckState,
+} = require('./openclaw-patch-safety.cjs');
 
 const rootDir = path.resolve(__dirname, '..');
 const openclawSrc = process.argv[2]
@@ -134,6 +142,28 @@ const strongPatchValidators = {
       snippets: ['prompt-cache byte-identity', 'turn1AsCurrent', 'turn1AsHistorical'],
     },
   ],
+  'openclaw-plugin-skill-symlink-idempotent.patch': [
+    {
+      file: 'src/skills/loading/plugin-skills.ts',
+      snippets: [
+        'code === "EEXIST"',
+        'fs.realpathSync(linkPath) === fs.realpathSync(target)',
+        'activeLinkPaths.add(linkPath)',
+        'managedTargets.has(entry.name) && activeLinkPaths.has(path.join(pluginSkillsDir, entry.name))',
+        'isGeneratedPluginSkillEntry(existingEntry)',
+        'logger: log',
+      ],
+    },
+    {
+      file: 'src/skills/loading/plugin-skills.test.ts',
+      snippets: [
+        'keeps existing generated plugin skill symlinks that already point at the target',
+        'const target = path.join(skillParent, "browser-automation");',
+        'failed to create plugin skill symlink',
+        'testing.logger',
+      ],
+    },
+  ],
 };
 
 function collectMissingStrongPatchSnippets(patchFile) {
@@ -178,16 +208,40 @@ function assertStrongPatchApplied(patchFile) {
   process.exit(1);
 }
 
-// Reset openclaw source to a clean tag state before applying patches.
-// This removes stale patches left by a different LobsterAI branch that may have
-// applied different patches for the same openclaw version.
+let startedWithDirtyOpenClawSource = false;
+let initialOpenClawSourceStatus = '';
+const allowOpenClawSourceReset = isOpenClawPatchResetAllowed(process.env);
+
+// Do not discard sibling OpenClaw changes by default. A dirty tree may simply
+// mean these patches are already applied, so classify patches before refusing.
 try {
-  execFileSync('git', ['reset', 'HEAD', '.'], { cwd: openclawSrc, stdio: 'pipe' });
-  execFileSync('git', ['checkout', '.'], { cwd: openclawSrc, stdio: 'pipe' });
-  execFileSync('git', ['clean', '-fd'], { cwd: openclawSrc, stdio: 'pipe' });
-  console.log('[apply-openclaw-patches] Reset openclaw source to clean state before patching.');
+  initialOpenClawSourceStatus = execFileSync('git', ['status', '--porcelain'], {
+    cwd: openclawSrc,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  startedWithDirtyOpenClawSource = initialOpenClawSourceStatus.trim().length > 0;
+
+  if (allowOpenClawSourceReset && startedWithDirtyOpenClawSource) {
+    assertOpenClawSourceResetAllowed({
+      openclawSrc,
+      status: initialOpenClawSourceStatus,
+      allowReset: allowOpenClawSourceReset,
+    });
+    execFileSync('git', ['reset', 'HEAD', '.'], { cwd: openclawSrc, stdio: 'pipe' });
+    execFileSync('git', ['checkout', '.'], { cwd: openclawSrc, stdio: 'pipe' });
+    execFileSync('git', ['clean', '-fd'], { cwd: openclawSrc, stdio: 'pipe' });
+    console.log('[apply-openclaw-patches] Reset openclaw source to clean state before patching.');
+    startedWithDirtyOpenClawSource = false;
+    initialOpenClawSourceStatus = '';
+  } else if (startedWithDirtyOpenClawSource) {
+    console.log('[apply-openclaw-patches] OpenClaw source is dirty; will skip already-applied patches and refuse new patch application.');
+  } else {
+    console.log('[apply-openclaw-patches] OpenClaw source is clean; skipping destructive reset.');
+  }
 } catch (err) {
-  console.warn(`[apply-openclaw-patches] Warning: failed to reset openclaw source: ${err.message}`);
+  console.error(err instanceof Error ? err.message : String(err));
+  process.exit(1);
 }
 
 let applied = 0;
@@ -199,6 +253,7 @@ for (const patchFile of patchFiles) {
   // Normalize line endings: strip \r so that CRLF-checked-out patches don't
   // cause "corrupt patch" errors on Windows (git apply rejects \r in diffs).
   const raw = fs.readFileSync(originalPatchPath, 'utf8');
+  const patchAffectedPaths = parseOpenClawPatchAffectedPaths(raw);
   const needsNormalize = raw.includes('\r');
   let patchPath = originalPatchPath;
   if (needsNormalize) {
@@ -212,27 +267,20 @@ for (const patchFile of patchFiles) {
     // Strategy:
     //   1. Try `git apply --check --reverse` — if it succeeds the patch is applied.
     //   2. Try `git apply --check` (forward) — if it succeeds the patch is NOT applied.
-    //   3. If BOTH fail, the patch is partially/fully applied (e.g. new files already
-    //      exist and modified hunks already match).  Treat as already applied.
-    //
-    // This avoids fragile regex parsing of patch contents and works regardless of
-    // line-ending differences (CRLF vs LF).
+    //   3. If BOTH fail, only a strong validator may classify the patch as already
+    //      applied. Otherwise fail closed instead of guessing from git stderr.
 
     let reverseOk = false;
+    let reverseErr = null;
     try {
       execFileSync('git', ['apply', '--check', '--reverse', '--ignore-whitespace', patchPath], {
         cwd: openclawSrc,
         stdio: 'pipe',
       });
       reverseOk = true;
-    } catch {
+    } catch (err) {
+      reverseErr = err;
       // reverse check failed — patch may or may not be applied
-    }
-
-    if (reverseOk) {
-      console.log(`[apply-openclaw-patches] Already applied: ${patchFile}`);
-      skipped++;
-      continue;
     }
 
     // Try forward apply check.
@@ -246,33 +294,50 @@ for (const patchFile of patchFiles) {
       forwardErr = err;
     }
 
-    if (forwardErr) {
-      // Both reverse and forward checks failed.  This typically means the patch
-      // is already applied but git can't cleanly reverse it (e.g. new files are
-      // untracked, or the working tree has the changes but they aren't committed).
-      const stderr = forwardErr.stderr ? forwardErr.stderr.toString() : '';
-      const alreadyExists = stderr.includes('already exists in working directory');
-      const patchDoesNotApply = stderr.includes('patch does not apply');
+    const hasStrongValidator = Boolean(strongPatchValidators[patchFile]);
+    const strongValidatorPassed = hasStrongValidator && isStrongPatchApplied(patchFile);
 
-      if (alreadyExists || patchDoesNotApply) {
-        if (strongPatchValidators[patchFile] && !isStrongPatchApplied(patchFile)) {
-          console.error(`[apply-openclaw-patches] Patch check was ambiguous for ${patchFile}, but required source sentinels are missing.`);
-          assertStrongPatchApplied(patchFile);
-        }
-        console.log(`[apply-openclaw-patches] Already applied (forward check confirms): ${patchFile}`);
-        skipped++;
-        continue;
-      }
-
-      // Genuinely cannot apply — report error.
-      console.error(`[apply-openclaw-patches] Patch does not apply cleanly: ${patchFile}`);
-      console.error(`[apply-openclaw-patches] This usually means the openclaw version has changed.`);
-      console.error(`[apply-openclaw-patches] Regenerate patches or update to match the new source.`);
-      if (stderr) console.error(stderr);
+    let patchCheckState;
+    try {
+      patchCheckState = resolveOpenClawPatchCheckState({
+        patchFile,
+        reverseOk,
+        forwardOk: !forwardErr,
+        forwardCheckError: forwardErr?.stderr ? forwardErr.stderr.toString() : '',
+        hasStrongValidator,
+        strongValidatorPassed,
+      });
+    } catch (err) {
+      console.error(err instanceof Error ? err.message : String(err));
       process.exit(1);
     }
 
+    if (patchCheckState === OpenClawPatchCheckState.AlreadyApplied) {
+      if (reverseOk) {
+        console.log(`[apply-openclaw-patches] Already applied: ${patchFile}`);
+      } else if (hasStrongValidator) {
+        console.log(`[apply-openclaw-patches] Already applied (strong validation): ${patchFile}`);
+      } else {
+        const reverseStderr = reverseErr?.stderr ? reverseErr.stderr.toString() : '';
+        console.log(`[apply-openclaw-patches] Already applied: ${patchFile}`);
+        if (reverseStderr) {
+          console.debug(`[apply-openclaw-patches] Reverse check note for ${patchFile}:\n${reverseStderr}`);
+        }
+      }
+      skipped++;
+      continue;
+    }
+
     // Apply the patch.
+    if (startedWithDirtyOpenClawSource) {
+      assertOpenClawSourcePatchApplyAllowed({
+        openclawSrc,
+        status: initialOpenClawSourceStatus,
+        patchAffectedPaths,
+      });
+      console.log(`[apply-openclaw-patches] Dirty OpenClaw source has no path overlap with ${patchFile}; applying.`);
+    }
+
     try {
       execFileSync('git', ['apply', '--ignore-whitespace', patchPath], {
         cwd: openclawSrc,
@@ -289,7 +354,11 @@ for (const patchFile of patchFiles) {
   } finally {
     // Clean up temporary normalized patch file.
     if (needsNormalize && fs.existsSync(patchPath)) {
-      try { fs.unlinkSync(patchPath); } catch {}
+      try {
+        fs.unlinkSync(patchPath);
+      } catch {
+        // Best-effort cleanup only; the temp file lives under the OS temp dir.
+      }
     }
   }
 }
