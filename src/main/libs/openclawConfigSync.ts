@@ -361,6 +361,8 @@ const MANAGED_LOCAL_FILE_DELIVERY_PROMPT = [
   '- When you create or render a local output file for the user, confirm it exists and include a Markdown file link in the final response.',
   '- Use `file://` URLs with absolute paths so the app can show the file as an artifact.',
   '- For videos, use `[视频文件](file:///absolute/path/to/video.mp4)`; for other files, use `[文件名](file:///absolute/path/to/file.ext)`.',
+  '- Never state that a video is generated, complete, or ready unless the same final response contains a real local video file link or MEDIA token.',
+  '- If you do not know the final output path, locate it before replying.',
   '- Do not rely on command output, directory listings, or a heading like "Output file" without a link.',
   '- A user-requested output file path is allowed; internal diagnostics and unrelated paths are not.',
 ].join('\n');
@@ -1366,6 +1368,7 @@ type OpenClawConfigSyncDeps = {
   getIndustryPositioningCallbackUrl?: () => string | null;
   getMcpBridgeSecret?: () => string;
   getSkillsList?: () => Array<{ id: string; enabled: boolean }>;
+  getConfiguredSkillEnvVars?: () => Record<string, string>;
   getAgents?: () => Agent[];
   getUserPlugins?: () => Array<{
     pluginId: string;
@@ -1401,6 +1404,7 @@ export class OpenClawConfigSync {
   private readonly getIndustryPositioningCallbackUrl?: () => string | null;
   private readonly getMcpBridgeSecret?: () => string;
   private readonly getSkillsList?: () => Array<{ id: string; enabled: boolean }>;
+  private readonly getConfiguredSkillEnvVars: () => Record<string, string>;
   private readonly getAgents?: () => Agent[];
   private readonly getUserPlugins: () => Array<{
     pluginId: string;
@@ -1436,6 +1440,7 @@ export class OpenClawConfigSync {
     this.getIndustryPositioningCallbackUrl = deps.getIndustryPositioningCallbackUrl;
     this.getMcpBridgeSecret = deps.getMcpBridgeSecret;
     this.getSkillsList = deps.getSkillsList;
+    this.getConfiguredSkillEnvVars = deps.getConfiguredSkillEnvVars ?? (() => ({}));
     this.getAgents = deps.getAgents;
     this.getUserPlugins = deps.getUserPlugins ?? (() => []);
     this.canUseMediaGeneration = deps.canUseMediaGeneration ?? (() => false);
@@ -2727,6 +2732,13 @@ export class OpenClawConfigSync {
     // ${LOBSTER_MCP_BRIDGE_SECRET} placeholder doesn't crash the gateway.
     // Used by the ask-user-question plugin.
     env.LOBSTER_MCP_BRIDGE_SECRET = this.getMcpBridgeSecret?.() || 'unconfigured';
+
+    for (const [key, value] of Object.entries(this.getConfiguredSkillEnvVars())) {
+      const trimmedKey = key.trim();
+      const trimmedValue = value.trim();
+      if (!trimmedKey || !trimmedValue || trimmedKey in env) continue;
+      env[trimmedKey] = trimmedValue;
+    }
 
     // Telegram — per-instance secrets (must match sync() indexing: enabled instances only)
     const tgInstances = this.getTelegramInstances();

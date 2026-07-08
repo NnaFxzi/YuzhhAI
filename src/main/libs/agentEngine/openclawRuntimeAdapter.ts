@@ -1711,6 +1711,56 @@ const buildMediaGenerationTurnInstruction = (
   return lines.join('\n');
 };
 
+const VIDEO_HANDOFF_ASSISTANT_RE =
+  /(?:是否需要继续生成视频|直接进入视频制作|要不要我现在直接进入视频制作|可以调用视频生成工具|画面比例)/i;
+const VIDEO_CONTINUATION_REPLY_RE =
+  /^(?:可以|可|好|好的|是|是的|要|需要|继续|直接做|直接生成|生成视频|做视频|开始制作|现在做|跑视频|确认|行|嗯)$/i;
+const VIDEO_ASPECT_REPLY_RE =
+  /(?:抖音|快手|douyin|tiktok|竖屏|横屏|9\s*[:：]\s*16|16\s*[:：]\s*9|比例|比列)/i;
+const VIDEO_CONTINUATION_NEGATIVE_RE = /(?:不需要|不用|不要|先不|暂不|只要提示词|只要分镜)/i;
+
+const normalizeVideoContinuationReply = (prompt: string): string =>
+  prompt
+    .trim()
+    .replace(/[。.!！?？\s]/g, '')
+    .toLowerCase();
+
+const isVideoContinuationReply = (prompt: string): boolean => {
+  const trimmed = prompt.trim();
+  if (!trimmed || VIDEO_CONTINUATION_NEGATIVE_RE.test(trimmed)) return false;
+  const normalized = normalizeVideoContinuationReply(trimmed);
+  return VIDEO_CONTINUATION_REPLY_RE.test(normalized) || VIDEO_ASPECT_REPLY_RE.test(trimmed);
+};
+
+const hasRecentVideoHandoff = (session: CoworkSession | null | undefined): boolean => {
+  const messages = session?.messages;
+  if (!messages?.length) return false;
+
+  return messages
+    .slice(-8)
+    .some(
+      message => message.type === 'assistant' && VIDEO_HANDOFF_ASSISTANT_RE.test(message.content),
+    );
+};
+
+const buildVideoProductionContinuationBridge = (
+  session: CoworkSession | null | undefined,
+  prompt: string,
+): string => {
+  if (!hasRecentVideoHandoff(session) || !isVideoContinuationReply(prompt)) return '';
+
+  return [
+    '[Video production continuation contract]',
+    '- A recent assistant turn offered to continue generating a video, and the current user reply confirms or supplies video parameters.',
+    '- Treat the current user reply as a request to produce the video now, not as a request for another prompt-only draft.',
+    '- Default short-video aspect ratio to 9:16 vertical for Douyin/TikTok/Kuaishou unless the user explicitly asks otherwise.',
+    '- If cloud media generation is unavailable, not enabled, has no model, lacks quota, or fails, immediately use a local Remotion workflow: create or update runnable Remotion files, render an mp4, verify it exists, and reply with `[视频文件](file:///absolute/path/to/video.mp4)`.',
+    '- Do not say the video is generated, complete, or ready without a real local video file link or MEDIA token in the same final response.',
+    '- If you do not know the final mp4 path, locate it before replying; if there is no deliverable mp4, report that generation did not produce a video file.',
+    '- Do not stop after only listing video models, writing a prompt, or asking for logo/product photos. Use placeholders when assets are missing.',
+  ].join('\n');
+};
+
 const MediaReferenceTypeLabel = {
   Image: 'image',
   Video: 'video',
@@ -9714,6 +9764,10 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
       agentId,
       sessionId,
     );
+    const videoProductionContinuationBridge = buildVideoProductionContinuationBridge(
+      session,
+      prompt,
+    );
 
     if (this.bridgedSessions.has(sessionId)) {
       if (continuityCapsuleBridge) {
@@ -9733,6 +9787,9 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
       }
       if (knowledgeFileContextBridge) {
         sections.push(knowledgeFileContextBridge);
+      }
+      if (videoProductionContinuationBridge) {
+        sections.push(videoProductionContinuationBridge);
       }
       sections.push(
         buildAiDialogueReplyContract({
@@ -9813,6 +9870,9 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
     }
     if (knowledgeFileContextBridge) {
       sections.push(knowledgeFileContextBridge);
+    }
+    if (videoProductionContinuationBridge) {
+      sections.push(videoProductionContinuationBridge);
     }
     if (prompt.trim()) {
       sections.push(`[Current user request]\n${prompt}`);

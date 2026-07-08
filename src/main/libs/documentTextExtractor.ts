@@ -4,11 +4,17 @@ import path from 'node:path';
 import JSZip from 'jszip';
 import * as XLSX from 'xlsx';
 
+import {
+  EnterpriseLeadPlainTextDocumentExtensions,
+  EnterpriseLeadReadableDocumentExtension,
+  EnterpriseLeadReadableDocumentExtensions,
+} from '../../shared/enterpriseLeadWorkspace/constants';
+
 export const MAX_DOCUMENT_TEXT_READ_BYTES = 2 * 1024 * 1024;
 export const MAX_EXTRACTED_DOCUMENT_TEXT_CHARS = 2 * 1024 * 1024;
 export const MAX_RICH_DOCUMENT_BYTES = 50 * 1024 * 1024;
 
-export type DocumentTextParser = 'text' | 'docx' | 'xlsx' | 'pdf';
+export type DocumentTextParser = 'text' | 'docx' | 'xlsx' | 'pdf' | 'pptx';
 
 export interface ExtractedDocumentText {
   content: string;
@@ -18,27 +24,14 @@ export interface ExtractedDocumentText {
   parser: DocumentTextParser;
 }
 
-const TEXT_DOCUMENT_EXTENSIONS = new Set([
-  '.txt',
-  '.md',
-  '.markdown',
-  '.csv',
-  '.tsv',
-  '.json',
-  '.jsonl',
-  '.html',
-  '.htm',
-  '.xml',
-  '.yaml',
-  '.yml',
-  '.log',
-]);
+const dotExtension = (extension: string): string => `.${extension}`;
 
-const RICH_DOCUMENT_EXTENSIONS = new Set(['.pdf', '.docx', '.xls', '.xlsx']);
+const TEXT_DOCUMENT_EXTENSIONS = new Set(
+  EnterpriseLeadPlainTextDocumentExtensions.map(dotExtension),
+);
 
 export const SUPPORTED_DOCUMENT_TEXT_EXTENSIONS = new Set([
-  ...TEXT_DOCUMENT_EXTENSIONS,
-  ...RICH_DOCUMENT_EXTENSIONS,
+  ...EnterpriseLeadReadableDocumentExtensions.map(dotExtension),
 ]);
 
 const getNormalizedExtension = (filePath: string): string =>
@@ -195,6 +188,62 @@ const extractSpreadsheetText = async (
   };
 };
 
+const getPptxXmlSortKey = (xmlPath: string): string => {
+  const slideMatch = /\/slide(\d+)\.xml$/i.exec(xmlPath);
+  if (slideMatch) {
+    return `0-${String(Number.parseInt(slideMatch[1] ?? '0', 10)).padStart(6, '0')}`;
+  }
+  const notesMatch = /\/notesSlide(\d+)\.xml$/i.exec(xmlPath);
+  if (notesMatch) {
+    return `1-${String(Number.parseInt(notesMatch[1] ?? '0', 10)).padStart(6, '0')}`;
+  }
+  return xmlPath;
+};
+
+const extractPptxTextBlock = (xml: string): string => {
+  const normalizedXml = xml.replace(/<a:br\s*\/>/gi, '\n').replace(/<\/a:p>/gi, '\n');
+  const textRuns: string[] = [];
+  const textRunPattern = /<a:t(?:\s[^>]*)?>([\s\S]*?)<\/a:t>/gi;
+  let textRunMatch: RegExpExecArray | null = textRunPattern.exec(normalizedXml);
+  while (textRunMatch) {
+    const text = decodeXmlEntities(textRunMatch[1] ?? '').trim();
+    if (text) {
+      textRuns.push(text);
+    }
+    textRunMatch = textRunPattern.exec(normalizedXml);
+  }
+  return collapseBlankLines(textRuns.join('\n'));
+};
+
+const extractPptxText = async (filePath: string, size: number): Promise<ExtractedDocumentText> => {
+  ensureRichDocumentSize(filePath, size);
+  const archive = await JSZip.loadAsync(await fs.readFile(filePath));
+  const xmlPaths = Object.keys(archive.files)
+    .filter(fileName =>
+      /^ppt\/(?:slides\/slide\d+|notesSlides\/notesSlide\d+)\.xml$/i.test(fileName),
+    )
+    .sort((left, right) => getPptxXmlSortKey(left).localeCompare(getPptxXmlSortKey(right)));
+  const blocks: string[] = [];
+  for (const xmlPath of xmlPaths) {
+    const entry = archive.file(xmlPath);
+    if (!entry) {
+      continue;
+    }
+    const block = extractPptxTextBlock(await entry.async('text'));
+    if (block) {
+      blocks.push(block);
+    }
+  }
+  const clamped = clampContent(collapseBlankLines(blocks.join('\n\n')));
+  return {
+    content: clamped.content,
+    parser: 'pptx',
+    readBytes: size,
+    size,
+    truncated: clamped.truncated,
+  };
+};
+
 const hasTextItemString = (item: unknown): item is { str: string } =>
   Boolean(item) &&
   typeof item === 'object' &&
@@ -252,14 +301,20 @@ export const extractDocumentTextFromFile = async (
   if (TEXT_DOCUMENT_EXTENSIONS.has(extension)) {
     return extractPlainTextFile(normalizedPath, stat.size);
   }
-  if (extension === '.docx') {
+  if (extension === dotExtension(EnterpriseLeadReadableDocumentExtension.Docx)) {
     return extractDocxText(normalizedPath, stat.size);
   }
-  if (extension === '.xlsx' || extension === '.xls') {
+  if (
+    extension === dotExtension(EnterpriseLeadReadableDocumentExtension.Xlsx) ||
+    extension === dotExtension(EnterpriseLeadReadableDocumentExtension.Xls)
+  ) {
     return extractSpreadsheetText(normalizedPath, stat.size);
   }
-  if (extension === '.pdf') {
+  if (extension === dotExtension(EnterpriseLeadReadableDocumentExtension.Pdf)) {
     return extractPdfText(normalizedPath, stat.size);
+  }
+  if (extension === dotExtension(EnterpriseLeadReadableDocumentExtension.Pptx)) {
+    return extractPptxText(normalizedPath, stat.size);
   }
 
   throw new Error(`Unsupported readable document type: ${extension || 'unknown'}`);

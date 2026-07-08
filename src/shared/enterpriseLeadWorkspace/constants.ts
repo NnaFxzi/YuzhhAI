@@ -119,11 +119,130 @@ export type EnterpriseLeadDeliverableKind =
 export const EnterpriseLeadExtractionSourceKind = {
   Conversation: 'conversation',
   File: 'file',
+  Image: 'image',
   Manual: 'manual',
   Blank: 'blank',
 } as const;
 export type EnterpriseLeadExtractionSourceKind =
   (typeof EnterpriseLeadExtractionSourceKind)[keyof typeof EnterpriseLeadExtractionSourceKind];
+
+export const EnterpriseLeadReadableDocumentExtension = {
+  Txt: 'txt',
+  Markdown: 'md',
+  MarkdownLong: 'markdown',
+  Csv: 'csv',
+  Tsv: 'tsv',
+  Json: 'json',
+  Jsonl: 'jsonl',
+  Html: 'html',
+  Htm: 'htm',
+  Xml: 'xml',
+  Yaml: 'yaml',
+  Yml: 'yml',
+  Log: 'log',
+  Pdf: 'pdf',
+  Docx: 'docx',
+  Xls: 'xls',
+  Xlsx: 'xlsx',
+  Pptx: 'pptx',
+} as const;
+export type EnterpriseLeadReadableDocumentExtension =
+  (typeof EnterpriseLeadReadableDocumentExtension)[keyof typeof EnterpriseLeadReadableDocumentExtension];
+
+export const EnterpriseLeadPlainTextDocumentExtensions = [
+  EnterpriseLeadReadableDocumentExtension.Txt,
+  EnterpriseLeadReadableDocumentExtension.Markdown,
+  EnterpriseLeadReadableDocumentExtension.MarkdownLong,
+  EnterpriseLeadReadableDocumentExtension.Csv,
+  EnterpriseLeadReadableDocumentExtension.Tsv,
+  EnterpriseLeadReadableDocumentExtension.Json,
+  EnterpriseLeadReadableDocumentExtension.Jsonl,
+  EnterpriseLeadReadableDocumentExtension.Html,
+  EnterpriseLeadReadableDocumentExtension.Htm,
+  EnterpriseLeadReadableDocumentExtension.Xml,
+  EnterpriseLeadReadableDocumentExtension.Yaml,
+  EnterpriseLeadReadableDocumentExtension.Yml,
+  EnterpriseLeadReadableDocumentExtension.Log,
+] as const;
+
+export const EnterpriseLeadRichDocumentExtensions = [
+  EnterpriseLeadReadableDocumentExtension.Pdf,
+  EnterpriseLeadReadableDocumentExtension.Docx,
+  EnterpriseLeadReadableDocumentExtension.Xls,
+  EnterpriseLeadReadableDocumentExtension.Xlsx,
+  EnterpriseLeadReadableDocumentExtension.Pptx,
+] as const;
+
+export const EnterpriseLeadReadableDocumentExtensions = [
+  ...EnterpriseLeadPlainTextDocumentExtensions,
+  ...EnterpriseLeadRichDocumentExtensions,
+] as const;
+
+export const EnterpriseLeadAttachmentOnlyDocumentExtension = {
+  Doc: 'doc',
+  Ppt: 'ppt',
+} as const;
+export type EnterpriseLeadAttachmentOnlyDocumentExtension =
+  (typeof EnterpriseLeadAttachmentOnlyDocumentExtension)[keyof typeof EnterpriseLeadAttachmentOnlyDocumentExtension];
+
+export const EnterpriseLeadImageAttachmentExtension = {
+  Png: 'png',
+  Jpg: 'jpg',
+  Jpeg: 'jpeg',
+  Webp: 'webp',
+  Gif: 'gif',
+  Bmp: 'bmp',
+  Tif: 'tif',
+  Tiff: 'tiff',
+  Heic: 'heic',
+  Heif: 'heif',
+} as const;
+export type EnterpriseLeadImageAttachmentExtension =
+  (typeof EnterpriseLeadImageAttachmentExtension)[keyof typeof EnterpriseLeadImageAttachmentExtension];
+
+export const EnterpriseLeadImageAttachmentExtensions = [
+  EnterpriseLeadImageAttachmentExtension.Png,
+  EnterpriseLeadImageAttachmentExtension.Jpg,
+  EnterpriseLeadImageAttachmentExtension.Jpeg,
+  EnterpriseLeadImageAttachmentExtension.Webp,
+  EnterpriseLeadImageAttachmentExtension.Gif,
+  EnterpriseLeadImageAttachmentExtension.Bmp,
+  EnterpriseLeadImageAttachmentExtension.Tif,
+  EnterpriseLeadImageAttachmentExtension.Tiff,
+  EnterpriseLeadImageAttachmentExtension.Heic,
+  EnterpriseLeadImageAttachmentExtension.Heif,
+] as const;
+
+export const EnterpriseLeadSourceDocumentFileFilterExtensions = [
+  ...EnterpriseLeadReadableDocumentExtensions,
+  EnterpriseLeadAttachmentOnlyDocumentExtension.Doc,
+  EnterpriseLeadAttachmentOnlyDocumentExtension.Ppt,
+  ...EnterpriseLeadImageAttachmentExtensions,
+] as const;
+
+export const EnterpriseLeadReadableDocumentMimeType = {
+  Text: 'text/plain',
+  Markdown: 'text/markdown',
+  Csv: 'text/csv',
+  Tsv: 'text/tab-separated-values',
+  Json: 'application/json',
+  Jsonl: 'application/x-ndjson',
+  Html: 'text/html',
+  Xml: 'application/xml',
+  Yaml: 'application/yaml',
+  Pdf: 'application/pdf',
+  Docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  Xls: 'application/vnd.ms-excel',
+  Xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  Pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+} as const;
+export type EnterpriseLeadReadableDocumentMimeType =
+  (typeof EnterpriseLeadReadableDocumentMimeType)[keyof typeof EnterpriseLeadReadableDocumentMimeType];
+
+export const EnterpriseLeadReadableDocumentAcceptTypes = [
+  ...EnterpriseLeadReadableDocumentExtensions.map(extension => `.${extension}`),
+  ...Object.values(EnterpriseLeadReadableDocumentMimeType),
+] as const;
 
 export const EnterpriseLeadDocumentExtractionStatus = {
   Pending: 'pending',

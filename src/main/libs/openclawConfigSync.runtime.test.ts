@@ -221,6 +221,16 @@ describe('OpenClawConfigSync runtime config output', () => {
     expect(config.models.pricing).toEqual({ enabled: false });
   });
 
+  test('collects configured Skill env vars for gateway runtime injection', async () => {
+    const sync = await createSync({
+      getConfiguredSkillEnvVars: () => ({
+        MAXHUB_API_KEY: 'maxhub-test-key',
+      }),
+    });
+
+    expect(sync.collectSecretEnvVars().MAXHUB_API_KEY).toBe('maxhub-test-key');
+  });
+
   test('emits an explicit disabled memory search policy when embeddings are off', async () => {
     const { SettingScope } = await import('../../shared/cowork/layeredSettings');
     const sync = await createSync({
@@ -2398,6 +2408,12 @@ describe('OpenClawConfigSync runtime config output', () => {
       'When you create or render a local output file for the user, confirm it exists and include a Markdown file link in the final response.',
     );
     expect(agentsMd).toContain('[视频文件](file:///absolute/path/to/video.mp4)');
+    expect(agentsMd).toContain(
+      'Never state that a video is generated, complete, or ready unless the same final response contains a real local video file link or MEDIA token.',
+    );
+    expect(agentsMd).toContain(
+      'If you do not know the final output path, locate it before replying.',
+    );
   });
 
   test('keeps generated agent AGENTS.md under the OpenClaw injection budget', async () => {

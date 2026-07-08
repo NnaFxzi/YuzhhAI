@@ -45,6 +45,7 @@ const coworkRules = (): string[] => [
   '- If the content knowledge retrieval preflight says no sufficiently relevant knowledge was found, do not draft or make assumptions; ask for the missing domain, account positioning, audience, product/service, selling point, or conversion goal in plain text.',
   '- If retrieved knowledge is sufficient and only minor details are missing, mark those details inline and put 1-2 optional follow-up questions after the draft.',
   '- For Xiaohongshu/topic requests, include concrete titles or angles, target audience, pain point, hook, and conversion intent; avoid only asking what industry the user means.',
+  '- After generating or rendering a local video, include a real mp4 file link in the same final response, for example `[视频文件](file:///absolute/path/to/video.mp4)`. Do not say a video has been generated without a real file link or media token.',
   '- For coding work, mention changed files, verification run, and remaining risk in the final response.',
   '- For analysis or planning, give a clear recommendation before detailed alternatives.',
   '- If tools were used, summarize outcomes rather than narrating every internal step.',

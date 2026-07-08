@@ -7,6 +7,7 @@ import {
   normalizeFilePathForDedup,
   parseFileLinksFromMessage,
   parseFilePathsFromText,
+  parseGeneratedVideoArtifactsFromMessages,
   parseLocalServiceUrlsFromText,
   parseMediaTokensFromText,
   parseToolArtifact,
@@ -16,13 +17,17 @@ import {
 
 describe('normalizeArtifactFilePath', () => {
   test('strips MEDIA prefix from paths parsed as bare file paths', () => {
-    expect(normalizeArtifactFilePath('MEDIA:/Users/admin/work/test/test0623/generated-video.mp4'))
-      .toBe('/Users/admin/work/test/test0623/generated-video.mp4');
+    expect(
+      normalizeArtifactFilePath('MEDIA:/Users/admin/work/test/test0623/generated-video.mp4'),
+    ).toBe('/Users/admin/work/test/test0623/generated-video.mp4');
   });
 
   test('recovers absolute path from cwd-prefixed MEDIA artifacts', () => {
-    expect(normalizeArtifactFilePath('/users/admin/work/test/test0623/MEDIA:/Users/admin/work/test/test0623/generated-video.mp4'))
-      .toBe('/Users/admin/work/test/test0623/generated-video.mp4');
+    expect(
+      normalizeArtifactFilePath(
+        '/users/admin/work/test/test0623/MEDIA:/Users/admin/work/test/test0623/generated-video.mp4',
+      ),
+    ).toBe('/Users/admin/work/test/test0623/generated-video.mp4');
   });
 });
 
@@ -253,25 +258,28 @@ describe('dedupeArtifactsForDisplay', () => {
       'result1',
       'sess1',
     );
-    const metadataArtifacts = parseToolResultMediaArtifacts({
-      id: 'result1',
-      type: 'system' as const,
-      content: 'Saved generated video',
-      timestamp: Date.now(),
-      metadata: {
-        toolResultDetails: {
-          assets: [
-            {
-              type: 'video',
-              url: 'https://example.com/generated.mp4?signature=temporary',
-              filePath: '/home/user/project/generated-video.mp4',
-              mimeType: 'video/mp4',
-              filename: 'generated-video.mp4',
-            },
-          ],
+    const metadataArtifacts = parseToolResultMediaArtifacts(
+      {
+        id: 'result1',
+        type: 'system' as const,
+        content: 'Saved generated video',
+        timestamp: Date.now(),
+        metadata: {
+          toolResultDetails: {
+            assets: [
+              {
+                type: 'video',
+                url: 'https://example.com/generated.mp4?signature=temporary',
+                filePath: '/home/user/project/generated-video.mp4',
+                mimeType: 'video/mp4',
+                filename: 'generated-video.mp4',
+              },
+            ],
+          },
         },
       },
-    }, 'sess1');
+      'sess1',
+    );
 
     const artifacts = dedupeArtifactsForDisplay([...linkArtifacts, ...metadataArtifacts]);
     expect(artifacts).toHaveLength(1);
@@ -417,10 +425,13 @@ describe('parseMediaTokensFromText', () => {
   });
 
   test('parses macOS path with spaces (Application Support)', () => {
-    const content = 'MEDIA: /Users/test/Library/Application Support/com.lobsterai/images/output.png';
+    const content =
+      'MEDIA: /Users/test/Library/Application Support/com.lobsterai/images/output.png';
     const artifacts = parseMediaTokensFromText(content, 'msg1', 'sess1');
     expect(artifacts).toHaveLength(1);
-    expect(artifacts[0].filePath).toBe('/Users/test/Library/Application Support/com.lobsterai/images/output.png');
+    expect(artifacts[0].filePath).toBe(
+      '/Users/test/Library/Application Support/com.lobsterai/images/output.png',
+    );
     expect(artifacts[0].type).toBe('image');
   });
 
@@ -473,7 +484,9 @@ describe('parseFilePathsFromText', () => {
     const content = 'MEDIA:/Users/admin/work/test/test0623/generated-video-20260623-184040-1.mp4';
     const artifacts = parseFilePathsFromText(content, 'msg1', 'sess1');
     expect(artifacts).toHaveLength(1);
-    expect(artifacts[0].filePath).toBe('/Users/admin/work/test/test0623/generated-video-20260623-184040-1.mp4');
+    expect(artifacts[0].filePath).toBe(
+      '/Users/admin/work/test/test0623/generated-video-20260623-184040-1.mp4',
+    );
     expect(artifacts[0].type).toBe('video');
   });
 });
@@ -509,8 +522,9 @@ describe('parseToolArtifact', () => {
     const linkArtifacts = parseFileLinksFromMessage(linkContent, 'msg1', 'sess1');
     expect(linkArtifacts).toHaveLength(1);
 
-    expect(normalizeFilePathForDedup(toolPath))
-      .toBe(normalizeFilePathForDedup(linkArtifacts[0].filePath!));
+    expect(normalizeFilePathForDedup(toolPath)).toBe(
+      normalizeFilePathForDedup(linkArtifacts[0].filePath!),
+    );
   });
 });
 
@@ -571,5 +585,96 @@ describe('parseFilePathsFromText — find command output scenario', () => {
     const content = 'B-01-seedream.png\nB-02-chart.png';
     const artifacts = parseFilePathsFromText(content, 'msg1', 'sess1');
     expect(artifacts).toHaveLength(0);
+  });
+});
+
+describe('parseGeneratedVideoArtifactsFromMessages', () => {
+  test('extracts a local mp4 path with spaces from tool output when the assistant says video was generated', () => {
+    const messages = [
+      {
+        id: 'tool-result-1',
+        type: 'tool_result' as const,
+        content:
+          '-rw-r--r-- 1 user staff 4.4M Jul 8 13:12 /Users/lijiahao/Library/Application Support/yuzhh-ai-assistant/openclaw/state/workspace-marketing-agent/remotion-video/out/industrial-video.mp4',
+        timestamp: 1,
+        metadata: {
+          toolUseId: 'tool-use-1',
+          toolName: 'Bash',
+        },
+      },
+      {
+        id: 'assistant-1',
+        type: 'assistant' as const,
+        content: '视频已生成！以下是 10 秒工厂宣传片：',
+        timestamp: 2,
+      },
+    ];
+
+    const artifacts = parseGeneratedVideoArtifactsFromMessages(messages, 'session-1');
+
+    expect(artifacts).toHaveLength(1);
+    expect(artifacts[0]).toMatchObject({
+      messageId: 'tool-result-1',
+      sessionId: 'session-1',
+      type: 'video',
+      fileName: 'industrial-video.mp4',
+      filePath:
+        '/Users/lijiahao/Library/Application Support/yuzhh-ai-assistant/openclaw/state/workspace-marketing-agent/remotion-video/out/industrial-video.mp4',
+    });
+  });
+
+  test('extracts a shell-escaped mp4 path from the render verification command', () => {
+    const messages = [
+      {
+        id: 'tool-use-1',
+        type: 'tool_use' as const,
+        content: '',
+        timestamp: 1,
+        metadata: {
+          toolUseId: 'tool-use-1',
+          toolName: 'Bash',
+          toolInput: {
+            cmd: 'ls -lh /Users/lijiahao/Library/Application\\ Support/yuzhh-ai-assistant/openclaw/state/workspace-marketing-agent/remotion-video/out/industrial-video.mp4',
+          },
+        },
+      },
+      {
+        id: 'assistant-1',
+        type: 'assistant' as const,
+        content: '视频渲染完成，确认下文件。',
+        timestamp: 2,
+      },
+    ];
+
+    const artifacts = parseGeneratedVideoArtifactsFromMessages(messages, 'session-1');
+
+    expect(artifacts).toHaveLength(1);
+    expect(artifacts[0].filePath).toBe(
+      '/Users/lijiahao/Library/Application Support/yuzhh-ai-assistant/openclaw/state/workspace-marketing-agent/remotion-video/out/industrial-video.mp4',
+    );
+  });
+
+  test('does not parse bash video paths without a generated-video assistant message', () => {
+    const messages = [
+      {
+        id: 'tool-result-1',
+        type: 'tool_result' as const,
+        content:
+          '/Users/lijiahao/Library/Application Support/yuzhh-ai-assistant/openclaw/state/workspace-marketing-agent/remotion-video/out/industrial-video.mp4',
+        timestamp: 1,
+        metadata: {
+          toolUseId: 'tool-use-1',
+          toolName: 'Bash',
+        },
+      },
+      {
+        id: 'assistant-1',
+        type: 'assistant' as const,
+        content: '我看到这个文件路径了。',
+        timestamp: 2,
+      },
+    ];
+
+    expect(parseGeneratedVideoArtifactsFromMessages(messages, 'session-1')).toHaveLength(0);
   });
 });

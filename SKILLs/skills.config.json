@@ -22,8 +22,50 @@
     "local-tools": { "order": 200, "enabled": true },
     "weather": { "order": 210, "enabled": true },
     "imap-smtp-email": { "order": 211, "enabled": true },
-    "seedance": { "order": 212, "enabled": true },
-    "seedream": { "order": 213, "enabled": true },
+    "seedance": {
+      "order": 212,
+      "enabled": true,
+      "configSchema": {
+        "helpUrl": "https://console.volcengine.com/ark/region:ark+cn-beijing/apikey",
+        "fields": [
+          {
+            "key": "ARK_API_KEY",
+            "type": "secret",
+            "required": true,
+            "label": {
+              "zh": "火山方舟 API Key",
+              "en": "Volcengine Ark API Key"
+            },
+            "description": {
+              "zh": "用于调用 Seedance 视频生成能力。",
+              "en": "Used to call Seedance video generation."
+            }
+          }
+        ]
+      }
+    },
+    "seedream": {
+      "order": 213,
+      "enabled": true,
+      "configSchema": {
+        "helpUrl": "https://console.volcengine.com/ark/region:ark+cn-beijing/apikey",
+        "fields": [
+          {
+            "key": "ARK_API_KEY",
+            "type": "secret",
+            "required": true,
+            "label": {
+              "zh": "火山方舟 API Key",
+              "en": "Volcengine Ark API Key"
+            },
+            "description": {
+              "zh": "用于调用 Seedream 图片生成能力。",
+              "en": "Used to call Seedream image generation."
+            }
+          }
+        ]
+      }
+    },
     "films-search": { "order": 222, "enabled": true },
     "music-search": { "order": 223, "enabled": true },
     "technology-news-search": { "order": 224, "enabled": false },

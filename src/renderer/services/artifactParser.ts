@@ -427,6 +427,88 @@ export function parseFilePathsFromText(
   return artifacts;
 }
 
+const GENERATED_VIDEO_ASSISTANT_RE =
+  /(?:视频(?:已生成|生成完成|渲染完成)|video\s+(?:generated|generation\s+succeeded|generation\s+complete)|render(?:ed|ing)?\s+complete)/i;
+const TOOL_VIDEO_PATH_RE =
+  /((?:\/(?:Users|Volumes|private|tmp|var)\/|[A-Za-z]:\/)[^\n"'`<>]*?\.(?:mp4|webm|mov))/gi;
+const SHELL_ESCAPED_VIDEO_PATH_RE = /((?:\/(?:\\ |[^\s"'`<>])+)+\.(?:mp4|webm|mov))/gi;
+
+const unescapeShellPath = (value: string): string => value.replace(/\\+(?= )/g, '').trim();
+
+const getToolSearchText = (message: CoworkMessage): string => {
+  const toolInput = message.metadata?.toolInput;
+  return [
+    message.content ?? '',
+    typeof toolInput === 'string' ? toolInput : '',
+    toolInput && typeof toolInput === 'object' ? JSON.stringify(toolInput) : '',
+    message.metadata?.toolResult ?? '',
+  ]
+    .filter(Boolean)
+    .join('\n');
+};
+
+export function parseGeneratedVideoArtifactsFromMessages(
+  messages: CoworkMessage[],
+  sessionId: string,
+): Artifact[] {
+  const generatedVideoIndex = messages.findLastIndex(
+    message =>
+      message.type === 'assistant' &&
+      !message.metadata?.isThinking &&
+      GENERATED_VIDEO_ASSISTANT_RE.test(message.content ?? ''),
+  );
+  if (generatedVideoIndex === -1) {
+    return [];
+  }
+
+  const artifacts: Artifact[] = [];
+  const seenPaths = new Set<string>();
+  const addVideoPath = (rawPath: string, message: CoworkMessage): void => {
+    const filePath = normalizeArtifactFilePath(unescapeShellPath(rawPath));
+    if (!filePath) return;
+    const ext = getFileExtension(filePath);
+    if (!VIDEO_EXTENSIONS.has(ext)) return;
+    const normalized = normalizeFilePathForDedup(filePath);
+    if (seenPaths.has(normalized)) return;
+    seenPaths.add(normalized);
+    const fileName = getFileName(filePath);
+    artifacts.push({
+      id: `artifact-generated-video-${message.id}-${artifacts.length}`,
+      messageId: message.id,
+      sessionId,
+      type: 'video',
+      title: fileName,
+      content: '',
+      fileName,
+      filePath,
+      createdAt: message.timestamp || Date.now(),
+    });
+  };
+
+  messages.slice(0, generatedVideoIndex + 1).forEach(message => {
+    if (
+      message.type !== 'tool_result' &&
+      message.type !== 'tool_use' &&
+      message.type !== 'system'
+    ) {
+      return;
+    }
+    const searchText = getToolSearchText(message);
+    let match: RegExpExecArray | null;
+    const pathRe = new RegExp(TOOL_VIDEO_PATH_RE.source, 'gi');
+    while ((match = pathRe.exec(searchText)) !== null) {
+      addVideoPath(match[1], message);
+    }
+    const shellPathRe = new RegExp(SHELL_ESCAPED_VIDEO_PATH_RE.source, 'gi');
+    while ((match = shellPathRe.exec(searchText)) !== null) {
+      if (!/\\+ /.test(match[1])) continue;
+      addVideoPath(match[1], message);
+    }
+  });
+
+  return artifacts;
+}
+
 export function parseFileLinksFromMessage(
   messageContent: string,
   messageId: string,

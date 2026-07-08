@@ -1100,6 +1100,7 @@ const translations: Record<LanguageType, Record<string, string>> = {
     myAgentSidebarSearchRecentConversations: '搜索最近对话',
     myAgentSidebarNoTasks: '暂无任务',
     myAgentSidebarNewTask: '新建任务',
+    myAgentSidebarInConversation: '对话中',
     myAgentSidebarRunning: '运行中',
     myAgentSidebarUnreadResult: '有新结果',
     myAgentSidebarLoadFailed: '加载失败，点击重试',
@@ -1620,6 +1621,10 @@ const translations: Record<LanguageType, Record<string, string>> = {
     skillsResearchExternalDesc:
       'Tavily / Firecrawl 用于搜索、抓取和提取网页资料；可在这里配置默认 API Key，也可在单个 Agent 中覆盖。',
     skillsResearchExternalStatus: '可在此配置',
+    skillsResearchExternalPending: '待配置 Key',
+    skillsResearchExternalDisabled: '已填 Key {configured}/{total} · 未启用',
+    skillsResearchExternalConfigured: '已配置 {configured}/{total} · 启用 {enabled}',
+    skillsResearchConfigKeys: '配置项',
     skillsResearchExternalAction: '配置外部调研',
     skillsResearchExternalModalTitle: '配置外部调研',
     skillsResearchExternalModalDesc:
@@ -1642,6 +1647,20 @@ const translations: Record<LanguageType, Record<string, string>> = {
     skillInstalling: '安装中',
     skillInstallFailed: '安装失败',
     skillAlreadyInstalled: '已安装',
+    skillConfig: '配置',
+    skillConfigTitle: '配置 {name}',
+    skillConfigDesc: '这些配置会保存到当前 Skill 的 .env 文件，运行该 Skill 时自动读取。',
+    skillConfigPending: '待配置',
+    skillConfigConfigured: '已配置',
+    skillConfigRequired: '必填',
+    skillConfigOptional: '选填',
+    skillConfigOpenHelp: '获取 Key',
+    skillConfigLoadFailed: '加载技能配置失败，请稍后重试。',
+    skillConfigSaveFailed: '保存技能配置失败，请稍后重试。',
+    skillConfigSaved: '技能配置已保存',
+    skillConfigRequiredError: '请先填写必填配置：{keys}',
+    skillConfigSecretShow: '显示',
+    skillConfigSecretHide: '隐藏',
 
     // Security scan
     lobsterGuardEnabled: '安全防护中',
@@ -2801,7 +2820,8 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadCreateWorkspaceDesc:
       '粘贴已有对话或上传素材，自动整理业务画像并启动线索运营准备。',
     enterpriseLeadImportMaterial: '导入资料',
-    enterpriseLeadImportMaterialDesc: '读取 .txt、.md 或 .csv 文件，先抽取业务草稿，再确认创建。',
+    enterpriseLeadImportMaterialDesc:
+      '读取 TXT、Markdown、CSV、PDF、Word、Excel、PPTX 等资料文件，先抽取业务草稿，再确认创建。',
     enterpriseLeadRecentWorkspaces: '最近工作区',
     enterpriseLeadRecentWorkspacesDesc: '继续最近的企业线索工作区，或新建一个业务画像。',
     enterpriseLeadRecentlyOpened: '最近打开',
@@ -2815,7 +2835,8 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadExtracting: '提取中...',
     enterpriseLeadDraftEmpty: '请先粘贴或上传资料。',
     enterpriseLeadExtractFailed: '提取工作区草稿失败，请检查资料后重试。',
-    enterpriseLeadReadFileFailed: '读取文件失败，请换一个 .txt、.md 或 .csv 文件重试。',
+    enterpriseLeadReadFileFailed:
+      '读取文件失败，请换一个 TXT、Markdown、CSV、PDF、Word、Excel 或 PPTX 文件重试。',
     enterpriseLeadCreateFailed: '创建工作区失败，请稍后重试。',
     enterpriseLeadCreateStartSubtitle: '设置名称，选择一个起步方式。',
     enterpriseLeadCreateReturnHome: '返回开始页',
@@ -2837,8 +2858,11 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadCreateMaterialTitle: '上传资料',
     enterpriseLeadCreateMaterialSubtitle: '为「{name}」添加第一批线索材料。',
     enterpriseLeadCreateMaterialDropTitle: '选择或拖入资料文件',
-    enterpriseLeadCreateMaterialDropDesc: '适合已有客户名单、产品说明、聊天记录或调研文档。',
+    enterpriseLeadCreateMaterialDropDesc:
+      '支持 TXT、Markdown、CSV、PDF、Word、Excel、PPTX 等客户资料。',
     enterpriseLeadCreateMaterialChooseFile: '选择文件',
+    enterpriseLeadReadableDocumentFilterName: '可读取资料',
+    enterpriseLeadAllFilesFilterName: '所有文件',
     enterpriseLeadCreateMaterialTypeCustomerList: '客户名单',
     enterpriseLeadCreateMaterialTypeProductDoc: '产品说明',
     enterpriseLeadCreateMaterialTypeChat: '聊天记录',
@@ -3260,7 +3284,8 @@ const translations: Record<LanguageType, Record<string, string>> = {
       '维护文档信息和提取设置；完整正文在预览文档中查看。',
     enterpriseLeadKnowledgeModalSubtitle: '保存后只影响当前空间，不会改变其他空间。',
     enterpriseLeadKnowledgeUploadTitle: '上传或登记一份资料',
-    enterpriseLeadKnowledgeUploadSubtitle: '选择本地文件后，系统会记录来源；不需要手写路径。',
+    enterpriseLeadKnowledgeUploadSubtitle:
+      '选择文档、表格、PDF、PPTX 或图片后，系统会记录来源；不需要手写路径。',
     enterpriseLeadKnowledgeSelectDocumentFile: '选择文件',
     enterpriseLeadKnowledgeChangeDocumentFile: '更换文件',
     enterpriseLeadKnowledgeDocumentSourceManaged: '来源由系统记录',
@@ -3292,6 +3317,7 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadKnowledgeDocumentTypeManual: '手动录入',
     enterpriseLeadKnowledgeDocumentTypeConversation: '对话输入',
     enterpriseLeadKnowledgeDocumentTypeFile: '本地文件',
+    enterpriseLeadKnowledgeDocumentTypeImage: '图片',
     enterpriseLeadKnowledgeDocumentTypeWeb: '网页链接',
     enterpriseLeadKnowledgeDocumentTypeBlank: '空白资料',
     enterpriseLeadKnowledgeDocumentTypeUnknown: '其他来源',
@@ -3379,6 +3405,8 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadKnowledgeFileReadFailed: '文件内容读取失败，已保留文件来源。',
     enterpriseLeadKnowledgeFileReadUnsupported:
       '该文件类型暂不能直接读取内容，可保存后稍后处理或补充摘要。',
+    enterpriseLeadKnowledgeImageFileSelected:
+      '图片已作为资料来源添加。请在摘要中补充图片文字或识别结果，保存后即可进入知识库检索。',
     enterpriseLeadKnowledgeItemAdded: '知识已添加到当前空间。',
     enterpriseLeadKnowledgeItemUpdated: '知识已更新。',
     enterpriseLeadKnowledgeItemArchived:
@@ -5099,6 +5127,7 @@ const translations: Record<LanguageType, Record<string, string>> = {
     myAgentSidebarSearchRecentConversations: 'Search recent conversations',
     myAgentSidebarNoTasks: 'No tasks yet',
     myAgentSidebarNewTask: 'New task',
+    myAgentSidebarInConversation: 'In conversation',
     myAgentSidebarRunning: 'Running',
     myAgentSidebarUnreadResult: 'New result',
     myAgentSidebarLoadFailed: 'Failed to load. Click to retry',
@@ -5658,6 +5687,10 @@ const translations: Record<LanguageType, Record<string, string>> = {
     skillsResearchExternalDesc:
       'Tavily / Firecrawl search, crawl, and extract web materials. Configure default API keys here, or override them per Agent.',
     skillsResearchExternalStatus: 'Configurable here',
+    skillsResearchExternalPending: 'Key needed',
+    skillsResearchExternalDisabled: '{configured}/{total} keys set · not enabled',
+    skillsResearchExternalConfigured: '{configured}/{total} configured · {enabled} enabled',
+    skillsResearchConfigKeys: 'Config keys',
     skillsResearchExternalAction: 'Configure external research',
     skillsResearchExternalModalTitle: 'Configure external research',
     skillsResearchExternalModalDesc:
@@ -5777,6 +5810,21 @@ const translations: Record<LanguageType, Record<string, string>> = {
     clearSkill: 'Clear Skill',
     clearAll: 'Clear All',
     clearAllSkills: 'Clear all selected skills',
+    skillConfig: 'Configure',
+    skillConfigTitle: 'Configure {name}',
+    skillConfigDesc:
+      "These settings are saved to this Skill's .env file and loaded automatically when the Skill runs.",
+    skillConfigPending: 'Setup needed',
+    skillConfigConfigured: 'Configured',
+    skillConfigRequired: 'Required',
+    skillConfigOptional: 'Optional',
+    skillConfigOpenHelp: 'Get key',
+    skillConfigLoadFailed: 'Failed to load skill settings. Please try again later.',
+    skillConfigSaveFailed: 'Failed to save skill settings. Please try again later.',
+    skillConfigSaved: 'Skill settings saved',
+    skillConfigRequiredError: 'Please fill required settings first: {keys}',
+    skillConfigSecretShow: 'Show',
+    skillConfigSecretHide: 'Hide',
 
     // Skill Sync (OpenClaw)
     syncSkillsFromOpenClaw: 'Sync from OpenClaw',
@@ -6908,7 +6956,7 @@ const translations: Record<LanguageType, Record<string, string>> = {
       'Paste a conversation or upload source material to organize the business profile before lead work starts.',
     enterpriseLeadImportMaterial: 'Import material',
     enterpriseLeadImportMaterialDesc:
-      'Load a .txt, .md, or .csv file, extract a workspace draft, and confirm before creating it.',
+      'Load TXT, Markdown, CSV, PDF, Word, Excel, PPTX, and other readable source files before creating a workspace.',
     enterpriseLeadRecentWorkspaces: 'Recent workspaces',
     enterpriseLeadRecentWorkspacesDesc:
       'Continue a recent enterprise lead workspace, or create a new business profile.',
@@ -6925,7 +6973,8 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadDraftEmpty: 'Paste or upload source material first.',
     enterpriseLeadExtractFailed:
       'Failed to extract a workspace draft. Check the material and try again.',
-    enterpriseLeadReadFileFailed: 'Failed to read the file. Try another .txt, .md, or .csv file.',
+    enterpriseLeadReadFileFailed:
+      'Failed to read the file. Try another TXT, Markdown, CSV, PDF, Word, Excel, or PPTX file.',
     enterpriseLeadCreateFailed: 'Failed to create the workspace. Try again later.',
     enterpriseLeadCreateStartSubtitle: 'Set a name and choose how to start.',
     enterpriseLeadCreateReturnHome: 'Back to start',
@@ -6948,8 +6997,10 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadCreateMaterialSubtitle: 'Add the first lead material for "{name}".',
     enterpriseLeadCreateMaterialDropTitle: 'Choose or drop material files',
     enterpriseLeadCreateMaterialDropDesc:
-      'Best for customer lists, product notes, chat records, or research docs.',
+      'Supports TXT, Markdown, CSV, PDF, Word, Excel, PPTX, and other customer files.',
     enterpriseLeadCreateMaterialChooseFile: 'Choose file',
+    enterpriseLeadReadableDocumentFilterName: 'Readable documents',
+    enterpriseLeadAllFilesFilterName: 'All files',
     enterpriseLeadCreateMaterialTypeCustomerList: 'Customer list',
     enterpriseLeadCreateMaterialTypeProductDoc: 'Product notes',
     enterpriseLeadCreateMaterialTypeChat: 'Chat records',
@@ -7433,7 +7484,7 @@ const translations: Record<LanguageType, Record<string, string>> = {
       'Saving only affects this workspace and will not change other spaces.',
     enterpriseLeadKnowledgeUploadTitle: 'Upload or register material',
     enterpriseLeadKnowledgeUploadSubtitle:
-      'Choose a local file and the system records the source. No path typing is needed.',
+      'Choose a document, sheet, PDF, PPTX, or image and the system records the source. No path typing is needed.',
     enterpriseLeadKnowledgeSelectDocumentFile: 'Choose file',
     enterpriseLeadKnowledgeChangeDocumentFile: 'Change file',
     enterpriseLeadKnowledgeDocumentSourceManaged: 'Source recorded by system',
@@ -7465,6 +7516,7 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadKnowledgeDocumentTypeManual: 'Manual entry',
     enterpriseLeadKnowledgeDocumentTypeConversation: 'Chat input',
     enterpriseLeadKnowledgeDocumentTypeFile: 'Local file',
+    enterpriseLeadKnowledgeDocumentTypeImage: 'Image',
     enterpriseLeadKnowledgeDocumentTypeWeb: 'Web page',
     enterpriseLeadKnowledgeDocumentTypeBlank: 'Blank material',
     enterpriseLeadKnowledgeDocumentTypeUnknown: 'Other source',
@@ -7571,6 +7623,8 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadKnowledgeFileReadFailed: 'Failed to read file content. The file source was kept.',
     enterpriseLeadKnowledgeFileReadUnsupported:
       'This file type cannot be read directly yet. Save it for later or add a summary.',
+    enterpriseLeadKnowledgeImageFileSelected:
+      'Image added as source material. Add visible text or recognition notes in the summary, then save it for knowledge search.',
     enterpriseLeadKnowledgeItemAdded: 'Knowledge added to this workspace.',
     enterpriseLeadKnowledgeItemUpdated: 'Knowledge updated.',
     enterpriseLeadKnowledgeItemArchived:

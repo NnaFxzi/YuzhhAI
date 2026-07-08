@@ -2,7 +2,9 @@ import { describe, expect, test } from 'vitest';
 
 import {
   EnterpriseLeadDocumentExtractionStatus,
+  EnterpriseLeadImageAttachmentExtensions,
   EnterpriseLeadKnowledgeIndexStatus,
+  EnterpriseLeadSourceDocumentFileFilterExtensions,
 } from '../../../shared/enterpriseLeadWorkspace/constants';
 import {
   EnterpriseLeadKnowledgeItemKind,
@@ -509,6 +511,17 @@ describe('WorkspaceKnowledgeBase layout', () => {
     expect(enterpriseLeadReadableDocumentExtensions.has('docx')).toBe(true);
     expect(enterpriseLeadReadableDocumentExtensions.has('xlsx')).toBe(true);
     expect(enterpriseLeadReadableDocumentExtensions.has('xls')).toBe(true);
+    expect(enterpriseLeadReadableDocumentExtensions.has('pptx')).toBe(true);
     expect(enterpriseLeadReadableDocumentExtensions.has('doc')).toBe(false);
+  });
+
+  test('allows image uploads as attachable knowledge sources without marking them readable', () => {
+    expect(EnterpriseLeadImageAttachmentExtensions).toContain('png');
+    expect(EnterpriseLeadImageAttachmentExtensions).toContain('jpg');
+    expect(EnterpriseLeadImageAttachmentExtensions).toContain('webp');
+    expect(EnterpriseLeadSourceDocumentFileFilterExtensions).toContain('png');
+    expect(EnterpriseLeadSourceDocumentFileFilterExtensions).toContain('jpg');
+    expect(EnterpriseLeadSourceDocumentFileFilterExtensions).toContain('webp');
+    expect(enterpriseLeadReadableDocumentExtensions.has('png')).toBe(false);
   });
 });

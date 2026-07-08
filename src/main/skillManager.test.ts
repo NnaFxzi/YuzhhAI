@@ -1,14 +1,67 @@
-import { expect, test, vi } from 'vitest';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
+import { afterEach, expect, test, vi } from 'vitest';
+import { SharedCredentialStore } from './sharedCredentialStore';
+import { __skillManagerTestUtils, SkillManager } from './skillManager';
+
+const electronMock = vi.hoisted(() => ({
+  userDataPath: '/tmp',
+}));
 
 vi.mock('electron', () => ({
-  app: { getAppPath: () => process.cwd(), getPath: () => '/tmp' },
+  app: { getAppPath: () => process.cwd(), getPath: () => electronMock.userDataPath },
   BrowserWindow: { getAllWindows: () => [] },
   session: { defaultSession: { webRequest: { onBeforeSendHeaders: vi.fn() } } },
 }));
 
-import { __skillManagerTestUtils } from './skillManager';
-
 const { parseFrontmatter, isTruthy, extractDescription } = __skillManagerTestUtils;
+
+const tempDirs: string[] = [];
+
+afterEach(() => {
+  for (const dir of tempDirs.splice(0)) {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+  electronMock.userDataPath = '/tmp';
+});
+
+const createSkillManager = (sharedCredentials?: SharedCredentialStore) => {
+  const state = new Map<string, unknown>();
+  return new SkillManager(
+    () =>
+      ({
+        get: (key: string) => state.get(key),
+        set: (key: string, value: unknown) => {
+          state.set(key, value);
+        },
+      }) as any,
+    sharedCredentials,
+  );
+};
+
+const writeSkill = (skillsRoot: string, id: string, envKey: string): void => {
+  const skillDir = path.join(skillsRoot, id);
+  fs.mkdirSync(skillDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(skillDir, 'SKILL.md'),
+    [
+      '---',
+      `name: ${id}`,
+      `description: ${id}`,
+      'metadata:',
+      '  openclaw:',
+      '    env:',
+      `      - name: ${envKey}`,
+      '        required: true',
+      '        sensitive: true',
+      '---',
+      '',
+      `# ${id}`,
+    ].join('\n'),
+    'utf8',
+  );
+};
 
 // ==================== parseFrontmatter ====================
 
@@ -22,7 +75,8 @@ test('parseFrontmatter: simple key-value pairs', () => {
 });
 
 test('parseFrontmatter: block scalar with pipe (|)', () => {
-  const raw = '---\nname: demo\ndescription: |\n  A multi-line description.\n  Second line.\n---\n# Content\n';
+  const raw =
+    '---\nname: demo\ndescription: |\n  A multi-line description.\n  Second line.\n---\n# Content\n';
   const { frontmatter, content } = parseFrontmatter(raw);
   expect(frontmatter.name).toBe('demo');
   expect(frontmatter.description).toBe('A multi-line description.\nSecond line.\n');
@@ -44,7 +98,8 @@ test('parseFrontmatter: quoted strings', () => {
 });
 
 test('parseFrontmatter: nested objects', () => {
-  const raw = '---\nname: demo\nmetadata:\n  short-description: A short desc\n  version: 2\n---\n# Content\n';
+  const raw =
+    '---\nname: demo\nmetadata:\n  short-description: A short desc\n  version: 2\n---\n# Content\n';
   const { frontmatter } = parseFrontmatter(raw);
   expect(frontmatter.name).toBe('demo');
   expect(frontmatter.metadata).toEqual({ 'short-description': 'A short desc', version: 2 });
@@ -151,6 +206,38 @@ test('extractDescription: returns empty string for empty content', () => {
   expect(extractDescription('\n\n\n')).toBe('');
 });
 
+test('skill config shares matching env keys across different skills', () => {
+  const userDataPath = fs.mkdtempSync(path.join(os.tmpdir(), 'lobster-skill-config-'));
+  tempDirs.push(userDataPath);
+  electronMock.userDataPath = userDataPath;
+  const skillsRoot = path.join(userDataPath, 'SKILLs');
+  writeSkill(skillsRoot, 'tavily-skill-a', 'TAVILY_API_KEY');
+  writeSkill(skillsRoot, 'tavily-skill-b', 'TAVILY_API_KEY');
+  const manager = createSkillManager();
+
+  expect(manager.setSkillConfig('tavily-skill-a', { TAVILY_API_KEY: 'tvly-shared' })).toEqual({
+    success: true,
+  });
+
+  expect(manager.getSkillConfig('tavily-skill-b').config?.TAVILY_API_KEY).toBe('tvly-shared');
+  expect(manager.collectConfiguredSkillEnvVars()).toMatchObject({
+    TAVILY_API_KEY: 'tvly-shared',
+  });
+});
+
+test('collects shared credentials even when no installed skill declares them', () => {
+  const userDataPath = fs.mkdtempSync(path.join(os.tmpdir(), 'lobster-skill-config-'));
+  tempDirs.push(userDataPath);
+  electronMock.userDataPath = userDataPath;
+  const sharedCredentials = new SharedCredentialStore(':memory:');
+  sharedCredentials.setMany({ TAVILY_API_KEY: 'tvly-from-research-settings' });
+  const manager = createSkillManager(sharedCredentials);
+
+  expect(manager.collectConfiguredSkillEnvVars()).toEqual({
+    TAVILY_API_KEY: 'tvly-from-research-settings',
+  });
+});
+
 // ==================== Integration: real-world SKILL.md patterns ====================
 
 test('integration: typical official skill frontmatter', () => {
@@ -206,7 +293,9 @@ test('integration: skill with block scalar description', () => {
 
   const { frontmatter, content } = parseFrontmatter(raw);
   expect(frontmatter.name).toBe('demo');
-  expect(String(frontmatter.description || '').trim()).toBe('A multi-line description.\nSecond line.');
+  expect(String(frontmatter.description || '').trim()).toBe(
+    'A multi-line description.\nSecond line.',
+  );
   expect(content).toMatch(/# Demo Skill/);
 });
 
@@ -259,7 +348,9 @@ test('clawhub: /{owner}/{name} with www prefix', () => {
 });
 
 test('clawhub: /{owner}/{name} with trailing slash', () => {
-  expect(parseClawhubUrl('https://clawhub.ai/anthropic/web-search/')).toEqual({ name: 'web-search' });
+  expect(parseClawhubUrl('https://clawhub.ai/anthropic/web-search/')).toEqual({
+    name: 'web-search',
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -271,7 +362,9 @@ test('clawhub: /skills/{owner}/{name} extracts skill name', () => {
 });
 
 test('clawhub: /skills/{owner}/{name} with trailing slash', () => {
-  expect(parseClawhubUrl('https://clawhub.ai/skills/anthropic/web-search/')).toEqual({ name: 'web-search' });
+  expect(parseClawhubUrl('https://clawhub.ai/skills/anthropic/web-search/')).toEqual({
+    name: 'web-search',
+  });
 });
 
 // ---------------------------------------------------------------------------

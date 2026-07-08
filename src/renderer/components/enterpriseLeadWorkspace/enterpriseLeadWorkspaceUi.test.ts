@@ -568,6 +568,14 @@ const installFakeDom = (): (() => void) => {
       log: {
         fromRenderer: vi.fn(),
       },
+      window: {
+        isMaximized: vi.fn().mockResolvedValue(false),
+        onStateChanged: vi.fn(() => () => undefined),
+        minimize: vi.fn(),
+        toggleMaximize: vi.fn(),
+        close: vi.fn(),
+        showSystemMenu: vi.fn(),
+      },
     },
     self: undefined as unknown,
     top: undefined as unknown,
@@ -593,6 +601,24 @@ const installFakeDom = (): (() => void) => {
   return () => {
     vi.unstubAllGlobals();
   };
+};
+
+const collectFakeDomAttributeValues = (node: FakeDomNode, attributeName: string): string[] => {
+  const values: string[] = [];
+
+  if (node instanceof FakeDomElement) {
+    const value = node.getAttribute(attributeName);
+
+    if (value) {
+      values.push(value);
+    }
+  }
+
+  node.childNodes.forEach(child => {
+    values.push(...collectFakeDomAttributeValues(child, attributeName));
+  });
+
+  return values;
 };
 
 afterEach(() => {
@@ -705,6 +731,96 @@ describe('enterprise lead workspace UI helpers', () => {
       });
 
       expect(loadCoworkSessions).toHaveBeenCalled();
+    } finally {
+      root.unmount();
+      restoreDom();
+    }
+  });
+
+  test('does not render the workspace exit action in the top title bar', async () => {
+    await vi.resetModules();
+    const restoreDom = installFakeDom();
+
+    const ReactInner = await import('react');
+    const { configureStore } = await import('@reduxjs/toolkit');
+    const { Provider } = await import('react-redux');
+    const { createRoot } = await import('react-dom/client');
+    const { act } = ReactInner;
+    const coworkModule = await import('../../services/cowork');
+    const enterpriseLeadWorkspaceModule = await import('../../services/enterpriseLeadWorkspace');
+    const { default: coworkReducer } = await import('../../store/slices/coworkSlice');
+
+    let entryHomeProps: { onOpen: (workspaceId: string) => void } | null = null;
+
+    vi.doMock('./WorkspaceEntryHome', () => ({
+      default: (props: { onOpen: (workspaceId: string) => void }) => {
+        entryHomeProps = props;
+        return ReactInner.createElement('div', { 'data-testid': 'workspace-entry-home' });
+      },
+    }));
+    vi.doMock('./WorkspaceShell', () => ({
+      default: ({ children }: { children?: React.ReactNode }) =>
+        ReactInner.createElement('div', { 'data-testid': 'workspace-shell' }, children),
+    }));
+    vi.doMock('./WorkspaceStart', () => ({
+      default: () => ReactInner.createElement('div', { 'data-testid': 'workspace-start' }),
+    }));
+    vi.doMock('./WorkspaceKnowledgeBase', () => ({
+      default: () => ReactInner.createElement('div', { 'data-testid': 'workspace-knowledge-base' }),
+    }));
+    vi.doMock('./WorkspaceWorkbench', () => ({
+      default: () => ReactInner.createElement('div', { 'data-testid': 'workspace-workbench' }),
+    }));
+    vi.doMock('./WorkspaceCreate', () => ({
+      default: () => ReactInner.createElement('div', { 'data-testid': 'workspace-create' }),
+    }));
+    vi.doMock('../cowork/CoworkSearchModal', () => ({
+      default: () => ReactInner.createElement('div', { 'data-testid': 'cowork-search-modal' }),
+    }));
+    vi.doMock('../cowork', () => ({
+      CoworkView: () => ReactInner.createElement('div', { 'data-testid': 'cowork-view' }),
+    }));
+
+    const { coworkService } = coworkModule;
+    const { enterpriseLeadWorkspaceService } = enterpriseLeadWorkspaceModule;
+    const { EnterpriseLeadWorkspaceView: IsolatedEnterpriseLeadWorkspaceView } =
+      await import('./EnterpriseLeadWorkspaceView');
+    const workspace = createWorkspace('workspace-1');
+    const testStore = configureStore({
+      reducer: {
+        cowork: coworkReducer,
+      },
+    });
+
+    vi.spyOn(enterpriseLeadWorkspaceService, 'listWorkspaces').mockResolvedValue([workspace]);
+    vi.spyOn(enterpriseLeadWorkspaceService, 'getWorkspace').mockResolvedValue(workspace);
+    vi.spyOn(coworkService, 'loadSessions').mockResolvedValue(undefined);
+
+    const container = document.createElement('div');
+    const root = createRoot(container);
+
+    try {
+      await act(async () => {
+        root.render(
+          ReactInner.createElement(Provider, {
+            store: testStore,
+            children: ReactInner.createElement(IsolatedEnterpriseLeadWorkspaceView, {
+              isSidebarCollapsed: true,
+              hideSidebarToggle: true,
+              onPrepareCoworkChat: vi.fn(),
+            }),
+          }),
+        );
+      });
+
+      await act(async () => {
+        entryHomeProps?.onOpen('workspace-1');
+      });
+
+      expect(container.textContent).toContain(workspace.name);
+      expect(collectFakeDomAttributeValues(container, 'aria-label')).not.toContain(
+        i18nService.t('enterpriseLeadWorkspaceExitToList'),
+      );
     } finally {
       root.unmount();
       restoreDom();
@@ -1086,6 +1202,21 @@ describe('enterprise lead workspace UI helpers', () => {
     expect(markup).toContain('取消创建');
     expect(markup).toContain('border-t border-border/70 pt-5');
     expect(markup).toContain('flex flex-col-reverse gap-2 sm:flex-row');
+  });
+
+  test('describes broad upload format support when creating a workspace', () => {
+    const previousLanguage = i18nService.getLanguage();
+    i18nService.setLanguage('zh', { persist: false });
+
+    try {
+      expect(i18nService.t('enterpriseLeadImportMaterialDesc')).toContain('PDF');
+      expect(i18nService.t('enterpriseLeadImportMaterialDesc')).toContain('Word');
+      expect(i18nService.t('enterpriseLeadImportMaterialDesc')).toContain('Excel');
+      expect(i18nService.t('enterpriseLeadImportMaterialDesc')).toContain('PPTX');
+      expect(i18nService.t('enterpriseLeadReadFileFailed')).toContain('PDF');
+    } finally {
+      i18nService.setLanguage(previousLanguage, { persist: false });
+    }
   });
 
   test('builds a blank manual workspace draft without initial profile data', () => {

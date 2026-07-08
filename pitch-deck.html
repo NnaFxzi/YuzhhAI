@@ -1,0 +1,1238 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta content="width=device-width, initial-scale=1.0" name="viewport">
+  <title>宇智汇和 AI 助手 - 产品亮点</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    :root {
+      --bg-dark: #050510;
+      --bg-card: rgba(16, 20, 40, 0.7);
+      --accent-cyan: #00f0ff;
+      --accent-blue: #3b82f6;
+      --accent-purple: #8b5cf6;
+      --accent-pink: #f472b6;
+      --text-primary: #ffffff;
+      --text-secondary: #94a3b8;
+      --border-glow: rgba(0, 240, 255, 0.3);
+    }
+
+    @font-face {
+      font-family: 'Tech';
+      src: local('SF Pro Display'), local('PingFang SC'), local('Microsoft YaHei');
+    }
+
+    html, body {
+      height: 100%;
+      overflow: hidden;
+      font-family: 'Tech', -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+      background: var(--bg-dark);
+      color: var(--text-primary);
+    }
+
+    /* 背景网格与光效 */
+    .bg-canvas {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 0;
+      pointer-events: none;
+    }
+
+    .bg-grid {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-image: linear-gradient(rgba(0, 240, 255, 0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0, 240, 255, 0.03) 1px, transparent 1px);
+      background-size: 60px 60px;
+      z-index: 1;
+      pointer-events: none;
+    }
+
+    .bg-glow {
+      position: fixed;
+      border-radius: 50%;
+      filter: blur(80px);
+      opacity: 0.4;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .glow-1 {
+      width: 600px;
+      height: 600px;
+      background: radial-gradient(circle, var(--accent-cyan), transparent 70%);
+      top: -200px;
+      right: -100px;
+    }
+
+    .glow-2 {
+      width: 500px;
+      height: 500px;
+      background: radial-gradient(circle, var(--accent-purple), transparent 70%);
+      bottom: -150px;
+      left: -100px;
+    }
+
+    /* 幻灯片容器 */
+    .deck {
+      position: relative;
+      z-index: 2;
+      width: 100vw;
+      height: 100vh;
+    }
+
+    .slide {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      padding: 60px 80px;
+      opacity: 0;
+      visibility: hidden;
+      transform: scale(0.95) translateY(20px);
+      transition: all 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    .slide.active {
+      opacity: 1;
+      visibility: visible;
+      transform: scale(1) translateY(0);
+    }
+
+    /* 通用标题 */
+    .slide-title {
+      font-size: 52px;
+      font-weight: 800;
+      margin-bottom: 40px;
+      text-align: center;
+      background: linear-gradient(135deg, #fff 0%, var(--accent-cyan) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      letter-spacing: -1px;
+    }
+
+    .slide-subtitle {
+      font-size: 24px;
+      color: var(--text-secondary);
+      text-align: center;
+      max-width: 900px;
+      line-height: 1.6;
+    }
+
+    /* 卡片网格 */
+    .card-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 24px;
+      width: 100%;
+      max-width: 1400px;
+      margin-top: 30px;
+    }
+
+    .card-grid-2 {
+      grid-template-columns: repeat(2, 1fr);
+    }
+
+    .card {
+      background: var(--bg-card);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 20px;
+      padding: 32px;
+      backdrop-filter: blur(20px);
+      transition: all 0.4s ease;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--accent-cyan), transparent);
+      opacity: 0.6;
+    }
+
+    .card:hover {
+      transform: translateY(-5px);
+      border-color: var(--border-glow);
+      box-shadow: 0 20px 60px rgba(0, 240, 255, 0.15);
+    }
+
+    .card-icon {
+      width: 56px;
+      height: 56px;
+      border-radius: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 26px;
+      margin-bottom: 20px;
+      background: rgba(0, 240, 255, 0.1);
+      border: 1px solid rgba(0, 240, 255, 0.2);
+    }
+
+    .card h3 {
+      font-size: 22px;
+      margin-bottom: 12px;
+      color: var(--text-primary);
+    }
+
+    .card p {
+      font-size: 15px;
+      color: var(--text-secondary);
+      line-height: 1.7;
+    }
+
+    .card .tag {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 12px;
+      margin-top: 14px;
+      background: rgba(139, 92, 246, 0.15);
+      color: var(--accent-purple);
+      border: 1px solid rgba(139, 92, 246, 0.3);
+    }
+
+    /* 封面 */
+    .hero-slide .brand {
+      font-size: 18px;
+      letter-spacing: 6px;
+      color: var(--accent-cyan);
+      margin-bottom: 30px;
+      text-transform: uppercase;
+    }
+
+    .hero-slide h1 {
+      font-size: 72px;
+      font-weight: 900;
+      text-align: center;
+      line-height: 1.1;
+      margin-bottom: 30px;
+      background: linear-gradient(135deg, #fff 0%, var(--accent-cyan) 50%, var(--accent-purple) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .hero-slide .hero-tagline {
+      font-size: 28px;
+      color: var(--text-secondary);
+      text-align: center;
+      max-width: 1000px;
+      line-height: 1.6;
+      margin-top: 20px;
+    }
+
+    .hero-stats {
+      display: flex;
+      gap: 60px;
+      margin-top: 60px;
+    }
+
+    .hero-stat {
+      text-align: center;
+    }
+
+    .hero-stat .number {
+      font-size: 42px;
+      font-weight: 800;
+      color: var(--accent-cyan);
+    }
+
+    .hero-stat .label {
+      font-size: 14px;
+      color: var(--text-secondary);
+      margin-top: 8px;
+    }
+
+    /* 核心理念 */
+    .core-message {
+      font-size: 38px;
+      line-height: 1.6;
+      text-align: center;
+      max-width: 1200px;
+      padding: 50px;
+      background: var(--bg-card);
+      border-radius: 24px;
+      border: 1px solid rgba(0, 240, 255, 0.2);
+      position: relative;
+    }
+
+    .core-message::before {
+      content: '"';
+      position: absolute;
+      top: -20px;
+      left: 30px;
+      font-size: 120px;
+      color: var(--accent-cyan);
+      opacity: 0.3;
+      font-family: Georgia, serif;
+    }
+
+    .core-message strong {
+      color: var(--accent-cyan);
+      font-weight: 700;
+    }
+
+    /* 卖点大图 */
+    .feature-showcase {
+      display: flex;
+      align-items: center;
+      gap: 60px;
+      max-width: 1400px;
+      width: 100%;
+    }
+
+    .feature-showcase.reverse {
+      flex-direction: row-reverse;
+    }
+
+    .feature-visual {
+      flex: 1;
+      height: 420px;
+      background: var(--bg-card);
+      border-radius: 24px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .feature-content {
+      flex: 1;
+    }
+
+    .feature-content h2 {
+      font-size: 42px;
+      margin-bottom: 24px;
+      background: linear-gradient(135deg, #fff 0%, var(--accent-cyan) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .feature-content p {
+      font-size: 20px;
+      color: var(--text-secondary);
+      line-height: 1.8;
+      margin-bottom: 20px;
+    }
+
+    .feature-list {
+      list-style: none;
+    }
+
+    .feature-list li {
+      font-size: 17px;
+      color: var(--text-secondary);
+      padding: 10px 0;
+      padding-left: 28px;
+      position: relative;
+    }
+
+    .feature-list li::before {
+      content: '▸';
+      position: absolute;
+      left: 0;
+      color: var(--accent-cyan);
+    }
+
+    /* 可视化元素 */
+    .orbit {
+      width: 280px;
+      height: 280px;
+      position: relative;
+    }
+
+    .orbit-center {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 100px;
+      height: 100px;
+      border-radius: 50%;
+      background: radial-gradient(circle, var(--accent-cyan), var(--accent-blue));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 36px;
+      box-shadow: 0 0 60px rgba(0, 240, 255, 0.5);
+    }
+
+    .orbit-ring {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      border: 1px solid rgba(0, 240, 255, 0.2);
+      border-radius: 50%;
+    }
+
+    .orbit-ring-1 {
+      width: 180px;
+      height: 180px;
+      animation: rotate 10s linear infinite;
+    }
+
+    .orbit-ring-2 {
+      width: 260px;
+      height: 260px;
+      animation: rotate 15s linear infinite reverse;
+    }
+
+    .orbit-dot {
+      position: absolute;
+      width: 12px;
+      height: 12px;
+      background: var(--accent-cyan);
+      border-radius: 50%;
+      box-shadow: 0 0 10px var(--accent-cyan);
+    }
+
+    .orbit-ring-1 .orbit-dot {
+      top: -6px;
+      left: 50%;
+      transform: translateX(-50%);
+    }
+
+    .orbit-ring-2 .orbit-dot {
+      bottom: -6px;
+      left: 50%;
+      transform: translateX(-50%);
+    }
+
+    @keyframes rotate {
+      from {
+        transform: translate(-50%, -50%) rotate(0deg);
+      }
+      to {
+        transform: translate(-50%, -50%) rotate(360deg);
+      }
+    }
+
+    .phone-mockup {
+      width: 180px;
+      height: 340px;
+      border: 3px solid rgba(255, 255, 255, 0.2);
+      border-radius: 30px;
+      background: rgba(0, 0, 0, 0.5);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .phone-screen {
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      right: 12px;
+      bottom: 12px;
+      border-radius: 20px;
+      background: linear-gradient(180deg, rgba(0, 240, 255, 0.1), rgba(139, 92, 246, 0.1));
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .msg {
+      padding: 10px 14px;
+      border-radius: 14px;
+      font-size: 12px;
+      max-width: 85%;
+    }
+
+    .msg-in {
+      background: rgba(255, 255, 255, 0.1);
+      align-self: flex-start;
+    }
+
+    .msg-out {
+      background: linear-gradient(135deg, var(--accent-cyan), var(--accent-blue));
+      align-self: flex-end;
+      color: #000;
+      font-weight: 600;
+    }
+
+    .pc-mockup {
+      width: 320px;
+      height: 200px;
+      border: 2px solid rgba(255, 255, 255, 0.2);
+      border-radius: 12px;
+      background: rgba(0, 0, 0, 0.6);
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .pc-mockup::after {
+      content: '';
+      position: absolute;
+      bottom: -16px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 80px;
+      height: 12px;
+      background: rgba(255, 255, 255, 0.2);
+      border-radius: 0 0 6px 6px;
+    }
+
+    .connection-line {
+      width: 120px;
+      height: 2px;
+      background: linear-gradient(90deg, var(--accent-cyan), var(--accent-purple));
+      position: relative;
+      animation: pulse 2s ease-in-out infinite;
+    }
+
+    .connection-line::after {
+      content: '⚡';
+      position: absolute;
+      top: -10px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 16px;
+    }
+
+    @keyframes pulse {
+      0%, 100% {
+        opacity: 0.4;
+      }
+      50% {
+        opacity: 1;
+      }
+    }
+
+    /* 表格 */
+    .hypothesis-table {
+      width: 100%;
+      max-width: 1400px;
+      border-collapse: collapse;
+      margin-top: 20px;
+    }
+
+    .hypothesis-table th,
+    .hypothesis-table td {
+      padding: 18px 20px;
+      text-align: left;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      font-size: 15px;
+    }
+
+    .hypothesis-table th {
+      color: var(--accent-cyan);
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      font-size: 13px;
+      background: rgba(0, 240, 255, 0.05);
+    }
+
+    .hypothesis-table td {
+      color: var(--text-secondary);
+      line-height: 1.6;
+    }
+
+    .hypothesis-table tr:hover td {
+      background: rgba(255, 255, 255, 0.03);
+      color: var(--text-primary);
+    }
+
+    /* 结束页 */
+    .final-slide h2 {
+      font-size: 56px;
+      font-weight: 800;
+      margin-bottom: 30px;
+      background: linear-gradient(135deg, #fff 0%, var(--accent-cyan) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .final-slide .cta {
+      font-size: 24px;
+      color: var(--text-secondary);
+      margin-bottom: 50px;
+    }
+
+    .final-slide .contact {
+      display: flex;
+      gap: 40px;
+    }
+
+    .contact-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 16px 28px;
+      background: var(--bg-card);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 12px;
+      font-size: 16px;
+    }
+
+    /* 导航 */
+    .nav {
+      position: fixed;
+      bottom: 30px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      z-index: 100;
+      padding: 12px 24px;
+      background: rgba(16, 20, 40, 0.8);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 30px;
+      backdrop-filter: blur(20px);
+    }
+
+    .nav button {
+      background: transparent;
+      border: none;
+      color: var(--text-primary);
+      font-size: 14px;
+      cursor: pointer;
+      padding: 8px 16px;
+      border-radius: 20px;
+      transition: all 0.3s ease;
+    }
+
+    .nav button:hover {
+      background: rgba(0, 240, 255, 0.1);
+      color: var(--accent-cyan);
+    }
+
+    .nav .counter {
+      color: var(--text-secondary);
+      font-size: 14px;
+      min-width: 60px;
+      text-align: center;
+    }
+
+    .progress-bar {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      height: 3px;
+      background: linear-gradient(90deg, var(--accent-cyan), var(--accent-purple));
+      transition: width 0.3s ease;
+      z-index: 100;
+    }
+
+    /* 页码 */
+    .page-number {
+      position: fixed;
+      top: 30px;
+      right: 40px;
+      font-size: 14px;
+      color: var(--text-secondary);
+      z-index: 100;
+    }
+
+    .page-number span {
+      color: var(--accent-cyan);
+      font-weight: 700;
+    }
+
+    /* 备注提示 */
+    .speaker-notes {
+      display: none;
+    }
+
+    /* 响应式 */
+    @media (max-width: 1200px) {
+      .card-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+
+      .feature-showcase {
+        flex-direction: column !important;
+      }
+
+      .hero-slide h1 {
+        font-size: 48px;
+      }
+    }
+  </style>
+</head>
+<body>
+<canvas class="bg-canvas" id="bgCanvas"></canvas>
+<div class="bg-grid"></div>
+<div class="bg-glow glow-1"></div>
+<div class="bg-glow glow-2"></div>
+
+<div class="page-number"><span id="currentPage">1</span> / <span id="totalPage">13</span></div>
+<div class="progress-bar" id="progressBar"></div>
+
+<div class="deck" id="deck">
+
+  <!-- Slide 1: 封面 -->
+  <div class="slide hero-slide active">
+    <div class="brand">宇智汇和 AI 助手</div>
+    <h1>从聊天机器人<br>到真正能干活的工作台</h1>
+    <p class="hero-tagline">
+      一款 7×24 小时在线的桌面级办公 Agent<br>
+      连接本地文件、项目、浏览器、IM 与自动化任务
+    </p>
+    <div class="hero-stats">
+      <div class="hero-stat">
+        <div class="number">6+</div>
+        <div class="label">IM 渠道接入</div>
+      </div>
+      <div class="hero-stat">
+        <div class="number">7</div>
+        <div class="label">核心办公场景</div>
+      </div>
+      <div class="hero-stat">
+        <div class="number">∞</div>
+        <div class="label">可扩展 Agent 生态</div>
+      </div>
+    </div>
+    <div class="speaker-notes">
+      开场直接点出核心差异：我们不是网页聊天框，而是桌面级 AI 工作台。
+    </div>
+  </div>
+
+  <!-- Slide 2: 一句话定位 -->
+  <div class="slide">
+    <h2 class="slide-title">核心定位</h2>
+    <div class="core-message">
+      宇智汇和 AI 助手不是单纯聊天机器人，<br>
+      而是一个能连接<strong>本地文件、项目、浏览器、IM 和自动化任务</strong>的<br>
+      <strong>桌面级 AI 工作台</strong>。
+    </div>
+    <p class="slide-subtitle" style="margin-top: 40px;">
+      在真实工作环境中完成任务，并通过权限确认控制敏感操作
+    </p>
+    <div class="speaker-notes">
+      这句话是所有对外传播的主轴：强调连接本地环境、能执行任务、可控安全。
+    </div>
+  </div>
+
+  <!-- Slide 3: 桌面级 Agent -->
+  <div class="slide">
+    <div class="feature-showcase">
+      <div class="feature-visual">
+        <div class="orbit">
+          <div class="orbit-ring orbit-ring-1">
+            <div class="orbit-dot"></div>
+          </div>
+          <div class="orbit-ring orbit-ring-2">
+            <div class="orbit-dot"></div>
+          </div>
+          <div class="orbit-center">🖥️</div>
+        </div>
+      </div>
+      <div class="feature-content">
+        <h2>桌面级 Agent，<br>不是网页聊天框</h2>
+        <p>产品定位明确强调可连接文件、终端、浏览器和本地项目，在真实工作环境里完成任务。</p>
+        <ul class="feature-list">
+          <li>读取本地文件与项目资料</li>
+          <li>调用终端与浏览器能力</li>
+          <li>通过权限门控控制敏感操作</li>
+          <li>主打“真能干活”的差异化心智</li>
+        </ul>
+      </div>
+    </div>
+    <div class="speaker-notes">
+      与 ChatGPT、Claude 网页版形成鲜明对比：我们在用户电脑上运行，能操作真实环境。
+    </div>
+  </div>
+
+  <!-- Slide 4: 全场景办公 -->
+  <div class="slide">
+    <h2 class="slide-title">全场景办公能力覆盖</h2>
+    <p class="slide-subtitle">不是单点工具，而是面向日常办公流的综合助手</p>
+    <div class="card-grid">
+      <div class="card">
+        <div class="card-icon">📊</div>
+        <h3>数据分析</h3>
+        <p>读取本地表格、生成图表与洞察报告</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">📑</div>
+        <h3>PPT / 文档</h3>
+        <p>自动生成演示文稿、文档与格式化内容</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">🎬</div>
+        <h3>视频与多媒体</h3>
+        <p>处理视频脚本、剪辑建议与素材整理</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">🌐</div>
+        <h3>网络调研</h3>
+        <p>浏览器自动化、信息搜集与竞品追踪</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">📧</div>
+        <h3>邮件与 IM</h3>
+        <p>收发邮件、消息摘要与自动回复</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">⏰</div>
+        <h3>定时任务</h3>
+        <p>早报、周报、巡检等自动化工作流</p>
+      </div>
+    </div>
+    <div class="speaker-notes">
+      七大场景已经产品化，证明我们覆盖的是完整的办公流，而非单一功能。
+    </div>
+  </div>
+
+  <!-- Slide 5: 多 Agent + 工作区 -->
+  <div class="slide">
+    <div class="feature-showcase reverse">
+      <div class="feature-visual" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding: 30px;">
+        <div class="card"
+             style="margin: 0; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 700;">
+          线索工作区
+        </div>
+        <div class="card"
+             style="margin: 0; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 700;">
+          Cowork
+        </div>
+        <div class="card"
+             style="margin: 0; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 700;">
+          技能 Skills
+        </div>
+        <div class="card"
+             style="margin: 0; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 700;">
+          自动任务
+        </div>
+        <div class="card"
+             style="margin: 0; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 700;">
+          专家套件
+        </div>
+        <div class="card"
+             style="margin: 0; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 700;">
+          MCP
+        </div>
+      </div>
+      <div class="feature-content">
+        <h2>多 Agent + 工作区化</h2>
+        <p>产品正在从“聊天助手”升级为“业务工作台”。默认进入企业线索工作区，当前最有产品感的方向。</p>
+        <ul class="feature-list">
+          <li>默认主视图：企业线索工作区</li>
+          <li>Cowork：团队协作空间</li>
+          <li>Skills / 专家套件 / MCP：能力扩展层</li>
+          <li>自动任务：定时触发与执行</li>
+        </ul>
+        <span class="tag" style="margin-top: 20px;">主推场景：企业获客 / 线索运营</span>
+      </div>
+    </div>
+    <div class="speaker-notes">
+      这是产品架构上最大的亮点：从对话 UI 升级为业务工作台，企业线索工作区是最成熟的落地场景。
+    </div>
+  </div>
+
+  <!-- Slide 6: IM 远程指挥 -->
+  <div class="slide">
+    <h2 class="slide-title">手机远程指挥电脑干活</h2>
+    <p class="slide-subtitle">用户不在电脑前，也能通过 IM 让电脑执行任务</p>
+    <div class="feature-showcase" style="justify-content: center; margin-top: 40px;">
+      <div class="phone-mockup">
+        <div class="phone-screen">
+          <div class="msg msg-out">帮我整理明天会议资料</div>
+          <div class="msg msg-in">已读取项目文件夹，生成会议纪要模板</div>
+          <div class="msg msg-out">把周报发给我</div>
+          <div class="msg msg-in">周报已生成，发送至邮箱</div>
+        </div>
+      </div>
+      <div class="connection-line"></div>
+      <div class="pc-mockup">
+        <div style="text-align: center; color: var(--accent-cyan); font-size: 48px;">🖥️</div>
+        <div style="position: absolute; bottom: 30px; color: var(--text-secondary); font-size: 14px;">桌面 Agent
+          正在执行
+        </div>
+      </div>
+    </div>
+    <div style="display: flex; gap: 20px; margin-top: 50px; flex-wrap: wrap; justify-content: center;">
+      <span class="tag">钉钉</span>
+      <span class="tag">飞书</span>
+      <span class="tag">企业微信</span>
+      <span class="tag">微信</span>
+      <span class="tag">QQ</span>
+      <span class="tag">Discord</span>
+      <span class="tag">邮箱</span>
+    </div>
+    <div class="speaker-notes">
+      OpenClaw 插件覆盖主流 IM 渠道。这是最能打动普通用户的场景：人在外面，手机一句话，电脑自动干活。
+    </div>
+  </div>
+
+  <!-- Slide 7: 生态扩展 -->
+  <div class="slide">
+    <h2 class="slide-title">生态扩展能力强</h2>
+    <p class="slide-subtitle">不是固定功能软件，而是可以持续加能力的 Agent 平台</p>
+    <div class="card-grid card-grid-2" style="max-width: 1100px;">
+      <div class="card">
+        <div class="card-icon">🧩</div>
+        <h3>Skills 技能系统</h3>
+        <p>为 Agent 添加可复用的专业技能，覆盖特定业务动作与工具调用。</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">🎒</div>
+        <h3>专家套件 Kits</h3>
+        <p>面向行业或岗位打包的能力组合，开箱即用，快速适配业务。</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">🔌</div>
+        <h3>MCP 协议</h3>
+        <p>标准化接口连接外部数据源、工具与服务，打通企业既有系统。</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">🤖</div>
+        <h3>自定义 Agent</h3>
+        <p>为不同业务创建专属 Agent，定义角色、工具链与执行策略。</p>
+      </div>
+    </div>
+    <div class="speaker-notes">
+      平台化是长期护城河。Skills、Kits、MCP、自定义 Agent 四层扩展，让产品能力持续增长。
+    </div>
+  </div>
+
+  <!-- Slide 8: 本地优先 -->
+  <div class="slide">
+    <div class="feature-showcase">
+      <div class="feature-visual">
+        <div style="text-align: center;">
+          <div style="font-size: 80px; margin-bottom: 20px;">🔒</div>
+          <div style="font-size: 24px; font-weight: 700; color: var(--accent-cyan);">本地 SQLite 持久化</div>
+          <div style="margin-top: 20px; display: flex; flex-direction: column; gap: 10px; align-items: center;">
+            <div class="tag">会话</div>
+            <div class="tag">消息</div>
+            <div class="tag">记忆</div>
+            <div class="tag">Agent</div>
+            <div class="tag">MCP / 插件</div>
+            <div class="tag">子任务</div>
+          </div>
+        </div>
+      </div>
+      <div class="feature-content">
+        <h2>本地优先，数据可控</h2>
+        <p>会话、消息、记忆、Agent、MCP、插件、子任务等都有本地 SQLite 持久化结构。</p>
+        <ul class="feature-list">
+          <li>数据本地存储，企业可审计</li>
+          <li>权限门控 + OpenClaw 运行时管理</li>
+          <li>敏感操作需用户确认</li>
+          <li>适合包装成安全可控的企业级卖点</li>
+        </ul>
+      </div>
+    </div>
+    <div class="speaker-notes">
+      与云端大模型产品形成差异化：数据留在本地，满足企业与个人对隐私和审计的需求。
+    </div>
+  </div>
+
+  <!-- Slide 9: 自动化任务 -->
+  <div class="slide">
+    <h2 class="slide-title">自动化任务已经产品化</h2>
+    <p class="slide-subtitle">定时任务不是停留在底层能力，而是直接转化为用户可理解的办公场景</p>
+    <div class="card-grid">
+      <div class="card">
+        <div class="card-icon">📰</div>
+        <h3>科技早报</h3>
+        <p>每日自动抓取行业资讯，生成摘要推送</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">🌙</div>
+        <h3>每日收尾</h3>
+        <p>自动汇总当日工作，整理待办与明日计划</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">🤝</div>
+        <h3>会议准备</h3>
+        <p>提前整理议程、相关资料与参会提醒</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">📋</div>
+        <h3>周报生成</h3>
+        <p>基于本周记录自动生成周报并发送</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">🔍</div>
+        <h3>项目巡检</h3>
+        <p>定时检查项目状态、异常与关键指标</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">📅</div>
+        <h3>月度行政提醒</h3>
+        <p>发票、报销、考勤等周期性事务提醒</p>
+      </div>
+    </div>
+    <div class="speaker-notes">
+      模板化降低使用门槛，把底层自动化能力包装成具体办公场景。
+    </div>
+  </div>
+
+  <!-- Slide 10: 产出物体验 -->
+  <div class="slide">
+    <h2 class="slide-title">产出物体验完整</h2>
+    <p class="slide-subtitle">Artifacts 面板让 AI 产出不只是文本，而能变成可预览、可分享的成果</p>
+    <div class="card-grid card-grid-2" style="max-width: 1100px;">
+      <div class="card">
+        <div class="card-icon">🌐</div>
+        <h3>HTML / SVG</h3>
+        <p>生成交互页面、矢量图形与可视化组件</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">📊</div>
+        <h3>Mermaid 图表</h3>
+        <p>流程图、架构图、时序图一键渲染</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">📝</div>
+        <h3>文档与报告</h3>
+        <p>Word、PDF、Markdown 等多格式导出</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">🖼️</div>
+        <h3>图片 / 视频 / 本地服务</h3>
+        <p>多媒体预览与本地服务集成能力</p>
+      </div>
+    </div>
+    <div class="speaker-notes">
+      强调产出物的完整性：从文本到页面、报告、文件和可分享成果。
+    </div>
+  </div>
+
+  <!-- Slide 11: 主推卖点 -->
+  <div class="slide">
+    <h2 class="slide-title">最适合对外主推的卖点</h2>
+    <div class="core-message" style="font-size: 28px;">
+      宇智汇和 AI 助手是一款 <strong>7×24 小时在线的桌面级办公 Agent</strong>。<br><br>
+      它能在你的电脑上<strong>读取资料、处理文件、生成内容、调度任务</strong>，<br>
+      并通过微信、企微、钉钉、飞书等 IM <strong>接收远程指令</strong>。<br><br>
+      你还可以为不同业务创建<strong>专属 Agent 和工作区</strong>，<br>
+      让 AI 从聊天变成真正可执行的办公协作系统。
+    </div>
+    <div class="speaker-notes">
+      这是对外统一话术，整合了所有核心亮点，适合官网、 pitch、销售话术。
+    </div>
+  </div>
+
+  <!-- Slide 12: 待验证假设 -->
+  <div class="slide">
+    <h2 class="slide-title">需要验证的假设</h2>
+    <table class="hypothesis-table">
+      <thead>
+      <tr>
+        <th style="width: 25%;">假设</th>
+        <th style="width: 35%;">当前依据</th>
+        <th style="width: 40%;">建议验证</th>
+      </tr>
+      </thead>
+      <tbody>
+      <tr>
+        <td>“全场景办公”是最佳主定位</td>
+        <td>README 和功能面支持多个办公场景</td>
+        <td>用户是否觉得太宽？是否需要先聚焦获客 / 办公自动化？</td>
+      </tr>
+      <tr>
+        <td>“线索工作区”适合作为首页主场景</td>
+        <td>当前默认主视图是企业线索工作区</td>
+        <td>用真实客户测试创建、导入资料、生成线索动作的完整闭环</td>
+      </tr>
+      <tr>
+        <td>“IM 远程指挥电脑”是强卖点</td>
+        <td>插件与配置链路已具备</td>
+        <td>验证扫码 / 配置 / 触发的上手成本是否足够低</td>
+      </tr>
+      </tbody>
+    </table>
+    <div class="speaker-notes">
+      诚实面对尚未验证的假设，指导下一步产品迭代和市场验证方向。
+    </div>
+  </div>
+
+  <!-- Slide 13: 结束页 -->
+  <div class="slide final-slide">
+    <h2>让 AI 真正为你工作</h2>
+    <p class="cta">宇智汇和 AI 助手 — 桌面级办公 Agent</p>
+    <div class="contact">
+      <div class="contact-item">
+        <span>🌐</span>
+        <span>yuzhh-ai-assistant</span>
+      </div>
+      <div class="contact-item">
+        <span>📧</span>
+        <span>contact@yuzhh.ai</span>
+      </div>
+      <div class="contact-item">
+        <span>💬</span>
+        <span>扫码体验 Demo</span>
+      </div>
+    </div>
+    <div class="speaker-notes">
+      收尾强调品牌与核心价值，留下联系方式和 Demo 入口。
+    </div>
+  </div>
+
+</div>
+
+<div class="nav">
+  <button onclick="prevSlide()">◀ 上一页</button>
+  <span class="counter"><span id="navCurrent">1</span> / <span id="navTotal">13</span></span>
+  <button onclick="nextSlide()">下一页 ▶</button>
+</div>
+
+<script>
+  const slides = document.querySelectorAll('.slide');
+  const totalSlides = slides.length;
+  let currentSlide = 0;
+
+  document.getElementById('totalPage').textContent = totalSlides;
+  document.getElementById('navTotal').textContent = totalSlides;
+
+  function updateSlide() {
+    slides.forEach((slide, index) => {
+      slide.classList.toggle('active', index === currentSlide);
+    });
+    document.getElementById('currentPage').textContent = currentSlide + 1;
+    document.getElementById('navCurrent').textContent = currentSlide + 1;
+    document.getElementById('progressBar').style.width = ((currentSlide + 1) / totalSlides * 100) + '%';
+  }
+
+  function nextSlide() {
+    if (currentSlide < totalSlides - 1) {
+      currentSlide++;
+      updateSlide();
+    }
+  }
+
+  function prevSlide() {
+    if (currentSlide > 0) {
+      currentSlide--;
+      updateSlide();
+    }
+  }
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'Enter') {
+      e.preventDefault();
+      nextSlide();
+    } else if (e.key === 'ArrowLeft') {
+      e.preventDefault();
+      prevSlide();
+    } else if (e.key === 'Home') {
+      currentSlide = 0;
+      updateSlide();
+    } else if (e.key === 'End') {
+      currentSlide = totalSlides - 1;
+      updateSlide();
+    }
+  });
+
+  // 触摸滑动支持
+  let touchStartX = 0;
+  let touchEndX = 0;
+
+  document.addEventListener('touchstart', (e) => {
+    touchStartX = e.changedTouches[0].screenX;
+  });
+
+  document.addEventListener('touchend', (e) => {
+    touchEndX = e.changedTouches[0].screenX;
+    if (touchStartX - touchEndX > 50) nextSlide();
+    if (touchEndX - touchStartX > 50) prevSlide();
+  });
+
+  // 背景粒子动画
+  const canvas = document.getElementById('bgCanvas');
+  const ctx = canvas.getContext('2d');
+  let particles = [];
+
+  function resizeCanvas() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+  }
+
+  class Particle {
+    constructor() {
+      this.reset();
+    }
+
+    reset() {
+      this.x = Math.random() * canvas.width;
+      this.y = Math.random() * canvas.height;
+      this.size = Math.random() * 2 + 0.5;
+      this.speedX = (Math.random() - 0.5) * 0.3;
+      this.speedY = (Math.random() - 0.5) * 0.3;
+      this.opacity = Math.random() * 0.5 + 0.1;
+    }
+
+    update() {
+      this.x += this.speedX;
+      this.y += this.speedY;
+
+      if (this.x < 0 || this.x > canvas.width || this.y < 0 || this.y > canvas.height) {
+        this.reset();
+      }
+    }
+
+    draw() {
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(0, 240, 255, ${this.opacity})`;
+      ctx.fill();
+    }
+  }
+
+  function initParticles() {
+    particles = [];
+    const count = Math.floor((canvas.width * canvas.height) / 15000);
+    for (let i = 0; i < count; i++) {
+      particles.push(new Particle());
+    }
+  }
+
+  function animateParticles() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    particles.forEach(p => {
+      p.update();
+      p.draw();
+    });
+    requestAnimationFrame(animateParticles);
+  }
+
+  window.addEventListener('resize', () => {
+    resizeCanvas();
+    initParticles();
+  });
+
+  resizeCanvas();
+  initParticles();
+  animateParticles();
+
+  updateSlide();
+</script>
+</body>
+</html>

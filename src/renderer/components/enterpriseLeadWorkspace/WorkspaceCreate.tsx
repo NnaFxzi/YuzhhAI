@@ -15,6 +15,9 @@ import {
   EnterpriseLeadDocumentExtractionStatus,
   EnterpriseLeadExtractionSourceKind,
   EnterpriseLeadKnowledgeIndexStatus,
+  EnterpriseLeadPlainTextDocumentExtensions,
+  EnterpriseLeadReadableDocumentAcceptTypes,
+  EnterpriseLeadReadableDocumentExtensions,
 } from '../../../shared/enterpriseLeadWorkspace/constants';
 import type {
   EnterpriseLeadWorkspace,
@@ -45,7 +48,38 @@ interface StartModeOption {
   icon: React.ReactNode;
 }
 
-const ACCEPTED_MATERIAL_FILE_TYPES = '.txt,.md,.csv,text/plain,text/markdown,text/csv';
+const ACCEPTED_MATERIAL_FILE_TYPES = EnterpriseLeadReadableDocumentAcceptTypes.join(',');
+
+const browserReadableMaterialExtensions = new Set<string>(
+  EnterpriseLeadPlainTextDocumentExtensions,
+);
+
+const getMaterialFileFilters = (): { name: string; extensions: string[] }[] => [
+  {
+    name: i18nService.t('enterpriseLeadReadableDocumentFilterName'),
+    extensions: [...EnterpriseLeadReadableDocumentExtensions],
+  },
+  {
+    name: i18nService.t('enterpriseLeadAllFilesFilterName'),
+    extensions: ['*'],
+  },
+];
+
+const getFileNameFromPath = (filePath: string): string => {
+  const segments = filePath.split(/[\\/]/).filter(Boolean);
+  return segments[segments.length - 1] || filePath;
+};
+
+const getMaterialFileExtension = (fileName: string): string => {
+  const cleanFileName = fileName.trim().split(/[?#]/)[0] ?? '';
+  const dotIndex = cleanFileName.lastIndexOf('.');
+  return dotIndex >= 0 ? cleanFileName.slice(dotIndex + 1).toLowerCase() : '';
+};
+
+const getBrowserFilePath = (file: File): string => {
+  const maybePath = (file as File & { path?: unknown }).path;
+  return typeof maybePath === 'string' ? maybePath : '';
+};
 
 const formatWorkspaceNameText = (key: string, name: string): string =>
   i18nService.t(key).replace('{name}', name);
@@ -188,6 +222,89 @@ export const WorkspaceCreate: React.FC<WorkspaceCreateProps> = ({ onCreated, onC
     onCancel();
   };
 
+  const readMaterialFileFromPath = async (
+    filePath: string,
+    readRequestId: number,
+    fallbackFileName?: string,
+    fallbackFileSize?: number | null,
+  ): Promise<void> => {
+    const dialogApi = window.electron?.dialog;
+    if (!dialogApi?.readTextFile) {
+      if (fileReadRequestRef.current === readRequestId) {
+        setError(i18nService.t('enterpriseLeadReadFileFailed'));
+      }
+      return;
+    }
+
+    const fileName = fallbackFileName?.trim() || getFileNameFromPath(filePath);
+    setLoadedFileName(fileName);
+    setLoadedFileSize(normalizeOptionalFileSize(fallbackFileSize) ?? null);
+    setMaterialText('');
+    setError('');
+
+    try {
+      const statPromise = dialogApi.statFile(filePath).catch(() => null);
+      const readResult = await dialogApi.readTextFile(filePath);
+      const statResult = await statPromise;
+
+      if (fileReadRequestRef.current !== readRequestId) {
+        return;
+      }
+
+      if (!readResult.success || typeof readResult.content !== 'string') {
+        setError(i18nService.t('enterpriseLeadReadFileFailed'));
+        return;
+      }
+
+      const statSize =
+        statResult?.success && typeof statResult.size === 'number' ? statResult.size : null;
+      setLoadedFileName(fileName);
+      setLoadedFileSize(statSize ?? readResult.size ?? fallbackFileSize ?? null);
+      setMaterialText(readResult.content);
+      setError('');
+    } catch {
+      if (fileReadRequestRef.current === readRequestId) {
+        setError(i18nService.t('enterpriseLeadReadFileFailed'));
+      }
+    }
+  };
+
+  const handleChooseMaterialFile = (): void => {
+    const dialogApi = window.electron?.dialog;
+    if (!dialogApi?.selectFile || !dialogApi.readTextFile) {
+      fileInputRef.current?.click();
+      return;
+    }
+
+    const readRequestId = fileReadRequestRef.current + 1;
+    fileReadRequestRef.current = readRequestId;
+    setError('');
+
+    void dialogApi
+      .selectFile({
+        title: i18nService.t('enterpriseLeadCreateMaterialTitle'),
+        filters: getMaterialFileFilters(),
+      })
+      .then(result => {
+        if (fileReadRequestRef.current !== readRequestId) {
+          return;
+        }
+        if (!result.success) {
+          setError(i18nService.t('enterpriseLeadReadFileFailed'));
+          return;
+        }
+        if (!result.path) {
+          return;
+        }
+        void readMaterialFileFromPath(result.path, readRequestId);
+      })
+      .catch(() => {
+        if (fileReadRequestRef.current === readRequestId) {
+          setError(i18nService.t('enterpriseLeadReadFileFailed'));
+        }
+      });
+  };
+
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>): void => {
     const file = event.currentTarget.files?.[0];
     event.currentTarget.value = '';
@@ -200,7 +317,19 @@ export const WorkspaceCreate: React.FC<WorkspaceCreateProps> = ({ onCreated, onC
     fileReadRequestRef.current = readRequestId;
     setLoadedFileName(file.name);
     setLoadedFileSize(file.size);
+    setMaterialText('');
     setError('');
+
+    const filePath = getBrowserFilePath(file);
+    if (filePath && window.electron?.dialog) {
+      void readMaterialFileFromPath(filePath, readRequestId, file.name, file.size);
+      return;
+    }
+
+    if (!browserReadableMaterialExtensions.has(getMaterialFileExtension(file.name))) {
+      setError(i18nService.t('enterpriseLeadReadFileFailed'));
+      return;
+    }
 
     const reader = new FileReader();
     reader.onerror = () => {
@@ -538,7 +667,7 @@ export const WorkspaceCreate: React.FC<WorkspaceCreateProps> = ({ onCreated, onC
 
       <button
         type="button"
-        onClick={() => fileInputRef.current?.click()}
+        onClick={handleChooseMaterialFile}
         className="grid min-h-[150px] w-full grid-cols-[52px_minmax(0,1fr)_auto] items-center gap-4 rounded-lg border border-dashed border-primary/40 bg-primary/5 px-6 py-6 text-left transition-colors hover:border-primary/70 hover:bg-primary/10 focus:outline-none focus:ring-2 focus:ring-primary/20"
       >
         <span className="grid h-[52px] w-[52px] place-items-center rounded-full bg-surface text-primary shadow-sm">

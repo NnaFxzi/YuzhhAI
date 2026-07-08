@@ -388,6 +388,7 @@ import {
   saveOpenClawSessionPolicyConfig,
 } from './openclawSessionPolicy/store';
 import { registerVoiceInputPermissionHandler } from './permissions/voiceInputPermission';
+import { SharedCredentialStore } from './sharedCredentialStore';
 import { SkillManager } from './skillManager';
 import { getSkillServiceManager } from './skillServices';
 import { SqliteStore } from './sqliteStore';
@@ -1371,6 +1372,7 @@ let coworkStore: CoworkStore | null = null;
 let openClawRuntimeAdapter: OpenClawRuntimeAdapter | null = null;
 let coworkEngineRouter: CoworkEngineRouter | null = null;
 let skillManager: SkillManager | null = null;
+let sharedCredentialStore: SharedCredentialStore | null = null;
 let mcpRuntime: McpRuntime | null = null;
 let imGatewayManager: IMGatewayManager | null = null;
 let storeInitPromise: Promise<SqliteStore> | null = null;
@@ -1687,7 +1689,10 @@ const getEnterpriseLeadWorkspaceService = (): EnterpriseLeadWorkspaceService => 
 
 const getAgentExternalResearchStore = (): AgentExternalResearchStore => {
   if (!agentExternalResearchStore) {
-    agentExternalResearchStore = new AgentExternalResearchStore(getStore().getDatabase());
+    agentExternalResearchStore = new AgentExternalResearchStore(
+      getStore().getDatabase(),
+      getSharedCredentialStore(),
+    );
   }
   return agentExternalResearchStore;
 };
@@ -1830,6 +1835,7 @@ const getOpenClawConfigSync = (): OpenClawConfigSync => {
         getSkillManager()
           .listSkills()
           .map(s => ({ id: s.id, enabled: s.enabled })),
+      getConfiguredSkillEnvVars: () => getSkillManager().collectConfiguredSkillEnvVars(),
       getTelegramInstances: () => {
         try {
           return getIMGatewayManager().getIMStore().getTelegramInstances();
@@ -2111,6 +2117,7 @@ const _syncOpenClawConfigImpl = async (
 
   const nextSecretEnvVars = getOpenClawConfigSync().collectSecretEnvVars();
   const prevSecretEnvVars = getOpenClawEngineManager().getSecretEnvVars();
+  const configuredSkillEnvVarsForRestart = getSkillManager().collectConfiguredSkillEnvVars();
   let referencedSecretEnvVarNames: Set<string> | null = null;
   try {
     const configText = fs.readFileSync(getOpenClawEngineManager().getConfigPath(), 'utf8');
@@ -2120,6 +2127,11 @@ const _syncOpenClawConfigImpl = async (
       '[OpenClawConfigSync] failed to inspect referenced secret env vars, comparing all secrets:',
       error,
     );
+  }
+  if (referencedSecretEnvVarNames) {
+    for (const key of Object.keys(configuredSkillEnvVarsForRestart)) {
+      referencedSecretEnvVarNames.add(key);
+    }
   }
   const effectiveNextSecretEnvVars = referencedSecretEnvVarNames
     ? pickReferencedSecretEnvVars(nextSecretEnvVars, referencedSecretEnvVarNames)
@@ -2678,9 +2690,18 @@ const getTaskCompletionNotifier = (): TaskCompletionNotifier => {
   return taskCompletionNotifier;
 };
 
+const getSharedCredentialStore = (): SharedCredentialStore => {
+  if (!sharedCredentialStore) {
+    sharedCredentialStore = new SharedCredentialStore(
+      path.join(app.getPath('userData'), 'SKILLs', '.credentials.env'),
+    );
+  }
+  return sharedCredentialStore;
+};
+
 const getSkillManager = () => {
   if (!skillManager) {
-    skillManager = new SkillManager(getStore);
+    skillManager = new SkillManager(getStore, getSharedCredentialStore());
   }
   return skillManager;
 };

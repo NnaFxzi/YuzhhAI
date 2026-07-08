@@ -7,13 +7,19 @@ import yaml from 'js-yaml';
 import path from 'path';
 
 import { ComputerUseSkillId } from '../shared/computerUse/constants';
+import {
+  normalizeSkillConfigSchema,
+  normalizeSkillConfigSchemaFromSkillFrontmatter,
+  type SkillConfigSchema,
+} from '../shared/skills/config';
 import { isComputerUseKitInstalled } from './computerUse/computerUseKit';
 import { cpRecursiveSync } from './fsCompat';
 import { t } from './i18n';
 import { getElectronNodeRuntimePath } from './libs/coworkUtil';
 import { appendPythonRuntimeToEnv } from './libs/pythonRuntime';
-import { mergeReports,scanMultipleSkillDirs } from './libs/skillSecurity/skillSecurityScanner';
-import type { SecurityReportAction,SkillSecurityReport } from './libs/skillSecurity/skillSecurityTypes';
+import { mergeReports, scanMultipleSkillDirs } from './libs/skillSecurity/skillSecurityScanner';
+import type { SecurityReportAction, SkillSecurityReport } from './libs/skillSecurity/skillSecurityTypes';
+import { SharedCredentialStore } from './sharedCredentialStore';
 import { SqliteStore } from './sqliteStore';
 
 /**
@@ -300,6 +306,7 @@ export type SkillRecord = {
   prompt: string;
   skillPath: string;
   version?: string;
+  configSchema?: SkillConfigSchema;
 };
 
 type SkillStateMap = Record<string, { enabled: boolean }>;
@@ -324,6 +331,7 @@ type EmailConnectivityTestResult = {
 type SkillDefaultConfig = {
   order?: number;
   enabled?: boolean;
+  configSchema?: SkillConfigSchema;
 };
 
 type SkillsConfig = {
@@ -346,6 +354,7 @@ export interface OpenClawSkillStatusEntry {
 const SKILLS_DIR_NAME = 'SKILLs';
 const SKILL_FILE_NAME = 'SKILL.md';
 const SKILLS_CONFIG_FILE = 'skills.config.json';
+const SHARED_CREDENTIALS_FILE = '.credentials.env';
 const SKILL_STATE_KEY = 'skills_state';
 const WATCH_DEBOUNCE_MS = 250;
 
@@ -1052,7 +1061,7 @@ const downloadClawhubSkill = async (
     const raw = error instanceof Error ? error.message : String(error);
     // Strip ANSI escape codes and decode URL-encoded characters
     const cleaned = raw
-       
+
       .replace(/\x1b\[[0-9;]*m/g, '')
       .replace(/%[0-9A-Fa-f]{2}/g, (match) => {
         try { return decodeURIComponent(match); } catch { return match; }
@@ -1339,8 +1348,14 @@ export class SkillManager {
   private upgradingSkillIds = new Set<string>();
   private deletingSkillIds = new Set<string>();
   private pluginSkillIds = new Set<string>();
+  private sharedCredentialStore?: SharedCredentialStore;
 
-  constructor(private getStore: () => SqliteStore) {}
+  constructor(
+    private getStore: () => SqliteStore,
+    sharedCredentialStore?: SharedCredentialStore,
+  ) {
+    this.sharedCredentialStore = sharedCredentialStore;
+  }
 
   /**
    * Update the cached set of plugin-provided skill IDs (from OpenClaw plugins).
@@ -1559,27 +1574,15 @@ export class SkillManager {
     }
   }
 
-  private mergeSkillsConfig(bundledPath: string, targetPath: string): void {
+  getSkillConfig(skillId: string): { success: boolean; config?: Record<string, string>; error?: string } {
     try {
-      const bundled = JSON.parse(fs.readFileSync(bundledPath, 'utf-8'));
-      const target = JSON.parse(fs.readFileSync(targetPath, 'utf-8'));
-      if (!bundled.defaults || !target.defaults) return;
-      let changed = false;
-      for (const [id, config] of Object.entries(bundled.defaults)) {
-        if (!(id in target.defaults)) {
-          target.defaults[id] = config;
-          changed = true;
-        }
-      }
-      if (changed) {
-        // Write to temp file first, then rename for atomic update
-        const tmpPath = targetPath + '.tmp';
-        fs.writeFileSync(tmpPath, JSON.stringify(target, null, 2) + '\n', 'utf-8');
-        fs.renameSync(tmpPath, targetPath);
-        console.log('[skills] mergeSkillsConfig: merged new skill entries into user config');
-      }
-    } catch (e) {
-      console.warn('[skills] Failed to merge skills config:', e);
+      const skill = this.resolveSkillRecord(skillId);
+      const skillDir = path.dirname(skill.skillPath);
+      const config = this.readSkillEnvFile(skillDir);
+      const sharedConfig = this.getSharedCredentialStore().getMany(this.getSharedCredentialKeys(skill));
+      return { success: true, config: { ...config, ...sharedConfig } };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Failed to read skill config' };
     }
   }
 
@@ -2426,33 +2429,22 @@ export class SkillManager {
     };
   }
 
-  private parseSkillDir(
-    dir: string,
-    state: SkillStateMap,
-    defaults: Record<string, SkillDefaultConfig>,
-    isBuiltIn: boolean
-  ): SkillRecord | null {
-    const skillFile = path.join(dir, SKILL_FILE_NAME);
-    if (!fs.existsSync(skillFile)) return null;
-    try {
-      const raw = fs.readFileSync(skillFile, 'utf8');
-      const { frontmatter, content } = parseFrontmatter(raw);
-      const name = (String(frontmatter.name || '') || path.basename(dir)).trim() || path.basename(dir);
-      const description = (String(frontmatter.description || '') || extractDescription(content) || name).trim();
-      const isOfficial = isTruthy(frontmatter.official) || isTruthy(frontmatter.isOfficial);
-      const meta = frontmatter.metadata as Record<string, unknown> | undefined;
-      const v = frontmatter.version ?? meta?.version;
-      const version = typeof v === 'string' ? v : typeof v === 'number' ? String(v) : undefined;
-      const updatedAt = fs.statSync(skillFile).mtimeMs;
-      const id = path.basename(dir);
-      const prompt = content.trim();
-      const defaultEnabled = defaults[id]?.enabled ?? true;
-      const enabled = state[id]?.enabled ?? defaultEnabled;
-      return { id, name, description, enabled, isOfficial, isBuiltIn, updatedAt, prompt, skillPath: skillFile, version };
-    } catch (error) {
-      console.warn('[skills] Failed to parse skill:', dir, error);
-      return null;
+  collectConfiguredSkillEnvVars(): Record<string, string> {
+    const env: Record<string, string> = this.getSharedCredentialStore().getAll();
+    for (const skill of this.listSkills()) {
+      const fields = skill.configSchema?.fields ?? [];
+      if (fields.length === 0) continue;
+
+      const configResult = this.getSkillConfig(skill.id);
+      if (!configResult.success || !configResult.config) continue;
+
+      for (const field of fields) {
+        const value = configResult.config[field.key]?.trim();
+        if (!value || env[field.key]) continue;
+        env[field.key] = value;
+      }
     }
+    return env;
   }
 
   private listBuiltInSkillIds(): Set<string> {
@@ -2552,58 +2544,119 @@ export class SkillManager {
     return path.resolve(projectRoot, SKILLS_DIR_NAME);
   }
 
-  getSkillConfig(skillId: string): { success: boolean; config?: Record<string, string>; error?: string } {
-    try {
-      const skillDir = this.resolveSkillDir(skillId);
-      const envPath = path.join(skillDir, '.env');
-      if (!fs.existsSync(envPath)) {
-        return { success: true, config: {} };
-      }
-      const raw = fs.readFileSync(envPath, 'utf8');
-      const config: Record<string, string> = {};
-      for (const line of raw.split(/\r?\n/)) {
-        const trimmed = line.trim();
-        if (!trimmed || trimmed.startsWith('#')) continue;
-        const eqIdx = trimmed.indexOf('=');
-        if (eqIdx < 0) continue;
-        const key = trimmed.slice(0, eqIdx).trim();
-        let value = trimmed.slice(eqIdx + 1).trim();
-        // Strip surrounding quotes added by setSkillConfig / manual edits.
-        // Double-quoted values may contain escape sequences (\", \\) that need reversal.
-        // Single-quoted values are taken literally (no escape processing), matching dotenv behavior.
-        if (value.startsWith('"') && value.endsWith('"')) {
-          value = value.slice(1, -1).replace(/\\"/g, '"').replace(/\\\\/g, '\\');
-        } else if (value.startsWith("'") && value.endsWith("'")) {
-          value = value.slice(1, -1);
-        }
-        config[key] = value;
-      }
-      return { success: true, config };
-    } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Failed to read skill config' };
-    }
-  }
-
   setSkillConfig(skillId: string, config: Record<string, string>): { success: boolean; error?: string } {
     try {
-      const skillDir = this.resolveSkillDir(skillId);
-      const envPath = path.join(skillDir, '.env');
-      const lines = Object.entries(config)
-        .filter(([key]) => key.trim())
-        .map(([key, value]) => {
-          // Wrap value in double quotes if it contains characters that dotenv
-          // would misinterpret (e.g. # treated as inline comment, or spaces)
-          if (value.includes('#') || value.includes(' ') || value.includes('"') || value.includes("'")) {
-            // Escape any existing double quotes inside the value
-            const escaped = value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-            return `${key}="${escaped}"`;
-          }
-          return `${key}=${value}`;
-        });
-      fs.writeFileSync(envPath, lines.join('\n') + '\n', 'utf8');
+      const skill = this.resolveSkillRecord(skillId);
+      const skillDir = path.dirname(skill.skillPath);
+      const sharedKeys = new Set(this.getSharedCredentialKeys(skill));
+      const sharedConfig: Record<string, string> = {};
+      const localConfig = this.readSkillEnvFile(skillDir);
+      for (const key of sharedKeys) {
+        delete localConfig[key];
+      }
+      for (const [rawKey, value] of Object.entries(config)) {
+        const key = rawKey.trim().toUpperCase();
+        if (!key) continue;
+        if (sharedKeys.has(key)) {
+          sharedConfig[key] = value;
+        } else {
+          localConfig[key] = value;
+        }
+      }
+      if (Object.keys(sharedConfig).length > 0) {
+        this.getSharedCredentialStore().setMany(sharedConfig);
+      }
+      this.writeSkillEnvFile(skillDir, localConfig);
+      this.notifySkillsChanged();
       return { success: true };
     } catch (error) {
       return { success: false, error: error instanceof Error ? error.message : 'Failed to write skill config' };
+    }
+  }
+
+  private mergeSkillsConfig(bundledPath: string, targetPath: string): void {
+    try {
+      const bundled = JSON.parse(fs.readFileSync(bundledPath, 'utf-8'));
+      const target = JSON.parse(fs.readFileSync(targetPath, 'utf-8'));
+      if (!bundled.defaults || !target.defaults) return;
+      let changed = false;
+      for (const [id, config] of Object.entries(bundled.defaults)) {
+        if (!(id in target.defaults)) {
+          target.defaults[id] = config;
+          changed = true;
+          continue;
+        }
+
+        const bundledConfig = config as SkillDefaultConfig;
+        const currentTargetConfig = target.defaults[id];
+        const targetConfig =
+          currentTargetConfig && typeof currentTargetConfig === 'object'
+            ? currentTargetConfig as SkillDefaultConfig
+            : {};
+        if (
+          bundledConfig.configSchema &&
+          JSON.stringify(targetConfig.configSchema) !== JSON.stringify(bundledConfig.configSchema)
+        ) {
+          target.defaults[id] = {
+            ...targetConfig,
+            configSchema: bundledConfig.configSchema,
+          };
+          changed = true;
+        }
+      }
+      if (changed) {
+        // Write to temp file first, then rename for atomic update
+        const tmpPath = targetPath + '.tmp';
+        fs.writeFileSync(tmpPath, JSON.stringify(target, null, 2) + '\n', 'utf-8');
+        fs.renameSync(tmpPath, targetPath);
+        console.log('[skills] mergeSkillsConfig: merged new skill entries into user config');
+      }
+    } catch (e) {
+      console.warn('[skills] Failed to merge skills config:', e);
+    }
+  }
+
+  private parseSkillDir(
+    dir: string,
+    state: SkillStateMap,
+    defaults: Record<string, SkillDefaultConfig>,
+    isBuiltIn: boolean
+  ): SkillRecord | null {
+    const skillFile = path.join(dir, SKILL_FILE_NAME);
+    if (!fs.existsSync(skillFile)) return null;
+    try {
+      const raw = fs.readFileSync(skillFile, 'utf8');
+      const { frontmatter, content } = parseFrontmatter(raw);
+      const name = (String(frontmatter.name || '') || path.basename(dir)).trim() || path.basename(dir);
+      const description = (String(frontmatter.description || '') || extractDescription(content) || name).trim();
+      const isOfficial = isTruthy(frontmatter.official) || isTruthy(frontmatter.isOfficial);
+      const meta = frontmatter.metadata as Record<string, unknown> | undefined;
+      const v = frontmatter.version ?? meta?.version;
+      const version = typeof v === 'string' ? v : typeof v === 'number' ? String(v) : undefined;
+      const updatedAt = fs.statSync(skillFile).mtimeMs;
+      const id = path.basename(dir);
+      const prompt = content.trim();
+      const defaultEnabled = defaults[id]?.enabled ?? true;
+      const enabled = state[id]?.enabled ?? defaultEnabled;
+      const configSchema =
+        normalizeSkillConfigSchema(defaults[id]?.configSchema)
+        ?? normalizeSkillConfigSchemaFromSkillFrontmatter(frontmatter);
+      return {
+        id,
+        name,
+        description,
+        enabled,
+        isOfficial,
+        isBuiltIn,
+        updatedAt,
+        prompt,
+        skillPath: skillFile,
+        version,
+        ...(configSchema ? { configSchema } : {}),
+      };
+    } catch (error) {
+      console.warn('[skills] Failed to parse skill:', dir, error);
+      return null;
     }
   }
 
@@ -2831,13 +2884,80 @@ export class SkillManager {
     }
   }
 
-  private resolveSkillDir(skillId: string): string {
+  private getSharedCredentialStore(): SharedCredentialStore {
+    if (!this.sharedCredentialStore) {
+      this.sharedCredentialStore = new SharedCredentialStore(
+        path.join(this.ensureSkillsRoot(), SHARED_CREDENTIALS_FILE),
+      );
+    }
+    return this.sharedCredentialStore;
+  }
+
+  private getSharedCredentialKeys(skill: SkillRecord): string[] {
+    return (skill.configSchema?.fields ?? []).map(field => field.key);
+  }
+
+  private readSkillEnvFile(skillDir: string): Record<string, string> {
+    const envPath = path.join(skillDir, '.env');
+    if (!fs.existsSync(envPath)) {
+      return {};
+    }
+    const raw = fs.readFileSync(envPath, 'utf8');
+    const config: Record<string, string> = {};
+    for (const line of raw.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      const eqIdx = trimmed.indexOf('=');
+      if (eqIdx < 0) continue;
+      const key = trimmed.slice(0, eqIdx).trim().toUpperCase();
+      let value = trimmed.slice(eqIdx + 1).trim();
+      // Strip surrounding quotes added by setSkillConfig / manual edits.
+      // Double-quoted values may contain escape sequences (\", \\) that need reversal.
+      // Single-quoted values are taken literally (no escape processing), matching dotenv behavior.
+      if (value.startsWith('"') && value.endsWith('"')) {
+        value = value.slice(1, -1).replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+      } else if (value.startsWith("'") && value.endsWith("'")) {
+        value = value.slice(1, -1);
+      }
+      config[key] = value;
+    }
+    return config;
+  }
+
+  private writeSkillEnvFile(skillDir: string, config: Record<string, string>): void {
+    const envPath = path.join(skillDir, '.env');
+    const entries = Object.entries(config).filter(([key, value]) => key.trim() && value.trim());
+    if (entries.length === 0) {
+      if (fs.existsSync(envPath)) {
+        fs.unlinkSync(envPath);
+      }
+      return;
+    }
+    const lines = entries.map(([rawKey, rawValue]) => {
+      const key = rawKey.trim().toUpperCase();
+      const value = rawValue.trim();
+      // Wrap value in double quotes if it contains characters that dotenv
+      // would misinterpret (e.g. # treated as inline comment, or spaces).
+      if (value.includes('#') || value.includes(' ') || value.includes('"') || value.includes("'")) {
+        const escaped = value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+        return `${key}="${escaped}"`;
+      }
+      return `${key}=${value}`;
+    });
+    fs.writeFileSync(envPath, lines.join('\n') + '\n', 'utf8');
+  }
+
+  private resolveSkillRecord(skillId: string): SkillRecord {
     const skills = this.listSkills();
     const skill = skills.find(s => s.id === skillId);
     if (!skill) {
       throw new Error('Skill not found');
     }
-    return path.dirname(skill.skillPath);
+    return skill;
+  }
+
+  private resolveSkillDir(skillId: string): string {
+    return path.dirname(this.resolveSkillRecord(skillId).skillPath);
   }
 
   private getScriptRuntimeCandidates(env: NodeJS.ProcessEnv): Array<{ command: string; extraEnv?: NodeJS.ProcessEnv }> {

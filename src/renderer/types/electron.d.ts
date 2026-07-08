@@ -82,6 +82,11 @@ import type {
   OpenClawGatewayRepairErrorCode,
 } from '../../shared/openclawEngine/constants';
 import type { ShellOpenFailureReason } from '../../shared/shell/constants';
+import type { AgentResponseContract } from '@shared/agent';
+import type { Platform } from '@shared/platform';
+
+import type { Agent, PresetAgent } from './agent';
+
 interface ApiResponse {
   ok: boolean;
   status: number;
@@ -319,6 +324,8 @@ interface Skill {
   updatedAt: number;
   prompt: string;
   skillPath: string;
+  version?: string;
+  configSchema?: import('../../shared/skills/config').SkillConfigSchema;
 }
 
 type EmailConnectivityCheckCode = 'imap_connection' | 'smtp_connection';
@@ -412,11 +419,6 @@ interface McpMarketplaceData {
   categories: McpMarketplaceCategory[];
   servers: McpMarketplaceServer[];
 }
-
-import type { AgentResponseContract } from '@shared/agent';
-import type { Platform } from '@shared/platform';
-
-import type { Agent, PresetAgent } from './agent';
 
 interface CreditItem {
   type: 'subscription' | 'boost' | 'free' | 'bonus' | 'invitation';

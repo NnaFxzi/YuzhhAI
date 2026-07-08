@@ -21,6 +21,7 @@ import {
   normalizeLocalServiceUrlForDedup,
   parseFileLinksFromMessage,
   parseFilePathsFromText,
+  parseGeneratedVideoArtifactsFromMessages,
   parseLocalServiceUrlsFromText,
   parseMediaTokensFromText,
   parseRemoteImageArtifactsFromText,
@@ -2663,10 +2664,18 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
     try {
       const messages = currentSession.messages;
       const detected: Artifact[] = [];
+      const detectedFilePaths = new Set<string>();
       const pushFileArtifactIfNew = (artifact: Artifact, seenFilePaths: Set<string>) => {
         const normalized = artifact.filePath ? normalizeFilePathForDedup(artifact.filePath) : '';
-        if (!artifact.filePath || seenFilePaths.has(normalized)) return;
+        if (
+          !artifact.filePath ||
+          seenFilePaths.has(normalized) ||
+          detectedFilePaths.has(normalized)
+        ) {
+          return;
+        }
         seenFilePaths.add(normalized);
+        detectedFilePaths.add(normalized);
         detected.push(artifact);
       };
       const pushLocalServiceArtifactIfNew = (
@@ -2807,6 +2816,14 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
             ),
           );
         }
+      }
+
+      const generatedVideoSeenFilePaths = new Set<string>();
+      for (const generatedVideoArtifact of parseGeneratedVideoArtifactsFromMessages(
+        messages,
+        sessionId,
+      )) {
+        pushFileArtifactIfNew(generatedVideoArtifact, generatedVideoSeenFilePaths);
       }
 
       for (let i = 0; i < messages.length; i++) {

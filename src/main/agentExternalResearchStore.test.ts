@@ -7,6 +7,7 @@ import {
   ExternalResearchSecretEditAction,
 } from '../shared/agent/externalResearch';
 import { AgentExternalResearchStore } from './agentExternalResearchStore';
+import { SharedCredentialStore } from './sharedCredentialStore';
 
 let db: Database.Database;
 let store: AgentExternalResearchStore;
@@ -40,6 +41,38 @@ describe('AgentExternalResearchStore', () => {
 
     expect(store.getAppDefaults().providers.tavily.apiKey).toBe('tvly-main');
     expect(store.getMaskedAppDefaults().providers.tavily.apiKeyPreview).toBe('tvly...main');
+  });
+
+  test('shares app default provider keys through the shared credential store', () => {
+    const credentialStore = new SharedCredentialStore(':memory:');
+    store = new AgentExternalResearchStore(db, credentialStore);
+
+    store.saveAppDefaults({
+      mode: AgentExternalResearchMode.Override,
+      providers: {
+        [ExternalResearchProviderId.Tavily]: { enabled: true, apiKey: 'tvly-shared' },
+        [ExternalResearchProviderId.Firecrawl]: { enabled: true, apiKey: 'fc-shared' },
+      },
+    });
+
+    expect(credentialStore.getMany(['TAVILY_API_KEY', 'FIRECRAWL_API_KEY'])).toEqual({
+      TAVILY_API_KEY: 'tvly-shared',
+      FIRECRAWL_API_KEY: 'fc-shared',
+    });
+  });
+
+  test('uses shared credentials as provider key fallback without changing enabled flags', () => {
+    const credentialStore = new SharedCredentialStore(':memory:');
+    credentialStore.setMany({
+      TAVILY_API_KEY: 'tvly-global',
+      FIRECRAWL_API_KEY: 'fc-global',
+    });
+    store = new AgentExternalResearchStore(db, credentialStore);
+
+    const defaults = store.getAppDefaults();
+
+    expect(defaults.providers.tavily).toEqual({ enabled: false, apiKey: 'tvly-global' });
+    expect(defaults.providers.firecrawl).toEqual({ enabled: false, apiKey: 'fc-global' });
   });
 
   test('agent settings inherit app defaults by default', () => {

@@ -31,6 +31,9 @@ describe('buildAiDialogueReplyContract', () => {
     expect(contract).toContain(
       'For coding work, mention changed files, verification run, and remaining risk',
     );
+    expect(contract).toContain('After generating or rendering a local video');
+    expect(contract).toContain('[视频文件](file:///absolute/path/to/video.mp4)');
+    expect(contract).toContain('Do not say a video has been generated without a real file link');
     expect(contract).not.toContain('不得编造客户');
   });
 

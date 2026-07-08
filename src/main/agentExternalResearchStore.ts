@@ -12,6 +12,7 @@ import {
   mergeExternalResearchEditConfig,
   normalizeExternalResearchConfig,
 } from '../shared/agent/externalResearch';
+import { SharedCredentialStore } from './sharedCredentialStore';
 
 type ExternalResearchRow = {
   agent_id: string;
@@ -19,7 +20,10 @@ type ExternalResearchRow = {
 };
 
 export class AgentExternalResearchStore {
-  constructor(private readonly db: Database.Database) {
+  constructor(
+    private readonly db: Database.Database,
+    private readonly sharedCredentials?: SharedCredentialStore,
+  ) {
     this.initialize();
   }
 
@@ -35,8 +39,10 @@ export class AgentExternalResearchStore {
   }
 
   getAppDefaults(): ExternalResearchConfig {
-    return this.getRawSettings(ExternalResearchSettingsScope.AppDefault)
-      ?? buildDefaultExternalResearchConfig(AgentExternalResearchMode.Override);
+    return this.withSharedProviderCredentials(
+      this.getRawSettings(ExternalResearchSettingsScope.AppDefault) ??
+        buildDefaultExternalResearchConfig(AgentExternalResearchMode.Override),
+    );
   }
 
   getMaskedAppDefaults(): MaskedExternalResearchConfig {
@@ -44,10 +50,12 @@ export class AgentExternalResearchStore {
   }
 
   saveAppDefaults(config: ExternalResearchConfig): ExternalResearchConfig {
-    return this.saveRawSettings(ExternalResearchSettingsScope.AppDefault, {
+    const saved = this.saveRawSettings(ExternalResearchSettingsScope.AppDefault, {
       ...normalizeExternalResearchConfig(config),
       mode: AgentExternalResearchMode.Override,
     });
+    this.saveSharedProviderCredentials(saved);
+    return saved;
   }
 
   saveAppDefaultsEdit(edit: ExternalResearchEditConfig): ExternalResearchConfig {
@@ -55,7 +63,10 @@ export class AgentExternalResearchStore {
   }
 
   getAgentSettings(agentId: string): ExternalResearchConfig {
-    return this.getRawSettings(agentId) ?? buildDefaultExternalResearchConfig(AgentExternalResearchMode.Inherit);
+    return this.withSharedProviderCredentials(
+      this.getRawSettings(agentId) ??
+        buildDefaultExternalResearchConfig(AgentExternalResearchMode.Inherit),
+    );
   }
 
   getMaskedAgentSettings(agentId: string): MaskedExternalResearchConfig {
@@ -67,11 +78,17 @@ export class AgentExternalResearchStore {
   }
 
   saveAgentSettingsEdit(agentId: string, edit: ExternalResearchEditConfig): ExternalResearchConfig {
-    return this.saveAgentSettings(agentId, mergeExternalResearchEditConfig(this.getAgentSettings(agentId), edit));
+    return this.saveAgentSettings(
+      agentId,
+      mergeExternalResearchEditConfig(this.getAgentSettings(agentId), edit),
+    );
   }
 
   getEffectiveSettings(agentId: string): ExternalResearchConfig {
-    return getEffectiveExternalResearchConfig(this.getAgentSettings(agentId), this.getAppDefaults());
+    return getEffectiveExternalResearchConfig(
+      this.getAgentSettings(agentId),
+      this.getAppDefaults(),
+    );
   }
 
   getMaskedEffectiveSettings(agentId: string): MaskedExternalResearchConfig {
@@ -87,7 +104,9 @@ export class AgentExternalResearchStore {
 
   private getRawSettings(agentId: string): ExternalResearchConfig | null {
     const row = this.db
-      .prepare('SELECT agent_id, config_json FROM agent_external_research_settings WHERE agent_id = ?')
+      .prepare(
+        'SELECT agent_id, config_json FROM agent_external_research_settings WHERE agent_id = ?',
+      )
       .get(agentId) as ExternalResearchRow | undefined;
     if (!row) return null;
     try {
@@ -105,14 +124,41 @@ export class AgentExternalResearchStore {
     const normalized = normalizeExternalResearchConfig(config);
     const now = Date.now();
     this.db
-      .prepare(`
+      .prepare(
+        `
         INSERT INTO agent_external_research_settings (agent_id, config_json, created_at, updated_at)
         VALUES (?, ?, ?, ?)
         ON CONFLICT(agent_id) DO UPDATE SET
           config_json = excluded.config_json,
           updated_at = excluded.updated_at
-      `)
+      `,
+      )
       .run(agentId, JSON.stringify(normalized), now, now);
     return normalized;
+  }
+
+  private withSharedProviderCredentials(config: ExternalResearchConfig): ExternalResearchConfig {
+    if (!this.sharedCredentials) return config;
+    const shared = this.sharedCredentials.getMany(['TAVILY_API_KEY', 'FIRECRAWL_API_KEY']);
+    return {
+      ...config,
+      providers: {
+        tavily: {
+          ...config.providers.tavily,
+          apiKey: config.providers.tavily.apiKey || shared.TAVILY_API_KEY || '',
+        },
+        firecrawl: {
+          ...config.providers.firecrawl,
+          apiKey: config.providers.firecrawl.apiKey || shared.FIRECRAWL_API_KEY || '',
+        },
+      },
+    };
+  }
+
+  private saveSharedProviderCredentials(config: ExternalResearchConfig): void {
+    this.sharedCredentials?.setMany({
+      TAVILY_API_KEY: config.providers.tavily.apiKey,
+      FIRECRAWL_API_KEY: config.providers.firecrawl.apiKey,
+    });
   }
 }

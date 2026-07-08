@@ -17,7 +17,10 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   EnterpriseLeadDocumentExtractionStatus,
   EnterpriseLeadExtractionSourceKind,
+  EnterpriseLeadImageAttachmentExtensions,
   EnterpriseLeadKnowledgeIndexStatus,
+  EnterpriseLeadReadableDocumentExtensions,
+  EnterpriseLeadSourceDocumentFileFilterExtensions,
 } from '../../../shared/enterpriseLeadWorkspace/constants';
 import type {
   EnterpriseLeadExtractionSource,
@@ -192,12 +195,14 @@ const sourceKindLabelKeys: Record<string, string> = {
   [EnterpriseLeadExtractionSourceKind.Conversation]:
     'enterpriseLeadKnowledgeDocumentTypeConversation',
   [EnterpriseLeadExtractionSourceKind.File]: 'enterpriseLeadKnowledgeDocumentTypeFile',
+  [EnterpriseLeadExtractionSourceKind.Image]: 'enterpriseLeadKnowledgeDocumentTypeImage',
   [EnterpriseLeadExtractionSourceKind.Manual]: 'enterpriseLeadKnowledgeDocumentTypeManual',
   web: 'enterpriseLeadKnowledgeDocumentTypeWeb',
 };
 
 const documentSourceTypeOptions = [
   EnterpriseLeadExtractionSourceKind.File,
+  EnterpriseLeadExtractionSourceKind.Image,
   EnterpriseLeadExtractionSourceKind.Manual,
   EnterpriseLeadExtractionSourceKind.Conversation,
   'web',
@@ -206,26 +211,7 @@ const documentSourceTypeOptions = [
 const documentFileFilters = [
   {
     name: 'Documents',
-    extensions: [
-      'txt',
-      'md',
-      'markdown',
-      'csv',
-      'tsv',
-      'json',
-      'jsonl',
-      'html',
-      'htm',
-      'xml',
-      'yaml',
-      'yml',
-      'log',
-      'pdf',
-      'doc',
-      'docx',
-      'xls',
-      'xlsx',
-    ],
+    extensions: [...EnterpriseLeadSourceDocumentFileFilterExtensions],
   },
   {
     name: 'All files',
@@ -233,25 +219,12 @@ const documentFileFilters = [
   },
 ];
 
-export const enterpriseLeadReadableDocumentExtensions = new Set([
-  'txt',
-  'md',
-  'markdown',
-  'csv',
-  'tsv',
-  'json',
-  'jsonl',
-  'html',
-  'htm',
-  'xml',
-  'yaml',
-  'yml',
-  'log',
-  'pdf',
-  'docx',
-  'xls',
-  'xlsx',
-]);
+export const enterpriseLeadReadableDocumentExtensions = new Set<string>(
+  EnterpriseLeadReadableDocumentExtensions,
+);
+const enterpriseLeadImageAttachmentExtensions = new Set<string>(
+  EnterpriseLeadImageAttachmentExtensions,
+);
 
 const sectionDefaultKinds: Partial<Record<EnterpriseLeadKnowledgeSection, EditableKnowledgeKind>> =
   {
@@ -1419,6 +1392,9 @@ export const WorkspaceKnowledgeBase: React.FC<WorkspaceKnowledgeBaseProps> = ({
     const extension = getFileExtension(selectedPath);
     const statResult = dialogApi.statFile ? await dialogApi.statFile(selectedPath) : null;
     let nextNote = documentDraft.note;
+    let nextExtractImmediately = documentDraft.extractImmediately;
+    let nextSourceType: EnterpriseLeadExtractionSourceKind =
+      EnterpriseLeadExtractionSourceKind.File;
 
     if (enterpriseLeadReadableDocumentExtensions.has(extension) && dialogApi.readTextFile) {
       const readResult = await dialogApi.readTextFile(selectedPath);
@@ -1430,6 +1406,11 @@ export const WorkspaceKnowledgeBase: React.FC<WorkspaceKnowledgeBaseProps> = ({
       } else {
         showFeedbackMessage('failure', 'enterpriseLeadKnowledgeFileReadFailed');
       }
+    } else if (enterpriseLeadImageAttachmentExtensions.has(extension)) {
+      nextNote = '';
+      nextExtractImmediately = false;
+      nextSourceType = EnterpriseLeadExtractionSourceKind.Image;
+      showFeedbackMessage('exception', 'enterpriseLeadKnowledgeImageFileSelected');
     } else {
       showFeedbackMessage('exception', 'enterpriseLeadKnowledgeFileReadUnsupported');
     }
@@ -1441,7 +1422,8 @@ export const WorkspaceKnowledgeBase: React.FC<WorkspaceKnowledgeBaseProps> = ({
       fileSize: statResult?.success ? (statResult.size ?? null) : null,
       name: documentDraft.name.trim() ? documentDraft.name : getFileNameWithoutExtension(fileName),
       note: nextNote,
-      sourceType: EnterpriseLeadExtractionSourceKind.File,
+      extractImmediately: nextExtractImmediately,
+      sourceType: nextSourceType,
     });
   };
 

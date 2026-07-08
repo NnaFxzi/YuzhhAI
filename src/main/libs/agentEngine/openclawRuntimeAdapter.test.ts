@@ -4,6 +4,7 @@ import path from 'node:path';
 
 import Database from 'better-sqlite3';
 import { expect, test, vi } from 'vitest';
+
 import {
   ContextCompactionStatus,
   CoworkSystemMessageKind,
@@ -507,6 +508,52 @@ test('outbound prompt requires a video generation follow-up for short video scri
   expect(prompt).toContain('下一步：是否需要继续生成视频？');
   expect(prompt).toContain('如果需要，我可以继续把这版脚本整理成视频生成提示词');
   expect(prompt).toContain('不要只给“老板出镜版/30 秒版”等改写建议来替代这个确认');
+});
+
+test('outbound prompt treats affirmative video follow-up as production request', async () => {
+  const adapter = new OpenClawRuntimeAdapter(
+    {
+      getSession: () => ({
+        cwd: '',
+        messages: [
+          {
+            id: 'assistant-1',
+            type: 'assistant',
+            content:
+              '下一步：是否需要继续生成视频？如果需要，我可以继续把这版脚本整理成视频生成提示词、Remotion 分镜或直接进入视频制作。',
+            timestamp: 1,
+          },
+        ],
+      }),
+      getAgent: () => null,
+    } as never,
+    {} as never,
+  );
+  const internal = adapter as unknown as {
+    bridgedSessions: Set<string>;
+    buildOutboundPrompt: (
+      sessionId: string,
+      prompt: string,
+      systemPrompt?: string,
+      agentId?: string,
+    ) => Promise<string>;
+  };
+  internal.bridgedSessions.add('session-1');
+
+  const prompt = await internal.buildOutboundPrompt('session-1', '可以');
+
+  expect(prompt).toContain('[Video production continuation contract]');
+  expect(prompt).toContain('Treat the current user reply as a request to produce the video now');
+  expect(prompt).toContain('Default short-video aspect ratio to 9:16 vertical');
+  expect(prompt).toContain('use a local Remotion workflow');
+  expect(prompt).toContain('[视频文件](file:///absolute/path/to/video.mp4)');
+  expect(prompt).toContain(
+    'Do not say the video is generated, complete, or ready without a real local video file link',
+  );
+  expect(prompt).toContain('If you do not know the final mp4 path, locate it before replying');
+  expect(prompt.indexOf('[Video production continuation contract]')).toBeLessThan(
+    prompt.indexOf('[Current user request]'),
+  );
 });
 
 test('outbound prompt appends matched workspace knowledge snippets for industry analysis requests', async () => {

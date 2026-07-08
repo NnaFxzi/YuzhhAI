@@ -98,10 +98,36 @@ describe('documentTextExtractor', () => {
     expect(result.content).toContain('Hello PDF Knowledge');
   });
 
+  test('extracts readable text from pptx files', async () => {
+    const archive = new JSZip();
+    archive.file(
+      'ppt/slides/slide1.xml',
+      [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"',
+        ' xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">',
+        '<p:cSld><p:spTree>',
+        '<p:sp><p:txBody><a:p><a:r><a:t>目标客户：连锁门店</a:t></a:r></a:p></p:txBody></p:sp>',
+        '<p:sp><p:txBody><a:p><a:r><a:t>核心卖点：门店增长 SOP</a:t></a:r></a:p></p:txBody></p:sp>',
+        '</p:spTree></p:cSld>',
+        '</p:sld>',
+      ].join(''),
+    );
+    const filePath = path.join(tmpDir, 'knowledge.pptx');
+    await fs.writeFile(filePath, await archive.generateAsync({ type: 'nodebuffer' }));
+
+    const result = await extractDocumentTextFromFile(filePath);
+
+    expect(result.parser).toBe('pptx');
+    expect(result.content).toContain('目标客户：连锁门店');
+    expect(result.content).toContain('核心卖点：门店增长 SOP');
+  });
+
   test('keeps unsupported legacy word files out of the readable path', () => {
     expect(isSupportedDocumentTextFile('/tmp/legacy.doc')).toBe(false);
     expect(isSupportedDocumentTextFile('/tmp/modern.docx')).toBe(true);
     expect(isSupportedDocumentTextFile('/tmp/sheet.xlsx')).toBe(true);
     expect(isSupportedDocumentTextFile('/tmp/report.pdf')).toBe(true);
+    expect(isSupportedDocumentTextFile('/tmp/slides.pptx')).toBe(true);
   });
 });
