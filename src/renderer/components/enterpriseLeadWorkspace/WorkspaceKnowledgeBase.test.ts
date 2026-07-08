@@ -11,9 +11,12 @@ import {
   EnterpriseLeadKnowledgeSection,
 } from './enterpriseLeadWorkspaceUi';
 import {
+  canPreviewEnterpriseLeadOriginalDocument,
   canRetryEnterpriseLeadDocumentProcessing,
   confirmEnterpriseLeadKnowledgeItemInProfile,
   confirmEnterpriseLeadKnowledgeItemsInProfile,
+  confirmEnterpriseLeadKnowledgeValueInProfile,
+  doesEnterpriseLeadKnowledgeDocumentMatchQuery,
   doesEnterpriseLeadKnowledgeSourceNeedVectorSync,
   enterpriseLeadKnowledgeActionButtonClassNames,
   enterpriseLeadKnowledgeConfirmBehavior,
@@ -25,17 +28,21 @@ import {
   enterpriseLeadKnowledgeMessageAutoDismissMs,
   enterpriseLeadKnowledgeMessageSuccessAccentClassName,
   enterpriseLeadKnowledgeMessageToneClassNames,
+  enterpriseLeadKnowledgeRowArchiveActionClassName,
   enterpriseLeadKnowledgeTableColumnClassNames,
   enterpriseLeadKnowledgeVectorIndexStatusClassNames,
   enterpriseLeadReadableDocumentExtensions,
   getEnterpriseLeadKnowledgeConfirmationKey,
   getEnterpriseLeadKnowledgeDeletionKeys,
+  getEnterpriseLeadKnowledgeDocumentStatusDescription,
   getEnterpriseLeadKnowledgeMessageAutoDismissMs,
   getEnterpriseLeadKnowledgeMessageRole,
+  getEnterpriseLeadKnowledgeMetricFilter,
   getEnterpriseLeadKnowledgePendingItemCount,
   getEnterpriseLeadKnowledgePendingItems,
   getEnterpriseLeadKnowledgeSelectedDeletionKeys,
   getEnterpriseLeadKnowledgeSelectedItemIdAfterViewChange,
+  getEnterpriseLeadKnowledgeToolbarGridClassName,
   getEnterpriseLeadKnowledgeVectorIndexStatus,
   getEnterpriseLeadKnowledgeVectorIndexSummary,
   getEnterpriseLeadNewExtractedKnowledgeKeys,
@@ -45,7 +52,10 @@ import {
   isEnterpriseLeadKnowledgeItemIgnored,
   isEnterpriseLeadKnowledgeSectionShownInAiKnowledgeTable,
   removeEnterpriseLeadKnowledgeKeysFromProfile,
+  shouldShowEnterpriseLeadKnowledgeBatchConfirmAction,
+  shouldShowEnterpriseLeadKnowledgeDetailPanel,
   shouldShowEnterpriseLeadKnowledgeSelectionToolbar,
+  shouldShowEnterpriseLeadKnowledgeToolbarAddAction,
 } from './WorkspaceKnowledgeBase';
 
 describe('WorkspaceKnowledgeBase layout', () => {
@@ -57,15 +67,17 @@ describe('WorkspaceKnowledgeBase layout', () => {
   test('allocates a stable expanded action column for the AI knowledge table', () => {
     expect(Object.keys(enterpriseLeadKnowledgeTableColumnClassNames)).toEqual([
       'knowledge',
-      'meta',
+      'category',
+      'status',
       'actions',
     ]);
 
     const widths = Object.values(enterpriseLeadKnowledgeTableColumnClassNames).map(getPercent);
 
-    expect(enterpriseLeadKnowledgeTableColumnClassNames.knowledge).toBe('w-[54%]');
-    expect(enterpriseLeadKnowledgeTableColumnClassNames.meta).toBe('w-[24%]');
-    expect(enterpriseLeadKnowledgeTableColumnClassNames.actions).toBe('w-[22%]');
+    expect(enterpriseLeadKnowledgeTableColumnClassNames.knowledge).toBe('w-[50%]');
+    expect(enterpriseLeadKnowledgeTableColumnClassNames.category).toBe('w-[18%]');
+    expect(enterpriseLeadKnowledgeTableColumnClassNames.status).toBe('w-[16%]');
+    expect(enterpriseLeadKnowledgeTableColumnClassNames.actions).toBe('w-[16%]');
     expect(widths.reduce((total, width) => total + width, 0)).toBe(100);
   });
 
@@ -78,6 +90,53 @@ describe('WorkspaceKnowledgeBase layout', () => {
       expect(className).toContain('gap-1');
       expect(className).not.toContain('w-8 ');
     });
+  });
+
+  test('keeps add document as a single top-level action on the document view', () => {
+    expect(shouldShowEnterpriseLeadKnowledgeToolbarAddAction('documents')).toBe(false);
+    expect(shouldShowEnterpriseLeadKnowledgeToolbarAddAction('knowledge')).toBe(true);
+    expect(getEnterpriseLeadKnowledgeToolbarGridClassName('documents')).toContain(
+      'md:grid-cols-[minmax(0,1fr)_180px]',
+    );
+    expect(getEnterpriseLeadKnowledgeToolbarGridClassName('knowledge')).toContain(
+      'md:grid-cols-[minmax(0,1fr)_180px_auto_auto]',
+    );
+  });
+
+  test('matches document search against source file metadata and extracted body', () => {
+    const item = {
+      id: 'source-0',
+      kind: EnterpriseLeadKnowledgeItemKind.Source,
+      metaText: '本地文件',
+      secondaryText: '启盛制造',
+      text: '客户资料',
+    };
+    const source = {
+      kind: 'file',
+      label: '客户资料',
+      fileName: 'OEM-pricing.pdf',
+      filePath: '/Users/demo/Documents/OEM-pricing.pdf',
+      summary: '华东客户年度报价资料',
+      text: '最小起订量 5000 件',
+    };
+
+    expect(doesEnterpriseLeadKnowledgeDocumentMatchQuery(item, source, 'oem-pricing')).toBe(true);
+    expect(doesEnterpriseLeadKnowledgeDocumentMatchQuery(item, source, '华东客户')).toBe(true);
+    expect(doesEnterpriseLeadKnowledgeDocumentMatchQuery(item, source, '5000')).toBe(true);
+    expect(doesEnterpriseLeadKnowledgeDocumentMatchQuery(item, source, '不存在')).toBe(false);
+  });
+
+  test('previews rich source files as original documents when a local path exists', () => {
+    expect(
+      canPreviewEnterpriseLeadOriginalDocument({
+        filePath: '/Users/demo/Documents/product.docx',
+      }),
+    ).toBe(true);
+    expect(
+      canPreviewEnterpriseLeadOriginalDocument({
+        fileName: '手动资料.docx',
+      }),
+    ).toBe(false);
   });
 
   test('persists workspace profile when confirming AI knowledge into the library', () => {
@@ -116,6 +175,37 @@ describe('WorkspaceKnowledgeBase layout', () => {
     ]);
     expect(isEnterpriseLeadKnowledgeItemConfirmed(confirmedProfile, item)).toBe(true);
     expect(getEnterpriseLeadKnowledgePendingItemCount(confirmedProfile, [item])).toBe(0);
+  });
+
+  test('keeps an edited AI knowledge value confirmed after save', () => {
+    const profile = {
+      companySummary: '',
+      productList: ['蜂窝纸板'],
+      productCapabilities: [],
+      targetCustomers: [],
+      applicationScenarios: [],
+      sellingPoints: [],
+      channelPreferences: [],
+      prohibitedClaims: [],
+      contactRules: [],
+      missingInfo: [],
+    };
+    const editedItem = {
+      id: 'product-0',
+      kind: EnterpriseLeadKnowledgeItemKind.Product,
+      text: '蜂窝纸板',
+    };
+
+    expect(getEnterpriseLeadKnowledgePendingItemCount(profile, [editedItem])).toBe(1);
+
+    const confirmedProfile = confirmEnterpriseLeadKnowledgeValueInProfile(
+      profile,
+      'productList',
+      '蜂窝纸板',
+    );
+
+    expect(isEnterpriseLeadKnowledgeItemConfirmed(confirmedProfile, editedItem)).toBe(true);
+    expect(getEnterpriseLeadKnowledgePendingItemCount(confirmedProfile, [editedItem])).toBe(0);
   });
 
   test('ignores an AI knowledge item and removes it from the maintained profile', () => {
@@ -245,6 +335,41 @@ describe('WorkspaceKnowledgeBase layout', () => {
   test('shows selected action toolbar only after AI knowledge is selected', () => {
     expect(shouldShowEnterpriseLeadKnowledgeSelectionToolbar(0)).toBe(false);
     expect(shouldShowEnterpriseLeadKnowledgeSelectionToolbar(1)).toBe(true);
+  });
+
+  test('hides no-op confirmation controls', () => {
+    expect(shouldShowEnterpriseLeadKnowledgeBatchConfirmAction(0)).toBe(false);
+    expect(shouldShowEnterpriseLeadKnowledgeBatchConfirmAction(1)).toBe(true);
+  });
+
+  test('keeps row ignore as a secondary hover action', () => {
+    expect(enterpriseLeadKnowledgeRowArchiveActionClassName).toContain('opacity-0');
+    expect(enterpriseLeadKnowledgeRowArchiveActionClassName).toContain('group-hover:opacity-100');
+  });
+
+  test('maps top metrics to knowledge table filters', () => {
+    expect(getEnterpriseLeadKnowledgeMetricFilter('documents')).toMatchObject({
+      activeView: 'documents',
+      documentStatusFilter: 'all',
+    });
+    expect(getEnterpriseLeadKnowledgeMetricFilter('knowledge_all')).toMatchObject({
+      activeView: 'knowledge',
+      statusFilter: 'all',
+    });
+    expect(getEnterpriseLeadKnowledgeMetricFilter('knowledge_pending')).toMatchObject({
+      activeView: 'knowledge',
+      statusFilter: 'pending',
+    });
+    expect(getEnterpriseLeadKnowledgeMetricFilter('knowledge_readonly')).toMatchObject({
+      activeView: 'knowledge',
+      statusFilter: 'readonly',
+    });
+  });
+
+  test('does not open a detail panel from AI knowledge table selection', () => {
+    expect(shouldShowEnterpriseLeadKnowledgeDetailPanel('documents', 'source-0')).toBe(false);
+    expect(shouldShowEnterpriseLeadKnowledgeDetailPanel('knowledge', '')).toBe(false);
+    expect(shouldShowEnterpriseLeadKnowledgeDetailPanel('knowledge', 'product-0')).toBe(false);
   });
 
   test('hides recent deliverables and archives from the AI knowledge table', () => {
@@ -504,6 +629,29 @@ describe('WorkspaceKnowledgeBase layout', () => {
         vectorIndexStatus: EnterpriseLeadKnowledgeIndexStatus.Failed,
       }),
     ).toBe(false);
+  });
+
+  test('describes chunk extraction progress for large document processing', () => {
+    expect(
+      getEnterpriseLeadKnowledgeDocumentStatusDescription({
+        extractionStatus: EnterpriseLeadDocumentExtractionStatus.Extracting,
+        extractionStage: 'extracting_chunks',
+        extractionProgressCurrent: 3,
+        extractionProgressTotal: 12,
+      }),
+    ).toContain('3/12');
+    expect(
+      getEnterpriseLeadKnowledgeDocumentStatusDescription({
+        extractionStatus: EnterpriseLeadDocumentExtractionStatus.Extracting,
+        extractionStage: 'merging',
+      }),
+    ).toContain('合并');
+    expect(
+      getEnterpriseLeadKnowledgeDocumentStatusDescription({
+        extractionStatus: EnterpriseLeadDocumentExtractionStatus.Extracted,
+        extractionPartial: true,
+      }),
+    ).toContain('大文件');
   });
 
   test('treats rich document uploads as readable knowledge sources', () => {

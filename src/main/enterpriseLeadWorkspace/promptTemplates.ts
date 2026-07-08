@@ -16,10 +16,25 @@ import {
   AiDialogueReplySurface,
   buildAiDialogueReplyContract,
 } from '../libs/aiDialogueReplyContract';
+import type {
+  WorkspaceChunkExtractionResult,
+  WorkspaceExtractionChunk,
+} from './documentExtraction';
 import { getEnterpriseLeadAgentMetadata } from './workflow';
 
 interface WorkspaceExtractionPromptInput {
   sourceText: string;
+  sourceLabel: string;
+}
+
+interface WorkspaceChunkExtractionPromptInput {
+  chunk: WorkspaceExtractionChunk;
+  sourceLabel: string;
+  totalChunks: number;
+}
+
+interface WorkspaceChunkMergePromptInput {
+  chunkResults: WorkspaceChunkExtractionResult[];
   sourceLabel: string;
 }
 
@@ -46,7 +61,6 @@ const buildEnterpriseLeadReplyContract = (): string =>
     surface: AiDialogueReplySurface.EnterpriseLead,
     language: AiDialogueReplyLanguage.Zh,
   });
-
 
 const isEnterpriseLeadAgentRole = (value: string): value is EnterpriseLeadAgentRole =>
   Object.values(EnterpriseLeadAgentRole).includes(value as EnterpriseLeadAgentRole);
@@ -297,6 +311,98 @@ export function buildWorkspaceExtractionPrompt({
     `资料来源：${sourceLabel}`,
     '资料正文：',
     sourceText,
+  ].join('\n');
+}
+
+export function buildWorkspaceChunkExtractionPrompt({
+  chunk,
+  sourceLabel,
+  totalChunks,
+}: WorkspaceChunkExtractionPromptInput): string {
+  return [
+    '你是企业获客工作空间资料抽取助手。',
+    '',
+    '安全边界：',
+    buildSafetySection(),
+    '',
+    '请只阅读当前资料分块，抽取这个分块中有明确证据支持的局部事实。',
+    '不要根据其他分块或常识补全事实。无法确认的信息写入 missingInfo。',
+    '只输出结构化 JSON，不要输出 Markdown、解释、前后缀或代码围栏。',
+    '',
+    '输出 JSON schema：',
+    stringify({
+      facts: {
+        companySummary: ['企业概况事实'],
+        productList: ['产品'],
+        productCapabilities: ['能力'],
+        targetCustomers: ['目标客户'],
+        applicationScenarios: ['应用场景'],
+        sellingPoints: ['卖点'],
+        channelPreferences: ['渠道偏好'],
+        prohibitedClaims: ['禁用表达'],
+        contactRules: ['联系规则'],
+        missingInfo: ['缺失信息'],
+      },
+      evidence: [
+        {
+          field: 'facts 中的字段名',
+          value: '事实值',
+          chunkId: chunk.chunkId,
+          quote: '支持该事实的原文短摘录',
+          confidence: 'low | medium | high',
+        },
+      ],
+    }),
+    '',
+    `资料来源：${sourceLabel}`,
+    `资料分块：${chunk.index + 1}/${totalChunks}`,
+    `分块 ID：${chunk.chunkId}`,
+    '分块正文：',
+    chunk.text,
+  ].join('\n');
+}
+
+export function buildWorkspaceChunkMergePrompt({
+  chunkResults,
+  sourceLabel,
+}: WorkspaceChunkMergePromptInput): string {
+  return [
+    '你是企业获客工作空间资料合并助手。',
+    '',
+    '安全边界：',
+    buildSafetySection(),
+    '',
+    '请合并多个资料分块的局部抽取结果，生成一个工作空间草稿。',
+    '只合并有分块事实支持的内容，不得编造。',
+    '禁用表达和联系规则是硬规则，除非完全重复，否则不要删除。',
+    '只输出结构化 JSON，不要输出 Markdown、解释、前后缀或代码围栏。',
+    '',
+    '输出 JSON schema：',
+    stringify({
+      name: '工作空间名称',
+      type: 'enterprise_lead',
+      profile: {
+        companySummary: '企业概况',
+        productList: ['产品'],
+        productCapabilities: ['能力'],
+        targetCustomers: ['目标客户'],
+        applicationScenarios: ['应用场景'],
+        sellingPoints: ['卖点'],
+        channelPreferences: ['渠道偏好'],
+        prohibitedClaims: ['禁用表达'],
+        contactRules: ['联系规则'],
+        missingInfo: ['缺失信息'],
+      },
+      source: {
+        kind: 'file',
+        label: sourceLabel,
+        text: '原始资料由系统保存，不要在这里复述全文',
+      },
+    }),
+    '',
+    `资料来源：${sourceLabel}`,
+    '分块抽取结果：',
+    stringify(chunkResults),
   ].join('\n');
 }
 

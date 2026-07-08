@@ -6,6 +6,7 @@ import type {
   EnterpriseLeadContentOutputLengthPolicy,
   EnterpriseLeadContentOutputPlatformId,
   EnterpriseLeadDeliverableKind,
+  EnterpriseLeadDocumentExtractionStage,
   EnterpriseLeadDocumentExtractionStatus,
   EnterpriseLeadExtractionSourceKind,
   EnterpriseLeadKnowledgeIndexStatus,
@@ -44,6 +45,10 @@ export interface EnterpriseLeadExtractionSource {
   summary?: string;
   extractionStatus?: EnterpriseLeadDocumentExtractionStatus | string;
   extractionError?: string;
+  extractionProgressCurrent?: number;
+  extractionProgressTotal?: number;
+  extractionStage?: EnterpriseLeadDocumentExtractionStage | string;
+  extractionPartial?: boolean;
   lastExtractedAt?: string;
   vectorIndexStatus?: EnterpriseLeadKnowledgeIndexStatus | string;
   vectorIndexError?: string;

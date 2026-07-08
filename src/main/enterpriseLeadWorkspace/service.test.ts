@@ -9,6 +9,7 @@ import {
   buildEnterpriseLeadWorkspaceKnowledgeScopeId,
   EnterpriseLeadAgentRole,
   EnterpriseLeadContentDeliveryMode,
+  EnterpriseLeadDocumentExtractionStage,
   EnterpriseLeadDocumentExtractionStatus,
   EnterpriseLeadExtractionSourceKind,
   EnterpriseLeadKnowledgeIndexStatus,
@@ -24,6 +25,11 @@ import { buildDefaultEnterpriseLeadWorkspaceSettings } from '../../shared/enterp
 import type { ModelClientAdapter, ModelGenerationInput } from '../industryPack/modelClientAdapter';
 import { ContentKnowledgeSourceType } from '../libs/contentKnowledgeRetrieval';
 import { ContentKnowledgeVectorStore } from '../libs/contentKnowledgeVectorStore';
+import {
+  buildWorkspaceExtractionChunks,
+  DIRECT_EXTRACTION_MAX_CHARS,
+  type WorkspaceChunkExtractionResult,
+} from './documentExtraction';
 import { cleanModelJsonText, parseModelJsonObject } from './modelJson';
 import {
   type EnterpriseLeadWorkspaceAgentProvider,
@@ -192,6 +198,21 @@ const markRunReadyToArchive = (store: EnterpriseLeadWorkspaceStore, runId: strin
   });
 };
 
+const waitForModelPromptCount = async (
+  modelClient: FakeModelClient,
+  count: number,
+): Promise<void> => {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    if (modelClient.prompts.length >= count) {
+      return;
+    }
+    await new Promise(resolve => {
+      setTimeout(resolve, 0);
+    });
+  }
+  throw new Error(`Expected ${count} model prompt(s), got ${modelClient.prompts.length}`);
+};
+
 describe('EnterpriseLeadWorkspaceService', () => {
   let db: Database.Database | undefined;
 
@@ -316,6 +337,181 @@ describe('EnterpriseLeadWorkspaceService', () => {
     expect(processedWorkspace?.extractionSources[0]?.extractedKnowledgeKeys).toContain(
       'productList:精密金属支架',
     );
+  });
+
+  test('extracts large documents through chunk facts before merging the workspace draft', async () => {
+    const setup = createService();
+    db = setup.db;
+    const workspace = setup.service.createWorkspace(draftPayload());
+    const largeText = [
+      '公司：精密五金加工厂，主营金属支架。',
+      `${'产品能力：CNC 加工、来图定制、小批量快反。\n'.repeat(3_200)}`,
+      '客户：自动化设备厂和机器人集成商。禁用表达：绝对最低价。联系规则：报价需人工确认。',
+    ].join('\n\n');
+    const chunkPlan = buildWorkspaceExtractionChunks({
+      sourceId: 'source-large',
+      sourceLabel: 'large.md',
+      sourceText: largeText,
+    });
+    expect(largeText.length).toBeGreaterThan(DIRECT_EXTRACTION_MAX_CHARS);
+    expect(chunkPlan.chunks.length).toBeGreaterThan(1);
+
+    chunkPlan.chunks.forEach((chunk, index) => {
+      const result: WorkspaceChunkExtractionResult = {
+        facts: {
+          companySummary: index === 0 ? ['精密五金加工厂'] : [],
+          productList: index === 0 ? ['金属支架'] : [],
+          productCapabilities: ['CNC 加工', '来图定制', '小批量快反'],
+          targetCustomers:
+            index === chunkPlan.chunks.length - 1 ? ['自动化设备厂', '机器人集成商'] : [],
+          applicationScenarios: [],
+          sellingPoints: ['小批量快反'],
+          channelPreferences: [],
+          prohibitedClaims: index === chunkPlan.chunks.length - 1 ? ['绝对最低价'] : [],
+          contactRules: index === chunkPlan.chunks.length - 1 ? ['报价需人工确认'] : [],
+          missingInfo: [],
+        },
+        evidence: [
+          {
+            field: 'productCapabilities',
+            value: 'CNC 加工',
+            chunkId: chunk.chunkId,
+            quote: '产品能力：CNC 加工',
+            confidence: 'high',
+          },
+        ],
+      };
+      setup.modelClient.enqueue(result);
+    });
+    setup.modelClient.enqueue({
+      ...draftPayload(),
+      name: '大文件资料',
+      profile: {
+        ...draftPayload().profile,
+        companySummary: '精密五金加工厂',
+        productList: ['金属支架'],
+        productCapabilities: ['CNC 加工', '来图定制', '小批量快反'],
+        targetCustomers: ['自动化设备厂', '机器人集成商'],
+        sellingPoints: ['小批量快反'],
+        prohibitedClaims: ['绝对最低价'],
+        contactRules: ['报价需人工确认'],
+      },
+    });
+
+    setup.service.enqueueWorkspaceDocumentProcessing(
+      workspace.id,
+      [
+        {
+          kind: 'file',
+          label: 'large.md',
+          fileName: 'large.md',
+          text: largeText,
+        },
+      ],
+      0,
+    );
+    await setup.service.waitForDocumentProcessingIdle();
+
+    const processedWorkspace = setup.service.getWorkspace(workspace.id);
+    expect(setup.modelClient.prompts).toHaveLength(chunkPlan.chunks.length + 1);
+    expect(setup.modelClient.prompts[0]?.prompt).toContain('资料分块');
+    expect(setup.modelClient.prompts[setup.modelClient.prompts.length - 1]?.prompt).toContain(
+      '合并',
+    );
+    expect(processedWorkspace?.profile.productCapabilities).toContain('CNC 加工');
+    expect(processedWorkspace?.profile.targetCustomers).toContain('机器人集成商');
+    expect(processedWorkspace?.profile.prohibitedClaims).toContain('绝对最低价');
+    expect(processedWorkspace?.extractionSources[0]?.vectorIndexStatus).toBe(
+      EnterpriseLeadKnowledgeIndexStatus.Indexed,
+    );
+  });
+
+  test('updates large document extraction progress while chunk processing is pending', async () => {
+    const setup = createService();
+    db = setup.db;
+    const workspace = setup.service.createWorkspace(draftPayload());
+    const largeText = [
+      '公司：精密五金加工厂，主营金属支架。',
+      `${'产品能力：CNC 加工、来图定制、小批量快反。\n'.repeat(3_200)}`,
+      '客户：自动化设备厂和机器人集成商。',
+    ].join('\n\n');
+    const chunkPlan = buildWorkspaceExtractionChunks({
+      sourceId: 'source-large-progress',
+      sourceLabel: 'large.md',
+      sourceText: largeText,
+    });
+    expect(chunkPlan.chunks.length).toBeGreaterThan(1);
+    const firstChunk = setup.modelClient.enqueuePending();
+    chunkPlan.chunks.slice(1).forEach(chunk => {
+      setup.modelClient.enqueue({
+        facts: {
+          productCapabilities: ['CNC 加工'],
+        },
+        evidence: [
+          {
+            field: 'productCapabilities',
+            value: 'CNC 加工',
+            chunkId: chunk.chunkId,
+            quote: '产品能力：CNC 加工',
+          },
+        ],
+      });
+    });
+    setup.modelClient.enqueue({
+      ...draftPayload(),
+      profile: {
+        ...draftPayload().profile,
+        productCapabilities: ['CNC 加工'],
+      },
+    });
+
+    setup.service.enqueueWorkspaceDocumentProcessing(
+      workspace.id,
+      [
+        {
+          kind: 'file',
+          label: 'large.md',
+          fileName: 'large.md',
+          text: largeText,
+        },
+      ],
+      0,
+    );
+    await waitForModelPromptCount(setup.modelClient, 1);
+
+    const extractingWorkspace = setup.service.getWorkspace(workspace.id);
+    expect(extractingWorkspace?.extractionSources[0]?.extractionStage).toBe(
+      EnterpriseLeadDocumentExtractionStage.ExtractingChunks,
+    );
+    expect(extractingWorkspace?.extractionSources[0]?.extractionProgressCurrent).toBe(0);
+    expect(extractingWorkspace?.extractionSources[0]?.extractionProgressTotal).toBe(
+      chunkPlan.chunks.length,
+    );
+
+    firstChunk.resolve({
+      facts: {
+        companySummary: ['精密五金加工厂'],
+        productList: ['金属支架'],
+        productCapabilities: ['CNC 加工'],
+      },
+      evidence: [
+        {
+          field: 'companySummary',
+          value: '精密五金加工厂',
+          chunkId: chunkPlan.chunks[0]?.chunkId,
+          quote: '公司：精密五金加工厂',
+        },
+      ],
+    });
+    await setup.service.waitForDocumentProcessingIdle();
+
+    const processedWorkspace = setup.service.getWorkspace(workspace.id);
+    expect(processedWorkspace?.extractionSources[0]?.extractionStatus).toBe(
+      EnterpriseLeadDocumentExtractionStatus.Extracted,
+    );
+    expect(processedWorkspace?.extractionSources[0]?.extractionStage).toBeUndefined();
+    expect(processedWorkspace?.extractionSources[0]?.extractionProgressCurrent).toBeUndefined();
+    expect(processedWorkspace?.extractionSources[0]?.extractionProgressTotal).toBeUndefined();
   });
 
   test('marks document processing failed when model extraction times out', async () => {

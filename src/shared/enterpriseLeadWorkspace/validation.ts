@@ -90,6 +90,9 @@ const readOptionalBoolean = (value: unknown): boolean | undefined =>
 const readPositiveNumber = (value: unknown): number | undefined =>
   typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : undefined;
 
+const readNonNegativeInteger = (value: unknown): number | undefined =>
+  typeof value === 'number' && Number.isFinite(value) && value >= 0 ? Math.floor(value) : undefined;
+
 const normalizeWorkspaceAgentOverrides = (
   value: unknown,
   directValue?: unknown,
@@ -812,6 +815,10 @@ export function normalizeEnterpriseLeadExtractionSource(
     summary: cleanOptionalText(record.summary),
     extractionStatus: cleanOptionalText(record.extractionStatus),
     extractionError: cleanOptionalText(record.extractionError),
+    extractionProgressCurrent: readNonNegativeInteger(record.extractionProgressCurrent),
+    extractionProgressTotal: readNonNegativeInteger(record.extractionProgressTotal),
+    extractionStage: cleanOptionalText(record.extractionStage),
+    extractionPartial: readOptionalBoolean(record.extractionPartial),
     lastExtractedAt: cleanOptionalText(record.lastExtractedAt),
     vectorIndexStatus: cleanOptionalText(record.vectorIndexStatus),
     vectorIndexError: cleanOptionalText(record.vectorIndexError),

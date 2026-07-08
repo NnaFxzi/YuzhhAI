@@ -819,9 +819,9 @@ describe('enterprise lead workspace UI helpers', () => {
       });
 
       expect(container.textContent).toContain(workspace.name);
-      expect(collectFakeDomAttributeValues(container, 'aria-label')).not.toContain(
-        i18nService.t('enterpriseLeadWorkspaceExitToList'),
-      );
+      expect(
+        collectFakeDomAttributeValues(container as unknown as FakeDomNode, 'aria-label'),
+      ).not.toContain(i18nService.t('enterpriseLeadWorkspaceExitToList'));
     } finally {
       root.unmount();
       restoreDom();

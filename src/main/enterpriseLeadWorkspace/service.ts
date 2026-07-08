@@ -4,6 +4,7 @@ import {
   buildEnterpriseLeadWorkspaceKnowledgeScopeId,
   EnterpriseLeadAgentRole,
   EnterpriseLeadDeliverableKind,
+  EnterpriseLeadDocumentExtractionStage,
   EnterpriseLeadDocumentExtractionStatus,
   EnterpriseLeadExtractionSourceKind,
   EnterpriseLeadKnowledgeIndexStatus,
@@ -49,11 +50,20 @@ import {
   ContentKnowledgeSourceType,
 } from '../libs/contentKnowledgeRetrieval';
 import type { ContentKnowledgeVectorStore } from '../libs/contentKnowledgeVectorStore';
+import {
+  buildWorkspaceDraftFromChunkFacts,
+  buildWorkspaceExtractionChunks,
+  DIRECT_EXTRACTION_MAX_CHARS,
+  normalizeWorkspaceChunkExtractionResult,
+  type WorkspaceChunkExtractionResult,
+} from './documentExtraction';
 import { parseModelJsonObject } from './modelJson';
 import {
   buildAgentChatPrompt,
   buildAgentTaskPrompt,
   buildWorkspaceAgentCalibrationPrompt,
+  buildWorkspaceChunkExtractionPrompt,
+  buildWorkspaceChunkMergePrompt,
   buildWorkspaceExtractionPrompt,
 } from './promptTemplates';
 import type { CreateEnterpriseLeadTaskInput, EnterpriseLeadWorkspaceStore } from './store';
@@ -100,6 +110,15 @@ interface ResolvedWorkspaceAgent {
   skillIds: string[];
 }
 
+interface WorkspaceExtractionProgressUpdate {
+  current?: number;
+  partial?: boolean;
+  stage?: EnterpriseLeadExtractionSource['extractionStage'];
+  total?: number;
+}
+
+type WorkspaceExtractionProgressHandler = (update: WorkspaceExtractionProgressUpdate) => void;
+
 const noopAgentProvider: EnterpriseLeadWorkspaceAgentProvider = {
   listAgents: () => [],
   getAgent: () => null,
@@ -120,6 +139,9 @@ const normalizePositiveTimeout = (value: number | undefined, fallback: number): 
 };
 
 const buildEnterpriseLeadSourceId = (): string => `source_${crypto.randomUUID()}`;
+
+const hashWorkspaceSourceText = (value: string): string =>
+  crypto.createHash('sha1').update(value).digest('hex').slice(0, 12);
 
 export const ensureEnterpriseLeadSourceIds = (
   sources: EnterpriseLeadExtractionSource[],
@@ -646,6 +668,10 @@ export class EnterpriseLeadWorkspaceService {
       return {
         ...item,
         extractionError: undefined,
+        extractionPartial: undefined,
+        extractionProgressCurrent: undefined,
+        extractionProgressTotal: undefined,
+        extractionStage: EnterpriseLeadDocumentExtractionStage.Queued,
         extractionStatus: EnterpriseLeadDocumentExtractionStatus.Extracting,
         vectorIndexError: undefined,
         ...getQueuedDocumentVectorStatus(item),
@@ -716,13 +742,85 @@ export class EnterpriseLeadWorkspaceService {
   private async extractDraftFromSource(
     sourceText: string,
     sourceLabel: string,
+    onProgress?: WorkspaceExtractionProgressHandler,
   ): Promise<EnterpriseLeadWorkspaceDraft> {
+    if (sourceText.trim().length > DIRECT_EXTRACTION_MAX_CHARS) {
+      return this.extractDraftFromLargeSource(sourceText, sourceLabel, onProgress);
+    }
+
     const result = await this.withDocumentExtractionTimeout(
       this.modelClient.generate({
         prompt: buildWorkspaceExtractionPrompt({ sourceText, sourceLabel }),
       }),
     );
     return normalizeWorkspaceDraftInput(parseModelJsonObject(result.text));
+  }
+
+  private async extractDraftFromLargeSource(
+    sourceText: string,
+    sourceLabel: string,
+    onProgress?: WorkspaceExtractionProgressHandler,
+  ): Promise<EnterpriseLeadWorkspaceDraft> {
+    const chunkPlan = buildWorkspaceExtractionChunks({
+      sourceId: `large-source-${hashWorkspaceSourceText(sourceText)}`,
+      sourceLabel,
+      sourceText,
+    });
+    const chunkResults: WorkspaceChunkExtractionResult[] = [];
+    onProgress?.({
+      current: 0,
+      partial: chunkPlan.partial,
+      stage: EnterpriseLeadDocumentExtractionStage.ExtractingChunks,
+      total: chunkPlan.chunks.length,
+    });
+
+    for (const chunk of chunkPlan.chunks) {
+      const result = await this.withDocumentExtractionTimeout(
+        this.modelClient.generate({
+          prompt: buildWorkspaceChunkExtractionPrompt({
+            chunk,
+            sourceLabel,
+            totalChunks: chunkPlan.chunks.length,
+          }),
+        }),
+      );
+      chunkResults.push(normalizeWorkspaceChunkExtractionResult(parseModelJsonObject(result.text)));
+      onProgress?.({
+        current: chunkResults.length,
+        partial: chunkPlan.partial,
+        stage: EnterpriseLeadDocumentExtractionStage.ExtractingChunks,
+        total: chunkPlan.chunks.length,
+      });
+    }
+
+    const fallbackDraft = buildWorkspaceDraftFromChunkFacts({
+      name: sourceLabel,
+      sourceKind: EnterpriseLeadExtractionSourceKind.File,
+      sourceLabel,
+      sourceText,
+      chunkResults,
+    });
+    onProgress?.({
+      current: chunkPlan.chunks.length,
+      partial: chunkPlan.partial,
+      stage: EnterpriseLeadDocumentExtractionStage.Merging,
+      total: chunkPlan.chunks.length,
+    });
+    const mergeResult = await this.withDocumentExtractionTimeout(
+      this.modelClient.generate({
+        prompt: buildWorkspaceChunkMergePrompt({ chunkResults, sourceLabel }),
+      }),
+    );
+    const mergedDraft = parseModelJsonObject(mergeResult.text);
+    return normalizeWorkspaceDraftInput({
+      ...fallbackDraft,
+      ...mergedDraft,
+      source: {
+        ...fallbackDraft.source,
+        ...((mergedDraft.source ?? {}) as Record<string, unknown>),
+        text: sourceText,
+      },
+    });
   }
 
   private async withDocumentExtractionTimeout<T>(operation: Promise<T>): Promise<T> {
@@ -768,7 +866,9 @@ export class EnterpriseLeadWorkspaceService {
         return;
       }
 
-      const extractedDraft = await this.extractDraftFromSource(sourceText, source.label);
+      const extractedDraft = await this.extractDraftFromSource(sourceText, source.label, update => {
+        this.updateWorkspaceDocumentProcessingProgress(workspaceId, sourceIndex, update);
+      });
       const nextProfile = mergeExtractedWorkspaceProfile(workspace.profile, extractedDraft.profile);
       const extractedKnowledgeKeys = getNewExtractedWorkspaceKnowledgeKeys(
         workspace.profile,
@@ -786,6 +886,9 @@ export class EnterpriseLeadWorkspaceService {
       nextSources[sourceIndex] = {
         ...nextSource,
         extractionError: undefined,
+        extractionProgressCurrent: undefined,
+        extractionProgressTotal: undefined,
+        extractionStage: undefined,
         extractionStatus: EnterpriseLeadDocumentExtractionStatus.Extracted,
         extractedKnowledgeKeys: Array.from(
           new Set([...getSourceExtractedKnowledgeKeys(nextSource), ...extractedKnowledgeKeys]),
@@ -799,6 +902,36 @@ export class EnterpriseLeadWorkspaceService {
     } catch (error) {
       this.markWorkspaceDocumentProcessingFailed(workspaceId, sourceIndex, error);
     }
+  }
+
+  private updateWorkspaceDocumentProcessingProgress(
+    workspaceId: string,
+    sourceIndex: number,
+    update: WorkspaceExtractionProgressUpdate,
+  ): void {
+    const workspace = this.store.getWorkspace(workspaceId);
+    const source = workspace?.extractionSources[sourceIndex];
+    if (!workspace || !source) {
+      return;
+    }
+
+    const nextSources = [...workspace.extractionSources];
+    nextSources[sourceIndex] = {
+      ...source,
+      extractionPartial:
+        typeof update.partial === 'boolean' ? update.partial : source.extractionPartial,
+      extractionProgressCurrent:
+        typeof update.current === 'number' && Number.isFinite(update.current)
+          ? Math.max(0, Math.floor(update.current))
+          : source.extractionProgressCurrent,
+      extractionProgressTotal:
+        typeof update.total === 'number' && Number.isFinite(update.total)
+          ? Math.max(0, Math.floor(update.total))
+          : source.extractionProgressTotal,
+      extractionStage: update.stage ?? source.extractionStage,
+      updatedAt: new Date().toISOString(),
+    };
+    this.store.updateWorkspaceSources(workspace.id, nextSources);
   }
 
   private markWorkspaceDocumentProcessingFailed(
@@ -816,6 +949,9 @@ export class EnterpriseLeadWorkspaceService {
     nextSources[sourceIndex] = {
       ...source,
       extractionError: errorMessage,
+      extractionProgressCurrent: undefined,
+      extractionProgressTotal: undefined,
+      extractionStage: undefined,
       extractionStatus: EnterpriseLeadDocumentExtractionStatus.Failed,
       updatedAt: new Date().toISOString(),
       vectorIndexError: errorMessage,

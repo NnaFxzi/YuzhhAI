@@ -52,6 +52,22 @@ describe('enterprise lead workspace validation', () => {
     ).toBe('src_existing');
   });
 
+  test('preserves extraction progress metadata on enterprise lead sources', () => {
+    const source = normalizeEnterpriseLeadExtractionSource({
+      kind: 'file',
+      label: '大文件资料',
+      extractionProgressCurrent: 3,
+      extractionProgressTotal: 12,
+      extractionStage: 'extracting_chunks',
+      extractionPartial: true,
+    });
+
+    expect(source.extractionProgressCurrent).toBe(3);
+    expect(source.extractionProgressTotal).toBe(12);
+    expect(source.extractionStage).toBe('extracting_chunks');
+    expect(source.extractionPartial).toBe(true);
+  });
+
   test('rejects a workspace draft without a name', () => {
     expect(() =>
       normalizeWorkspaceDraftInput({

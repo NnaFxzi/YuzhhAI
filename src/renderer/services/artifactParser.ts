@@ -451,12 +451,18 @@ export function parseGeneratedVideoArtifactsFromMessages(
   messages: CoworkMessage[],
   sessionId: string,
 ): Artifact[] {
-  const generatedVideoIndex = messages.findLastIndex(
-    message =>
+  let generatedVideoIndex = -1;
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (
       message.type === 'assistant' &&
       !message.metadata?.isThinking &&
-      GENERATED_VIDEO_ASSISTANT_RE.test(message.content ?? ''),
-  );
+      GENERATED_VIDEO_ASSISTANT_RE.test(message.content ?? '')
+    ) {
+      generatedVideoIndex = index;
+      break;
+    }
+  }
   if (generatedVideoIndex === -1) {
     return [];
   }

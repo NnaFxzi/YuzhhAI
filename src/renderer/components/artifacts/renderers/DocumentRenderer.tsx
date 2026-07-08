@@ -46,7 +46,11 @@ function normalizeLocalFilePath(filePath: string): string {
   return normalized;
 }
 
-function useFileContent(artifact: Artifact): { data: ArrayBuffer | null; loading: boolean; error: string | null } {
+function useFileContent(artifact: Artifact): {
+  data: ArrayBuffer | null;
+  loading: boolean;
+  error: string | null;
+} {
   const [data, setData] = useState<ArrayBuffer | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -58,9 +62,15 @@ function useFileContent(artifact: Artifact): { data: ArrayBuffer | null; loading
       if (artifact.content) {
         try {
           const buf = dataUrlToArrayBuffer(artifact.content);
-          if (!cancelled) { setData(buf); setLoading(false); }
+          if (!cancelled) {
+            setData(buf);
+            setLoading(false);
+          }
         } catch (e) {
-          if (!cancelled) { setError(e instanceof Error ? e.message : String(e)); setLoading(false); }
+          if (!cancelled) {
+            setError(e instanceof Error ? e.message : String(e));
+            setLoading(false);
+          }
         }
         return;
       }
@@ -88,7 +98,9 @@ function useFileContent(artifact: Artifact): { data: ArrayBuffer | null; loading
     };
 
     load();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [artifact.content, artifact.filePath]);
 
   return { data, loading, error };
@@ -119,7 +131,10 @@ const DocxSubRenderer: React.FC<{ artifact: Artifact }> = ({ artifact }) => {
   useRegisterOfficePreviewZoomControls(zoomControls);
 
   useEffect(() => {
-    if (loadError) { setError(loadError); return; }
+    if (loadError) {
+      setError(loadError);
+      return;
+    }
     if (!data || !containerRef.current) return;
 
     let cancelled = false;
@@ -152,7 +167,8 @@ const DocxSubRenderer: React.FC<{ artifact: Artifact }> = ({ artifact }) => {
         const paginationResult = repaginateDocx(containerRef.current, {
           expectedPageCount: getDocxExpectedPageCount(wordDocument),
         });
-        const renderedPageCount = supplementDocxPageNumbers(containerRef.current) || paginationResult.pageCount;
+        const renderedPageCount =
+          supplementDocxPageNumbers(containerRef.current) || paginationResult.pageCount;
         if (!cancelled) {
           setPageCount(renderedPageCount);
           setRendered(true);
@@ -163,7 +179,9 @@ const DocxSubRenderer: React.FC<{ artifact: Artifact }> = ({ artifact }) => {
     };
 
     render();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [data, loadError]);
 
   // Adaptive zoom based on container width
@@ -204,11 +222,6 @@ const DocxSubRenderer: React.FC<{ artifact: Artifact }> = ({ artifact }) => {
 
   return (
     <div className="relative h-full flex flex-col overflow-hidden bg-[#f5f5f5]">
-      {rendered && pageCount > 0 && (
-        <div className="shrink-0 border-b border-[#e0e0e0] px-3 py-1.5 text-xs text-[#999]">
-          <span>{pageCount} {t('artifactPdfPageCount')}</span>
-        </div>
-      )}
       <div ref={wrapperRef} className="flex-1 overflow-auto" onWheel={handleWheelZoom}>
         <div ref={containerRef} className="docx-container" />
       </div>
@@ -288,10 +301,24 @@ function supplementDocxPageNumbers(container: HTMLElement): number {
   return totalPages;
 }
 
-function supplementDocxPageNumberText(text: string, pageNumber: number, totalPages: number): string {
+export function supplementDocxPageNumberText(
+  text: string,
+  pageNumber: number,
+  totalPages: number,
+): string {
   let result = text;
+  result = result.replace(/第\s*\d+\s*页/g, `第 ${pageNumber} 页`);
+  result = result.replace(/共\s*\d+\s*页/g, `共 ${totalPages} 页`);
   result = result.replace(/第\s*页/g, `第 ${pageNumber} 页`);
   result = result.replace(/共\s*页/g, `共 ${totalPages} 页`);
+
+  if (/^\s*Page\s+\d+\s+of\s+\d+\s*$/i.test(result)) {
+    return result.replace(/Page\s+\d+\s+of\s+\d+/i, `Page ${pageNumber} of ${totalPages}`);
+  }
+
+  if (/^\s*Page\s+\d+\s*$/i.test(result)) {
+    return result.replace(/Page\s+\d+/i, `Page ${pageNumber}`);
+  }
 
   if (/^\s*Page\s*of\s*$/i.test(result)) {
     return result.replace(/Page\s*of/i, `Page ${pageNumber} of ${totalPages}`);
@@ -357,12 +384,18 @@ const PdfCanvasSubRenderer: React.FC<{ artifact: Artifact }> = ({ artifact }) =>
 
     const ro = new ResizeObserver(measure);
     ro.observe(container);
-    return () => { ro.disconnect(); if (timer) clearTimeout(timer); };
+    return () => {
+      ro.disconnect();
+      if (timer) clearTimeout(timer);
+    };
   }, [renderWidth, pdfDoc]);
 
   // Load PDF document
   useEffect(() => {
-    if (loadError) { setError(loadError); return; }
+    if (loadError) {
+      setError(loadError);
+      return;
+    }
     if (!data) return;
 
     let cancelled = false;
@@ -370,7 +403,10 @@ const PdfCanvasSubRenderer: React.FC<{ artifact: Artifact }> = ({ artifact }) =>
     const loadPdf = async () => {
       try {
         const pdfjsLib = await import('pdfjs-dist');
-        pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.mjs', import.meta.url).href;
+        pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
+          'pdfjs-dist/build/pdf.worker.mjs',
+          import.meta.url,
+        ).href;
 
         const pdf = await pdfjsLib.getDocument({
           data: new Uint8Array(data),
@@ -390,7 +426,9 @@ const PdfCanvasSubRenderer: React.FC<{ artifact: Artifact }> = ({ artifact }) =>
     };
 
     loadPdf();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [data, loadError]);
 
   if (error) {
@@ -414,15 +452,13 @@ const PdfCanvasSubRenderer: React.FC<{ artifact: Artifact }> = ({ artifact }) =>
 
   return (
     <div className="relative h-full flex flex-col overflow-hidden bg-[#f5f5f5]">
-      <div className="shrink-0 border-b border-[#e0e0e0] px-3 py-1.5 text-xs text-[#999]">
-        <span>{pageCount} {t('artifactPdfPageCount')}</span>
-      </div>
       <div ref={containerRef} className="flex-1 overflow-auto p-6" onWheel={handleWheelZoom}>
-        {renderWidth > 0 && pages.map(pageNum => (
-          <div key={pageNum} style={{ marginBottom: PDF_PAGE_GAP }}>
-            <PdfPageCanvas pdfDoc={pdfDoc} pageNumber={pageNum} width={zoomedRenderWidth} />
-          </div>
-        ))}
+        {renderWidth > 0 &&
+          pages.map(pageNum => (
+            <div key={pageNum} style={{ marginBottom: PDF_PAGE_GAP }}>
+              <PdfPageCanvas pdfDoc={pdfDoc} pageNumber={pageNum} width={zoomedRenderWidth} />
+            </div>
+          ))}
       </div>
     </div>
   );
@@ -499,7 +535,10 @@ const PdfPageCanvas: React.FC<{
   );
 };
 
-const NativePdfSubRenderer: React.FC<{ artifact: Artifact; onFallback: () => void }> = ({ artifact, onFallback }) => {
+const NativePdfSubRenderer: React.FC<{ artifact: Artifact; onFallback: () => void }> = ({
+  artifact,
+  onFallback,
+}) => {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -589,7 +628,8 @@ const PdfSubRenderer: React.FC<{ artifact: Artifact }> = ({ artifact }) => {
 
 // --- Pptx Sub-Renderer ---
 
-const PPTX_IMAGE_RELATIONSHIP_TYPE = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/image';
+const PPTX_IMAGE_RELATIONSHIP_TYPE =
+  'http://schemas.openxmlformats.org/officeDocument/2006/relationships/image';
 const PPTX_MEDIA_DIR = 'ppt/media/';
 const PPTX_DRAWING_NS = 'http://schemas.openxmlformats.org/drawingml/2006/main';
 const PPTX_PRESENTATION_NS = 'http://schemas.openxmlformats.org/presentationml/2006/main';
@@ -659,11 +699,18 @@ function decodeRelationshipTarget(target: string): string {
   }
 }
 
-function findZipPath(zip: { files: Record<string, { dir?: boolean }>; file(path: string): unknown }, path: string): string | null {
+function findZipPath(
+  zip: { files: Record<string, { dir?: boolean }>; file(path: string): unknown },
+  path: string,
+): string | null {
   if (zip.file(path)) return path;
 
   const lowerPath = path.toLowerCase();
-  return Object.keys(zip.files).find(candidate => !zip.files[candidate].dir && candidate.toLowerCase() === lowerPath) || null;
+  return (
+    Object.keys(zip.files).find(
+      candidate => !zip.files[candidate].dir && candidate.toLowerCase() === lowerPath,
+    ) || null
+  );
 }
 
 function detectImageExtension(bytes: Uint8Array, fallbackExtension: string): string {
@@ -673,12 +720,7 @@ function detectImageExtension(bytes: Uint8Array, fallbackExtension: string): str
   if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) {
     return '.jpg';
   }
-  if (
-    bytes[0] === 0x47 &&
-    bytes[1] === 0x49 &&
-    bytes[2] === 0x46 &&
-    bytes[3] === 0x38
-  ) {
+  if (bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x38) {
     return '.gif';
   }
   if (bytes[0] === 0x42 && bytes[1] === 0x4d) {
@@ -687,7 +729,11 @@ function detectImageExtension(bytes: Uint8Array, fallbackExtension: string): str
   return fallbackExtension.toLowerCase();
 }
 
-function createPptxPreviewMediaPath(zip: { file(path: string): unknown }, index: number, extension: string): string {
+function createPptxPreviewMediaPath(
+  zip: { file(path: string): unknown },
+  index: number,
+  extension: string,
+): string {
   const normalizedExtension = extension.startsWith('.') ? extension : `.${extension}`;
   let candidate = `${PPTX_MEDIA_DIR}image_lobster_${index}${normalizedExtension}`;
   let suffix = 1;
@@ -710,9 +756,10 @@ function ensureContentTypeDefaults(contentTypesXml: string, extensions: Set<stri
   const additions = Array.from(extensions)
     .map(extension => extension.replace(/^\./, '').toLowerCase())
     .filter(extension => PPTX_IMAGE_CONTENT_TYPES[extension] && !defaults.has(extension))
-    .map(extension => (
-      `<Default Extension="${extension}" ContentType="${PPTX_IMAGE_CONTENT_TYPES[extension]}"/>`
-    ));
+    .map(
+      extension =>
+        `<Default Extension="${extension}" ContentType="${PPTX_IMAGE_CONTENT_TYPES[extension]}"/>`,
+    );
 
   if (additions.length === 0) return contentTypesXml;
 
@@ -724,7 +771,9 @@ function ensureContentTypeDefaults(contentTypesXml: string, extensions: Set<stri
   return contentTypesXml.replace('</Types>', `${insertion}</Types>`);
 }
 
-async function getPptxSlideSize(zip: { file(path: string): { async(type: 'string'): Promise<string> } | null }): Promise<{ cx: string; cy: string }> {
+async function getPptxSlideSize(zip: {
+  file(path: string): { async(type: 'string'): Promise<string> } | null;
+}): Promise<{ cx: string; cy: string }> {
   const defaultSize = { cx: '9144000', cy: '5143500' };
   const presentationFile = zip.file('ppt/presentation.xml');
   if (!presentationFile) return defaultSize;
@@ -753,12 +802,17 @@ function getNextSlideShapeId(doc: Document): string {
 }
 
 function hasBackgroundFallback(doc: Document, relId: string): boolean {
-  return Array.from(doc.getElementsByTagName('p:cNvPr')).some(node => (
-    node.getAttribute('name') === `Yuzhh AI Background Fallback ${relId}`
-  ));
+  return Array.from(doc.getElementsByTagName('p:cNvPr')).some(
+    node => node.getAttribute('name') === `Yuzhh AI Background Fallback ${relId}`,
+  );
 }
 
-function createElement(doc: Document, namespace: string, name: string, attrs: Record<string, string> = {}): Element {
+function createElement(
+  doc: Document,
+  namespace: string,
+  name: string,
+  attrs: Record<string, string> = {},
+): Element {
   const element = doc.createElementNS(namespace, name);
   Object.entries(attrs).forEach(([key, value]) => element.setAttribute(key, value));
   return element;
@@ -773,7 +827,12 @@ function createPictureBlipFill(doc: Document, backgroundBlipFill: Element): Elem
   return pictureBlipFill;
 }
 
-function createBackgroundFallbackPic(doc: Document, relId: string, blipFill: Element, size: { cx: string; cy: string }): Element {
+function createBackgroundFallbackPic(
+  doc: Document,
+  relId: string,
+  blipFill: Element,
+  size: { cx: string; cy: string },
+): Element {
   const pic = createElement(doc, PPTX_PRESENTATION_NS, 'p:pic');
   const nvPicPr = createElement(doc, PPTX_PRESENTATION_NS, 'p:nvPicPr');
   const cNvPr = createElement(doc, PPTX_PRESENTATION_NS, 'p:cNvPr', {
@@ -919,8 +978,15 @@ async function fixPptxData(data: ArrayBuffer): Promise<ArrayBuffer> {
       let normalizedTarget = mediaPathMap.get(mediaPath);
       if (!normalizedTarget) {
         const mediaData = await mediaFile.async('arraybuffer');
-        const extension = detectImageExtension(new Uint8Array(mediaData), getFileExtension(mediaPath));
-        normalizedTarget = createPptxPreviewMediaPath(zip, normalizedMediaIndex, extension || '.png');
+        const extension = detectImageExtension(
+          new Uint8Array(mediaData),
+          getFileExtension(mediaPath),
+        );
+        normalizedTarget = createPptxPreviewMediaPath(
+          zip,
+          normalizedMediaIndex,
+          extension || '.png',
+        );
         normalizedMediaIndex += 1;
         mediaPathMap.set(mediaPath, normalizedTarget);
         addedMediaExtensions.add(getFileExtension(normalizedTarget));
@@ -947,7 +1013,10 @@ async function fixPptxData(data: ArrayBuffer): Promise<ArrayBuffer> {
   await addBackgroundImageFallbacks(zip, backgroundFallbackRelIds);
 
   if (contentTypesXml !== null) {
-    zip.file('[Content_Types].xml', ensureContentTypeDefaults(contentTypesXml, addedMediaExtensions));
+    zip.file(
+      '[Content_Types].xml',
+      ensureContentTypeDefaults(contentTypesXml, addedMediaExtensions),
+    );
   }
 
   // Re-generate with Deflate compression
@@ -964,7 +1033,8 @@ const LegacyPptxSubRenderer: React.FC<{ artifact: Artifact }> = ({ artifact }) =
   const [rendered, setRendered] = useState(false);
   const [slideCount, setSlideCount] = useState(0);
   const [effectiveZoomFactor, setEffectiveZoomFactor] = useState(1);
-  const { zoomFactor, zoomIn, zoomOut, resetZoom, handleWheelZoom, handleNativeWheelZoom } = useOfficePreviewZoom();
+  const { zoomFactor, zoomIn, zoomOut, resetZoom, handleWheelZoom, handleNativeWheelZoom } =
+    useOfficePreviewZoom();
   const zoomControls = useMemo<OfficePreviewZoomControlsConfig | null>(() => {
     if (slideCount <= 0) return null;
     return {
@@ -984,7 +1054,10 @@ const LegacyPptxSubRenderer: React.FC<{ artifact: Artifact }> = ({ artifact }) =
   const PPTX_MAX_AUTO_FIT_SCALE = 1.7;
 
   useEffect(() => {
-    if (loadError) { setError(loadError); return; }
+    if (loadError) {
+      setError(loadError);
+      return;
+    }
     if (!data) return;
 
     let cancelled = false;
@@ -1109,8 +1182,14 @@ const LegacyPptxSubRenderer: React.FC<{ artifact: Artifact }> = ({ artifact }) =
           return;
         }
 
-        const mainPreviewer = pptxPreview.init(mainRoot, { width: PPTX_RENDER_WIDTH, mode: 'list' });
-        const thumbnailPreviewer = pptxPreview.init(thumbnailRoot, { width: PPTX_THUMBNAIL_WIDTH, mode: 'list' });
+        const mainPreviewer = pptxPreview.init(mainRoot, {
+          width: PPTX_RENDER_WIDTH,
+          mode: 'list',
+        });
+        const thumbnailPreviewer = pptxPreview.init(thumbnailRoot, {
+          width: PPTX_THUMBNAIL_WIDTH,
+          mode: 'list',
+        });
         mainPreviewerRef.current = mainPreviewer;
         thumbnailPreviewerRef.current = thumbnailPreviewer;
         await mainPreviewer.preview(fixedData);
@@ -1119,7 +1198,9 @@ const LegacyPptxSubRenderer: React.FC<{ artifact: Artifact }> = ({ artifact }) =
         if (cancelled) return;
 
         const mainSlides = Array.from(mainRoot.querySelectorAll('.pptx-preview-wrapper > div'));
-        const thumbnailSlides = Array.from(thumbnailRoot.querySelectorAll('.pptx-preview-wrapper > div'));
+        const thumbnailSlides = Array.from(
+          thumbnailRoot.querySelectorAll('.pptx-preview-wrapper > div'),
+        );
         const count = mainPreviewer.slideCount || mainSlides.length || thumbnailSlides.length || 0;
         setSlideCount(count);
 
@@ -1190,16 +1271,23 @@ const LegacyPptxSubRenderer: React.FC<{ artifact: Artifact }> = ({ artifact }) =
       if (!mainRoot) return;
 
       const mainStyle = iframe.contentWindow?.getComputedStyle(mainRoot);
-      const horizontalPadding = (parseFloat(mainStyle?.paddingLeft || '0') || 0) + (parseFloat(mainStyle?.paddingRight || '0') || 0);
-      const isDesktopLayout = Boolean(iframe.contentWindow?.matchMedia('(min-width: 760px)').matches);
+      const horizontalPadding =
+        (parseFloat(mainStyle?.paddingLeft || '0') || 0) +
+        (parseFloat(mainStyle?.paddingRight || '0') || 0);
+      const isDesktopLayout = Boolean(
+        iframe.contentWindow?.matchMedia('(min-width: 760px)').matches,
+      );
       const minVerticalPadding = isDesktopLayout ? 12 : 0;
       const availableWidth = Math.max(160, mainRoot.clientWidth - horizontalPadding);
-      const activeSlide = mainRoot.querySelector<HTMLElement>('.pptx-preview-wrapper > div.is-active-slide')
-        || mainRoot.querySelector<HTMLElement>('.pptx-preview-wrapper > div');
-      const previousSlideScale = parseFloat(mainStyle?.getPropertyValue('--pptx-main-scale') || '1') || 1;
-      const baseSlideHeight = parseFloat(activeSlide?.style.height || '')
-        || ((activeSlide?.getBoundingClientRect().height || 0) / previousSlideScale)
-        || Math.round(PPTX_RENDER_WIDTH * 9 / 16);
+      const activeSlide =
+        mainRoot.querySelector<HTMLElement>('.pptx-preview-wrapper > div.is-active-slide') ||
+        mainRoot.querySelector<HTMLElement>('.pptx-preview-wrapper > div');
+      const previousSlideScale =
+        parseFloat(mainStyle?.getPropertyValue('--pptx-main-scale') || '1') || 1;
+      const baseSlideHeight =
+        parseFloat(activeSlide?.style.height || '') ||
+        (activeSlide?.getBoundingClientRect().height || 0) / previousSlideScale ||
+        Math.round((PPTX_RENDER_WIDTH * 9) / 16);
       const availableHeight = Math.max(120, mainRoot.clientHeight - minVerticalPadding * 2);
       const widthFitScale = (availableWidth * PPTX_AUTO_FIT_USAGE) / PPTX_RENDER_WIDTH;
       const heightFitScale = (availableHeight * PPTX_AUTO_FIT_USAGE) / baseSlideHeight;
@@ -1209,12 +1297,18 @@ const LegacyPptxSubRenderer: React.FC<{ artifact: Artifact }> = ({ artifact }) =
       const slideScale = Number((autoFitScale * zoomFactor).toFixed(3));
       mainRoot.style.setProperty('--pptx-main-scale', String(slideScale));
       mainRoot.style.setProperty('--pptx-main-width', `${PPTX_RENDER_WIDTH}px`);
-      setEffectiveZoomFactor(current => (Math.abs(current - slideScale) > 0.005 ? slideScale : current));
+      setEffectiveZoomFactor(current =>
+        Math.abs(current - slideScale) > 0.005 ? slideScale : current,
+      );
 
       const scaledSlideHeight = baseSlideHeight * slideScale;
-      const centeredVerticalPadding = scaledSlideHeight > 0
-        ? Math.max(minVerticalPadding, Math.floor((mainRoot.clientHeight - scaledSlideHeight) / 2))
-        : minVerticalPadding;
+      const centeredVerticalPadding =
+        scaledSlideHeight > 0
+          ? Math.max(
+              minVerticalPadding,
+              Math.floor((mainRoot.clientHeight - scaledSlideHeight) / 2),
+            )
+          : minVerticalPadding;
       mainRoot.style.setProperty('--pptx-main-padding-y', `${centeredVerticalPadding}px`);
     };
 
@@ -1280,13 +1374,20 @@ const PptxSubRenderer: React.FC<{ artifact: Artifact }> = ({ artifact }) => {
 };
 
 // HTML slides fallback: load slideN.html files from the same directory
-const PptxHtmlFallback: React.FC<{ artifact: Artifact; data: ArrayBuffer }> = ({ artifact, data }) => {
+const PptxHtmlFallback: React.FC<{ artifact: Artifact; data: ArrayBuffer }> = ({
+  artifact,
+  data,
+}) => {
   const [slideHtmls, setSlideHtmls] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [useTextFallback, setUseTextFallback] = useState(false);
 
   useEffect(() => {
-    if (!artifact.filePath) { setUseTextFallback(true); setLoading(false); return; }
+    if (!artifact.filePath) {
+      setUseTextFallback(true);
+      setLoading(false);
+      return;
+    }
 
     let cancelled = false;
 
@@ -1327,11 +1428,17 @@ const PptxHtmlFallback: React.FC<{ artifact: Artifact; data: ArrayBuffer }> = ({
     };
 
     loadSlideHtmls();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [artifact.filePath]);
 
   if (loading) {
-    return <div className="flex items-center justify-center h-full text-muted text-sm">{t('artifactDocumentLoading')}</div>;
+    return (
+      <div className="flex items-center justify-center h-full text-muted text-sm">
+        {t('artifactDocumentLoading')}
+      </div>
+    );
   }
 
   if (useTextFallback) {
@@ -1361,7 +1468,10 @@ const PptxHtmlFallback: React.FC<{ artifact: Artifact; data: ArrayBuffer }> = ({
 };
 
 // Text extraction fallback for PPTX
-interface SlideContent { index: number; texts: string[]; }
+interface SlideContent {
+  index: number;
+  texts: string[];
+}
 
 async function parsePptxSlides(data: ArrayBuffer): Promise<SlideContent[]> {
   const JSZip = (await import('jszip')).default;
@@ -1396,14 +1506,27 @@ const PptxTextFallback: React.FC<{ data: ArrayBuffer }> = ({ data }) => {
 
   useEffect(() => {
     let cancelled = false;
-    parsePptxSlides(data).then(result => {
-      if (!cancelled) { setSlides(result); setParsed(true); }
-    }).catch(() => { if (!cancelled) setParsed(true); });
-    return () => { cancelled = true; };
+    parsePptxSlides(data)
+      .then(result => {
+        if (!cancelled) {
+          setSlides(result);
+          setParsed(true);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setParsed(true);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [data]);
 
   if (!parsed) {
-    return <div className="flex items-center justify-center h-full text-muted text-sm">{t('artifactDocumentLoading')}</div>;
+    return (
+      <div className="flex items-center justify-center h-full text-muted text-sm">
+        {t('artifactDocumentLoading')}
+      </div>
+    );
   }
 
   return (
@@ -1420,7 +1543,9 @@ const PptxTextFallback: React.FC<{ data: ArrayBuffer }> = ({ data }) => {
             {slide.texts.length > 0 ? (
               <div className="space-y-1">
                 {slide.texts.map((text, i) => (
-                  <div key={i} className="text-sm text-foreground">{text}</div>
+                  <div key={i} className="text-sm text-foreground">
+                    {text}
+                  </div>
                 ))}
               </div>
             ) : (
@@ -1446,9 +1571,7 @@ const FileInfoFallback: React.FC<{ artifact: Artifact }> = ({ artifact }) => {
 
   return (
     <div className="flex flex-col items-center justify-center h-full gap-4 p-6">
-      <div className="text-5xl">
-        {ext === '.pptx' ? '📊' : ext === '.xlsx' ? '📑' : '📄'}
-      </div>
+      <div className="text-5xl">{ext === '.pptx' ? '📊' : ext === '.xlsx' ? '📑' : '📄'}</div>
       <div className="text-center">
         <div className="text-sm font-medium">{artifact.fileName || artifact.title}</div>
         <div className="text-xs text-muted mt-1">{ext.toUpperCase().slice(1)}</div>

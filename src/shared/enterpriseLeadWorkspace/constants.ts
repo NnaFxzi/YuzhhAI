@@ -253,6 +253,15 @@ export const EnterpriseLeadDocumentExtractionStatus = {
 export type EnterpriseLeadDocumentExtractionStatus =
   (typeof EnterpriseLeadDocumentExtractionStatus)[keyof typeof EnterpriseLeadDocumentExtractionStatus];
 
+export const EnterpriseLeadDocumentExtractionStage = {
+  Queued: 'queued',
+  ExtractingChunks: 'extracting_chunks',
+  Merging: 'merging',
+  Indexing: 'indexing',
+} as const;
+export type EnterpriseLeadDocumentExtractionStage =
+  (typeof EnterpriseLeadDocumentExtractionStage)[keyof typeof EnterpriseLeadDocumentExtractionStage];
+
 export const EnterpriseLeadKnowledgeIndexStatus = {
   Pending: 'pending',
   Indexing: 'indexing',

@@ -15,6 +15,7 @@ import {
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 
 import {
+  EnterpriseLeadDocumentExtractionStage,
   EnterpriseLeadDocumentExtractionStatus,
   EnterpriseLeadExtractionSourceKind,
   EnterpriseLeadImageAttachmentExtensions,
@@ -33,6 +34,8 @@ import {
   EnterpriseLeadWorkspaceServiceError,
 } from '../../services/enterpriseLeadWorkspace';
 import { i18nService } from '../../services/i18n';
+import { type Artifact, ArtifactTypeValue } from '../../types/artifact';
+import DocumentRenderer from '../artifacts/renderers/DocumentRenderer';
 import {
   type EditableKnowledgeField,
   EnterpriseLeadKnowledgeItemKind,
@@ -49,9 +52,10 @@ interface WorkspaceKnowledgeBaseProps {
 
 const actionIconClassName = 'h-4 w-4';
 export const enterpriseLeadKnowledgeTableColumnClassNames = {
-  knowledge: 'w-[54%]',
-  meta: 'w-[24%]',
-  actions: 'w-[22%]',
+  knowledge: 'w-[50%]',
+  category: 'w-[18%]',
+  status: 'w-[16%]',
+  actions: 'w-[16%]',
 } as const;
 export const enterpriseLeadKnowledgeDocumentHeaderClassName = 'min-w-0 text-left';
 export const enterpriseLeadKnowledgeDocumentHeaderLastClassName = 'min-w-0 text-left';
@@ -72,6 +76,7 @@ export const enterpriseLeadKnowledgeActionButtonClassNames = {
   danger: `${enterpriseLeadKnowledgeActionButtonBaseClassName} border-red-500/20 bg-red-500/10 text-red-700 hover:bg-red-500/15 dark:text-red-300`,
   neutral: `${enterpriseLeadKnowledgeActionButtonBaseClassName} border-border bg-background text-secondary hover:bg-surface-raised hover:text-foreground`,
 } as const;
+export const enterpriseLeadKnowledgeRowArchiveActionClassName = `${enterpriseLeadKnowledgeActionButtonClassNames.danger} opacity-0 transition-opacity group-hover:opacity-100 focus:opacity-100`;
 export type EnterpriseLeadKnowledgeMessageTone = 'success' | 'failure' | 'exception';
 interface EnterpriseLeadKnowledgeMessage {
   tone: EnterpriseLeadKnowledgeMessageTone;
@@ -225,6 +230,15 @@ export const enterpriseLeadReadableDocumentExtensions = new Set<string>(
 const enterpriseLeadImageAttachmentExtensions = new Set<string>(
   EnterpriseLeadImageAttachmentExtensions,
 );
+const enterpriseLeadOriginalDocumentPreviewExtensions = new Set<string>([
+  'csv',
+  'docx',
+  'pdf',
+  'pptx',
+  'tsv',
+  'xls',
+  'xlsx',
+]);
 
 const sectionDefaultKinds: Partial<Record<EnterpriseLeadKnowledgeSection, EditableKnowledgeKind>> =
   {
@@ -371,6 +385,32 @@ export const confirmEnterpriseLeadKnowledgeItemsInProfile = (
   return nextProfile;
 };
 
+export const confirmEnterpriseLeadKnowledgeValueInProfile = (
+  profile: EnterpriseLeadWorkspaceProfile,
+  field: keyof EnterpriseLeadWorkspaceProfile,
+  value: string,
+): EnterpriseLeadWorkspaceProfile => {
+  const key = getEnterpriseLeadKnowledgeFieldKey(field, value);
+  const nextProfile = cloneProfile(profile);
+  if (!key) {
+    return nextProfile;
+  }
+  nextProfile.confirmedKnowledgeKeys = Array.from(
+    new Set([...(nextProfile.confirmedKnowledgeKeys ?? []), key]),
+  );
+  if (nextProfile.ignoredKnowledgeKeys) {
+    const nextIgnoredKeys = nextProfile.ignoredKnowledgeKeys.filter(
+      ignoredKey => ignoredKey !== key,
+    );
+    if (nextIgnoredKeys.length > 0) {
+      nextProfile.ignoredKnowledgeKeys = nextIgnoredKeys;
+    } else {
+      delete nextProfile.ignoredKnowledgeKeys;
+    }
+  }
+  return nextProfile;
+};
+
 const removeEnterpriseLeadKnowledgeItemConfirmationFromProfile = (
   profile: EnterpriseLeadWorkspaceProfile,
   item: WorkspaceKnowledgeItem,
@@ -429,6 +469,10 @@ export const getEnterpriseLeadKnowledgeSelectedDeletionKeys = (
 export const shouldShowEnterpriseLeadKnowledgeSelectionToolbar = (
   selectedItemCount: number,
 ): boolean => selectedItemCount > 0;
+
+export const shouldShowEnterpriseLeadKnowledgeBatchConfirmAction = (
+  pendingItemCount: number,
+): boolean => pendingItemCount > 0;
 
 const getEnterpriseLeadProfileKnowledgeKeys = (
   profile: EnterpriseLeadWorkspaceProfile,
@@ -672,6 +716,39 @@ const getDocumentStatusDescription = (status: string): string =>
     documentStatusTextKeys[status] ?? 'enterpriseLeadKnowledgeDocumentPendingExtractText',
   );
 
+export const getEnterpriseLeadKnowledgeDocumentStatusDescription = (
+  source?: Pick<
+    EnterpriseLeadExtractionSource,
+    | 'extractionPartial'
+    | 'extractionProgressCurrent'
+    | 'extractionProgressTotal'
+    | 'extractionStage'
+    | 'extractionStatus'
+    | 'text'
+  >,
+): string => {
+  const status = getDocumentExtractionStatus(source);
+  if (
+    status === EnterpriseLeadDocumentExtractionStatus.Extracting &&
+    source?.extractionStage === EnterpriseLeadDocumentExtractionStage.ExtractingChunks
+  ) {
+    return i18nService
+      .t('enterpriseLeadKnowledgeDocumentExtractingChunksText')
+      .replace('{current}', String(source.extractionProgressCurrent ?? 0))
+      .replace('{total}', String(source.extractionProgressTotal ?? 0));
+  }
+  if (
+    status === EnterpriseLeadDocumentExtractionStatus.Extracting &&
+    source?.extractionStage === EnterpriseLeadDocumentExtractionStage.Merging
+  ) {
+    return i18nService.t('enterpriseLeadKnowledgeDocumentMergingText');
+  }
+  if (status === EnterpriseLeadDocumentExtractionStatus.Extracted && source?.extractionPartial) {
+    return i18nService.t('enterpriseLeadKnowledgeDocumentPartialExtractedText');
+  }
+  return getDocumentStatusDescription(status);
+};
+
 const getDocumentStatusClassName = (status: string): string =>
   documentStatusClassNames[status] ??
   documentStatusClassNames[EnterpriseLeadDocumentExtractionStatus.Pending] ??
@@ -707,14 +784,58 @@ const getKindField = (kind: EditableKnowledgeKind): EditableKnowledgeField =>
     multiValue: true,
   };
 
-type KnowledgeView = 'documents' | 'knowledge';
-type KnowledgeStatusFilter = 'all' | 'pending' | 'confirmed' | 'editable' | 'readonly';
-type DocumentStatusFilter =
+export type KnowledgeView = 'documents' | 'knowledge';
+export type KnowledgeStatusFilter = 'all' | 'pending' | 'confirmed' | 'editable' | 'readonly';
+export type DocumentStatusFilter =
   | 'all'
   | typeof EnterpriseLeadDocumentExtractionStatus.Pending
   | typeof EnterpriseLeadDocumentExtractionStatus.Extracting
   | typeof EnterpriseLeadDocumentExtractionStatus.Extracted
   | typeof EnterpriseLeadDocumentExtractionStatus.Failed;
+export type EnterpriseLeadKnowledgeMetricId =
+  'documents' | 'knowledge_all' | 'knowledge_pending' | 'knowledge_readonly';
+export interface EnterpriseLeadKnowledgeMetricFilter {
+  activeView: KnowledgeView;
+  documentStatusFilter: DocumentStatusFilter;
+  statusFilter: KnowledgeStatusFilter;
+}
+
+export const getEnterpriseLeadKnowledgeMetricFilter = (
+  metricId: EnterpriseLeadKnowledgeMetricId,
+): EnterpriseLeadKnowledgeMetricFilter => {
+  switch (metricId) {
+    case 'documents':
+      return {
+        activeView: 'documents',
+        documentStatusFilter: 'all',
+        statusFilter: 'all',
+      };
+    case 'knowledge_pending':
+      return {
+        activeView: 'knowledge',
+        documentStatusFilter: 'all',
+        statusFilter: 'pending',
+      };
+    case 'knowledge_readonly':
+      return {
+        activeView: 'knowledge',
+        documentStatusFilter: 'all',
+        statusFilter: 'readonly',
+      };
+    case 'knowledge_all':
+    default:
+      return {
+        activeView: 'knowledge',
+        documentStatusFilter: 'all',
+        statusFilter: 'all',
+      };
+  }
+};
+
+export const shouldShowEnterpriseLeadKnowledgeDetailPanel = (
+  _activeView: KnowledgeView,
+  _selectedItemId: string,
+): boolean => false;
 type ModalMode =
   | 'none'
   | 'company'
@@ -792,11 +913,63 @@ const getFileNameWithoutExtension = (filePath: string): string => {
   return dotIndex > 0 ? fileName.slice(0, dotIndex) : fileName;
 };
 
-const getFileExtension = (filePath: string): string => {
+function getFileExtension(filePath: string): string {
   const fileName = getFileNameFromPath(filePath);
   const dotIndex = fileName.lastIndexOf('.');
   return dotIndex > -1 ? fileName.slice(dotIndex + 1).toLowerCase() : '';
+}
+
+const normalizeEnterpriseLeadKnowledgeQuery = (query: string): string => query.trim().toLowerCase();
+
+export const doesEnterpriseLeadKnowledgeDocumentMatchQuery = (
+  item: WorkspaceKnowledgeItem,
+  source: EnterpriseLeadExtractionSource | undefined,
+  query: string,
+): boolean => {
+  const normalizedQuery = normalizeEnterpriseLeadKnowledgeQuery(query);
+  if (!normalizedQuery) {
+    return true;
+  }
+
+  return [
+    item.text,
+    item.secondaryText,
+    item.metaText,
+    source?.label,
+    source?.kind,
+    source?.fileName,
+    source?.filePath,
+    source?.summary,
+    source?.text,
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase()
+    .includes(normalizedQuery);
 };
+
+export const canPreviewEnterpriseLeadOriginalDocument = (
+  source?: Pick<EnterpriseLeadExtractionSource, 'fileName' | 'filePath'>,
+): boolean => {
+  const filePath = source?.filePath?.trim();
+  if (!filePath) {
+    return false;
+  }
+  return enterpriseLeadOriginalDocumentPreviewExtensions.has(
+    getFileExtension(source?.fileName || filePath),
+  );
+};
+
+export const shouldShowEnterpriseLeadKnowledgeToolbarAddAction = (
+  activeView: KnowledgeView,
+): boolean => activeView === 'knowledge';
+
+export const getEnterpriseLeadKnowledgeToolbarGridClassName = (activeView: KnowledgeView): string =>
+  `grid gap-3 border-b border-border px-5 py-3 ${
+    activeView === 'knowledge'
+      ? 'md:grid-cols-[minmax(0,1fr)_180px_auto_auto]'
+      : 'md:grid-cols-[minmax(0,1fr)_180px]'
+  }`;
 
 interface ItemDraft {
   mode: ItemModalMode;
@@ -1126,20 +1299,16 @@ export const WorkspaceKnowledgeBase: React.FC<WorkspaceKnowledgeBaseProps> = ({
     currentWorkspace.profile,
     knowledgeRows.map(row => row.item),
   );
-  const normalizedQuery = searchQuery.trim().toLowerCase();
   const filteredDocumentRows = documentRows.filter(({ item }) => {
     const sourceIndex = getSourceIndexFromItemId(item);
     const source = currentWorkspace.extractionSources[sourceIndex];
     const extractionStatus = getDocumentExtractionStatus(source);
-    const searchableText = [item.text, item.secondaryText, item.metaText]
-      .filter(Boolean)
-      .join(' ')
-      .toLowerCase();
-    const matchesQuery = !normalizedQuery || searchableText.includes(normalizedQuery);
+    const matchesQuery = doesEnterpriseLeadKnowledgeDocumentMatchQuery(item, source, searchQuery);
     const matchesStatus =
       documentStatusFilter === 'all' || documentStatusFilter === extractionStatus;
     return matchesQuery && matchesStatus;
   });
+  const normalizedQuery = normalizeEnterpriseLeadKnowledgeQuery(searchQuery);
   const filteredKnowledgeRows = knowledgeRows.filter(({ item, section }) => {
     const searchableText = [
       item.text,
@@ -1194,6 +1363,42 @@ export const WorkspaceKnowledgeBase: React.FC<WorkspaceKnowledgeBaseProps> = ({
     documentDraft.sourceIndex >= 0
       ? currentWorkspace.extractionSources[documentDraft.sourceIndex]
       : undefined;
+  const originalDocumentPreviewArtifact = useMemo<Artifact | null>(() => {
+    if (
+      !previewDocumentSource ||
+      !canPreviewEnterpriseLeadOriginalDocument(previewDocumentSource)
+    ) {
+      return null;
+    }
+    const filePath = previewDocumentSource.filePath?.trim();
+    if (!filePath) {
+      return null;
+    }
+    const timestamp = Date.parse(
+      previewDocumentSource.updatedAt ?? previewDocumentSource.createdAt ?? '',
+    );
+    const fileName =
+      documentFileName || previewDocumentSource.fileName || getFileNameFromPath(filePath);
+
+    return {
+      content: '',
+      createdAt: Number.isNaN(timestamp) ? 0 : timestamp,
+      fileName,
+      filePath,
+      id: `enterprise-lead-source-${documentDraft.sourceIndex}`,
+      messageId: `enterprise-lead-source-${documentDraft.sourceIndex}`,
+      sessionId: currentWorkspace.id,
+      source: 'file',
+      title: documentDraft.name || previewDocumentSource.label || fileName,
+      type: ArtifactTypeValue.Document,
+    };
+  }, [
+    currentWorkspace.id,
+    documentDraft.name,
+    documentDraft.sourceIndex,
+    documentFileName,
+    previewDocumentSource,
+  ]);
   const deletingDocumentSource =
     deleteDocumentDraft.sourceIndex >= 0
       ? currentWorkspace.extractionSources[deleteDocumentDraft.sourceIndex]
@@ -1302,6 +1507,16 @@ export const WorkspaceKnowledgeBase: React.FC<WorkspaceKnowledgeBaseProps> = ({
   const openDocumentModal = (): void => {
     setDocumentDraft(createEmptyDocumentDraft());
     setModalMode('document');
+  };
+
+  const applyMetricFilter = (metricId: EnterpriseLeadKnowledgeMetricId): void => {
+    const filter = getEnterpriseLeadKnowledgeMetricFilter(metricId);
+    setActiveView(filter.activeView);
+    setDocumentStatusFilter(filter.documentStatusFilter);
+    setStatusFilter(filter.statusFilter);
+    setSearchQuery('');
+    setSelectedItemId('');
+    clearSelectedKnowledgeItems();
   };
 
   const syncDocumentSources = async (): Promise<void> => {
@@ -1627,9 +1842,13 @@ export const WorkspaceKnowledgeBase: React.FC<WorkspaceKnowledgeBaseProps> = ({
       field: targetField.field,
       index: targetSelectionIndex,
     };
+    const profileToSave =
+      itemDraft.mode === 'edit'
+        ? confirmEnterpriseLeadKnowledgeValueInProfile(nextProfile, targetField.field, text)
+        : nextProfile;
 
     await saveProfile(
-      nextProfile,
+      profileToSave,
       itemDraft.mode === 'edit'
         ? 'enterpriseLeadKnowledgeItemUpdated'
         : 'enterpriseLeadKnowledgeItemAdded',
@@ -1862,21 +2081,6 @@ export const WorkspaceKnowledgeBase: React.FC<WorkspaceKnowledgeBaseProps> = ({
     );
   };
 
-  const confirmKnowledgeItem = async (item: WorkspaceKnowledgeItem): Promise<void> => {
-    if (!getEditableItemField(item)) {
-      return;
-    }
-    setSelectedItemId(item.id);
-    if (enterpriseLeadKnowledgeConfirmBehavior.persistProfile) {
-      await saveProfile(
-        confirmEnterpriseLeadKnowledgeItemInProfile(currentWorkspace.profile, item),
-        enterpriseLeadKnowledgeConfirmBehavior.successMessageKey,
-      );
-      return;
-    }
-    showFeedbackMessage('success', enterpriseLeadKnowledgeConfirmBehavior.successMessageKey);
-  };
-
   const confirmFilteredKnowledgeItems = async (): Promise<void> => {
     if (filteredPendingKnowledgeItems.length === 0) {
       showFeedbackMessage('exception', 'enterpriseLeadKnowledgeBatchConfirmEmpty');
@@ -1920,12 +2124,9 @@ export const WorkspaceKnowledgeBase: React.FC<WorkspaceKnowledgeBaseProps> = ({
     setIsSaving(true);
     clearFeedbackMessage();
     try {
-      const nextProfile = removeEnterpriseLeadKnowledgeKeysFromProfile(
+      const nextProfile = selectedDeletableKnowledgeItems.reduce(
+        (profile, item) => ignoreEnterpriseLeadKnowledgeItemInProfile(profile, item),
         currentWorkspace.profile,
-        getEnterpriseLeadKnowledgeSelectedDeletionKeys(
-          selectedDeletableKnowledgeItems,
-          selectedKnowledgeItemIds,
-        ),
       );
       const updatedWorkspace = await enterpriseLeadWorkspaceService.updateWorkspaceProfile(
         currentWorkspace.id,
@@ -2037,30 +2238,46 @@ export const WorkspaceKnowledgeBase: React.FC<WorkspaceKnowledgeBaseProps> = ({
       </div>
 
       <div className="grid shrink-0 grid-cols-2 border-b border-border bg-surface/50 md:grid-cols-4">
-        <div className="border-r border-border px-6 py-4">
+        <button
+          type="button"
+          className="border-r border-border px-6 py-4 text-left transition-colors hover:bg-background focus:outline-none focus:ring-2 focus:ring-primary/20"
+          onClick={() => applyMetricFilter('documents')}
+        >
           <p className="text-2xl font-semibold text-foreground">{documentRows.length}</p>
           <p className="mt-1 text-xs font-medium text-secondary">
             {i18nService.t('enterpriseLeadKnowledgeDocumentMetric')}
           </p>
-        </div>
-        <div className="border-r border-border px-6 py-4">
+        </button>
+        <button
+          type="button"
+          className="border-r border-border px-6 py-4 text-left transition-colors hover:bg-background focus:outline-none focus:ring-2 focus:ring-primary/20"
+          onClick={() => applyMetricFilter('knowledge_all')}
+        >
           <p className="text-2xl font-semibold text-foreground">{knowledgeRows.length}</p>
           <p className="mt-1 text-xs font-medium text-secondary">
             {i18nService.t('enterpriseLeadKnowledgeAiKnowledgeMetric')}
           </p>
-        </div>
-        <div className="border-r border-border px-6 py-4">
+        </button>
+        <button
+          type="button"
+          className="border-r border-border px-6 py-4 text-left transition-colors hover:bg-background focus:outline-none focus:ring-2 focus:ring-primary/20"
+          onClick={() => applyMetricFilter('knowledge_pending')}
+        >
           <p className="text-2xl font-semibold text-amber-600">{pendingKnowledgeCount}</p>
           <p className="mt-1 text-xs font-medium text-secondary">
             {i18nService.t('enterpriseLeadKnowledgePendingMetric')}
           </p>
-        </div>
-        <div className="px-6 py-4">
+        </button>
+        <button
+          type="button"
+          className="px-6 py-4 text-left transition-colors hover:bg-background focus:outline-none focus:ring-2 focus:ring-primary/20"
+          onClick={() => applyMetricFilter('knowledge_readonly')}
+        >
           <p className="text-2xl font-semibold text-foreground">{readOnlyCount}</p>
           <p className="mt-1 text-xs font-medium text-secondary">
             {i18nService.t('enterpriseLeadKnowledgeReferencedMetric')}
           </p>
-        </div>
+        </button>
       </div>
 
       <div className="min-h-0 flex-1 overflow-hidden bg-surface/50 p-4">
@@ -2118,13 +2335,7 @@ export const WorkspaceKnowledgeBase: React.FC<WorkspaceKnowledgeBaseProps> = ({
             </div>
           </div>
 
-          <div
-            className={`grid gap-3 border-b border-border px-5 py-3 ${
-              activeView === 'knowledge'
-                ? 'md:grid-cols-[minmax(0,1fr)_180px_auto_auto]'
-                : 'md:grid-cols-[minmax(0,1fr)_180px_auto]'
-            }`}
-          >
+          <div className={getEnterpriseLeadKnowledgeToolbarGridClassName(activeView)}>
             <label className="flex h-10 min-w-0 items-center gap-2 rounded-lg border border-border bg-surface px-3 text-sm text-secondary">
               <MagnifyingGlassIcon className="h-4 w-4 shrink-0" />
               <input
@@ -2184,10 +2395,13 @@ export const WorkspaceKnowledgeBase: React.FC<WorkspaceKnowledgeBaseProps> = ({
                 </option>
               </select>
             )}
-            {activeView === 'knowledge' ? (
+            {activeView === 'knowledge' &&
+            shouldShowEnterpriseLeadKnowledgeBatchConfirmAction(
+              filteredPendingKnowledgeItems.length,
+            ) ? (
               <button
                 type="button"
-                disabled={isSaving || filteredPendingKnowledgeItems.length === 0}
+                disabled={isSaving}
                 className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-3 text-sm font-semibold text-emerald-700 transition-colors hover:bg-emerald-500/15 disabled:cursor-not-allowed disabled:opacity-45 dark:text-emerald-300"
                 onClick={() => void confirmFilteredKnowledgeItems()}
               >
@@ -2197,17 +2411,21 @@ export const WorkspaceKnowledgeBase: React.FC<WorkspaceKnowledgeBaseProps> = ({
                   { count: filteredPendingKnowledgeItems.length },
                 )}
               </button>
+            ) : activeView === 'knowledge' ? (
+              <div className="inline-flex h-10 items-center justify-center rounded-lg border border-border bg-surface px-3 text-sm font-medium text-secondary">
+                {i18nService.t('enterpriseLeadKnowledgeNoPendingHint')}
+              </div>
             ) : null}
-            <button
-              type="button"
-              className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-sm font-medium text-secondary transition-colors hover:bg-surface-raised hover:text-foreground"
-              onClick={activeView === 'documents' ? openDocumentModal : openAddModal}
-            >
-              <PlusIcon className={actionIconClassName} />
-              {activeView === 'documents'
-                ? i18nService.t('enterpriseLeadKnowledgeAddDocument')
-                : i18nService.t('enterpriseLeadKnowledgeAddContent')}
-            </button>
+            {shouldShowEnterpriseLeadKnowledgeToolbarAddAction(activeView) ? (
+              <button
+                type="button"
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-sm font-medium text-secondary transition-colors hover:bg-surface-raised hover:text-foreground"
+                onClick={openAddModal}
+              >
+                <PlusIcon className={actionIconClassName} />
+                {i18nService.t('enterpriseLeadKnowledgeAddContent')}
+              </button>
+            ) : null}
           </div>
 
           {shouldShowSelectionToolbar ? (
@@ -2228,25 +2446,29 @@ export const WorkspaceKnowledgeBase: React.FC<WorkspaceKnowledgeBaseProps> = ({
                 </button>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  disabled={isSaving || selectedPendingKnowledgeItems.length === 0}
-                  className="inline-flex h-8 items-center gap-1.5 rounded-md border border-emerald-500/25 bg-background px-2.5 text-xs font-semibold text-emerald-700 transition-colors hover:bg-emerald-500/10 disabled:cursor-not-allowed disabled:opacity-45 dark:text-emerald-300"
-                  onClick={() => void confirmSelectedKnowledgeItems()}
-                >
-                  <CheckCircleIcon className="h-4 w-4" />
-                  {formatEnterpriseLeadKnowledgeMessage(
-                    'enterpriseLeadKnowledgeConfirmSelectedAction',
-                    { count: selectedPendingKnowledgeItems.length },
-                  )}
-                </button>
+                {shouldShowEnterpriseLeadKnowledgeBatchConfirmAction(
+                  selectedPendingKnowledgeItems.length,
+                ) ? (
+                  <button
+                    type="button"
+                    disabled={isSaving}
+                    className="inline-flex h-8 items-center gap-1.5 rounded-md border border-emerald-500/25 bg-background px-2.5 text-xs font-semibold text-emerald-700 transition-colors hover:bg-emerald-500/10 disabled:cursor-not-allowed disabled:opacity-45 dark:text-emerald-300"
+                    onClick={() => void confirmSelectedKnowledgeItems()}
+                  >
+                    <CheckCircleIcon className="h-4 w-4" />
+                    {formatEnterpriseLeadKnowledgeMessage(
+                      'enterpriseLeadKnowledgeConfirmSelectedAction',
+                      { count: selectedPendingKnowledgeItems.length },
+                    )}
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   disabled={isSaving || selectedDeletableKnowledgeItems.length === 0}
-                  className="inline-flex h-8 items-center gap-1.5 rounded-md border border-red-500/25 bg-background px-2.5 text-xs font-semibold text-red-600 transition-colors hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-45 dark:text-red-300"
+                  className="inline-flex h-8 items-center gap-1.5 rounded-md border border-amber-500/25 bg-background px-2.5 text-xs font-semibold text-amber-700 transition-colors hover:bg-amber-500/10 disabled:cursor-not-allowed disabled:opacity-45 dark:text-amber-300"
                   onClick={() => setModalMode('deleteKnowledgeBatch')}
                 >
-                  <TrashIcon className="h-4 w-4" />
+                  <ArchiveBoxXMarkIcon className="h-4 w-4" />
                   {formatEnterpriseLeadKnowledgeMessage(
                     'enterpriseLeadKnowledgeDeleteSelectedAction',
                     { count: selectedDeletableKnowledgeItems.length },
@@ -2352,7 +2574,7 @@ export const WorkspaceKnowledgeBase: React.FC<WorkspaceKnowledgeBaseProps> = ({
 
                           <div className="min-w-0">
                             <p className="line-clamp-1 text-sm font-medium text-foreground">
-                              {getDocumentStatusDescription(extractionStatus)}
+                              {getEnterpriseLeadKnowledgeDocumentStatusDescription(source)}
                             </p>
                             {sourceTextLength > 0 ? (
                               <p className="mt-1 text-xs text-tertiary">
@@ -2449,189 +2671,174 @@ export const WorkspaceKnowledgeBase: React.FC<WorkspaceKnowledgeBaseProps> = ({
                 </div>
               )
             ) : filteredKnowledgeRows.length > 0 ? (
-              <table className="w-full table-fixed border-separate border-spacing-0 text-sm">
-                <colgroup>
-                  <col className={enterpriseLeadKnowledgeTableColumnClassNames.knowledge} />
-                  <col className={enterpriseLeadKnowledgeTableColumnClassNames.meta} />
-                  <col className={enterpriseLeadKnowledgeTableColumnClassNames.actions} />
-                </colgroup>
-                <thead>
-                  <tr className="bg-background text-xs font-semibold text-secondary">
-                    <th className={enterpriseLeadKnowledgeHeaderCellClassName}>
-                      <span className="flex items-center justify-start gap-3">
-                        <input
-                          type="checkbox"
-                          checked={areAllFilteredKnowledgeItemsSelected}
-                          disabled={isSaving || filteredSelectableKnowledgeItems.length === 0}
-                          aria-label={i18nService.t('enterpriseLeadKnowledgeSelectVisibleAction')}
-                          className="h-4 w-4 rounded border-border text-primary disabled:cursor-not-allowed disabled:opacity-45"
-                          onChange={event => toggleFilteredKnowledgeSelection(event.target.checked)}
-                        />
-                        <span>{i18nService.t('enterpriseLeadKnowledgeTableKnowledge')}</span>
-                      </span>
-                    </th>
-                    <th className={enterpriseLeadKnowledgeHeaderCellClassName}>
-                      {i18nService.t('enterpriseLeadKnowledgeTableMeta')}
-                    </th>
-                    <th className={enterpriseLeadKnowledgeHeaderCellClassName}>
-                      {i18nService.t('enterpriseLeadKnowledgeTableActions')}
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredKnowledgeRows.map(row => {
-                    const { item, section } = row;
-                    const editable = isEditableItem(item);
-                    const confirmed =
-                      editable &&
-                      isEnterpriseLeadKnowledgeItemConfirmed(currentWorkspace.profile, item);
-                    const isFocused = selectedItemId === item.id;
-                    const isChecked = selectedKnowledgeItemIdSet.has(item.id);
-                    const sourceText = editable
-                      ? i18nService.t('enterpriseLeadKnowledgeSourceWorkspaceProfile')
-                      : getItemMeta(item) ||
-                        i18nService.t('enterpriseLeadKnowledgeSourceGenerated');
-                    const knowledgeMetaText = [
-                      item.secondaryText && item.secondaryText !== item.text
-                        ? item.secondaryText
-                        : '',
-                      `${i18nService.t('enterpriseLeadKnowledgeTableSource')}: ${sourceText}`,
-                    ]
-                      .filter(Boolean)
-                      .join(' · ');
-                    const statusClassName = confirmed
-                      ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
-                      : editable
-                        ? 'bg-amber-500/10 text-amber-700 dark:text-amber-300'
-                        : 'bg-surface-raised text-secondary';
-                    const statusLabelKey = confirmed
-                      ? 'enterpriseLeadKnowledgeStatusConfirmed'
-                      : editable
-                        ? 'enterpriseLeadKnowledgeStatusPendingConfirmation'
-                        : 'enterpriseLeadKnowledgeStatusReadonly';
-                    const cellClassName = `border-b border-border px-3 py-3 align-middle ${
-                      isFocused || isChecked ? 'bg-primary/5' : 'bg-background'
-                    }`;
-                    return (
-                      <tr
-                        key={item.id}
-                        className="cursor-pointer transition-colors hover:bg-surface/70"
-                        onClick={() => setSelectedItemId(item.id)}
-                      >
-                        <td
-                          className={`relative border-b border-border px-4 py-3 align-middle ${
-                            isFocused || isChecked ? 'bg-primary/5' : 'bg-background'
-                          }`}
-                        >
-                          {isFocused ? (
-                            <span className="absolute bottom-3 left-0 top-3 w-1 rounded-r-full bg-primary" />
-                          ) : null}
-                          <div className="flex min-w-0 items-start gap-3">
+              <div className="min-w-[1120px]">
+                <div className="min-w-0">
+                  <table className="w-full table-fixed border-separate border-spacing-0 text-sm">
+                    <colgroup>
+                      <col className={enterpriseLeadKnowledgeTableColumnClassNames.knowledge} />
+                      <col className={enterpriseLeadKnowledgeTableColumnClassNames.category} />
+                      <col className={enterpriseLeadKnowledgeTableColumnClassNames.status} />
+                      <col className={enterpriseLeadKnowledgeTableColumnClassNames.actions} />
+                    </colgroup>
+                    <thead>
+                      <tr className="bg-background text-xs font-semibold text-secondary">
+                        <th className={enterpriseLeadKnowledgeHeaderCellClassName}>
+                          <span className="flex items-center justify-start gap-3">
                             <input
                               type="checkbox"
-                              checked={isChecked}
-                              disabled={!editable || isSaving}
-                              aria-label={i18nService.t('enterpriseLeadKnowledgeSelectRowAction')}
-                              className="mt-1 h-4 w-4 shrink-0 rounded border-border text-primary disabled:cursor-not-allowed disabled:opacity-35"
-                              onClick={event => event.stopPropagation()}
-                              onChange={() => toggleKnowledgeItemSelection(item)}
-                            />
-                            <div className="min-w-0">
-                              <p className="line-clamp-2 font-semibold leading-6 text-foreground">
-                                {item.text}
-                              </p>
-                              {knowledgeMetaText ? (
-                                <p className="mt-1 line-clamp-1 text-xs text-secondary">
-                                  {knowledgeMetaText}
-                                </p>
-                              ) : null}
-                            </div>
-                          </div>
-                        </td>
-                        <td className={cellClassName}>
-                          <div className="flex min-w-0 flex-wrap gap-1.5">
-                            <span className="inline-flex max-w-full items-center truncate whitespace-nowrap rounded-md bg-primary/10 px-2 py-1 text-xs font-semibold text-primary">
-                              {i18nService.t(section.titleKey)}
-                            </span>
-                            <span
-                              className={`inline-flex whitespace-nowrap rounded-md px-2 py-1 text-xs font-semibold ${statusClassName}`}
-                            >
-                              {i18nService.t(statusLabelKey)}
-                            </span>
-                            <span className="inline-flex whitespace-nowrap rounded-md bg-surface-raised px-2 py-1 text-xs font-medium text-secondary">
-                              {confirmed
-                                ? i18nService.t('enterpriseLeadKnowledgeUsageAgentReadable')
-                                : editable
-                                  ? i18nService.t('enterpriseLeadKnowledgeUsagePendingConfirm')
-                                  : i18nService.t('enterpriseLeadKnowledgeUsageSourceReadable')}
-                            </span>
-                          </div>
-                        </td>
-                        <td className={`${cellClassName} text-right`}>
-                          <div className="inline-flex items-center justify-end gap-1 whitespace-nowrap">
-                            <button
-                              type="button"
-                              disabled={!editable || isSaving}
-                              className={enterpriseLeadKnowledgeActionButtonClassNames.neutral}
-                              aria-label={i18nService.t('edit')}
-                              title={i18nService.t('edit')}
-                              onClick={event => {
-                                event.stopPropagation();
-                                openEditModalForRow(row);
-                              }}
-                            >
-                              <PencilSquareIcon className="h-4 w-4" />
-                              <span>{i18nService.t('edit')}</span>
-                            </button>
-                            <button
-                              type="button"
-                              disabled={!editable || confirmed || isSaving}
-                              className={enterpriseLeadKnowledgeActionButtonClassNames.neutral}
+                              checked={areAllFilteredKnowledgeItemsSelected}
+                              disabled={isSaving || filteredSelectableKnowledgeItems.length === 0}
                               aria-label={i18nService.t(
-                                confirmed
-                                  ? 'enterpriseLeadKnowledgeStatusConfirmed'
-                                  : 'enterpriseLeadKnowledgeConfirmAction',
+                                'enterpriseLeadKnowledgeSelectVisibleAction',
                               )}
-                              title={i18nService.t(
-                                confirmed
-                                  ? 'enterpriseLeadKnowledgeStatusConfirmed'
-                                  : 'enterpriseLeadKnowledgeConfirmAction',
-                              )}
-                              onClick={event => {
-                                event.stopPropagation();
-                                void confirmKnowledgeItem(item);
-                              }}
-                            >
-                              <CheckCircleIcon className="h-4 w-4" />
-                              <span>
-                                {i18nService.t(
-                                  confirmed
-                                    ? 'enterpriseLeadKnowledgeStatusConfirmed'
-                                    : 'enterpriseLeadKnowledgeConfirmCompactAction',
-                                )}
-                              </span>
-                            </button>
-                            <button
-                              type="button"
-                              disabled={!editable || isSaving}
-                              className={enterpriseLeadKnowledgeActionButtonClassNames.danger}
-                              aria-label={i18nService.t('enterpriseLeadKnowledgeArchiveAction')}
-                              title={i18nService.t('enterpriseLeadKnowledgeArchiveAction')}
-                              onClick={event => {
-                                event.stopPropagation();
-                                void archiveKnowledgeItem(item);
-                              }}
-                            >
-                              <ArchiveBoxXMarkIcon className="h-4 w-4" />
-                              <span>{i18nService.t('enterpriseLeadKnowledgeArchiveAction')}</span>
-                            </button>
-                          </div>
-                        </td>
+                              className="h-4 w-4 rounded border-border text-primary disabled:cursor-not-allowed disabled:opacity-45"
+                              onChange={event =>
+                                toggleFilteredKnowledgeSelection(event.target.checked)
+                              }
+                            />
+                            <span>{i18nService.t('enterpriseLeadKnowledgeTableKnowledge')}</span>
+                          </span>
+                        </th>
+                        <th className={enterpriseLeadKnowledgeHeaderCellClassName}>
+                          {i18nService.t('enterpriseLeadKnowledgeTableCategory')}
+                        </th>
+                        <th className={enterpriseLeadKnowledgeHeaderCellClassName}>
+                          {i18nService.t('enterpriseLeadKnowledgeTableStatus')}
+                        </th>
+                        <th className={enterpriseLeadKnowledgeHeaderCellClassName}>
+                          {i18nService.t('enterpriseLeadKnowledgeTableActions')}
+                        </th>
                       </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                    </thead>
+                    <tbody>
+                      {filteredKnowledgeRows.map(row => {
+                        const { item, section } = row;
+                        const editable = isEditableItem(item);
+                        const confirmed =
+                          editable &&
+                          isEnterpriseLeadKnowledgeItemConfirmed(currentWorkspace.profile, item);
+                        const isChecked = selectedKnowledgeItemIdSet.has(item.id);
+                        const sourceText = editable
+                          ? i18nService.t('enterpriseLeadKnowledgeSourceWorkspaceProfile')
+                          : getItemMeta(item) ||
+                            i18nService.t('enterpriseLeadKnowledgeSourceGenerated');
+                        const knowledgeMetaText = [
+                          item.secondaryText && item.secondaryText !== item.text
+                            ? item.secondaryText
+                            : '',
+                          `${i18nService.t('enterpriseLeadKnowledgeTableSource')}: ${sourceText}`,
+                        ]
+                          .filter(Boolean)
+                          .join(' · ');
+                        const statusClassName = confirmed
+                          ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+                          : editable
+                            ? 'bg-amber-500/10 text-amber-700 dark:text-amber-300'
+                            : 'bg-surface-raised text-secondary';
+                        const statusLabelKey = confirmed
+                          ? 'enterpriseLeadKnowledgeStatusConfirmed'
+                          : editable
+                            ? 'enterpriseLeadKnowledgeStatusPendingConfirmation'
+                            : 'enterpriseLeadKnowledgeStatusReadonly';
+                        const usageLabelKey = confirmed
+                          ? 'enterpriseLeadKnowledgeUsageAgentReadable'
+                          : editable
+                            ? 'enterpriseLeadKnowledgeUsagePendingConfirm'
+                            : 'enterpriseLeadKnowledgeUsageSourceReadable';
+                        const cellClassName = `border-b border-border px-3 py-3 align-middle ${
+                          isChecked ? 'bg-primary/5' : 'bg-background'
+                        }`;
+                        return (
+                          <tr key={item.id} className="group transition-colors hover:bg-surface/70">
+                            <td
+                              className={`relative border-b border-border px-4 py-3 align-middle ${
+                                isChecked ? 'bg-primary/5' : 'bg-background'
+                              }`}
+                            >
+                              <div className="flex min-w-0 items-start gap-3">
+                                <input
+                                  type="checkbox"
+                                  checked={isChecked}
+                                  disabled={!editable || isSaving}
+                                  aria-label={i18nService.t(
+                                    'enterpriseLeadKnowledgeSelectRowAction',
+                                  )}
+                                  className="mt-1 h-4 w-4 shrink-0 rounded border-border text-primary disabled:cursor-not-allowed disabled:opacity-35"
+                                  onClick={event => event.stopPropagation()}
+                                  onChange={() => toggleKnowledgeItemSelection(item)}
+                                />
+                                <div className="min-w-0">
+                                  <p className="line-clamp-2 font-semibold leading-6 text-foreground">
+                                    {item.text}
+                                  </p>
+                                  {knowledgeMetaText ? (
+                                    <p className="mt-1 line-clamp-1 text-xs text-secondary">
+                                      {knowledgeMetaText}
+                                    </p>
+                                  ) : null}
+                                </div>
+                              </div>
+                            </td>
+                            <td className={cellClassName}>
+                              <div className="flex min-w-0 justify-center">
+                                <span className="inline-flex max-w-full items-center truncate whitespace-nowrap rounded-md bg-primary/10 px-2 py-1 text-xs font-semibold text-primary">
+                                  {i18nService.t(section.titleKey)}
+                                </span>
+                              </div>
+                            </td>
+                            <td className={cellClassName}>
+                              <div className="flex min-w-0 flex-wrap justify-center gap-1.5">
+                                <span
+                                  className={`inline-flex whitespace-nowrap rounded-md px-2 py-1 text-xs font-semibold ${statusClassName}`}
+                                >
+                                  {i18nService.t(statusLabelKey)}
+                                </span>
+                                <span className="inline-flex whitespace-nowrap rounded-md bg-surface-raised px-2 py-1 text-xs font-medium text-secondary">
+                                  {i18nService.t(usageLabelKey)}
+                                </span>
+                              </div>
+                            </td>
+                            <td className={`${cellClassName} text-right`}>
+                              <div className="inline-flex items-center justify-end gap-1 whitespace-nowrap">
+                                <button
+                                  type="button"
+                                  disabled={!editable || isSaving}
+                                  className={enterpriseLeadKnowledgeActionButtonClassNames.neutral}
+                                  aria-label={i18nService.t('edit')}
+                                  title={i18nService.t('edit')}
+                                  onClick={event => {
+                                    event.stopPropagation();
+                                    openEditModalForRow(row);
+                                  }}
+                                >
+                                  <PencilSquareIcon className="h-4 w-4" />
+                                  <span>{i18nService.t('edit')}</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={!editable || isSaving}
+                                  className={enterpriseLeadKnowledgeRowArchiveActionClassName}
+                                  aria-label={i18nService.t('enterpriseLeadKnowledgeArchiveAction')}
+                                  title={i18nService.t('enterpriseLeadKnowledgeArchiveAction')}
+                                  onClick={event => {
+                                    event.stopPropagation();
+                                    void archiveKnowledgeItem(item);
+                                  }}
+                                >
+                                  <ArchiveBoxXMarkIcon className="h-4 w-4" />
+                                  <span>
+                                    {i18nService.t('enterpriseLeadKnowledgeArchiveAction')}
+                                  </span>
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             ) : (
               <div className="grid min-h-[320px] place-items-center px-6 text-center">
                 <div>
@@ -2746,8 +2953,12 @@ export const WorkspaceKnowledgeBase: React.FC<WorkspaceKnowledgeBaseProps> = ({
                     </div>
                   </div>
 
-                  <div className="min-h-0 flex-1 overflow-hidden">
-                    {documentPreviewText ? (
+                  <div className="min-h-0 flex-1 overflow-hidden bg-surface">
+                    {originalDocumentPreviewArtifact ? (
+                      <div className="h-full min-h-0 overflow-hidden">
+                        <DocumentRenderer artifact={originalDocumentPreviewArtifact} />
+                      </div>
+                    ) : documentPreviewText ? (
                       <div className="h-full overflow-auto px-6 py-5">
                         <div className="mx-auto max-w-4xl whitespace-pre-wrap font-sans text-sm leading-7 text-foreground">
                           {documentPreviewText}
@@ -2767,10 +2978,10 @@ export const WorkspaceKnowledgeBase: React.FC<WorkspaceKnowledgeBaseProps> = ({
                 </div>
               ) : isDeleteDocumentModal ? (
                 <div className="grid gap-4">
-                  <div className="rounded-lg border border-red-500/20 bg-red-500/5 px-4 py-3">
+                  <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-4 py-3">
                     <div className="flex items-start gap-3">
-                      <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-red-500/10 text-red-600 dark:text-red-300">
-                        <TrashIcon className="h-5 w-5" />
+                      <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-amber-500/10 text-amber-700 dark:text-amber-300">
+                        <ArchiveBoxXMarkIcon className="h-5 w-5" />
                       </div>
                       <div className="min-w-0">
                         <p className="truncate text-sm font-semibold text-foreground">
@@ -3292,14 +3503,22 @@ export const WorkspaceKnowledgeBase: React.FC<WorkspaceKnowledgeBaseProps> = ({
                     isSaving ||
                     (isDeleteKnowledgeBatchModal && selectedDeletableKnowledgeItems.length === 0)
                   }
-                  className="inline-flex h-9 items-center gap-2 rounded-lg bg-red-600 px-4 text-sm font-semibold text-white transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  className={`inline-flex h-9 items-center gap-2 rounded-lg px-4 text-sm font-semibold text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                    isDeleteKnowledgeBatchModal
+                      ? 'bg-amber-600 hover:bg-amber-700'
+                      : 'bg-red-600 hover:bg-red-700'
+                  }`}
                   onClick={() =>
                     void (isDeleteKnowledgeBatchModal
                       ? handleDeleteSelectedKnowledgeItems()
                       : handleDeleteDocumentSource())
                   }
                 >
-                  <TrashIcon className="h-4 w-4" />
+                  {isDeleteKnowledgeBatchModal ? (
+                    <ArchiveBoxXMarkIcon className="h-4 w-4" />
+                  ) : (
+                    <TrashIcon className="h-4 w-4" />
+                  )}
                   {isSaving
                     ? i18nService.t('saving')
                     : isDeleteKnowledgeBatchModal
