@@ -130,6 +130,7 @@ const normalizeWorkspaceAgentSource = (
 ): EnterpriseLeadWorkspaceAgentSource => {
   if (
     value === EnterpriseLeadWorkspaceAgentSource.SystemTemplate ||
+    value === EnterpriseLeadWorkspaceAgentSource.LocalAgent ||
     value === EnterpriseLeadWorkspaceAgentSource.WorkspaceCreated
   ) {
     return value;
@@ -864,7 +865,9 @@ export function normalizeWorkspaceDraftInput(value: unknown): EnterpriseLeadWork
     type: EnterpriseLeadWorkspaceType.EnterpriseLead,
     profile: normalizeWorkspaceProfile(record.profile),
     source: normalizedSource,
-    enabledAgentRoles: Object.values(EnterpriseLeadAgentRole),
+    enabledAgentRoles: Array.isArray(record.enabledAgentRoles)
+      ? Array.from(new Set(record.enabledAgentRoles.map(cleanText).filter(Boolean)))
+      : [],
     workspaceAgents: normalizeEnterpriseLeadWorkspaceAgents(record.workspaceAgents),
     ...(isRecord(record.settings)
       ? { settings: normalizeEnterpriseLeadWorkspaceSettings(record.settings) }

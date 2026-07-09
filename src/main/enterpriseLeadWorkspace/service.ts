@@ -69,7 +69,6 @@ import {
 import type { CreateEnterpriseLeadTaskInput, EnterpriseLeadWorkspaceStore } from './store';
 import {
   buildDefaultEnterpriseLeadWorkspaceAgents,
-  ENTERPRISE_LEAD_AGENT_WORKFLOW,
   getEnterpriseLeadAgentMetadata,
 } from './workflow';
 
@@ -150,6 +149,15 @@ export const ensureEnterpriseLeadSourceIds = (
     ...source,
     id: source.id?.trim() || buildEnterpriseLeadSourceId(),
   }));
+
+const buildInitialEnterpriseLeadExtractionSources = (
+  source: EnterpriseLeadExtractionSource,
+): EnterpriseLeadExtractionSource[] => {
+  if (source.kind === EnterpriseLeadExtractionSourceKind.Blank) {
+    return [];
+  }
+  return ensureEnterpriseLeadSourceIds([source]);
+};
 
 const hasUsableVectorIndex = (source: EnterpriseLeadExtractionSource): boolean =>
   source.vectorIndexStatus === EnterpriseLeadKnowledgeIndexStatus.Indexed &&
@@ -412,9 +420,6 @@ const buildDerivedWorkspaceKnowledgeSources = (
   return sources;
 };
 
-const workflowRoles = (): EnterpriseLeadAgentRole[] =>
-  ENTERPRISE_LEAD_AGENT_WORKFLOW.map(item => item.role);
-
 const isEnterpriseLeadTaskStatus = (value: string): value is EnterpriseLeadTaskStatus =>
   Object.values(EnterpriseLeadTaskStatus).includes(value as EnterpriseLeadTaskStatus);
 
@@ -569,19 +574,15 @@ export class EnterpriseLeadWorkspaceService {
 
   createWorkspace(draft: unknown): EnterpriseLeadWorkspace {
     const normalizedDraft = normalizeWorkspaceDraftInput(draft);
-    const workspaceAgents =
-      normalizedDraft.workspaceAgents.length > 0
-        ? normalizedDraft.workspaceAgents
-        : buildDefaultEnterpriseLeadWorkspaceAgents(workflowRoles());
 
     const workspace = this.store.createWorkspace({
       name: normalizedDraft.name,
       type: EnterpriseLeadWorkspaceType.EnterpriseLead,
       profile: normalizedDraft.profile,
-      extractionSources: ensureEnterpriseLeadSourceIds([normalizedDraft.source]),
-      enabledAgentRoles: workflowRoles(),
+      extractionSources: buildInitialEnterpriseLeadExtractionSources(normalizedDraft.source),
+      enabledAgentRoles: normalizedDraft.enabledAgentRoles,
       settings: normalizedDraft.settings,
-      workspaceAgents,
+      workspaceAgents: normalizedDraft.workspaceAgents,
     });
     if (!this.contentKnowledgeVectorStore) {
       return workspace;
@@ -1227,8 +1228,7 @@ export class EnterpriseLeadWorkspaceService {
   }
 
   private resolveLegacyRunRoles(workspace: EnterpriseLeadWorkspace): EnterpriseLeadAgentRole[] {
-    const selectedRoles = workspace.enabledAgentRoles.filter(isEnterpriseLeadAgentRole);
-    return selectedRoles.length > 0 ? selectedRoles : workflowRoles();
+    return workspace.enabledAgentRoles.filter(isEnterpriseLeadAgentRole);
   }
 
   private resolveRunTasksForWorkspace(
@@ -1285,8 +1285,14 @@ export class EnterpriseLeadWorkspaceService {
     const baseBinding =
       binding.source === EnterpriseLeadWorkspaceAgentSource.SystemTemplate
         ? this.resolveSystemTemplateBinding(binding)
-        : null;
-    if (binding.source === EnterpriseLeadWorkspaceAgentSource.SystemTemplate && !baseBinding) {
+        : binding.source === EnterpriseLeadWorkspaceAgentSource.LocalAgent
+          ? this.resolveLocalAgentBinding(binding)
+          : null;
+    if (
+      (binding.source === EnterpriseLeadWorkspaceAgentSource.SystemTemplate ||
+        binding.source === EnterpriseLeadWorkspaceAgentSource.LocalAgent) &&
+      !baseBinding
+    ) {
       return null;
     }
 
@@ -1317,6 +1323,31 @@ export class EnterpriseLeadWorkspaceService {
     }
 
     return buildDefaultEnterpriseLeadWorkspaceAgents([templateId])[0] ?? null;
+  }
+
+  private resolveLocalAgentBinding(
+    binding: EnterpriseLeadWorkspaceAgentBinding,
+  ): EnterpriseLeadWorkspaceAgentBinding | null {
+    const agent = this.agentProvider.getAgent(binding.agentId);
+    if (!agent || agent.enabled === false) {
+      return null;
+    }
+
+    return {
+      agentId: agent.id,
+      source: EnterpriseLeadWorkspaceAgentSource.LocalAgent,
+      enabled: true,
+      order: binding.order,
+      overrides: {
+        name: agent.name,
+        description: agent.description,
+        identity: agent.identity,
+        systemPrompt: agent.systemPrompt,
+        icon: agent.icon,
+        model: agent.model,
+        skillIds: agent.skillIds ?? [],
+      },
+    };
   }
 
   private getRunForWorkspace(workspaceId: string, runId: string): EnterpriseLeadRun {

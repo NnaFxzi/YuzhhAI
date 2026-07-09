@@ -1697,6 +1697,7 @@ const SkillsManager: React.FC<SkillsManagerProps> = ({
                 value={externalResearchConfig}
                 agentId={null}
                 appDefaults={externalResearchDefaults}
+                savedConfig={externalResearchDefaults}
                 availableModes={[AgentExternalResearchMode.Override]}
                 onChange={setExternalResearchConfig}
                 onTestProvider={input => agentService.testExternalResearchProvider(input)}

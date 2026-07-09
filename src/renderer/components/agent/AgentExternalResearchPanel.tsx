@@ -20,6 +20,8 @@ import React, { useState } from 'react';
 import { i18nService } from '../../services/i18n';
 import {
   type ExternalResearchTestResult,
+  getExternalResearchApiKeyDraftFromInput,
+  getExternalResearchApiKeyInputState,
   getExternalResearchSummary,
   getExternalResearchTestFeedback,
 } from './agentExternalResearchUi';
@@ -28,6 +30,7 @@ interface AgentExternalResearchPanelProps {
   value: ExternalResearchEditConfig;
   agentId?: string | null;
   appDefaults: MaskedExternalResearchConfig | null;
+  savedConfig?: MaskedExternalResearchConfig | null;
   availableModes?: readonly AgentExternalResearchMode[];
   onChange: (value: ExternalResearchEditConfig) => void;
   onTestProvider: (
@@ -69,15 +72,17 @@ const replaceProviderName = (template: string, provider: string): string =>
 const replaceSummaryCounts = (
   template: string,
   counts: { configured: number; enabled: number; total: number },
-): string => template
-  .replace('{configured}', String(counts.configured))
-  .replace('{total}', String(counts.total))
-  .replace('{enabled}', String(counts.enabled));
+): string =>
+  template
+    .replace('{configured}', String(counts.configured))
+    .replace('{total}', String(counts.total))
+    .replace('{enabled}', String(counts.enabled));
 
 const AgentExternalResearchPanel: React.FC<AgentExternalResearchPanelProps> = ({
   value,
   agentId,
   appDefaults,
+  savedConfig = null,
   availableModes = modeOptions,
   onChange,
   onTestProvider,
@@ -85,7 +90,7 @@ const AgentExternalResearchPanel: React.FC<AgentExternalResearchPanelProps> = ({
   const [shown, setShown] = useState<Record<string, boolean>>({});
   const [testing, setTesting] = useState<Record<string, boolean>>({});
   const [testResult, setTestResult] = useState<Record<string, ExternalResearchTestResult>>({});
-  const summary = getExternalResearchSummary(value, appDefaults);
+  const summary = getExternalResearchSummary(value, appDefaults, savedConfig);
 
   const updateMode = (mode: ExternalResearchEditConfig['mode']) => onChange({ ...value, mode });
 
@@ -127,19 +132,29 @@ const AgentExternalResearchPanel: React.FC<AgentExternalResearchPanelProps> = ({
     });
   };
 
+  const handleProviderApiKeyInput = (
+    providerId: ExternalResearchProviderIdValue,
+    inputState: ReturnType<typeof getExternalResearchApiKeyInputState>,
+    apiKey: string,
+  ) => {
+    const draftValue = getExternalResearchApiKeyDraftFromInput(inputState, apiKey);
+    if (draftValue === null) return;
+    updateProviderApiKey(providerId, draftValue);
+  };
+
   const testProvider = async (providerId: ExternalResearchProviderIdValue) => {
     setTesting(prev => ({ ...prev, [providerId]: true }));
     try {
       const provider = value.providers[providerId];
-      const useSavedKey =
-        Boolean(agentId) &&
-        provider.apiKeyAction === ExternalResearchSecretEditAction.Preserve &&
-        provider.apiKey.trim().length === 0;
+      const hasSavedSecret =
+        savedConfig?.mode === AgentExternalResearchMode.Override &&
+        savedConfig.providers[providerId].hasApiKey === true;
+      const inputState = getExternalResearchApiKeyInputState(provider, false, hasSavedSecret);
       const result = await onTestProvider({
         providerId,
         agentId,
         apiKey: provider.apiKey,
-        useSavedKey,
+        useSavedKey: inputState.canUseSavedKey,
       });
       setTestResult(prev => ({ ...prev, [providerId]: result }));
     } catch {
@@ -258,14 +273,20 @@ const AgentExternalResearchPanel: React.FC<AgentExternalResearchPanelProps> = ({
             {ExternalResearchProviderIds.map(providerId => {
               const providerLabel = i18nService.t(providerLabelKeys[providerId]);
               const provider = value.providers[providerId];
-              const isConfigured =
-                provider.apiKeyAction === ExternalResearchSecretEditAction.Preserve ||
-                provider.apiKey.trim().length > 0;
-              const canUseSavedKey =
-                Boolean(agentId) &&
-                provider.apiKeyAction === ExternalResearchSecretEditAction.Preserve;
-              const canTest = provider.apiKey.trim().length > 0 || canUseSavedKey;
               const isShown = shown[providerId] === true;
+              const hasSavedSecret =
+                savedConfig?.mode === AgentExternalResearchMode.Override &&
+                savedConfig.providers[providerId].hasApiKey === true;
+              const inputState = getExternalResearchApiKeyInputState(
+                provider,
+                isShown,
+                hasSavedSecret,
+              );
+              const isConfigured = inputState.isSavedSecret || provider.apiKey.trim().length > 0;
+              const canTest = provider.apiKey.trim().length > 0 || inputState.canUseSavedKey;
+              const placeholder = inputState.placeholderKey
+                ? i18nService.t(inputState.placeholderKey)
+                : i18nService.t(providerPlaceholderKeys[providerId]);
               return (
                 <div
                   key={providerId}
@@ -302,30 +323,44 @@ const AgentExternalResearchPanel: React.FC<AgentExternalResearchPanelProps> = ({
                   </label>
                   <div className="mt-3 flex flex-wrap items-center gap-2">
                     <input
-                      type={isShown ? 'text' : 'password'}
-                      value={provider.apiKey}
+                      type={inputState.inputType}
+                      value={inputState.value}
                       aria-label={i18nService.t(providerPlaceholderKeys[providerId])}
-                      onChange={event => updateProviderApiKey(providerId, event.target.value)}
-                      placeholder={i18nService.t(providerPlaceholderKeys[providerId])}
+                      onChange={event =>
+                        handleProviderApiKeyInput(providerId, inputState, event.target.value)
+                      }
+                      onFocus={event => {
+                        if (inputState.isSavedSecret) {
+                          event.currentTarget.select();
+                        }
+                      }}
+                      onMouseUp={event => {
+                        if (inputState.isSavedSecret) {
+                          event.preventDefault();
+                        }
+                      }}
+                      placeholder={placeholder}
                       className="h-9 min-w-[180px] flex-1 rounded-lg border border-border bg-surface px-3 text-sm text-foreground outline-none focus:border-primary"
                     />
-                    <button
-                      type="button"
-                      aria-label={replaceProviderName(
-                        i18nService.t(
-                          isShown ? 'agentExternalResearchHide' : 'agentExternalResearchShow',
-                        ),
-                        providerLabel,
-                      )}
-                      onClick={() => setShown(prev => ({ ...prev, [providerId]: !isShown }))}
-                      className="h-9 w-9 rounded-lg border border-border text-secondary hover:bg-surface-raised"
-                    >
-                      {isShown ? (
-                        <EyeSlashIcon className="mx-auto h-4 w-4" />
-                      ) : (
-                        <EyeIcon className="mx-auto h-4 w-4" />
-                      )}
-                    </button>
+                    {inputState.canToggleVisibility && (
+                      <button
+                        type="button"
+                        aria-label={replaceProviderName(
+                          i18nService.t(
+                            isShown ? 'agentExternalResearchHide' : 'agentExternalResearchShow',
+                          ),
+                          providerLabel,
+                        )}
+                        onClick={() => setShown(prev => ({ ...prev, [providerId]: !isShown }))}
+                        className="h-9 w-9 rounded-lg border border-border text-secondary hover:bg-surface-raised"
+                      >
+                        {isShown ? (
+                          <EyeSlashIcon className="mx-auto h-4 w-4" />
+                        ) : (
+                          <EyeIcon className="mx-auto h-4 w-4" />
+                        )}
+                      </button>
+                    )}
                     <button
                       type="button"
                       aria-label={replaceProviderName(

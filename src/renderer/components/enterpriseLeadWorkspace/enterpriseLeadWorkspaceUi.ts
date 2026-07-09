@@ -26,7 +26,7 @@ export const EnterpriseLeadWorkspaceLaunchMode = {
   Returning: 'returning',
 } as const;
 export type EnterpriseLeadWorkspaceLaunchMode =
-  typeof EnterpriseLeadWorkspaceLaunchMode[keyof typeof EnterpriseLeadWorkspaceLaunchMode];
+  (typeof EnterpriseLeadWorkspaceLaunchMode)[keyof typeof EnterpriseLeadWorkspaceLaunchMode];
 
 export const EnterpriseLeadWorkspaceScreen = {
   Entry: 'entry',
@@ -34,7 +34,7 @@ export const EnterpriseLeadWorkspaceScreen = {
   Workspace: 'workspace',
 } as const;
 export type EnterpriseLeadWorkspaceScreen =
-  typeof EnterpriseLeadWorkspaceScreen[keyof typeof EnterpriseLeadWorkspaceScreen];
+  (typeof EnterpriseLeadWorkspaceScreen)[keyof typeof EnterpriseLeadWorkspaceScreen];
 
 export const WorkspaceCreateStartMode = {
   Material: 'material',
@@ -42,7 +42,7 @@ export const WorkspaceCreateStartMode = {
   Blank: 'blank',
 } as const;
 export type WorkspaceCreateStartMode =
-  typeof WorkspaceCreateStartMode[keyof typeof WorkspaceCreateStartMode];
+  (typeof WorkspaceCreateStartMode)[keyof typeof WorkspaceCreateStartMode];
 
 export const WorkspaceCreateBranchScreen = {
   Material: 'setup-material',
@@ -50,21 +50,21 @@ export const WorkspaceCreateBranchScreen = {
   Blank: 'setup-blank',
 } as const;
 export type WorkspaceCreateBranchScreen =
-  typeof WorkspaceCreateBranchScreen[keyof typeof WorkspaceCreateBranchScreen];
+  (typeof WorkspaceCreateBranchScreen)[keyof typeof WorkspaceCreateBranchScreen];
 
 export const EnterpriseLeadWorkspaceShellMode = {
   Focused: 'focused',
   Workspace: 'workspace',
 } as const;
 export type EnterpriseLeadWorkspaceShellMode =
-  typeof EnterpriseLeadWorkspaceShellMode[keyof typeof EnterpriseLeadWorkspaceShellMode];
+  (typeof EnterpriseLeadWorkspaceShellMode)[keyof typeof EnterpriseLeadWorkspaceShellMode];
 
 export const EnterpriseLeadEntryAction = {
   Create: 'create',
   History: 'history',
 } as const;
 export type EnterpriseLeadEntryAction =
-  typeof EnterpriseLeadEntryAction[keyof typeof EnterpriseLeadEntryAction];
+  (typeof EnterpriseLeadEntryAction)[keyof typeof EnterpriseLeadEntryAction];
 
 export const EnterpriseLeadWorkspaceHistoryState = {
   Loading: 'loading',
@@ -73,7 +73,7 @@ export const EnterpriseLeadWorkspaceHistoryState = {
   List: 'list',
 } as const;
 export type EnterpriseLeadWorkspaceHistoryState =
-  typeof EnterpriseLeadWorkspaceHistoryState[keyof typeof EnterpriseLeadWorkspaceHistoryState];
+  (typeof EnterpriseLeadWorkspaceHistoryState)[keyof typeof EnterpriseLeadWorkspaceHistoryState];
 
 export const EnterpriseLeadWorkspaceStartSourceState = {
   Material: 'material',
@@ -81,7 +81,7 @@ export const EnterpriseLeadWorkspaceStartSourceState = {
   Blank: 'blank',
 } as const;
 export type EnterpriseLeadWorkspaceStartSourceState =
-  typeof EnterpriseLeadWorkspaceStartSourceState[keyof typeof EnterpriseLeadWorkspaceStartSourceState];
+  (typeof EnterpriseLeadWorkspaceStartSourceState)[keyof typeof EnterpriseLeadWorkspaceStartSourceState];
 
 export const EnterpriseLeadWorkspaceStartAction = {
   AddMaterial: 'add_material',
@@ -89,7 +89,7 @@ export const EnterpriseLeadWorkspaceStartAction = {
   StartWorkflow: 'start_workflow',
 } as const;
 export type EnterpriseLeadWorkspaceStartAction =
-  typeof EnterpriseLeadWorkspaceStartAction[keyof typeof EnterpriseLeadWorkspaceStartAction];
+  (typeof EnterpriseLeadWorkspaceStartAction)[keyof typeof EnterpriseLeadWorkspaceStartAction];
 
 export const EnterpriseLeadWorkspaceStartReadinessStatus = {
   Ready: 'ready',
@@ -97,9 +97,7 @@ export const EnterpriseLeadWorkspaceStartReadinessStatus = {
   Optional: 'optional',
 } as const;
 export type EnterpriseLeadWorkspaceStartReadinessStatus =
-  typeof EnterpriseLeadWorkspaceStartReadinessStatus[
-    keyof typeof EnterpriseLeadWorkspaceStartReadinessStatus
-  ];
+  (typeof EnterpriseLeadWorkspaceStartReadinessStatus)[keyof typeof EnterpriseLeadWorkspaceStartReadinessStatus];
 
 export interface WorkspaceDraftSummaryLabels {
   productsFallback: string;
@@ -132,7 +130,7 @@ export const EnterpriseLeadKnowledgeSection = {
   Archives: 'archives',
 } as const;
 export type EnterpriseLeadKnowledgeSection =
-  typeof EnterpriseLeadKnowledgeSection[keyof typeof EnterpriseLeadKnowledgeSection];
+  (typeof EnterpriseLeadKnowledgeSection)[keyof typeof EnterpriseLeadKnowledgeSection];
 
 export const EnterpriseLeadKnowledgeItemKind = {
   CompanySummary: 'company_summary',
@@ -149,7 +147,7 @@ export const EnterpriseLeadKnowledgeItemKind = {
   Archive: 'archive',
 } as const;
 export type EnterpriseLeadKnowledgeItemKind =
-  typeof EnterpriseLeadKnowledgeItemKind[keyof typeof EnterpriseLeadKnowledgeItemKind];
+  (typeof EnterpriseLeadKnowledgeItemKind)[keyof typeof EnterpriseLeadKnowledgeItemKind];
 
 export interface WorkspaceKnowledgeItem {
   id: string;
@@ -173,7 +171,9 @@ export interface EditableKnowledgeField {
   multiValue: boolean;
 }
 
-const editableKnowledgeFields: Partial<Record<EnterpriseLeadKnowledgeItemKind, EditableKnowledgeField>> = {
+const editableKnowledgeFields: Partial<
+  Record<EnterpriseLeadKnowledgeItemKind, EditableKnowledgeField>
+> = {
   [EnterpriseLeadKnowledgeItemKind.CompanySummary]: {
     field: 'companySummary',
     multiValue: false,
@@ -223,7 +223,7 @@ export const EnterpriseLeadCreationRecordMetric = {
   Risks: 'risks',
 } as const;
 export type EnterpriseLeadCreationRecordMetric =
-  typeof EnterpriseLeadCreationRecordMetric[keyof typeof EnterpriseLeadCreationRecordMetric];
+  (typeof EnterpriseLeadCreationRecordMetric)[keyof typeof EnterpriseLeadCreationRecordMetric];
 
 export interface CreationRecordMetric {
   id: EnterpriseLeadCreationRecordMetric;
@@ -282,15 +282,15 @@ export interface WorkspaceHistoryStateInput {
   workspaces: EnterpriseLeadWorkspace[];
 }
 
-type WorkspaceSummaryInput = Pick<EnterpriseLeadWorkspaceDraft, 'name' | 'profile'> |
-  Pick<EnterpriseLeadWorkspace, 'name' | 'profile'>;
+type WorkspaceSummaryInput =
+  | Pick<EnterpriseLeadWorkspaceDraft, 'name' | 'profile'>
+  | Pick<EnterpriseLeadWorkspace, 'name' | 'profile'>;
 
 const COMPLETION_GROUP_COUNT = 6;
 
 const cleanText = (value: string): string => value.trim();
 
-const populatedValues = (values: string[]): string[] =>
-  values.map(cleanText).filter(Boolean);
+const populatedValues = (values: string[]): string[] => values.map(cleanText).filter(Boolean);
 
 const hasText = (value: string): boolean => cleanText(value).length > 0;
 
@@ -339,9 +339,10 @@ export const buildManualEnterpriseLeadWorkspaceDraft = ({
     type: EnterpriseLeadWorkspaceType.EnterpriseLead,
     profile: buildEmptyEnterpriseLeadWorkspaceProfile(),
     source: {
-      kind: mode === WorkspaceCreateStartMode.Blank
-        ? EnterpriseLeadExtractionSourceKind.Blank
-        : EnterpriseLeadExtractionSourceKind.Manual,
+      kind:
+        mode === WorkspaceCreateStartMode.Blank
+          ? EnterpriseLeadExtractionSourceKind.Blank
+          : EnterpriseLeadExtractionSourceKind.Manual,
       label: sourceLabel,
       text: trimmedSourceText || undefined,
     },
@@ -413,11 +414,11 @@ export const EnterpriseLeadWorkbenchNavItem = {
   Settings: 'settings',
 } as const;
 export type EnterpriseLeadWorkbenchNavItem =
-  typeof EnterpriseLeadWorkbenchNavItem[keyof typeof EnterpriseLeadWorkbenchNavItem];
+  (typeof EnterpriseLeadWorkbenchNavItem)[keyof typeof EnterpriseLeadWorkbenchNavItem];
 
 export const EnterpriseLeadWorkspaceInternalPage = EnterpriseLeadWorkbenchNavItem;
 export type EnterpriseLeadWorkspaceInternalPage =
-  typeof EnterpriseLeadWorkspaceInternalPage[keyof typeof EnterpriseLeadWorkspaceInternalPage];
+  (typeof EnterpriseLeadWorkspaceInternalPage)[keyof typeof EnterpriseLeadWorkspaceInternalPage];
 
 export const EnterpriseLeadWorkbenchNavIcon = {
   Dashboard: 'dashboard',
@@ -429,14 +430,14 @@ export const EnterpriseLeadWorkbenchNavIcon = {
   Settings: 'settings',
 } as const;
 export type EnterpriseLeadWorkbenchNavIcon =
-  typeof EnterpriseLeadWorkbenchNavIcon[keyof typeof EnterpriseLeadWorkbenchNavIcon];
+  (typeof EnterpriseLeadWorkbenchNavIcon)[keyof typeof EnterpriseLeadWorkbenchNavIcon];
 
 export const EnterpriseLeadWorkbenchSidebarMode = {
   Expanded: 'expanded',
   Collapsed: 'collapsed',
 } as const;
 export type EnterpriseLeadWorkbenchSidebarMode =
-  typeof EnterpriseLeadWorkbenchSidebarMode[keyof typeof EnterpriseLeadWorkbenchSidebarMode];
+  (typeof EnterpriseLeadWorkbenchSidebarMode)[keyof typeof EnterpriseLeadWorkbenchSidebarMode];
 
 export const EnterpriseLeadWorkbenchConfigSection = {
   Skills: 'skills',
@@ -444,7 +445,7 @@ export const EnterpriseLeadWorkbenchConfigSection = {
   Platforms: 'platforms',
 } as const;
 export type EnterpriseLeadWorkbenchConfigSection =
-  typeof EnterpriseLeadWorkbenchConfigSection[keyof typeof EnterpriseLeadWorkbenchConfigSection];
+  (typeof EnterpriseLeadWorkbenchConfigSection)[keyof typeof EnterpriseLeadWorkbenchConfigSection];
 
 export const EnterpriseLeadWorkbenchStatusTone = {
   Enabled: 'enabled',
@@ -455,14 +456,14 @@ export const EnterpriseLeadWorkbenchStatusTone = {
   Add: 'add',
 } as const;
 export type EnterpriseLeadWorkbenchStatusTone =
-  typeof EnterpriseLeadWorkbenchStatusTone[keyof typeof EnterpriseLeadWorkbenchStatusTone];
+  (typeof EnterpriseLeadWorkbenchStatusTone)[keyof typeof EnterpriseLeadWorkbenchStatusTone];
 
 export const EnterpriseLeadWorkbenchMode = {
   Execution: 'execution',
   Agents: 'agents',
 } as const;
 export type EnterpriseLeadWorkbenchMode =
-  typeof EnterpriseLeadWorkbenchMode[keyof typeof EnterpriseLeadWorkbenchMode];
+  (typeof EnterpriseLeadWorkbenchMode)[keyof typeof EnterpriseLeadWorkbenchMode];
 
 export interface WorkbenchSidebarItem {
   id: EnterpriseLeadWorkbenchNavItem;
@@ -952,8 +953,7 @@ const WORKBENCH_LAYOUT_SPEC: WorkbenchLayoutSpec = {
   usesNestedScrollRegion: true,
 };
 
-const DEFAULT_AGENT_CARD_ACTION =
-  'bg-primary text-white hover:bg-primary/90 focus:ring-primary/30';
+const DEFAULT_AGENT_CARD_ACTION = 'bg-primary text-white hover:bg-primary/90 focus:ring-primary/30';
 
 const AGENT_CARD_TONES: Record<EnterpriseLeadTaskStatusType, AgentCardTone> = {
   [EnterpriseLeadTaskStatus.Waiting]: {
@@ -1027,9 +1027,8 @@ export const getShellModeForEnterpriseLeadWorkspaceScreen = (
     ? EnterpriseLeadWorkspaceShellMode.Workspace
     : EnterpriseLeadWorkspaceShellMode.Focused;
 
-export const shouldRefreshHistoryOnEntryAction = (
-  actionId: EnterpriseLeadEntryAction,
-): boolean => actionId === EnterpriseLeadEntryAction.History;
+export const shouldRefreshHistoryOnEntryAction = (actionId: EnterpriseLeadEntryAction): boolean =>
+  actionId === EnterpriseLeadEntryAction.History;
 
 export const sortWorkspacesByRecentUpdate = (
   workspaces: EnterpriseLeadWorkspace[],
@@ -1056,9 +1055,7 @@ export const getHistoryModalState = ({
   return EnterpriseLeadWorkspaceHistoryState.List;
 };
 
-export const getWorkspaceCompletionPercent = (
-  profile: EnterpriseLeadWorkspaceProfile,
-): number => {
+export const getWorkspaceCompletionPercent = (profile: EnterpriseLeadWorkspaceProfile): number => {
   const completedGroups = [
     hasText(profile.companySummary),
     hasAny(profile.productList, profile.productCapabilities),
@@ -1090,10 +1087,13 @@ export const getWorkspaceKnowledgeSections = (
   snapshot: EnterpriseLeadWorkspaceSnapshot | null,
 ): WorkspaceKnowledgeSection[] => {
   const profile = workspace.profile;
-  const sourceItems: WorkspaceKnowledgeItem[] = workspace.extractionSources
-    .flatMap((source, index): WorkspaceKnowledgeItem[] => {
-      const label = cleanText(source.label) || cleanText(source.filePath ?? '') ||
-        cleanText(source.kind);
+  const sourceItems: WorkspaceKnowledgeItem[] = workspace.extractionSources.flatMap(
+    (source, index): WorkspaceKnowledgeItem[] => {
+      if (source.kind === EnterpriseLeadExtractionSourceKind.Blank) {
+        return [];
+      }
+      const label =
+        cleanText(source.label) || cleanText(source.filePath ?? '') || cleanText(source.kind);
 
       if (!label) {
         return [];
@@ -1111,27 +1111,30 @@ export const getWorkspaceKnowledgeSections = (
           updatedAt: source.updatedAt ?? workspace.updatedAt,
         },
       ];
-    });
+    },
+  );
   const deliverableItems: WorkspaceKnowledgeItem[] = sortByRecentTimestamp(
     snapshot?.deliverables ?? [],
-  ).map(deliverable => ({
-    id: deliverable.id,
-    kind: EnterpriseLeadKnowledgeItemKind.Deliverable,
-    text: cleanText(deliverable.title) || cleanText(deliverable.summary),
-    secondaryText: cleanText(deliverable.summary) || undefined,
-    metaText: deliverable.status,
-    createdAt: deliverable.createdAt,
-    updatedAt: deliverable.updatedAt,
-  })).filter(item => item.text);
-  const archiveItems: WorkspaceKnowledgeItem[] = sortByRecentTimestamp(
-    snapshot?.archives ?? [],
-  ).map(archive => ({
-    id: archive.id,
-    kind: EnterpriseLeadKnowledgeItemKind.Archive,
-    text: cleanText(archive.title) || cleanText(archive.summary),
-    secondaryText: cleanText(archive.summary) || undefined,
-    createdAt: archive.createdAt,
-  })).filter(item => item.text);
+  )
+    .map(deliverable => ({
+      id: deliverable.id,
+      kind: EnterpriseLeadKnowledgeItemKind.Deliverable,
+      text: cleanText(deliverable.title) || cleanText(deliverable.summary),
+      secondaryText: cleanText(deliverable.summary) || undefined,
+      metaText: deliverable.status,
+      createdAt: deliverable.createdAt,
+      updatedAt: deliverable.updatedAt,
+    }))
+    .filter(item => item.text);
+  const archiveItems: WorkspaceKnowledgeItem[] = sortByRecentTimestamp(snapshot?.archives ?? [])
+    .map(archive => ({
+      id: archive.id,
+      kind: EnterpriseLeadKnowledgeItemKind.Archive,
+      text: cleanText(archive.title) || cleanText(archive.summary),
+      secondaryText: cleanText(archive.summary) || undefined,
+      createdAt: archive.createdAt,
+    }))
+    .filter(item => item.text);
 
   return [
     {
@@ -1139,11 +1142,13 @@ export const getWorkspaceKnowledgeSections = (
       titleKey: 'enterpriseLeadKnowledgeCompanyTitle',
       emptyKey: 'enterpriseLeadKnowledgeCompanyEmpty',
       items: cleanText(profile.companySummary)
-        ? [{
-            id: 'company-summary',
-            kind: EnterpriseLeadKnowledgeItemKind.CompanySummary,
-            text: cleanText(profile.companySummary),
-          }]
+        ? [
+            {
+              id: 'company-summary',
+              kind: EnterpriseLeadKnowledgeItemKind.CompanySummary,
+              text: cleanText(profile.companySummary),
+            },
+          ]
         : [],
     },
     {
@@ -1366,11 +1371,12 @@ export const buildCreationRecordConversationMessages = (
   return messages;
 };
 
-export const getAgentRoleLabel = (
-  role: EnterpriseLeadAgentRoleType,
-): AgentRoleLabelMetadata => AGENT_ROLE_LABELS[role];
+export const getAgentRoleLabel = (role: EnterpriseLeadAgentRoleType): AgentRoleLabelMetadata =>
+  AGENT_ROLE_LABELS[role];
 
-const isEnterpriseLeadAgentRole = (role: EnterpriseLeadTaskAgentRole): role is EnterpriseLeadAgentRoleType =>
+const isEnterpriseLeadAgentRole = (
+  role: EnterpriseLeadTaskAgentRole,
+): role is EnterpriseLeadAgentRoleType =>
   Object.values(EnterpriseLeadAgentRole).includes(role as EnterpriseLeadAgentRoleType);
 
 const getDynamicAgentShortLabel = (value: string): string => {
@@ -1390,8 +1396,7 @@ export const getEnterpriseLeadTaskDisplay = (
 
   if (snapshot) {
     const title = cleanText(snapshot.name) || role;
-    const description = cleanText(snapshot.description) || cleanText(snapshot.identity) ||
-      title;
+    const description = cleanText(snapshot.description) || cleanText(snapshot.identity) || title;
 
     return {
       role,
@@ -1400,12 +1405,9 @@ export const getEnterpriseLeadTaskDisplay = (
       descriptionText: description,
       inputText: '',
       outputText: title,
-      safetyCritical: /risk|review|audit|风险|风控|审核|合规/i.test([
-        role,
-        snapshot.name,
-        snapshot.description,
-        snapshot.identity,
-      ].join(' ')),
+      safetyCritical: /risk|review|audit|风险|风控|审核|合规/i.test(
+        [role, snapshot.name, snapshot.description, snapshot.identity].join(' '),
+      ),
     };
   }
 
@@ -1544,13 +1546,10 @@ export const getWorkspaceStartActionTarget = (
 export const getDefaultWorkbenchSidebarMode = (): EnterpriseLeadWorkbenchSidebarMode =>
   EnterpriseLeadWorkbenchSidebarMode.Expanded;
 
-export const getWorkbenchSidebarWidth = (
-  mode: EnterpriseLeadWorkbenchSidebarMode,
-): number => (
+export const getWorkbenchSidebarWidth = (mode: EnterpriseLeadWorkbenchSidebarMode): number =>
   mode === EnterpriseLeadWorkbenchSidebarMode.Collapsed
     ? WORKBENCH_LAYOUT_SPEC.collapsedSidebarWidth
-    : WORKBENCH_LAYOUT_SPEC.expandedSidebarWidth
-);
+    : WORKBENCH_LAYOUT_SPEC.expandedSidebarWidth;
 
 export const getWorkbenchAgentItems = (): WorkbenchAgentItem[] =>
   WORKBENCH_AGENT_ITEMS.map(item => ({ ...item }));
@@ -1561,12 +1560,9 @@ export const getWorkbenchConfigSections = (): WorkbenchConfigSection[] =>
     items: section.items.map(item => ({ ...item })),
   }));
 
-export const getWorkbenchLayoutSpec = (): WorkbenchLayoutSpec =>
-  WORKBENCH_LAYOUT_SPEC;
+export const getWorkbenchLayoutSpec = (): WorkbenchLayoutSpec => WORKBENCH_LAYOUT_SPEC;
 
-export const getAgentCardTone = (
-  status: EnterpriseLeadTaskStatusType | string,
-): AgentCardTone =>
+export const getAgentCardTone = (status: EnterpriseLeadTaskStatusType | string): AgentCardTone =>
   AGENT_CARD_TONES[status as EnterpriseLeadTaskStatusType] ??
   AGENT_CARD_TONES[EnterpriseLeadTaskStatus.Waiting];
 
@@ -1578,14 +1574,15 @@ export const getAgentStatusLabelKey = (
     return AGENT_STATUS_LABEL_KEYS[EnterpriseLeadTaskStatus.Stale];
   }
 
-  return AGENT_STATUS_LABEL_KEYS[status as EnterpriseLeadTaskStatusType] ??
-    AGENT_STATUS_LABEL_KEYS[EnterpriseLeadTaskStatus.Waiting];
+  return (
+    AGENT_STATUS_LABEL_KEYS[status as EnterpriseLeadTaskStatusType] ??
+    AGENT_STATUS_LABEL_KEYS[EnterpriseLeadTaskStatus.Waiting]
+  );
 };
 
 export const hasTaskOutput = (
   task: Pick<EnterpriseLeadAgentTask, 'summary' | 'outputPayload'>,
-): boolean =>
-  hasText(task.summary) || Object.keys(task.outputPayload ?? {}).length > 0;
+): boolean => hasText(task.summary) || Object.keys(task.outputPayload ?? {}).length > 0;
 
 export const isWorkspaceOperationCurrent = (
   token: WorkspaceOperationToken,
@@ -1593,6 +1590,4 @@ export const isWorkspaceOperationCurrent = (
   currentRevision: number,
   isMounted: boolean,
 ): boolean =>
-  isMounted &&
-  token.workspaceId === currentWorkspaceId &&
-  token.revision === currentRevision;
+  isMounted && token.workspaceId === currentWorkspaceId && token.revision === currentRevision;

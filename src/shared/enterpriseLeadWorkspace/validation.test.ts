@@ -558,6 +558,27 @@ describe('enterprise lead workspace validation', () => {
     expect(normalized[0]).not.toHaveProperty('templateId');
   });
 
+  test('preserves local Agent source bindings', () => {
+    const normalized = normalizeEnterpriseLeadWorkspaceAgents([
+      {
+        agentId: ' local-agent ',
+        source: EnterpriseLeadWorkspaceAgentSource.LocalAgent,
+        enabled: true,
+        order: 0,
+        overrides: {},
+      },
+    ]);
+
+    expect(normalized[0]).toEqual({
+      agentId: 'local-agent',
+      source: EnterpriseLeadWorkspaceAgentSource.LocalAgent,
+      enabled: true,
+      order: 0,
+      overrides: {},
+    });
+    expect(normalized[0]).not.toHaveProperty('templateId');
+  });
+
   test('normalizes workspace-owned Agent definitions from direct fields', () => {
     const normalized = normalizeEnterpriseLeadWorkspaceAgents([
       {

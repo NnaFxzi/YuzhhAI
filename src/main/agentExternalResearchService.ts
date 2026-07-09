@@ -10,10 +10,14 @@ import {
 } from '../shared/agent/externalResearch';
 
 interface StoreLike {
+  getAppDefaults(): ExternalResearchConfig;
   getEffectiveSettings(agentId: string): ExternalResearchConfig;
   getMaskedAgentSettings(agentId: string): MaskedExternalResearchConfig;
   getMaskedAppDefaults(): MaskedExternalResearchConfig;
-  saveAgentSettingsEdit(agentId: string, config: ExternalResearchEditConfig): ExternalResearchConfig;
+  saveAgentSettingsEdit(
+    agentId: string,
+    config: ExternalResearchEditConfig,
+  ): ExternalResearchConfig;
   saveAppDefaultsEdit(config: ExternalResearchEditConfig): ExternalResearchConfig;
 }
 
@@ -54,7 +58,10 @@ export class AgentExternalResearchService {
     return this.getMaskedAppDefaults();
   }
 
-  saveAgentSettings(agentId: string, config: ExternalResearchEditConfig): MaskedExternalResearchConfig {
+  saveAgentSettings(
+    agentId: string,
+    config: ExternalResearchEditConfig,
+  ): MaskedExternalResearchConfig {
     this.options.store.saveAgentSettingsEdit(agentId, config);
     return this.getMaskedAgentSettings(agentId);
   }
@@ -103,8 +110,11 @@ export class AgentExternalResearchService {
   }
 
   private resolveProviderTestApiKey(input: ExternalResearchProviderTestInput): string {
-    if (input.useSavedKey && input.agentId) {
-      return this.options.store.getEffectiveSettings(input.agentId).providers[input.providerId].apiKey.trim();
+    if (input.useSavedKey) {
+      const settings = input.agentId
+        ? this.options.store.getEffectiveSettings(input.agentId)
+        : this.options.store.getAppDefaults();
+      return settings.providers[input.providerId].apiKey.trim();
     }
     return (input.apiKey ?? '').trim();
   }
@@ -187,18 +197,31 @@ export class AgentExternalResearchService {
     });
   }
 
-  private toProviderAvailability(provider: { enabled: boolean; apiKey: string }): AvailabilityProviderSummary {
+  private toProviderAvailability(provider: {
+    enabled: boolean;
+    apiKey: string;
+  }): AvailabilityProviderSummary {
     const configured = provider.apiKey.trim().length > 0;
     return { enabled: provider.enabled, configured, available: provider.enabled && configured };
   }
 
-  private assertProviderReady(providerId: ExternalResearchProviderIdValue, enabled: boolean, apiKey: string): void {
+  private assertProviderReady(
+    providerId: ExternalResearchProviderIdValue,
+    enabled: boolean,
+    apiKey: string,
+  ): void {
     if (!enabled || !apiKey.trim()) {
-      throw new Error(`${providerId} is not configured. Open the agent external research settings to enable it.`);
+      throw new Error(
+        `${providerId} is not configured. Open the agent external research settings to enable it.`,
+      );
     }
   }
 
-  private async postJson(url: string, apiKey: string, body: Record<string, unknown>): Promise<unknown> {
+  private async postJson(
+    url: string,
+    apiKey: string,
+    body: Record<string, unknown>,
+  ): Promise<unknown> {
     const response = await this.fetchImpl(url, {
       method: 'POST',
       headers: {
@@ -212,6 +235,6 @@ export class AgentExternalResearchService {
       const message = `${url} HTTP ${response.status}: ${text.trim() || response.statusText}`;
       throw new Error(redactExternalResearchSecret(message, [apiKey]));
     }
-    return text.trim() ? JSON.parse(text) as unknown : {};
+    return text.trim() ? (JSON.parse(text) as unknown) : {};
   }
 }

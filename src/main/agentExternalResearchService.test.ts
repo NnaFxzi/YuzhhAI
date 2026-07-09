@@ -7,6 +7,7 @@ import {
 import { AgentExternalResearchService } from './agentExternalResearchService';
 
 const store = {
+  getAppDefaults: vi.fn(),
   getEffectiveSettings: vi.fn(),
   getMaskedAgentSettings: vi.fn(),
   getMaskedAppDefaults: vi.fn(),
@@ -16,6 +17,7 @@ const store = {
 
 beforeEach(() => {
   vi.restoreAllMocks();
+  store.getAppDefaults.mockReset();
   store.getEffectiveSettings.mockReset();
   store.getMaskedAgentSettings.mockReset();
   store.getMaskedAppDefaults.mockReset();
@@ -28,7 +30,8 @@ describe('AgentExternalResearchService', () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       status: 200,
-      text: async () => JSON.stringify({ results: [{ title: 'A', url: 'https://example.com', content: 'x' }] }),
+      text: async () =>
+        JSON.stringify({ results: [{ title: 'A', url: 'https://example.com', content: 'x' }] }),
     });
     const service = new AgentExternalResearchService({ store, fetch: fetchMock });
 
@@ -101,6 +104,36 @@ describe('AgentExternalResearchService', () => {
     );
   });
 
+  test('tests with the saved app default provider key when requested', async () => {
+    store.getAppDefaults.mockReturnValue({
+      mode: AgentExternalResearchMode.Override,
+      providers: {
+        tavily: { enabled: true, apiKey: 'tvly-default' },
+        firecrawl: { enabled: false, apiKey: '' },
+      },
+    });
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ results: [] }),
+    });
+    const service = new AgentExternalResearchService({ store, fetch: fetchMock });
+
+    const result = await service.testProvider({
+      providerId: ExternalResearchProviderId.Tavily,
+      useSavedKey: true,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(store.getAppDefaults).toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://api.tavily.com/search',
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: 'Bearer tvly-default' }),
+      }),
+    );
+  });
+
   test('redacts provider secrets from failed connection messages', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: false,
@@ -165,7 +198,8 @@ describe('AgentExternalResearchService', () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       status: 200,
-      text: async () => JSON.stringify({ results: [{ title: 'Lead', url: 'https://example.com' }] }),
+      text: async () =>
+        JSON.stringify({ results: [{ title: 'Lead', url: 'https://example.com' }] }),
     });
     const service = new AgentExternalResearchService({ store, fetch: fetchMock });
 
@@ -189,7 +223,8 @@ describe('AgentExternalResearchService', () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       status: 200,
-      text: async () => JSON.stringify({ results: [{ url: 'https://example.com/a', raw_content: 'page' }] }),
+      text: async () =>
+        JSON.stringify({ results: [{ url: 'https://example.com/a', raw_content: 'page' }] }),
     });
     const service = new AgentExternalResearchService({ store, fetch: fetchMock });
 
@@ -262,13 +297,17 @@ describe('AgentExternalResearchService', () => {
     });
     const service = new AgentExternalResearchService({ store, fetch: fetchMock });
 
-    await expect(service.tavilySearchWithConfig(
-      { enabled: true, apiKey: 'tvly-workspace-secret' },
-      '包装采购',
-    )).rejects.toThrow(/Bearer \[redacted\]/);
-    await expect(service.tavilySearchWithConfig(
-      { enabled: true, apiKey: 'tvly-workspace-secret' },
-      '包装采购',
-    )).rejects.not.toThrow('tvly-workspace-secret');
+    await expect(
+      service.tavilySearchWithConfig(
+        { enabled: true, apiKey: 'tvly-workspace-secret' },
+        '包装采购',
+      ),
+    ).rejects.toThrow(/Bearer \[redacted\]/);
+    await expect(
+      service.tavilySearchWithConfig(
+        { enabled: true, apiKey: 'tvly-workspace-secret' },
+        '包装采购',
+      ),
+    ).rejects.not.toThrow('tvly-workspace-secret');
   });
 });

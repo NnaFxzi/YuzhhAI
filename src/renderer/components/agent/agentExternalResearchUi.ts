@@ -1,6 +1,7 @@
 import {
   AgentExternalResearchMode,
   type ExternalResearchEditConfig,
+  type ExternalResearchProviderEditConfig,
   ExternalResearchProviderIds,
   ExternalResearchSecretEditAction,
   type MaskedExternalResearchConfig,
@@ -27,9 +28,61 @@ export interface ExternalResearchSummary {
   };
 }
 
+export interface ExternalResearchApiKeyInputState {
+  isSavedSecret: boolean;
+  inputType: 'password' | 'text';
+  placeholderKey: 'agentExternalResearchApiKeySavedPlaceholder' | null;
+  value: string;
+  canToggleVisibility: boolean;
+  canUseSavedKey: boolean;
+}
+
+export const SAVED_EXTERNAL_RESEARCH_SECRET_INPUT_VALUE = '************';
+
+export const getExternalResearchApiKeyInputState = (
+  provider: ExternalResearchProviderEditConfig,
+  isShown: boolean,
+  hasSavedSecret: boolean,
+): ExternalResearchApiKeyInputState => {
+  const isSavedSecret =
+    hasSavedSecret &&
+    provider.apiKeyAction === ExternalResearchSecretEditAction.Preserve &&
+    provider.apiKey.trim().length === 0;
+  const hasDraftSecret = provider.apiKey.length > 0;
+
+  return {
+    isSavedSecret,
+    inputType: isShown && hasDraftSecret ? 'text' : 'password',
+    placeholderKey: isSavedSecret ? 'agentExternalResearchApiKeySavedPlaceholder' : null,
+    value: isSavedSecret ? SAVED_EXTERNAL_RESEARCH_SECRET_INPUT_VALUE : provider.apiKey,
+    canToggleVisibility: hasDraftSecret,
+    canUseSavedKey: isSavedSecret,
+  };
+};
+
+export const getExternalResearchApiKeyDraftFromInput = (
+  inputState: ExternalResearchApiKeyInputState,
+  nextValue: string,
+): string | null => {
+  if (!inputState.isSavedSecret) {
+    return nextValue;
+  }
+  if (nextValue === inputState.value || nextValue.length === 0 || /^\*+$/.test(nextValue)) {
+    return null;
+  }
+  if (nextValue.startsWith(inputState.value)) {
+    return nextValue.slice(inputState.value.length);
+  }
+  if (nextValue.endsWith(inputState.value)) {
+    return nextValue.slice(0, -inputState.value.length);
+  }
+  return nextValue;
+};
+
 export const getExternalResearchSummary = (
   value: ExternalResearchEditConfig,
   appDefaults: MaskedExternalResearchConfig | null,
+  savedConfig: MaskedExternalResearchConfig | null = null,
 ): ExternalResearchSummary => {
   if (value.mode === AgentExternalResearchMode.Disabled) {
     return {
@@ -51,9 +104,15 @@ export const getExternalResearchSummary = (
       };
     }
     const provider = value.providers[providerId];
+    const savedProvider =
+      savedConfig?.mode === AgentExternalResearchMode.Override
+        ? savedConfig.providers[providerId]
+        : null;
     return {
-      configured: provider.apiKeyAction === ExternalResearchSecretEditAction.Preserve
-        || provider.apiKey.trim().length > 0,
+      configured:
+        provider.apiKey.trim().length > 0 ||
+        (provider.apiKeyAction === ExternalResearchSecretEditAction.Preserve &&
+          savedProvider?.hasApiKey === true),
       enabled: provider.enabled,
     };
   });
@@ -76,7 +135,8 @@ export const getExternalResearchTestFeedback = (
       icon: 'success',
       labelKey: 'agentExternalResearchTestSuccess',
       message: result.message,
-      toneClassName: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
+      toneClassName:
+        'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
     };
   }
 

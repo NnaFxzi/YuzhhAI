@@ -153,6 +153,8 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
   );
   const [externalResearchDefaults, setExternalResearchDefaults] =
     useState<MaskedExternalResearchConfig | null>(null);
+  const [externalResearchSavedConfig, setExternalResearchSavedConfig] =
+    useState<MaskedExternalResearchConfig | null>(null);
   const [domesticResearchConfig, setDomesticResearchConfig] = useState<DomesticResearchConfig>(
     buildDefaultDomesticResearchConfig(),
   );
@@ -333,6 +335,7 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
     );
     const fallbackDomesticResearch = buildDefaultDomesticResearchConfig();
     setExternalResearchDefaults(null);
+    setExternalResearchSavedConfig(null);
     setExternalResearchConfig(fallbackExternalResearch);
     initialExternalResearchRef.current = JSON.stringify(fallbackExternalResearch);
     setDomesticResearchStatuses(null);
@@ -377,6 +380,7 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
         ? createExternalResearchEditConfigFromMasked(researchSettings.agentSettings)
         : buildDefaultExternalResearchEditConfig(AgentExternalResearchMode.Inherit);
       setExternalResearchDefaults(researchSettings?.appDefaults ?? null);
+      setExternalResearchSavedConfig(researchSettings?.agentSettings ?? null);
       setExternalResearchConfig(nextExternalResearch);
       initialExternalResearchRef.current = JSON.stringify(nextExternalResearch);
       const domesticResearchSettings = await agentService.getDomesticResearchSettings(agentId);
@@ -555,6 +559,10 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
           reportSaveFailure();
           return;
         }
+        const nextExternalResearch = createExternalResearchEditConfigFromMasked(researchSaved);
+        setExternalResearchSavedConfig(researchSaved);
+        setExternalResearchConfig(nextExternalResearch);
+        initialExternalResearchRef.current = JSON.stringify(nextExternalResearch);
         recordSaveStep(AgentSettingsSaveStep.ExternalResearch, 'success');
       }
       if (changedFields.includes('domesticResearch')) {
@@ -1045,6 +1053,7 @@ const AgentSettingsPanel: React.FC<AgentSettingsPanelProps> = ({ agentId, onClos
                 value={externalResearchConfig}
                 agentId={agentId}
                 appDefaults={externalResearchDefaults}
+                savedConfig={externalResearchSavedConfig}
                 onChange={setExternalResearchConfig}
                 onTestProvider={input => agentService.testExternalResearchProvider(input)}
               />

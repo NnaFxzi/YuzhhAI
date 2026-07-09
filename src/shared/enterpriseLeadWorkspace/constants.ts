@@ -44,6 +44,7 @@ export const EnterpriseLeadContentAgentRoles = [
 
 export const EnterpriseLeadWorkspaceAgentSource = {
   SystemTemplate: 'system_template',
+  LocalAgent: 'local_agent',
   WorkspaceCreated: 'workspace_created',
 } as const;
 export type EnterpriseLeadWorkspaceAgentSource =

@@ -1277,6 +1277,7 @@ const translations: Record<LanguageType, Record<string, string>> = {
     agentExternalResearchUnconfigured: '未配置',
     agentExternalResearchApiKeyPlaceholderTavily: 'Tavily API Key',
     agentExternalResearchApiKeyPlaceholderFirecrawl: 'Firecrawl API Key',
+    agentExternalResearchApiKeySavedPlaceholder: '已保存，输入新 Key 可替换',
     agentExternalResearchTest: '测试连接',
     agentExternalResearchTesting: '测试中',
     agentExternalResearchTestSuccess: '连接成功',
@@ -3465,7 +3466,7 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadWorkbenchModeAgents: 'Agent 团队',
     enterpriseLeadWorkbenchAgentManagementTitle: 'Agent 团队',
     enterpriseLeadWorkbenchAgentManagementDesc:
-      '管理当前工作空间中会提升选题、脚本、文案和私域转化质量的 Agent 团队；名称、职责、提示词、模型和技能只在本空间生效。',
+      '管理当前工作空间中的 Agent 团队；可从本地添加已有 Agent，也可新建只属于本空间的 Agent。',
     enterpriseLeadWorkbenchAgentCount: '6 个内容 Agent',
     enterpriseLeadWorkbenchWorkspaceAgentCount: '{count} 个工作区 Agent',
     enterpriseLeadWorkbenchSystemAgentsTitle: '系统 Agent 模板',
@@ -3477,7 +3478,10 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadWorkbenchAddSystemAgent: '添加到本空间',
     enterpriseLeadWorkbenchSystemAgentAlreadyAdded: '已添加',
     enterpriseLeadWorkbenchNewWorkspaceAgent: '新建工作区 Agent',
-    enterpriseLeadWorkbenchAddFromTemplate: '从模板添加',
+    enterpriseLeadWorkbenchAddFromTemplate: '从本地添加',
+    enterpriseLeadWorkbenchLocalAgentsTitle: '本地 Agent',
+    enterpriseLeadWorkbenchLocalAgentLibrarySummary: '{count} 个可添加',
+    enterpriseLeadWorkbenchAddLocalAgent: '添加到工作区',
     enterpriseLeadWorkbenchCapabilityAuditTitle: '空间能力检查',
     enterpriseLeadWorkbenchCapabilityAuditDesc:
       '这些能力决定 Agent 能否调用模型、技能、调研和内容来源；需要调整时进入空间设置。',
@@ -3486,6 +3490,7 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadWorkbenchExpandTemplateLibrary: '展开模板库',
     enterpriseLeadWorkbenchCollapseTemplateLibrary: '收起模板库',
     enterpriseLeadWorkbenchAgentSourceSystemTemplate: '系统内置模板',
+    enterpriseLeadWorkbenchAgentSourceLocalAgent: '本地 Agent',
     enterpriseLeadWorkbenchAgentSourceWorkspaceCreated: '本空间自建',
     enterpriseLeadWorkbenchAgentScopeNotice:
       '系统 Agent 只作为内置模板；自建 Agent 只属于当前工作空间。',
@@ -3494,11 +3499,15 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadWorkbenchSaveFailedDraftKept: '保存失败，当前草稿已保留，请检查后重试。',
     enterpriseLeadWorkbenchAgentValidationFailed: '请先修正标出的设置，修改后再保存。',
     enterpriseLeadWorkbenchAgentNameRequired: '请输入 Agent 名称。',
+    enterpriseLeadWorkbenchAgentExecutionRequired: '请手动填写完整的执行规范。',
     enterpriseLeadWorkbenchAgentModelInvalid: '请选择可用模型。',
     enterpriseLeadWorkbenchAgentSkillsInvalid: '请移除不可用技能后再保存。',
     enterpriseLeadWorkbenchAgentOperationAddTemplateSaving: '正在添加模板到本空间',
     enterpriseLeadWorkbenchAgentOperationAddTemplateSaved: '模板已添加到本空间',
     enterpriseLeadWorkbenchAgentOperationAddTemplateError: '添加模板失败，工作区 Agent 未变更',
+    enterpriseLeadWorkbenchAgentOperationAddLocalSaving: '正在添加本地 Agent 到本空间',
+    enterpriseLeadWorkbenchAgentOperationAddLocalSaved: '本地 Agent 已添加到本空间',
+    enterpriseLeadWorkbenchAgentOperationAddLocalError: '添加本地 Agent 失败，工作区 Agent 未变更',
     enterpriseLeadWorkbenchAgentOperationEnableSaving: '正在启用 Agent',
     enterpriseLeadWorkbenchAgentOperationEnableSaved: 'Agent 已启用',
     enterpriseLeadWorkbenchAgentOperationEnableError: '启用失败，Agent 仍保持原状态',
@@ -3559,9 +3568,11 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadWorkbenchCreateAgentSkillIds: 'Agent 技能',
     enterpriseLeadWorkbenchMoveAgentUp: '上移 Agent',
     enterpriseLeadWorkbenchMoveAgentDown: '下移 Agent',
+    enterpriseLeadWorkbenchAgentMenuStatus: '状态',
+    enterpriseLeadWorkbenchAgentMenuOrder: '排序',
     enterpriseLeadWorkbenchNoWorkspaceAgentsTitle: '还没有工作区 Agent',
     enterpriseLeadWorkbenchNoWorkspaceAgentsDesc:
-      '在当前工作空间中新建 Agent，或从默认执行链恢复一组空间 Agent。',
+      '当前工作空间不会自动配置 Agent。你可以从本地添加需要的 Agent，或新建只属于本空间的 Agent。',
     enterpriseLeadWorkbenchLegacyRolesDesc: '这个工作区会把旧版固定角色呈现为可编辑的空间 Agent。',
     enterpriseLeadWorkbenchLegacyRole: '空间 Agent',
     enterpriseLeadWorkbenchMissingAgent: '未初始化',
@@ -3571,6 +3582,7 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadWorkbenchDisableAgent: '停用',
     enterpriseLeadWorkbenchRemoveAgent: '移出工作区',
     enterpriseLeadWorkbenchConfirmRemoveAgent: '确认移出',
+    enterpriseLeadWorkbenchRemoveAgentConfirmShort: '确认移出？',
     enterpriseLeadWorkbenchRemoveAgentConfirmDesc: '只会从当前工作空间移出，历史任务快照不受影响。',
     enterpriseLeadWorkbenchOverrideTitle: '编辑工作区 Agent',
     enterpriseLeadWorkbenchOverrideDesc:
@@ -3600,6 +3612,10 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadWorkbenchStabilityTitle: '执行规范',
     enterpriseLeadWorkbenchStabilityDesc:
       '把稳定 Agent 需要遵守的做事方式写清楚，减少每次对话里的重复解释。',
+    enterpriseLeadWorkbenchStabilityRegenerate: '按角色重新生成',
+    enterpriseLeadWorkbenchRuntimePreviewTitle: '运行时预览',
+    enterpriseLeadWorkbenchRuntimePreviewDesc:
+      '这里展示保存后会写入 Agent 执行提示词的内容，新对话和新任务会读取它。',
     enterpriseLeadWorkbenchStabilityWorkStyle: '工作方式',
     enterpriseLeadWorkbenchStabilityWorkStyleHint: '定义判断顺序，避免跳步和直接下结论。',
     enterpriseLeadWorkbenchStabilityWorkStyleDefault:
@@ -3637,6 +3653,12 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadWorkbenchCalibrationRunning: '正在用当前 Agent 草稿试运行这个示例...',
     enterpriseLeadWorkbenchCalibrationFailed: '试运行失败，请检查模型配置后重试。',
     enterpriseLeadWorkbenchCalibrationResultTitle: '试运行结果',
+    enterpriseLeadWorkbenchCalibrationScoreTitle: '校验评分',
+    enterpriseLeadWorkbenchCalibrationScorePassed: '全部通过',
+    enterpriseLeadWorkbenchCalibrationScorePartial: '待优化',
+    enterpriseLeadWorkbenchCalibrationScoreFailed: '未通过',
+    enterpriseLeadWorkbenchCalibrationImproveTitle: '建议补强：',
+    enterpriseLeadWorkbenchCalibrationImproveSeparator: '、',
     enterpriseLeadWorkbenchCalibrationCheckPriority: '优先级',
     enterpriseLeadWorkbenchCalibrationCheckReason: '判断依据',
     enterpriseLeadWorkbenchCalibrationCheckMissing: '缺失信息',
@@ -5311,6 +5333,7 @@ const translations: Record<LanguageType, Record<string, string>> = {
     agentExternalResearchUnconfigured: 'Not configured',
     agentExternalResearchApiKeyPlaceholderTavily: 'Tavily API Key',
     agentExternalResearchApiKeyPlaceholderFirecrawl: 'Firecrawl API Key',
+    agentExternalResearchApiKeySavedPlaceholder: 'Saved; enter a new key to replace it',
     agentExternalResearchTest: 'Test',
     agentExternalResearchTesting: 'Testing',
     agentExternalResearchTestSuccess: 'Connection succeeded',
@@ -7686,7 +7709,7 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadWorkbenchModeAgents: 'Agent team',
     enterpriseLeadWorkbenchAgentManagementTitle: 'Agent team',
     enterpriseLeadWorkbenchAgentManagementDesc:
-      'Manage the Agents that improve topics, scripts, copy, and private-domain conversion quality in this workspace. Names, responsibilities, prompts, models, and skills apply only here.',
+      'Manage the Agents in this workspace. Add existing local Agents, or create Agents that belong only to this workspace.',
     enterpriseLeadWorkbenchAgentCount: '6 content Agents',
     enterpriseLeadWorkbenchWorkspaceAgentCount: '{count} workspace Agents',
     enterpriseLeadWorkbenchSystemAgentsTitle: 'System Agent templates',
@@ -7698,7 +7721,10 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadWorkbenchAddSystemAgent: 'Add to this workspace',
     enterpriseLeadWorkbenchSystemAgentAlreadyAdded: 'Added',
     enterpriseLeadWorkbenchNewWorkspaceAgent: 'New workspace Agent',
-    enterpriseLeadWorkbenchAddFromTemplate: 'Add from template',
+    enterpriseLeadWorkbenchAddFromTemplate: 'Add from local',
+    enterpriseLeadWorkbenchLocalAgentsTitle: 'Local Agents',
+    enterpriseLeadWorkbenchLocalAgentLibrarySummary: '{count} available',
+    enterpriseLeadWorkbenchAddLocalAgent: 'Add to workspace',
     enterpriseLeadWorkbenchCapabilityAuditTitle: 'Workspace capability check',
     enterpriseLeadWorkbenchCapabilityAuditDesc:
       'These capabilities decide whether Agents can use models, skills, research, and content sources. Adjust them in workspace settings.',
@@ -7707,6 +7733,7 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadWorkbenchExpandTemplateLibrary: 'Expand template library',
     enterpriseLeadWorkbenchCollapseTemplateLibrary: 'Collapse template library',
     enterpriseLeadWorkbenchAgentSourceSystemTemplate: 'Built-in template',
+    enterpriseLeadWorkbenchAgentSourceLocalAgent: 'Local Agent',
     enterpriseLeadWorkbenchAgentSourceWorkspaceCreated: 'Created here',
     enterpriseLeadWorkbenchAgentScopeNotice:
       'System Agents are built-in templates; created Agents belong only to this workspace.',
@@ -7716,12 +7743,17 @@ const translations: Record<LanguageType, Record<string, string>> = {
       'Save failed. The current draft is still here; review it and try again.',
     enterpriseLeadWorkbenchAgentValidationFailed: 'Fix the highlighted settings before saving.',
     enterpriseLeadWorkbenchAgentNameRequired: 'Enter an Agent name.',
+    enterpriseLeadWorkbenchAgentExecutionRequired: 'Fill in the execution rules manually.',
     enterpriseLeadWorkbenchAgentModelInvalid: 'Select an available model.',
     enterpriseLeadWorkbenchAgentSkillsInvalid: 'Remove unavailable skills before saving.',
     enterpriseLeadWorkbenchAgentOperationAddTemplateSaving: 'Adding template to this workspace',
     enterpriseLeadWorkbenchAgentOperationAddTemplateSaved: 'Template added to this workspace',
     enterpriseLeadWorkbenchAgentOperationAddTemplateError:
       'Template add failed; workspace Agents were not changed',
+    enterpriseLeadWorkbenchAgentOperationAddLocalSaving: 'Adding local Agent to this workspace',
+    enterpriseLeadWorkbenchAgentOperationAddLocalSaved: 'Local Agent added to this workspace',
+    enterpriseLeadWorkbenchAgentOperationAddLocalError:
+      'Local Agent add failed; workspace Agents were not changed',
     enterpriseLeadWorkbenchAgentOperationEnableSaving: 'Enabling Agent',
     enterpriseLeadWorkbenchAgentOperationEnableSaved: 'Agent enabled',
     enterpriseLeadWorkbenchAgentOperationEnableError:
@@ -7788,9 +7820,11 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadWorkbenchCreateAgentSkillIds: 'Agent skills',
     enterpriseLeadWorkbenchMoveAgentUp: 'Move Agent up',
     enterpriseLeadWorkbenchMoveAgentDown: 'Move Agent down',
+    enterpriseLeadWorkbenchAgentMenuStatus: 'Status',
+    enterpriseLeadWorkbenchAgentMenuOrder: 'Order',
     enterpriseLeadWorkbenchNoWorkspaceAgentsTitle: 'No workspace Agents yet',
     enterpriseLeadWorkbenchNoWorkspaceAgentsDesc:
-      'Create an Agent inside this workspace, or restore the default execution team as workspace Agents.',
+      'This workspace does not auto-configure Agents. Add the local Agents you need, or create an Agent that belongs only here.',
     enterpriseLeadWorkbenchLegacyRolesDesc:
       'This workspace presents legacy fixed roles as editable workspace Agents.',
     enterpriseLeadWorkbenchLegacyRole: 'Workspace Agent',
@@ -7801,6 +7835,7 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadWorkbenchDisableAgent: 'Disable',
     enterpriseLeadWorkbenchRemoveAgent: 'Remove from workspace',
     enterpriseLeadWorkbenchConfirmRemoveAgent: 'Confirm remove',
+    enterpriseLeadWorkbenchRemoveAgentConfirmShort: 'Remove it?',
     enterpriseLeadWorkbenchRemoveAgentConfirmDesc:
       'Only removes it from this workspace. Historical task snapshots are not affected.',
     enterpriseLeadWorkbenchOverrideTitle: 'Edit workspace Agent',
@@ -7832,6 +7867,10 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadWorkbenchStabilityTitle: 'Execution rules',
     enterpriseLeadWorkbenchStabilityDesc:
       'Write down how this stable Agent should work so each chat needs less repeated explanation.',
+    enterpriseLeadWorkbenchStabilityRegenerate: 'Regenerate by role',
+    enterpriseLeadWorkbenchRuntimePreviewTitle: 'Runtime preview',
+    enterpriseLeadWorkbenchRuntimePreviewDesc:
+      'This is the content saved into the Agent execution prompt. New chats and new tasks will read it.',
     enterpriseLeadWorkbenchStabilityWorkStyle: 'Working method',
     enterpriseLeadWorkbenchStabilityWorkStyleHint:
       'Define the judgment order so the Agent does not skip steps or jump to conclusions.',
@@ -7875,6 +7914,12 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadWorkbenchCalibrationFailed:
       'Test run failed. Check the model configuration and try again.',
     enterpriseLeadWorkbenchCalibrationResultTitle: 'Test run result',
+    enterpriseLeadWorkbenchCalibrationScoreTitle: 'Check score',
+    enterpriseLeadWorkbenchCalibrationScorePassed: 'All passed',
+    enterpriseLeadWorkbenchCalibrationScorePartial: 'Needs tuning',
+    enterpriseLeadWorkbenchCalibrationScoreFailed: 'Failed',
+    enterpriseLeadWorkbenchCalibrationImproveTitle: 'Improve:',
+    enterpriseLeadWorkbenchCalibrationImproveSeparator: ', ',
     enterpriseLeadWorkbenchCalibrationCheckPriority: 'Priority',
     enterpriseLeadWorkbenchCalibrationCheckReason: 'Reasoning',
     enterpriseLeadWorkbenchCalibrationCheckMissing: 'Missing info',

@@ -37,7 +37,10 @@ import {
   EnterpriseLeadWorkspaceService,
 } from './service';
 import { EnterpriseLeadWorkspaceStore } from './store';
-import { ENTERPRISE_LEAD_AGENT_WORKFLOW } from './workflow';
+import {
+  buildDefaultEnterpriseLeadWorkspaceAgents,
+  ENTERPRISE_LEAD_AGENT_WORKFLOW,
+} from './workflow';
 
 class FakeModelClient implements ModelClientAdapter {
   readonly prompts: ModelGenerationInput[] = [];
@@ -136,7 +139,7 @@ const draftPayload = (): EnterpriseLeadWorkspaceDraft => ({
     label: 'ignored',
     text: 'ignored',
   },
-  enabledAgentRoles: [],
+  enabledAgentRoles: ENTERPRISE_LEAD_AGENT_WORKFLOW.map(agent => agent.role),
   workspaceAgents: [],
 });
 
@@ -689,6 +692,36 @@ describe('EnterpriseLeadWorkspaceService', () => {
     ).toBe(true);
   });
 
+  test('does not persist blank workspace creation as a document source', () => {
+    const setup = createService();
+    db = setup.db;
+
+    const workspace = setup.service.createWorkspace({
+      ...draftPayload(),
+      source: {
+        kind: EnterpriseLeadExtractionSourceKind.Blank,
+        label: '空白创建',
+      },
+    });
+    const remainingRows = setup.db
+      .prepare(
+        `
+        SELECT source_type
+        FROM content_knowledge_chunks
+        WHERE scope_id = ?
+      `,
+      )
+      .all(buildEnterpriseLeadWorkspaceKnowledgeScopeId(workspace.id)) as Array<{
+      source_type: string;
+    }>;
+
+    expect(workspace.extractionSources).toEqual([]);
+    expect(setup.store.getWorkspace(workspace.id)?.extractionSources).toEqual([]);
+    expect(
+      remainingRows.some(row => row.source_type === ContentKnowledgeSourceType.WorkspaceDocument),
+    ).toBe(false);
+  });
+
   test('indexes confirmed profile facts and hard rules as derived workspace sources', () => {
     const setup = createService();
     db = setup.db;
@@ -934,32 +967,19 @@ describe('EnterpriseLeadWorkspaceService', () => {
     );
   });
 
-  test('createWorkspace initializes default workspace-owned execution Agents', () => {
+  test('createWorkspace leaves workspace Agent bindings empty until the user adds Agents', () => {
     const setup = createService();
     db = setup.db;
 
-    const workspace = setup.service.createWorkspace(draftPayload());
-
-    expect(workspace.workspaceAgents.map(agent => agent.agentId)).toEqual([
-      'product_selling_point',
-      'topic_planning',
-      'short_video_script',
-      'social_copy',
-      'private_domain_conversion',
-      'content_quality',
-    ]);
-    expect(workspace.workspaceAgents.every(agent => agent.enabled)).toBe(true);
-    expect(
-      workspace.workspaceAgents.find(agent => agent.agentId === 'product_selling_point'),
-    ).toMatchObject({
-      agentId: 'product_selling_point',
-      order: 0,
-      overrides: {
-        name: '产品卖点 Agent',
-        description: '提炼产品优势、用户痛点、信任背书和差异化卖点。',
-        icon: '卖',
-      },
+    const workspace = setup.service.createWorkspace({
+      ...draftPayload(),
+      enabledAgentRoles: [],
+      workspaceAgents: [],
     });
+
+    expect(workspace.enabledAgentRoles).toEqual([]);
+    expect(workspace.workspaceAgents).toEqual([]);
+    expect(setup.store.getWorkspace(workspace.id)?.workspaceAgents).toEqual([]);
   });
 
   test('system template bindings resolve workflow defaults before workspace overrides', () => {
@@ -1046,6 +1066,51 @@ describe('EnterpriseLeadWorkspaceService', () => {
     expect(agentProvider.getAgent).not.toHaveBeenCalled();
   });
 
+  test('local Agent bindings inherit local Agent definitions for execution', () => {
+    const agentProvider = createAgentProvider([
+      {
+        id: 'agent-content',
+        name: 'Global content Agent',
+        description: 'Global content description',
+        identity: 'Global identity',
+        systemPrompt: 'Global system prompt',
+        icon: 'global',
+        model: 'global-model',
+        skillIds: ['global-skill'],
+        enabled: true,
+      },
+    ]);
+    const setup = createService({ agentProvider });
+    db = setup.db;
+
+    const workspace = setup.service.createWorkspace({
+      ...draftPayload(),
+      workspaceAgents: [
+        {
+          agentId: 'agent-content',
+          source: EnterpriseLeadWorkspaceAgentSource.LocalAgent,
+          enabled: true,
+          order: 0,
+          overrides: {},
+        },
+      ],
+    });
+
+    const snapshot = setup.service.createRun(workspace.id, '运行本地 Agent');
+
+    expect(snapshot.tasks[0].agentSnapshot).toMatchObject({
+      agentId: 'agent-content',
+      name: 'Global content Agent',
+      description: 'Global content description',
+      identity: 'Global identity',
+      systemPrompt: 'Global system prompt',
+      icon: 'global',
+      model: 'global-model',
+      skillIds: [],
+    });
+    expect(agentProvider.getAgent).toHaveBeenCalledWith('agent-content');
+  });
+
   test('workspace skill settings drive execution while prompts keep Agent config distinct', async () => {
     const agentProvider = createAgentProvider([
       {
@@ -1112,7 +1177,10 @@ describe('EnterpriseLeadWorkspaceService', () => {
   test('new runs snapshot edited workspace-owned Agent definitions', () => {
     const setup = createService();
     db = setup.db;
-    const workspace = setup.service.createWorkspace(draftPayload());
+    const workspace = setup.service.createWorkspace({
+      ...draftPayload(),
+      workspaceAgents: buildDefaultEnterpriseLeadWorkspaceAgents(),
+    });
 
     const updated = setup.service.updateWorkspaceAgents(
       workspace.id,
@@ -1240,7 +1308,10 @@ describe('EnterpriseLeadWorkspaceService', () => {
   test('creates a run only for enabled workspace-owned Agents', async () => {
     const setup = createService();
     db = setup.db;
-    const workspace = setup.service.createWorkspace(draftPayload());
+    const workspace = setup.service.createWorkspace({
+      ...draftPayload(),
+      workspaceAgents: buildDefaultEnterpriseLeadWorkspaceAgents(),
+    });
     setup.service.updateWorkspaceAgents(
       workspace.id,
       workspace.workspaceAgents.filter(agent =>
