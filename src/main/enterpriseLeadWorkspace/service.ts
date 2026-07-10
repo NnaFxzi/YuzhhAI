@@ -588,11 +588,16 @@ export class EnterpriseLeadWorkspaceService {
   createWorkspace(draft: unknown): EnterpriseLeadWorkspace {
     const normalizedDraft = normalizeWorkspaceDraftInput(draft);
 
+    const initialSources =
+      Array.isArray(normalizedDraft.extractionSources) && normalizedDraft.extractionSources.length > 0
+        ? normalizedDraft.extractionSources
+        : buildInitialEnterpriseLeadExtractionSources(normalizedDraft.source);
+
     const workspace = this.store.createWorkspace({
       name: normalizedDraft.name,
       type: EnterpriseLeadWorkspaceType.EnterpriseLead,
       profile: normalizedDraft.profile,
-      extractionSources: buildInitialEnterpriseLeadExtractionSources(normalizedDraft.source),
+      extractionSources: initialSources,
       enabledAgentRoles: normalizedDraft.enabledAgentRoles,
       settings: normalizedDraft.settings,
       workspaceAgents: normalizedDraft.workspaceAgents,

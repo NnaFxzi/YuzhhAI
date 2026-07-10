@@ -869,6 +869,9 @@ export function normalizeWorkspaceDraftInput(value: unknown): EnterpriseLeadWork
       ? Array.from(new Set(record.enabledAgentRoles.map(cleanText).filter(Boolean)))
       : [],
     workspaceAgents: normalizeEnterpriseLeadWorkspaceAgents(record.workspaceAgents),
+    ...(Array.isArray(record.extractionSources)
+      ? { extractionSources: normalizeEnterpriseLeadExtractionSources(record.extractionSources) }
+      : {}),
     ...(isRecord(record.settings)
       ? { settings: normalizeEnterpriseLeadWorkspaceSettings(record.settings) }
       : {}),

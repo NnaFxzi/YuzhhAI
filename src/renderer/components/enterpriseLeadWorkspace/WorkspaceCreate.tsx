@@ -2,23 +2,15 @@ import {
   ArrowLeftIcon,
   ArrowPathIcon,
   ArrowRightIcon,
-  ArrowUpTrayIcon,
   CheckIcon,
   ClipboardDocumentIcon,
   DocumentTextIcon,
   FolderOpenIcon,
   PlusIcon,
 } from '@heroicons/react/24/outline';
-import React, { useRef, useState } from 'react';
+import React, { useState } from 'react';
 
-import {
-  EnterpriseLeadDocumentExtractionStatus,
-  EnterpriseLeadExtractionSourceKind,
-  EnterpriseLeadKnowledgeIndexStatus,
-  EnterpriseLeadPlainTextDocumentExtensions,
-  EnterpriseLeadReadableDocumentAcceptTypes,
-  EnterpriseLeadReadableDocumentExtensions,
-} from '../../../shared/enterpriseLeadWorkspace/constants';
+import { EnterpriseLeadExtractionSourceKind } from '../../../shared/enterpriseLeadWorkspace/constants';
 import type {
   EnterpriseLeadWorkspace,
   EnterpriseLeadWorkspaceDraft,
@@ -28,11 +20,14 @@ import { enterpriseLeadWorkspaceService } from '../../services/enterpriseLeadWor
 import { i18nService } from '../../services/i18n';
 import {
   buildManualEnterpriseLeadWorkspaceDraft,
+  createWorkspaceFromUploadedMaterials,
   getWorkspaceCreateBranchScreen,
+  type MaterialUploadItem,
   WorkspaceCreateBranchScreen,
   WorkspaceCreateStartMode,
   type WorkspaceCreateStartMode as WorkspaceCreateStartModeType,
 } from './enterpriseLeadWorkspaceUi';
+import { WorkspaceMaterialUpload } from './WorkspaceMaterialUpload';
 import { buildEnterpriseLeadWorkspaceSettingsFromCurrentConfig } from './WorkspaceWorkbench';
 
 interface WorkspaceCreateProps {
@@ -48,57 +43,8 @@ interface StartModeOption {
   icon: React.ReactNode;
 }
 
-const ACCEPTED_MATERIAL_FILE_TYPES = EnterpriseLeadReadableDocumentAcceptTypes.join(',');
-
-const browserReadableMaterialExtensions = new Set<string>(
-  EnterpriseLeadPlainTextDocumentExtensions,
-);
-
-const getMaterialFileFilters = (): { name: string; extensions: string[] }[] => [
-  {
-    name: i18nService.t('enterpriseLeadReadableDocumentFilterName'),
-    extensions: [...EnterpriseLeadReadableDocumentExtensions],
-  },
-  {
-    name: i18nService.t('enterpriseLeadAllFilesFilterName'),
-    extensions: ['*'],
-  },
-];
-
-const getFileNameFromPath = (filePath: string): string => {
-  const segments = filePath.split(/[\\/]/).filter(Boolean);
-  return segments[segments.length - 1] || filePath;
-};
-
-const getMaterialFileExtension = (fileName: string): string => {
-  const cleanFileName = fileName.trim().split(/[?#]/)[0] ?? '';
-  const dotIndex = cleanFileName.lastIndexOf('.');
-  return dotIndex >= 0 ? cleanFileName.slice(dotIndex + 1).toLowerCase() : '';
-};
-
-const getBrowserFilePath = (file: File): string => {
-  const maybePath = (file as File & { path?: unknown }).path;
-  return typeof maybePath === 'string' ? maybePath : '';
-};
-
 const formatWorkspaceNameText = (key: string, name: string): string =>
   i18nService.t(key).replace('{name}', name);
-
-type UploadedMaterialWorkspaceService = Pick<
-  typeof enterpriseLeadWorkspaceService,
-  'createWorkspace' | 'processDocumentSource'
->;
-
-interface UploadedMaterialWorkspaceInput {
-  workspaceName: string;
-  sourceText: string;
-  sourceLabel: string;
-  fileName?: string;
-  fileSize?: number | null;
-  settings?: EnterpriseLeadWorkspaceSettings;
-  onCreated: (workspaceId: string) => void;
-  service?: UploadedMaterialWorkspaceService;
-}
 
 const normalizeOptionalFileSize = (fileSize?: number | null): number | undefined =>
   typeof fileSize === 'number' && Number.isFinite(fileSize) && fileSize > 0 ? fileSize : undefined;
@@ -112,63 +58,37 @@ export const createWorkspaceFromUploadedMaterial = async ({
   settings,
   onCreated,
   service = enterpriseLeadWorkspaceService,
-}: UploadedMaterialWorkspaceInput): Promise<EnterpriseLeadWorkspace | null> => {
+}: {
+  workspaceName: string;
+  sourceText: string;
+  sourceLabel: string;
+  fileName?: string;
+  fileSize?: number | null;
+  settings?: EnterpriseLeadWorkspaceSettings;
+  onCreated: (workspaceId: string) => void;
+  service?: Pick<typeof enterpriseLeadWorkspaceService, 'createWorkspace' | 'processDocumentSource'>;
+}): Promise<EnterpriseLeadWorkspace | null> => {
   const cleanSourceText = sourceText.trim();
   if (!cleanSourceText) {
     throw new Error('Uploaded material text is required');
   }
 
-  const now = new Date().toISOString();
-  const cleanSourceLabel =
-    sourceLabel.trim() || i18nService.t('enterpriseLeadCreateMaterialSourceLabel');
-  const draft = buildManualEnterpriseLeadWorkspaceDraft({
-    name: workspaceName,
-    mode: WorkspaceCreateStartMode.Material,
-    sourceLabel: cleanSourceLabel,
-    sourceText: cleanSourceText,
+  return createWorkspaceFromUploadedMaterials({
+    workspaceName,
+    items: [
+      {
+        id: 'singular-legacy',
+        filePath: '',
+        fileName: fileName?.trim() || sourceLabel.trim(),
+        fileSize: normalizeOptionalFileSize(fileSize),
+        kind: EnterpriseLeadExtractionSourceKind.File,
+        text: cleanSourceText,
+      },
+    ],
     settings,
+    onCreated,
+    service,
   });
-
-  const workspace = await service.createWorkspace({
-    ...draft,
-    source: {
-      ...draft.source,
-      kind: EnterpriseLeadExtractionSourceKind.File,
-      label: cleanSourceLabel,
-      fileName: fileName?.trim() || undefined,
-      fileSize: normalizeOptionalFileSize(fileSize),
-      text: cleanSourceText,
-      extractionStatus: EnterpriseLeadDocumentExtractionStatus.Pending,
-      vectorIndexStatus: EnterpriseLeadKnowledgeIndexStatus.Pending,
-      createdAt: now,
-      updatedAt: now,
-    },
-  });
-
-  if (!workspace) {
-    return null;
-  }
-
-  const sourceIndex = workspace.extractionSources.findIndex(
-    source =>
-      source.kind === EnterpriseLeadExtractionSourceKind.File &&
-      source.label === cleanSourceLabel &&
-      source.text?.trim() === cleanSourceText,
-  );
-  const processingSourceIndex = sourceIndex >= 0 ? sourceIndex : 0;
-  if (workspace.extractionSources[processingSourceIndex]?.text?.trim()) {
-    void service
-      .processDocumentSource(workspace.id, workspace.extractionSources, processingSourceIndex)
-      .catch(error => {
-        console.warn(
-          '[EnterpriseLeadWorkspace] Failed to queue uploaded material processing:',
-          error,
-        );
-      });
-  }
-
-  onCreated(workspace.id);
-  return workspace;
 };
 
 const startModeOptions: StartModeOption[] = [
@@ -196,18 +116,14 @@ const startModeOptions: StartModeOption[] = [
 ];
 
 export const WorkspaceCreate: React.FC<WorkspaceCreateProps> = ({ onCreated, onCancel }) => {
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const fileReadRequestRef = useRef(0);
   const [workspaceName, setWorkspaceName] = useState('');
   const [selectedMode, setSelectedMode] = useState<WorkspaceCreateStartModeType>(
     WorkspaceCreateStartMode.Material,
   );
   const [branchScreen, setBranchScreen] = useState<WorkspaceCreateBranchScreen | null>(null);
-  const [materialText, setMaterialText] = useState('');
-  const [loadedFileName, setLoadedFileName] = useState('');
-  const [loadedFileSize, setLoadedFileSize] = useState<number | null>(null);
+  const [materials, setMaterials] = useState<MaterialUploadItem[]>([]);
   const [pasteText, setPasteText] = useState('');
-  const [error, setError] = useState('');
+  const [error, setError] = useState<string[]>([]);
   const [isCreating, setIsCreating] = useState(false);
 
   const workspaceDisplayName =
@@ -222,162 +138,30 @@ export const WorkspaceCreate: React.FC<WorkspaceCreateProps> = ({ onCreated, onC
     onCancel();
   };
 
-  const readMaterialFileFromPath = async (
-    filePath: string,
-    readRequestId: number,
-    fallbackFileName?: string,
-    fallbackFileSize?: number | null,
-  ): Promise<void> => {
-    const dialogApi = window.electron?.dialog;
-    if (!dialogApi?.readTextFile) {
-      if (fileReadRequestRef.current === readRequestId) {
-        setError(i18nService.t('enterpriseLeadReadFileFailed'));
-      }
-      return;
-    }
-
-    const fileName = fallbackFileName?.trim() || getFileNameFromPath(filePath);
-    setLoadedFileName(fileName);
-    setLoadedFileSize(normalizeOptionalFileSize(fallbackFileSize) ?? null);
-    setMaterialText('');
-    setError('');
-
-    try {
-      const statPromise = dialogApi.statFile(filePath).catch(() => null);
-      const readResult = await dialogApi.readTextFile(filePath);
-      const statResult = await statPromise;
-
-      if (fileReadRequestRef.current !== readRequestId) {
-        return;
-      }
-
-      if (!readResult.success || typeof readResult.content !== 'string') {
-        setError(i18nService.t('enterpriseLeadReadFileFailed'));
-        return;
-      }
-
-      const statSize =
-        statResult?.success && typeof statResult.size === 'number' ? statResult.size : null;
-      setLoadedFileName(fileName);
-      setLoadedFileSize(statSize ?? readResult.size ?? fallbackFileSize ?? null);
-      setMaterialText(readResult.content);
-      setError('');
-    } catch {
-      if (fileReadRequestRef.current === readRequestId) {
-        setError(i18nService.t('enterpriseLeadReadFileFailed'));
-      }
-    }
-  };
-
-  const handleChooseMaterialFile = (): void => {
-    const dialogApi = window.electron?.dialog;
-    if (!dialogApi?.selectFile || !dialogApi.readTextFile) {
-      fileInputRef.current?.click();
-      return;
-    }
-
-    const readRequestId = fileReadRequestRef.current + 1;
-    fileReadRequestRef.current = readRequestId;
-    setError('');
-
-    void dialogApi
-      .selectFile({
-        title: i18nService.t('enterpriseLeadCreateMaterialTitle'),
-        filters: getMaterialFileFilters(),
-      })
-      .then(result => {
-        if (fileReadRequestRef.current !== readRequestId) {
-          return;
-        }
-        if (!result.success) {
-          setError(i18nService.t('enterpriseLeadReadFileFailed'));
-          return;
-        }
-        if (!result.path) {
-          return;
-        }
-        void readMaterialFileFromPath(result.path, readRequestId);
-      })
-      .catch(() => {
-        if (fileReadRequestRef.current === readRequestId) {
-          setError(i18nService.t('enterpriseLeadReadFileFailed'));
-        }
-      });
-  };
-
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>): void => {
-    const file = event.currentTarget.files?.[0];
-    event.currentTarget.value = '';
-
-    if (!file) {
-      return;
-    }
-
-    const readRequestId = fileReadRequestRef.current + 1;
-    fileReadRequestRef.current = readRequestId;
-    setLoadedFileName(file.name);
-    setLoadedFileSize(file.size);
-    setMaterialText('');
-    setError('');
-
-    const filePath = getBrowserFilePath(file);
-    if (filePath && window.electron?.dialog) {
-      void readMaterialFileFromPath(filePath, readRequestId, file.name, file.size);
-      return;
-    }
-
-    if (!browserReadableMaterialExtensions.has(getMaterialFileExtension(file.name))) {
-      setError(i18nService.t('enterpriseLeadReadFileFailed'));
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onerror = () => {
-      if (fileReadRequestRef.current === readRequestId) {
-        setError(i18nService.t('enterpriseLeadReadFileFailed'));
-      }
-    };
-    reader.onload = () => {
-      if (fileReadRequestRef.current !== readRequestId) {
-        return;
-      }
-
-      if (typeof reader.result !== 'string') {
-        setError(i18nService.t('enterpriseLeadReadFileFailed'));
-        return;
-      }
-
-      setLoadedFileName(file.name);
-      setMaterialText(reader.result);
-      setError('');
-    };
-    reader.readAsText(file);
-  };
-
   const handleNext = (): void => {
-    setError('');
+    setError([]);
     setBranchScreen(getWorkspaceCreateBranchScreen(selectedMode));
   };
 
   const handleBackToDetails = (): void => {
-    setError('');
+    setError([]);
     setBranchScreen(null);
   };
 
   const createWorkspaceFromDraft = async (draft: EnterpriseLeadWorkspaceDraft): Promise<void> => {
     setIsCreating(true);
-    setError('');
+    setError([]);
 
     try {
       const workspace = await enterpriseLeadWorkspaceService.createWorkspace(draft);
       if (!workspace) {
-        setError(i18nService.t('enterpriseLeadCreateFailed'));
+        setError([i18nService.t('enterpriseLeadCreateFailed')]);
         return;
       }
 
       onCreated(workspace.id);
     } catch {
-      setError(i18nService.t('enterpriseLeadCreateFailed'));
+      setError([i18nService.t('enterpriseLeadCreateFailed')]);
     } finally {
       setIsCreating(false);
     }
@@ -390,17 +174,17 @@ export const WorkspaceCreate: React.FC<WorkspaceCreateProps> = ({ onCreated, onC
   ): Promise<void> => {
     const cleanSourceText = sourceText.trim();
     if (!cleanSourceText) {
-      setError(i18nService.t('enterpriseLeadDraftEmpty'));
+      setError([i18nService.t('enterpriseLeadDraftEmpty')]);
       return;
     }
 
     setIsCreating(true);
-    setError('');
+    setError([]);
 
     try {
       const draft = await enterpriseLeadWorkspaceService.extractDraft(cleanSourceText);
       if (!draft) {
-        setError(i18nService.t('enterpriseLeadExtractFailed'));
+        setError([i18nService.t('enterpriseLeadExtractFailed')]);
         return;
       }
 
@@ -415,42 +199,39 @@ export const WorkspaceCreate: React.FC<WorkspaceCreateProps> = ({ onCreated, onC
         settings: buildEnterpriseLeadWorkspaceSettingsFromCurrentConfig(),
       });
       if (!workspace) {
-        setError(i18nService.t('enterpriseLeadCreateFailed'));
+        setError([i18nService.t('enterpriseLeadCreateFailed')]);
         return;
       }
 
       onCreated(workspace.id);
     } catch {
-      setError(i18nService.t('enterpriseLeadCreateFailed'));
+      setError([i18nService.t('enterpriseLeadCreateFailed')]);
     } finally {
       setIsCreating(false);
     }
   };
 
   const handleCreateFromMaterial = (): void => {
-    if (!materialText.trim()) {
-      setError(i18nService.t('enterpriseLeadCreateMaterialRequired'));
+    if (materials.length === 0) {
+      setError([i18nService.t('enterpriseLeadCreateMaterialRequired')]);
       return;
     }
 
     setIsCreating(true);
-    setError('');
-    void createWorkspaceFromUploadedMaterial({
+    setError([]);
+    void createWorkspaceFromUploadedMaterials({
       workspaceName: workspaceDisplayName,
-      sourceText: materialText,
-      sourceLabel: loadedFileName || i18nService.t('enterpriseLeadCreateMaterialSourceLabel'),
-      fileName: loadedFileName || undefined,
-      fileSize: loadedFileSize,
+      items: materials,
       settings: buildEnterpriseLeadWorkspaceSettingsFromCurrentConfig(),
       onCreated,
     })
       .then(workspace => {
         if (!workspace) {
-          setError(i18nService.t('enterpriseLeadCreateFailed'));
+          setError([i18nService.t('enterpriseLeadCreateFailed')]);
         }
       })
       .catch(() => {
-        setError(i18nService.t('enterpriseLeadCreateFailed'));
+        setError([i18nService.t('enterpriseLeadCreateFailed')]);
       })
       .finally(() => {
         setIsCreating(false);
@@ -459,7 +240,7 @@ export const WorkspaceCreate: React.FC<WorkspaceCreateProps> = ({ onCreated, onC
 
   const handleCreateFromPaste = (): void => {
     if (!pasteText.trim()) {
-      setError(i18nService.t('enterpriseLeadCreatePasteRequired'));
+      setError([i18nService.t('enterpriseLeadCreatePasteRequired')]);
       return;
     }
 
@@ -493,7 +274,7 @@ export const WorkspaceCreate: React.FC<WorkspaceCreateProps> = ({ onCreated, onC
   };
 
   const renderError = (): React.ReactNode => {
-    if (!error) {
+    if (error.length === 0) {
       return null;
     }
 
@@ -502,7 +283,15 @@ export const WorkspaceCreate: React.FC<WorkspaceCreateProps> = ({ onCreated, onC
         className="mt-4 rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-red-600 dark:text-red-300"
         role="alert"
       >
-        {error}
+        {error.length === 1 ? (
+          <span>{error[0]}</span>
+        ) : (
+          <ul className="list-disc pl-4">
+            {error.map((msg, i) => (
+              <li key={i}>{msg}</li>
+            ))}
+          </ul>
+        )}
       </div>
     );
   };
@@ -572,7 +361,7 @@ export const WorkspaceCreate: React.FC<WorkspaceCreateProps> = ({ onCreated, onC
             value={workspaceName}
             onChange={event => {
               setWorkspaceName(event.target.value);
-              setError('');
+              setError([]);
             }}
             placeholder={i18nService.t('enterpriseLeadCreateWorkspaceNamePlaceholder')}
             className="h-12 rounded-lg border border-border bg-background px-3 text-sm text-foreground outline-none transition-colors placeholder:text-secondary focus:border-primary focus:ring-2 focus:ring-primary/20"
@@ -594,7 +383,7 @@ export const WorkspaceCreate: React.FC<WorkspaceCreateProps> = ({ onCreated, onC
                   aria-pressed={isSelected}
                   onClick={() => {
                     setSelectedMode(option.id);
-                    setError('');
+                    setError([]);
                   }}
                   className={`grid min-h-[76px] grid-cols-[42px_minmax(0,1fr)_auto] items-center gap-3 rounded-lg border px-4 py-3 text-left transition-colors focus:outline-none focus:ring-2 focus:ring-primary/20 ${
                     isSelected
@@ -665,49 +454,12 @@ export const WorkspaceCreate: React.FC<WorkspaceCreateProps> = ({ onCreated, onC
         handleBackToDetails,
       )}
 
-      <button
-        type="button"
-        onClick={handleChooseMaterialFile}
-        className="grid min-h-[150px] w-full grid-cols-[52px_minmax(0,1fr)_auto] items-center gap-4 rounded-lg border border-dashed border-primary/40 bg-primary/5 px-6 py-6 text-left transition-colors hover:border-primary/70 hover:bg-primary/10 focus:outline-none focus:ring-2 focus:ring-primary/20"
-      >
-        <span className="grid h-[52px] w-[52px] place-items-center rounded-full bg-surface text-primary shadow-sm">
-          <ArrowUpTrayIcon className="h-6 w-6" />
-        </span>
-        <span className="min-w-0">
-          <span className="block text-base font-semibold text-foreground">
-            {loadedFileName || i18nService.t('enterpriseLeadCreateMaterialDropTitle')}
-          </span>
-          <span className="mt-1 block text-sm leading-5 text-secondary">
-            {i18nService.t('enterpriseLeadCreateMaterialDropDesc')}
-          </span>
-        </span>
-        <span className="text-sm font-semibold text-primary">
-          {i18nService.t('enterpriseLeadCreateMaterialChooseFile')}
-        </span>
-      </button>
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept={ACCEPTED_MATERIAL_FILE_TYPES}
-        className="sr-only"
-        onChange={handleFileChange}
+      <WorkspaceMaterialUpload
+        items={materials}
+        onItemsChange={setMaterials}
+        onError={setError}
+        disabled={isBusy}
       />
-
-      <div className="mt-4 flex flex-wrap gap-2">
-        {[
-          'enterpriseLeadCreateMaterialTypeCustomerList',
-          'enterpriseLeadCreateMaterialTypeProductDoc',
-          'enterpriseLeadCreateMaterialTypeChat',
-          'enterpriseLeadCreateMaterialTypeResearch',
-        ].map(key => (
-          <span
-            key={key}
-            className="rounded-full border border-border bg-surface-raised px-3 py-1 text-xs font-semibold text-secondary"
-          >
-            {i18nService.t(key)}
-          </span>
-        ))}
-      </div>
 
       {renderError()}
 
@@ -766,7 +518,7 @@ export const WorkspaceCreate: React.FC<WorkspaceCreateProps> = ({ onCreated, onC
           value={pasteText}
           onChange={event => {
             setPasteText(event.target.value);
-            setError('');
+            setError([]);
           }}
           placeholder={i18nService.t('enterpriseLeadCreatePastePlaceholder')}
           className="min-h-[190px] resize-y rounded-lg border border-border bg-background px-3 py-3 text-sm leading-6 text-foreground outline-none transition-colors placeholder:text-secondary focus:border-primary focus:ring-2 focus:ring-primary/20"
@@ -778,7 +530,7 @@ export const WorkspaceCreate: React.FC<WorkspaceCreateProps> = ({ onCreated, onC
           type="button"
           onClick={() => {
             setPasteText(i18nService.t('enterpriseLeadCreatePasteSampleText'));
-            setError('');
+            setError([]);
           }}
           className="rounded-lg border border-border bg-background px-4 py-3 text-left transition-colors hover:border-primary/30 hover:bg-surface-raised focus:outline-none focus:ring-2 focus:ring-primary/20"
         >

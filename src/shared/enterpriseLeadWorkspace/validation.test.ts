@@ -9,6 +9,7 @@ import {
   EnterpriseLeadTodoKind,
   EnterpriseLeadWorkspaceAgentSource,
 } from './constants';
+import type { EnterpriseLeadExtractionSource } from './types';
 import {
   buildDefaultEnterpriseLeadWorkspaceSettings,
   normalizeAgentTaskResultInput,
@@ -716,5 +717,67 @@ describe('enterprise lead workspace validation', () => {
         name: 'Replacement',
       },
     });
+  });
+
+  test('normalizeWorkspaceDraftInput accepts pre-built extractionSources array', () => {
+    const sources: EnterpriseLeadExtractionSource[] = [
+      {
+        kind: 'file',
+        label: '产品手册.pdf',
+        fileName: '产品手册.pdf',
+        filePath: '/tmp/产品手册.pdf',
+        text: '主营产品：精密五金',
+        extractionStatus: 'pending',
+        vectorIndexStatus: 'pending',
+      },
+      {
+        kind: 'image',
+        label: '聊天截图.png',
+        fileName: '聊天截图.png',
+        filePath: '/tmp/聊天截图.png',
+      },
+    ];
+
+    const draft = normalizeWorkspaceDraftInput({
+      name: '华东线索',
+      source: { kind: 'manual', label: 'fallback', text: '' },
+      extractionSources: sources,
+    });
+
+    expect(draft.name).toBe('华东线索');
+    expect(draft.source).toEqual(
+      expect.objectContaining({
+        kind: 'manual',
+        label: 'fallback',
+      }),
+    );
+    // extractionSources is preserved on the draft (loose check; renderer forwards as-is)
+    const draftSources = (draft as { extractionSources?: EnterpriseLeadExtractionSource[] }).extractionSources;
+    expect(draftSources).toBeDefined();
+    expect(draftSources).toHaveLength(sources.length);
+    sources.forEach((source, index) => {
+      expect(draftSources?.[index]).toEqual(
+        expect.objectContaining({
+          kind: source.kind,
+          label: source.label,
+          fileName: source.fileName,
+          filePath: source.filePath,
+          text: source.text,
+          extractionStatus: source.extractionStatus,
+          vectorIndexStatus: source.vectorIndexStatus,
+        }),
+      );
+    });
+  });
+
+  test('normalizeWorkspaceDraftInput works without extractionSources (legacy)', () => {
+    const draft = normalizeWorkspaceDraftInput({
+      name: 'legacy',
+      source: { kind: 'file', label: 'a', text: 'hello' },
+    });
+
+    expect(draft.source.kind).toBe('file');
+    expect(draft.source.text).toBe('hello');
+    expect((draft as { extractionSources?: EnterpriseLeadExtractionSource[] }).extractionSources).toBeUndefined();
   });
 });
