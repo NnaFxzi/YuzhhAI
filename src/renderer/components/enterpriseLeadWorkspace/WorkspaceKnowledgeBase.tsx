@@ -690,9 +690,14 @@ export const getEnterpriseLeadKnowledgeVectorIndexSummary = (
 ): string => {
   const status = getEnterpriseLeadKnowledgeVectorIndexStatus(source);
   if (status === EnterpriseLeadKnowledgeIndexStatus.Indexed) {
+    const chunkCount = source?.vectorChunkCount ?? 0;
+    if (chunkCount <= 0) {
+      // Indexed without chunks is typical for non-text sources like images.
+      return i18nService.t('enterpriseLeadKnowledgeVectorImageNoIndexText');
+    }
     return i18nService
       .t('enterpriseLeadKnowledgeVectorIndexedText')
-      .replace('{count}', String(source?.vectorChunkCount ?? 0));
+      .replace('{count}', String(chunkCount));
   }
   if (status === EnterpriseLeadKnowledgeIndexStatus.Failed) {
     return source?.vectorIndexError || i18nService.t('enterpriseLeadKnowledgeVectorFailedText');

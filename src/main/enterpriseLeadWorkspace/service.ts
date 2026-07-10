@@ -1013,6 +1013,11 @@ export class EnterpriseLeadWorkspaceService {
       );
 
       return contentSources.map((item): EnterpriseLeadExtractionSource => {
+        if (!item.content.trim()) {
+          // Nothing to vector-index (e.g. images): preserve the caller's status
+          // so renderers can keep marking such sources as Indexed without text.
+          return item.source;
+        }
         const chunkCount = chunkCountBySourceId.get(item.sourceId) ?? 0;
         return {
           ...item.source,
@@ -1028,14 +1033,20 @@ export class EnterpriseLeadWorkspaceService {
       });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      return sources.map((source): EnterpriseLeadExtractionSource => ({
-        ...source,
-        vectorChunkCount: 0,
-        vectorEmbeddingVersion: CONTENT_KNOWLEDGE_EMBEDDING_VERSION,
-        vectorIndexError: errorMessage,
-        vectorIndexedAt: undefined as string | undefined,
-        vectorIndexStatus: EnterpriseLeadKnowledgeIndexStatus.Failed,
-      }));
+      return contentSources.map((item): EnterpriseLeadExtractionSource => {
+        if (!item.content.trim()) {
+          // Preserve the caller's status for sources that were never indexed.
+          return item.source;
+        }
+        return {
+          ...item.source,
+          vectorChunkCount: 0,
+          vectorEmbeddingVersion: CONTENT_KNOWLEDGE_EMBEDDING_VERSION,
+          vectorIndexError: errorMessage,
+          vectorIndexedAt: undefined as string | undefined,
+          vectorIndexStatus: EnterpriseLeadKnowledgeIndexStatus.Failed,
+        };
+      });
     }
   }
 

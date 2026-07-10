@@ -830,6 +830,95 @@ describe('EnterpriseLeadWorkspaceService', () => {
     });
   });
 
+  test('preserves Indexed vector status for sources without text or summary (e.g. images)', () => {
+    const setup = createService();
+    db = setup.db;
+
+    const imageSource = {
+      kind: EnterpriseLeadExtractionSourceKind.Image,
+      label: 'factory-photo.png',
+      fileName: 'factory-photo.png',
+      filePath: '/tmp/factory-photo.png',
+      fileSize: 2048,
+      extractionStatus: EnterpriseLeadDocumentExtractionStatus.Extracted,
+      vectorIndexStatus: EnterpriseLeadKnowledgeIndexStatus.Indexed,
+      createdAt: '2026-07-10T00:00:00.000Z',
+      updatedAt: '2026-07-10T00:00:00.000Z',
+    };
+    const textSource = {
+      kind: EnterpriseLeadExtractionSourceKind.File,
+      label: 'factory.md',
+      fileName: 'factory.md',
+      text: '主营精密五金加工。',
+      extractionStatus: EnterpriseLeadDocumentExtractionStatus.Pending,
+      vectorIndexStatus: EnterpriseLeadKnowledgeIndexStatus.Pending,
+      createdAt: '2026-07-10T00:00:00.000Z',
+      updatedAt: '2026-07-10T00:00:00.000Z',
+    };
+
+    const workspace = setup.service.createWorkspace({
+      ...draftPayload(),
+      source: textSource,
+      extractionSources: [imageSource, textSource],
+    });
+
+    expect(workspace.extractionSources).toHaveLength(2);
+    const [storedImage, storedText] = workspace.extractionSources;
+    expect(storedImage.vectorIndexStatus).toBe(EnterpriseLeadKnowledgeIndexStatus.Indexed);
+    expect(storedImage.vectorChunkCount ?? 0).toBe(0);
+    expect(storedText.vectorIndexStatus).toBe(EnterpriseLeadKnowledgeIndexStatus.Indexed);
+    expect(storedText.vectorChunkCount).toBeGreaterThan(0);
+  });
+
+  test('preserves Indexed vector status for empty-content sources even when store throws', () => {
+    const setup = createService();
+    db = setup.db;
+
+    const throwingStore = {
+      ...setup.store,
+      replaceSources: vi.fn(() => {
+        throw new Error('vector store offline');
+      }),
+    };
+    const serviceWithFailingStore = new EnterpriseLeadWorkspaceService({
+      store: setup.store,
+      modelClient: setup.modelClient,
+      agentProvider: setup.agentProvider,
+      contentKnowledgeVectorStore: throwingStore as unknown as ContentKnowledgeVectorStore,
+    } as never);
+
+    const imageSource = {
+      kind: EnterpriseLeadExtractionSourceKind.Image,
+      label: 'factory-photo.png',
+      fileName: 'factory-photo.png',
+      fileSize: 2048,
+      extractionStatus: EnterpriseLeadDocumentExtractionStatus.Extracted,
+      vectorIndexStatus: EnterpriseLeadKnowledgeIndexStatus.Indexed,
+      createdAt: '2026-07-10T00:00:00.000Z',
+      updatedAt: '2026-07-10T00:00:00.000Z',
+    };
+    const textSource = {
+      kind: EnterpriseLeadExtractionSourceKind.File,
+      label: 'factory.md',
+      fileName: 'factory.md',
+      text: '主营精密五金加工。',
+      extractionStatus: EnterpriseLeadDocumentExtractionStatus.Pending,
+      vectorIndexStatus: EnterpriseLeadKnowledgeIndexStatus.Pending,
+      createdAt: '2026-07-10T00:00:00.000Z',
+      updatedAt: '2026-07-10T00:00:00.000Z',
+    };
+
+    const workspace = serviceWithFailingStore.createWorkspace({
+      ...draftPayload(),
+      source: textSource,
+      extractionSources: [imageSource, textSource],
+    });
+
+    const [storedImage, storedText] = workspace.extractionSources;
+    expect(storedImage.vectorIndexStatus).toBe(EnterpriseLeadKnowledgeIndexStatus.Indexed);
+    expect(storedText.vectorIndexStatus).toBe(EnterpriseLeadKnowledgeIndexStatus.Failed);
+  });
+
   test('does not expose dedicated workspace chat service methods', () => {
     const setup = createService();
     db = setup.db;
