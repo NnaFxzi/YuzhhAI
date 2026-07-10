@@ -201,6 +201,11 @@ export const EnterpriseLeadAttachmentOnlyDocumentExtension = {
 export type EnterpriseLeadAttachmentOnlyDocumentExtension =
   (typeof EnterpriseLeadAttachmentOnlyDocumentExtension)[keyof typeof EnterpriseLeadAttachmentOnlyDocumentExtension];
 
+export const EnterpriseLeadAttachmentOnlyDocumentExtensions = [
+  EnterpriseLeadAttachmentOnlyDocumentExtension.Doc,
+  EnterpriseLeadAttachmentOnlyDocumentExtension.Ppt,
+] as const;
+
 export const EnterpriseLeadImageAttachmentExtension = {
   Png: 'png',
   Jpg: 'jpg',

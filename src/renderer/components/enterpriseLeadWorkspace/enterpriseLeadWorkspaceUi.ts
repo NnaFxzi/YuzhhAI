@@ -5,8 +5,11 @@ import {
 import {
   EnterpriseLeadAgentRole,
   type EnterpriseLeadAgentRole as EnterpriseLeadAgentRoleType,
+  EnterpriseLeadAttachmentOnlyDocumentExtensions,
   EnterpriseLeadContentPlatformId,
   EnterpriseLeadExtractionSourceKind,
+  EnterpriseLeadImageAttachmentExtensions,
+  EnterpriseLeadReadableDocumentExtensions,
   EnterpriseLeadResearchCapabilityId,
   EnterpriseLeadSkillCapabilityId,
   EnterpriseLeadTaskStatus,
@@ -55,6 +58,41 @@ export const WorkspaceCreateBranchScreen = {
 } as const;
 export type WorkspaceCreateBranchScreen =
   (typeof WorkspaceCreateBranchScreen)[keyof typeof WorkspaceCreateBranchScreen];
+
+export const MAX_MATERIAL_UPLOAD_BYTES = 50 * 1024 * 1024;
+
+export const ENTERPRISE_LEAD_MATERIAL_ACCEPT_EXTENSIONS = [
+  ...EnterpriseLeadReadableDocumentExtensions,
+  ...EnterpriseLeadImageAttachmentExtensions,
+  ...EnterpriseLeadAttachmentOnlyDocumentExtensions,
+] as const;
+
+export const ENTERPRISE_LEAD_MATERIAL_DIALOG_FILTERS = [
+  {
+    name: 'enterpriseLeadMaterialFilterDocuments',
+    extensions: [...EnterpriseLeadReadableDocumentExtensions],
+  },
+  {
+    name: 'enterpriseLeadMaterialFilterImages',
+    extensions: [...EnterpriseLeadImageAttachmentExtensions],
+  },
+  {
+    name: 'enterpriseLeadMaterialFilterAllFiles',
+    extensions: ['*'],
+  },
+] as const;
+
+export interface MaterialUploadItem {
+  id: string;
+  filePath: string;
+  fileName: string;
+  fileSize: number | null;
+  kind:
+    | typeof EnterpriseLeadExtractionSourceKind.File
+    | typeof EnterpriseLeadExtractionSourceKind.Image;
+  text?: string;
+  truncated?: boolean;
+}
 
 export const EnterpriseLeadWorkspaceShellMode = {
   Focused: 'focused',
