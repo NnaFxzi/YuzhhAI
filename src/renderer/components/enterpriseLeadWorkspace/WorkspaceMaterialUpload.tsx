@@ -23,7 +23,7 @@ import {
 interface WorkspaceMaterialUploadProps {
   items: MaterialUploadItem[];
   onItemsChange: (items: MaterialUploadItem[]) => void;
-  onError: (message: string) => void;
+  onError: (messages: string[]) => void;
   disabled?: boolean;
 }
 
@@ -95,7 +95,7 @@ const buildItemFromPath = async (
   const segments = filePath.split(/[\\/]/).filter(Boolean);
   const fileName = segments[segments.length - 1] || filePath;
   const extension = getExtension(fileName);
-  const id = `${fileName}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const id = `${fileName}-${crypto.randomUUID()}`;
 
   let fileSize: number | null = null;
   if (typeof dialogApi.statFile === 'function') {
@@ -220,7 +220,7 @@ export const WorkspaceMaterialUpload: React.FC<WorkspaceMaterialUploadProps> = (
         onItemsChange([...items, ...additions]);
       }
       if (rejections.length > 0) {
-        onError(rejections.join('\n'));
+        onError(rejections);
       }
     },
     [items, onItemsChange, onError],
@@ -325,7 +325,7 @@ export const WorkspaceMaterialUpload: React.FC<WorkspaceMaterialUploadProps> = (
                 <span className="text-secondary">.{getExtension(item.fileName)}</span>
                 {item.truncated && (
                   <span className="ml-2 rounded bg-amber-500/15 px-1 text-amber-700 dark:text-amber-300">
-                    truncated
+                    {t('enterpriseLeadMaterialListTruncated')}
                   </span>
                 )}
               </span>

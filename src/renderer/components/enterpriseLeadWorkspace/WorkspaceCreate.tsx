@@ -123,7 +123,7 @@ export const WorkspaceCreate: React.FC<WorkspaceCreateProps> = ({ onCreated, onC
   const [branchScreen, setBranchScreen] = useState<WorkspaceCreateBranchScreen | null>(null);
   const [materials, setMaterials] = useState<MaterialUploadItem[]>([]);
   const [pasteText, setPasteText] = useState('');
-  const [error, setError] = useState('');
+  const [error, setError] = useState<string[]>([]);
   const [isCreating, setIsCreating] = useState(false);
 
   const workspaceDisplayName =
@@ -139,29 +139,29 @@ export const WorkspaceCreate: React.FC<WorkspaceCreateProps> = ({ onCreated, onC
   };
 
   const handleNext = (): void => {
-    setError('');
+    setError([]);
     setBranchScreen(getWorkspaceCreateBranchScreen(selectedMode));
   };
 
   const handleBackToDetails = (): void => {
-    setError('');
+    setError([]);
     setBranchScreen(null);
   };
 
   const createWorkspaceFromDraft = async (draft: EnterpriseLeadWorkspaceDraft): Promise<void> => {
     setIsCreating(true);
-    setError('');
+    setError([]);
 
     try {
       const workspace = await enterpriseLeadWorkspaceService.createWorkspace(draft);
       if (!workspace) {
-        setError(i18nService.t('enterpriseLeadCreateFailed'));
+        setError([i18nService.t('enterpriseLeadCreateFailed')]);
         return;
       }
 
       onCreated(workspace.id);
     } catch {
-      setError(i18nService.t('enterpriseLeadCreateFailed'));
+      setError([i18nService.t('enterpriseLeadCreateFailed')]);
     } finally {
       setIsCreating(false);
     }
@@ -174,17 +174,17 @@ export const WorkspaceCreate: React.FC<WorkspaceCreateProps> = ({ onCreated, onC
   ): Promise<void> => {
     const cleanSourceText = sourceText.trim();
     if (!cleanSourceText) {
-      setError(i18nService.t('enterpriseLeadDraftEmpty'));
+      setError([i18nService.t('enterpriseLeadDraftEmpty')]);
       return;
     }
 
     setIsCreating(true);
-    setError('');
+    setError([]);
 
     try {
       const draft = await enterpriseLeadWorkspaceService.extractDraft(cleanSourceText);
       if (!draft) {
-        setError(i18nService.t('enterpriseLeadExtractFailed'));
+        setError([i18nService.t('enterpriseLeadExtractFailed')]);
         return;
       }
 
@@ -199,13 +199,13 @@ export const WorkspaceCreate: React.FC<WorkspaceCreateProps> = ({ onCreated, onC
         settings: buildEnterpriseLeadWorkspaceSettingsFromCurrentConfig(),
       });
       if (!workspace) {
-        setError(i18nService.t('enterpriseLeadCreateFailed'));
+        setError([i18nService.t('enterpriseLeadCreateFailed')]);
         return;
       }
 
       onCreated(workspace.id);
     } catch {
-      setError(i18nService.t('enterpriseLeadCreateFailed'));
+      setError([i18nService.t('enterpriseLeadCreateFailed')]);
     } finally {
       setIsCreating(false);
     }
@@ -213,12 +213,12 @@ export const WorkspaceCreate: React.FC<WorkspaceCreateProps> = ({ onCreated, onC
 
   const handleCreateFromMaterial = (): void => {
     if (materials.length === 0) {
-      setError(i18nService.t('enterpriseLeadCreateMaterialRequired'));
+      setError([i18nService.t('enterpriseLeadCreateMaterialRequired')]);
       return;
     }
 
     setIsCreating(true);
-    setError('');
+    setError([]);
     void createWorkspaceFromUploadedMaterials({
       workspaceName: workspaceDisplayName,
       items: materials,
@@ -227,11 +227,11 @@ export const WorkspaceCreate: React.FC<WorkspaceCreateProps> = ({ onCreated, onC
     })
       .then(workspace => {
         if (!workspace) {
-          setError(i18nService.t('enterpriseLeadCreateFailed'));
+          setError([i18nService.t('enterpriseLeadCreateFailed')]);
         }
       })
       .catch(() => {
-        setError(i18nService.t('enterpriseLeadCreateFailed'));
+        setError([i18nService.t('enterpriseLeadCreateFailed')]);
       })
       .finally(() => {
         setIsCreating(false);
@@ -240,7 +240,7 @@ export const WorkspaceCreate: React.FC<WorkspaceCreateProps> = ({ onCreated, onC
 
   const handleCreateFromPaste = (): void => {
     if (!pasteText.trim()) {
-      setError(i18nService.t('enterpriseLeadCreatePasteRequired'));
+      setError([i18nService.t('enterpriseLeadCreatePasteRequired')]);
       return;
     }
 
@@ -274,7 +274,7 @@ export const WorkspaceCreate: React.FC<WorkspaceCreateProps> = ({ onCreated, onC
   };
 
   const renderError = (): React.ReactNode => {
-    if (!error) {
+    if (error.length === 0) {
       return null;
     }
 
@@ -283,7 +283,15 @@ export const WorkspaceCreate: React.FC<WorkspaceCreateProps> = ({ onCreated, onC
         className="mt-4 rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-red-600 dark:text-red-300"
         role="alert"
       >
-        {error}
+        {error.length === 1 ? (
+          <span>{error[0]}</span>
+        ) : (
+          <ul className="list-disc pl-4">
+            {error.map((msg, i) => (
+              <li key={i}>{msg}</li>
+            ))}
+          </ul>
+        )}
       </div>
     );
   };
@@ -353,7 +361,7 @@ export const WorkspaceCreate: React.FC<WorkspaceCreateProps> = ({ onCreated, onC
             value={workspaceName}
             onChange={event => {
               setWorkspaceName(event.target.value);
-              setError('');
+              setError([]);
             }}
             placeholder={i18nService.t('enterpriseLeadCreateWorkspaceNamePlaceholder')}
             className="h-12 rounded-lg border border-border bg-background px-3 text-sm text-foreground outline-none transition-colors placeholder:text-secondary focus:border-primary focus:ring-2 focus:ring-primary/20"
@@ -375,7 +383,7 @@ export const WorkspaceCreate: React.FC<WorkspaceCreateProps> = ({ onCreated, onC
                   aria-pressed={isSelected}
                   onClick={() => {
                     setSelectedMode(option.id);
-                    setError('');
+                    setError([]);
                   }}
                   className={`grid min-h-[76px] grid-cols-[42px_minmax(0,1fr)_auto] items-center gap-3 rounded-lg border px-4 py-3 text-left transition-colors focus:outline-none focus:ring-2 focus:ring-primary/20 ${
                     isSelected
@@ -510,7 +518,7 @@ export const WorkspaceCreate: React.FC<WorkspaceCreateProps> = ({ onCreated, onC
           value={pasteText}
           onChange={event => {
             setPasteText(event.target.value);
-            setError('');
+            setError([]);
           }}
           placeholder={i18nService.t('enterpriseLeadCreatePastePlaceholder')}
           className="min-h-[190px] resize-y rounded-lg border border-border bg-background px-3 py-3 text-sm leading-6 text-foreground outline-none transition-colors placeholder:text-secondary focus:border-primary focus:ring-2 focus:ring-primary/20"
@@ -522,7 +530,7 @@ export const WorkspaceCreate: React.FC<WorkspaceCreateProps> = ({ onCreated, onC
           type="button"
           onClick={() => {
             setPasteText(i18nService.t('enterpriseLeadCreatePasteSampleText'));
-            setError('');
+            setError([]);
           }}
           className="rounded-lg border border-border bg-background px-4 py-3 text-left transition-colors hover:border-primary/30 hover:bg-surface-raised focus:outline-none focus:ring-2 focus:ring-primary/20"
         >
