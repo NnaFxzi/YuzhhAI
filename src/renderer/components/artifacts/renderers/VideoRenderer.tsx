@@ -1,8 +1,9 @@
-import { ArtifactPreviewProtocol } from '@shared/artifactPreview/constants';
 import React, { useEffect, useMemo, useState } from 'react';
 
 import { i18nService } from '@/services/i18n';
 import type { Artifact } from '@/types/artifact';
+
+import { buildLocalFileSrc } from '../previewFileUrl';
 
 interface VideoRendererProps {
   artifact: Artifact;
@@ -36,27 +37,15 @@ function normalizeLocalPath(filePath: string): string {
   return normalized.replace(/\\/g, '/');
 }
 
-function buildLocalFileSrc(filePath: string, cacheKey: number): string {
-  const normalized = normalizeLocalPath(filePath);
-  const pathForUrl = /^[A-Za-z]:/.test(normalized) || normalized.startsWith('/')
-    ? normalized
-    : `/${normalized}`;
-  const encoded = pathForUrl.split('/').map(encodeURIComponent).join('/');
-  const prefix = /^[A-Za-z]:/.test(pathForUrl)
-    ? `${ArtifactPreviewProtocol.LocalFile}:///`
-    : `${ArtifactPreviewProtocol.LocalFile}://`;
-  return `${prefix}${encoded}?v=${cacheKey}`;
-}
-
 function buildFileUrlSrc(filePath: string): string {
   const normalized = normalizeLocalPath(filePath);
   const pathForUrl = /^[A-Za-z]:/.test(normalized) || normalized.startsWith('/')
     ? normalized
-    : `/${normalized}`;
+    : '/' + normalized;
   const encoded = pathForUrl.split('/').map(encodeURIComponent).join('/');
   return /^[A-Za-z]:/.test(pathForUrl)
-    ? `file:///${encoded}`
-    : `file://${encoded}`;
+    ? 'file:///' + encoded
+    : 'file://' + encoded;
 }
 
 function buildVideoSources(
@@ -119,7 +108,7 @@ const VideoRenderer: React.FC<VideoRendererProps> = ({ artifact }) => {
         onLoadedMetadata={(event) => {
           const { videoHeight, videoWidth } = event.currentTarget;
           if (videoWidth > 0 && videoHeight > 0) {
-            setVideoAspectRatio(`${videoWidth} / ${videoHeight}`);
+            setVideoAspectRatio(videoWidth + ' / ' + videoHeight);
           }
         }}
         onError={() => {

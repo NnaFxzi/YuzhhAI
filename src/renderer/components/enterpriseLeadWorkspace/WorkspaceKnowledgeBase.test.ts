@@ -139,6 +139,24 @@ describe('WorkspaceKnowledgeBase layout', () => {
     ).toBe(false);
   });
 
+  test('previews image source files when a local path exists', () => {
+    expect(
+      canPreviewEnterpriseLeadOriginalDocument({
+        filePath: '/Users/demo/Documents/product.png',
+      }),
+    ).toBe(true);
+    expect(
+      canPreviewEnterpriseLeadOriginalDocument({
+        filePath: '/Users/demo/Documents/photo.JPG',
+      }),
+    ).toBe(true);
+    expect(
+      canPreviewEnterpriseLeadOriginalDocument({
+        fileName: 'logo.svg',
+      }),
+    ).toBe(false);
+  });
+
   test('persists workspace profile when confirming AI knowledge into the library', () => {
     expect(enterpriseLeadKnowledgeConfirmBehavior.persistProfile).toBe(true);
     expect(enterpriseLeadKnowledgeConfirmBehavior.successMessageKey).toBe(

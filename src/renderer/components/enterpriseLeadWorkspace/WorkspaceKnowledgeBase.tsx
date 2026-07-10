@@ -231,6 +231,7 @@ const enterpriseLeadImageAttachmentExtensions = new Set<string>(
   EnterpriseLeadImageAttachmentExtensions,
 );
 const enterpriseLeadOriginalDocumentPreviewExtensions = new Set<string>([
+  ...EnterpriseLeadImageAttachmentExtensions,
   'csv',
   'docx',
   'pdf',

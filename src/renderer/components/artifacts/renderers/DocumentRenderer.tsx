@@ -1,9 +1,11 @@
+import { EnterpriseLeadImageAttachmentExtensions } from '@shared/enterpriseLeadWorkspace/constants';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { i18nService } from '@/services/i18n';
 import type { Artifact } from '@/types/artifact';
 import { openLocalPathWithToast } from '@/utils/localFileActions';
 
+import { buildLocalFileSrc } from '../previewFileUrl';
 import { getDocxExpectedPageCount, repaginateDocx, waitForDocxLayout } from './docxPagination';
 import {
   type OfficePreviewZoomControlsConfig,
@@ -11,6 +13,10 @@ import {
 } from './OfficePreviewActionsContext';
 import { useOfficePreviewZoom } from './OfficeZoomControls';
 import { SheetRenderer } from './sheet/SheetRenderer';
+
+const enterpriseLeadImageAttachmentExtensionsWithDot = new Set<string>(
+  EnterpriseLeadImageAttachmentExtensions.map(ext => `.${ext}`),
+);
 
 const t = (key: string) => i18nService.t(key);
 
@@ -1596,6 +1602,21 @@ interface DocumentRendererProps {
 
 const DocumentRenderer: React.FC<DocumentRendererProps> = ({ artifact }) => {
   const ext = getExtension(artifact.fileName || artifact.filePath || '');
+
+  if (enterpriseLeadImageAttachmentExtensionsWithDot.has(ext)) {
+    const cacheKey = artifact.createdAt || Date.now();
+    return (
+      <div className="relative w-full h-full overflow-auto bg-surface">
+        <div className="flex items-center justify-center min-h-full p-6">
+          <img
+            src={buildLocalFileSrc(artifact.filePath || '', cacheKey)}
+            alt={artifact.title || artifact.fileName || 'image'}
+            className="max-w-full max-h-full object-contain"
+          />
+        </div>
+      </div>
+    );
+  }
 
   switch (ext) {
     case '.docx':
