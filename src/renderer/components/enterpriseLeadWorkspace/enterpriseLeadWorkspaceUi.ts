@@ -427,22 +427,33 @@ export const createWorkspaceFromUploadedMaterials = async ({
     settings,
   });
 
-  const extractionSources: EnterpriseLeadExtractionSource[] = items.map(item => ({
-    kind: item.kind,
-    label: item.fileName?.trim() || item.filePath,
-    filePath: item.filePath,
-    fileName: item.fileName,
-    fileSize: typeof item.fileSize === 'number' && item.fileSize > 0 ? item.fileSize : undefined,
-    text: item.text?.trim() || undefined,
-    ...(item.truncated ? { extractionPartial: true } : {}),
-    extractionStatus: EnterpriseLeadDocumentExtractionStatus.Pending,
-    vectorIndexStatus: EnterpriseLeadKnowledgeIndexStatus.Pending,
-    createdAt: now,
-    updatedAt: now,
-  }));
+  const extractionSources: EnterpriseLeadExtractionSource[] = items.map(item => {
+    const hasText = Boolean(item.text?.trim());
+    return {
+      kind: item.kind,
+      label: item.fileName?.trim() || item.filePath,
+      filePath: item.filePath,
+      fileName: item.fileName,
+      fileSize: typeof item.fileSize === 'number' && item.fileSize > 0 ? item.fileSize : undefined,
+      text: item.text?.trim() || undefined,
+      ...(item.truncated ? { extractionPartial: true } : {}),
+      ...(hasText
+        ? {
+            extractionStatus: EnterpriseLeadDocumentExtractionStatus.Pending,
+            vectorIndexStatus: EnterpriseLeadKnowledgeIndexStatus.Pending,
+          }
+        : {
+            extractionStatus: EnterpriseLeadDocumentExtractionStatus.Extracted,
+            vectorIndexStatus: EnterpriseLeadKnowledgeIndexStatus.Indexed,
+          }),
+      createdAt: now,
+      updatedAt: now,
+    };
+  });
 
   let workspace: EnterpriseLeadWorkspace | null = null;
   try {
+    const primaryHasText = Boolean(primaryItem?.text?.trim());
     workspace = await service.createWorkspace({
       ...baseDraft,
       source: {
@@ -455,8 +466,15 @@ export const createWorkspaceFromUploadedMaterials = async ({
             ? primaryItem.fileSize
             : undefined,
         text: primaryItem?.text?.trim() || undefined,
-        extractionStatus: EnterpriseLeadDocumentExtractionStatus.Pending,
-        vectorIndexStatus: EnterpriseLeadKnowledgeIndexStatus.Pending,
+        ...(primaryHasText
+          ? {
+              extractionStatus: EnterpriseLeadDocumentExtractionStatus.Pending,
+              vectorIndexStatus: EnterpriseLeadKnowledgeIndexStatus.Pending,
+            }
+          : {
+              extractionStatus: EnterpriseLeadDocumentExtractionStatus.Extracted,
+              vectorIndexStatus: EnterpriseLeadKnowledgeIndexStatus.Indexed,
+            }),
         createdAt: now,
         updatedAt: now,
       },

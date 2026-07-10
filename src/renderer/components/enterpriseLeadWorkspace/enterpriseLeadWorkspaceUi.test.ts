@@ -3963,4 +3963,68 @@ describe('createWorkspaceFromUploadedMaterials', () => {
     };
     expect(arg.extractionSources?.[0]?.label).toBe('first.pdf');
   });
+
+  test('marks image-only sources as extracted and indexed so the UI does not show pending forever', async () => {
+    const createWorkspace = vi.fn(async () => ({ success: true, data: buildWorkspace([]) }));
+    stubWindow({ createWorkspace });
+
+    await createWorkspaceFromUploadedMaterials({
+      workspaceName: 'ws',
+      items: [
+        { id: 'img', filePath: '/p/photo.png', fileName: 'photo.png', fileSize: 50, kind: 'image' },
+      ],
+      onCreated: vi.fn(),
+      service: enterpriseLeadWorkspaceService,
+    });
+
+    const arg = createWorkspace.mock.calls[0]?.[0] as {
+      source?: {
+        extractionStatus?: string;
+        vectorIndexStatus?: string;
+      };
+      extractionSources?: Array<{
+        extractionStatus?: string;
+        vectorIndexStatus?: string;
+      }>;
+    };
+
+    expect(arg.source?.extractionStatus).toBe('extracted');
+    expect(arg.source?.vectorIndexStatus).toBe('indexed');
+    expect(arg.extractionSources?.[0]?.extractionStatus).toBe('extracted');
+    expect(arg.extractionSources?.[0]?.vectorIndexStatus).toBe('indexed');
+  });
+
+  test('keeps pending status only for sources that have text in a mixed upload list', async () => {
+    const createWorkspace = vi.fn(async () => ({ success: true, data: buildWorkspace([]) }));
+    stubWindow({ createWorkspace });
+
+    await createWorkspaceFromUploadedMaterials({
+      workspaceName: 'ws',
+      items: [
+        { id: 'a', filePath: '/p/a.pdf', fileName: 'a.pdf', fileSize: 100, kind: 'file', text: '主营' },
+        { id: 'b', filePath: '/p/b.png', fileName: 'b.png', fileSize: 50, kind: 'image' },
+      ],
+      onCreated: vi.fn(),
+      service: enterpriseLeadWorkspaceService,
+    });
+
+    const arg = createWorkspace.mock.calls[0]?.[0] as {
+      source?: {
+        extractionStatus?: string;
+        vectorIndexStatus?: string;
+      };
+      extractionSources?: Array<{
+        kind?: string;
+        extractionStatus?: string;
+        vectorIndexStatus?: string;
+      }>;
+    };
+
+    expect(arg.source?.extractionStatus).toBe('pending');
+    expect(arg.source?.vectorIndexStatus).toBe('pending');
+    expect(arg.extractionSources?.[0]?.extractionStatus).toBe('pending');
+    expect(arg.extractionSources?.[0]?.vectorIndexStatus).toBe('pending');
+    expect(arg.extractionSources?.[1]?.extractionStatus).toBe('extracted');
+    expect(arg.extractionSources?.[1]?.vectorIndexStatus).toBe('indexed');
+  });
 });
