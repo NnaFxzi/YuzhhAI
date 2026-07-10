@@ -255,7 +255,7 @@ const extractPdfText = async (filePath: string, size: number): Promise<Extracted
   ensureRichDocumentSize(filePath, size);
   const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
   if (!pdfjs.GlobalWorkerOptions.workerSrc) {
-    const requireForWorker = createRequire(import.meta.url);
+    const requireForWorker = createRequire(__filename);
     pdfjs.GlobalWorkerOptions.workerSrc = requireForWorker.resolve(
       'pdfjs-dist/build/pdf.worker.min.mjs',
     );
