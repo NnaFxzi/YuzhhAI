@@ -1,4 +1,5 @@
 import fs from 'node:fs/promises';
+import { createRequire } from 'node:module';
 import path from 'node:path';
 
 import JSZip from 'jszip';
@@ -253,6 +254,12 @@ const hasTextItemString = (item: unknown): item is { str: string } =>
 const extractPdfText = async (filePath: string, size: number): Promise<ExtractedDocumentText> => {
   ensureRichDocumentSize(filePath, size);
   const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+  if (!pdfjs.GlobalWorkerOptions.workerSrc) {
+    const requireForWorker = createRequire(import.meta.url);
+    pdfjs.GlobalWorkerOptions.workerSrc = requireForWorker.resolve(
+      'pdfjs-dist/build/pdf.worker.min.mjs',
+    );
+  }
   const buffer = await fs.readFile(filePath);
   const loadingTask = pdfjs.getDocument({
     data: new Uint8Array(buffer),

@@ -14,6 +14,7 @@ import {
   EnterpriseLeadReadableDocumentExtensions,
   EnterpriseLeadResearchCapabilityId,
   EnterpriseLeadSkillCapabilityId,
+  EnterpriseLeadSourceDocumentFileFilterExtensions,
   EnterpriseLeadTaskStatus,
   type EnterpriseLeadTaskStatus as EnterpriseLeadTaskStatusType,
   EnterpriseLeadWorkspaceType,
@@ -73,12 +74,8 @@ export const ENTERPRISE_LEAD_MATERIAL_ACCEPT_EXTENSIONS = [
 
 export const ENTERPRISE_LEAD_MATERIAL_DIALOG_FILTERS = [
   {
-    name: 'enterpriseLeadMaterialFilterDocuments',
-    extensions: [...EnterpriseLeadReadableDocumentExtensions],
-  },
-  {
-    name: 'enterpriseLeadMaterialFilterImages',
-    extensions: [...EnterpriseLeadImageAttachmentExtensions],
+    name: 'enterpriseLeadMaterialFilterSupported',
+    extensions: [...EnterpriseLeadSourceDocumentFileFilterExtensions],
   },
   {
     name: 'enterpriseLeadMaterialFilterAllFiles',

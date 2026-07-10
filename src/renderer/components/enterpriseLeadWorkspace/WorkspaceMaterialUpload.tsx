@@ -33,7 +33,7 @@ type RejectReason = 'oversize' | 'unsupported' | 'read';
 
 type BuildResult =
   | { kind: 'ok'; item: MaterialUploadItem }
-  | { kind: 'rejected'; reason: RejectReason; name: string; ext?: string };
+  | { kind: 'rejected'; reason: RejectReason; name: string; ext?: string; detail?: string };
 
 const t = (key: string, params?: Record<string, string>): string => {
   const raw = i18nService.t(key);
@@ -129,7 +129,7 @@ const buildItemFromPath = async (
   if (READABLE_EXTENSIONS.has(extension) && typeof dialogApi.readTextFile === 'function') {
     const readResult = await dialogApi.readTextFile(filePath);
     if (!readResult.success) {
-      return { kind: 'rejected', reason: 'read', name: filePath };
+      return { kind: 'rejected', reason: 'read', name: filePath, detail: readResult.error };
     }
     return {
       kind: 'ok',
@@ -176,7 +176,8 @@ const rejectionToMessage = (rejection: Extract<BuildResult, { kind: 'rejected' }
   if (rejection.reason === 'unsupported') {
     return t('enterpriseLeadMaterialUnsupportedType', { ext: rejection.ext ?? '' });
   }
-  return t('enterpriseLeadMaterialReadFailed', { name: rejection.name });
+  const base = t('enterpriseLeadMaterialReadFailed', { name: rejection.name });
+  return rejection.detail ? `${base}: ${rejection.detail}` : base;
 };
 
 export const WorkspaceMaterialUpload: React.FC<WorkspaceMaterialUploadProps> = ({
