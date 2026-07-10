@@ -93,6 +93,8 @@ export interface MaterialUploadItem {
     | typeof EnterpriseLeadExtractionSourceKind.Image;
   text?: string;
   truncated?: boolean;
+  ocrProgress?: number;
+  ocrError?: string;
 }
 
 export const EnterpriseLeadWorkspaceShellMode = {
@@ -406,7 +408,21 @@ export interface CreateWorkspaceFromUploadedMaterialsInput {
   settings?: EnterpriseLeadWorkspaceSettings;
   onCreated: (workspaceId: string) => void;
   service?: UploadedMaterialsService;
+  ocrService?: CreateWorkspaceFromUploadedMaterialsOcrService;
+  onOcrProgress?: (payload: { fileName: string; progress: number; itemId: string }) => void;
 }
+
+export interface CreateWorkspaceFromUploadedMaterialsOcrService {
+  extractImageText: (filePath: string) => Promise<{
+    success: boolean;
+    content?: string;
+    error?: string;
+  }>;
+}
+
+const isImageMaterialKind = (
+  kind: MaterialUploadItem['kind'],
+): boolean => kind === EnterpriseLeadExtractionSourceKind.Image;
 
 export const createWorkspaceFromUploadedMaterials = async ({
   workspaceName,
@@ -414,11 +430,64 @@ export const createWorkspaceFromUploadedMaterials = async ({
   settings,
   onCreated,
   service = enterpriseLeadWorkspaceService,
+  ocrService,
+  onOcrProgress,
 }: CreateWorkspaceFromUploadedMaterialsInput): Promise<EnterpriseLeadWorkspace | null> => {
   const now = new Date().toISOString();
-  const primaryItem = items[0];
+
+  const resolvedItems: MaterialUploadItem[] = await Promise.all(
+    items.map(async (item): Promise<MaterialUploadItem> => {
+      if (!isImageMaterialKind(item.kind)) {
+        return item;
+      }
+      const existingText = item.text?.trim();
+      if (existingText) {
+        return item;
+      }
+      if (!ocrService) {
+        return item;
+      }
+      let progressListener: ((progress: number) => void) | null = null;
+      let unsubscribeProgress: (() => void) | null = null;
+      const dialogApi =
+        typeof window !== 'undefined' ? window.electron?.dialog : undefined;
+      if (onOcrProgress && dialogApi?.onExtractImageTextProgress) {
+        const progressApi = dialogApi.onExtractImageTextProgress;
+        progressListener = (progress: number): void => {
+          onOcrProgress({
+            fileName: item.fileName,
+            itemId: item.id,
+            progress,
+          });
+        };
+        unsubscribeProgress = progressApi(payload => {
+          if (payload.filePath !== item.filePath) {
+            return;
+          }
+          progressListener?.(payload.progress);
+        });
+      }
+      try {
+        const result = await ocrService.extractImageText(item.filePath);
+        const extractedText = result.success ? result.content?.trim() : undefined;
+        if (extractedText) {
+          return { ...item, text: extractedText, truncated: false };
+        }
+        return item;
+      } catch (error) {
+        console.warn('[EnterpriseLeadWorkspace] OCR failed for', item.fileName, error);
+        return item;
+      } finally {
+        unsubscribeProgress?.();
+        progressListener = null;
+      }
+    }),
+  );
+
   const fallbackLabel =
-    primaryItem?.fileName?.trim() || primaryItem?.filePath || workspaceName.trim();
+    resolvedItems[0]?.fileName?.trim() ||
+    resolvedItems[0]?.filePath ||
+    workspaceName.trim();
 
   const baseDraft = buildManualEnterpriseLeadWorkspaceDraft({
     name: workspaceName,
@@ -427,7 +496,7 @@ export const createWorkspaceFromUploadedMaterials = async ({
     settings,
   });
 
-  const extractionSources: EnterpriseLeadExtractionSource[] = items.map(item => {
+  const extractionSources: EnterpriseLeadExtractionSource[] = resolvedItems.map(item => {
     const hasText = Boolean(item.text?.trim());
     return {
       kind: item.kind,
@@ -453,19 +522,20 @@ export const createWorkspaceFromUploadedMaterials = async ({
 
   let workspace: EnterpriseLeadWorkspace | null = null;
   try {
-    const primaryHasText = Boolean(primaryItem?.text?.trim());
+    const primaryResolvedItem = resolvedItems[0];
+    const primaryHasText = Boolean(primaryResolvedItem?.text?.trim());
     workspace = await service.createWorkspace({
       ...baseDraft,
       source: {
-        kind: primaryItem?.kind ?? EnterpriseLeadExtractionSourceKind.File,
+        kind: primaryResolvedItem?.kind ?? EnterpriseLeadExtractionSourceKind.File,
         label: fallbackLabel,
-        filePath: primaryItem?.filePath,
-        fileName: primaryItem?.fileName,
+        filePath: primaryResolvedItem?.filePath,
+        fileName: primaryResolvedItem?.fileName,
         fileSize:
-          typeof primaryItem?.fileSize === 'number' && primaryItem.fileSize > 0
-            ? primaryItem.fileSize
+          typeof primaryResolvedItem?.fileSize === 'number' && primaryResolvedItem.fileSize > 0
+            ? primaryResolvedItem.fileSize
             : undefined,
-        text: primaryItem?.text?.trim() || undefined,
+        text: primaryResolvedItem?.text?.trim() || undefined,
         ...(primaryHasText
           ? {
               extractionStatus: EnterpriseLeadDocumentExtractionStatus.Pending,

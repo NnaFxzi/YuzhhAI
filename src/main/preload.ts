@@ -798,6 +798,18 @@ contextBridge.exposeInMainWorld('electron', {
       ipcRenderer.invoke('dialog:readFileAsDataUrl', filePath),
     statFile: (filePath: string) => ipcRenderer.invoke(DialogIpc.StatFile, filePath),
     readTextFile: (filePath: string) => ipcRenderer.invoke(DialogIpc.ReadTextFile, filePath),
+    extractImageText: (filePath: string) =>
+      ipcRenderer.invoke('dialog:extractImageText', filePath),
+    onExtractImageTextProgress: (
+      listener: (payload: { filePath: string; progress: number }) => void,
+    ) => {
+      const handler = (
+        _event: Electron.IpcRendererEvent,
+        payload: { filePath: string; progress: number },
+      ): void => listener(payload);
+      ipcRenderer.on('dialog:extractImageText:progress', handler);
+      return () => ipcRenderer.off('dialog:extractImageText:progress', handler);
+    },
     generateThumbnail: (filePath: string) =>
       ipcRenderer.invoke('dialog:generateThumbnail', filePath),
     showMessageBox: (options: {

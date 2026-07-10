@@ -1,3 +1,6 @@
+import type { AgentResponseContract } from '@shared/agent';
+import type { Platform } from '@shared/platform';
+
 import type { OpenClawSessionPatch } from '../../common/openclawSession';
 import type {
   DomesticResearchConfig,
@@ -82,9 +85,6 @@ import type {
   OpenClawGatewayRepairErrorCode,
 } from '../../shared/openclawEngine/constants';
 import type { ShellOpenFailureReason } from '../../shared/shell/constants';
-import type { AgentResponseContract } from '@shared/agent';
-import type { Platform } from '@shared/platform';
-
 import type { Agent, PresetAgent } from './agent';
 
 interface ApiResponse {
@@ -1192,6 +1192,15 @@ interface IElectronAPI {
       parser?: string;
       error?: string;
     }>;
+    extractImageText: (filePath: string) => Promise<{
+      success: boolean;
+      content?: string;
+      parser?: string;
+      error?: string;
+    }>;
+    onExtractImageTextProgress: (
+      callback: (payload: { filePath: string; progress: number }) => void,
+    ) => () => void;
     generateThumbnail: (
       filePath: string,
     ) => Promise<{ success: boolean; dataUrl?: string; error?: string }>;

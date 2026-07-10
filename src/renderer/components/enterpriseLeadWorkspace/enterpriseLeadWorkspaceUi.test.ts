@@ -4027,4 +4027,124 @@ describe('createWorkspaceFromUploadedMaterials', () => {
     expect(arg.extractionSources?.[1]?.extractionStatus).toBe('extracted');
     expect(arg.extractionSources?.[1]?.vectorIndexStatus).toBe('indexed');
   });
+
+  test('runs OCR on image items without pre-existing text and uses the result as source text', async () => {
+    const createWorkspace = vi.fn(async () => ({ success: true, data: buildWorkspace([]) }));
+    stubWindow({ createWorkspace });
+
+    const extractImageText = vi.fn(async (filePath: string) => ({
+      success: true,
+      content: filePath.includes('photo') ? 'ocr transcription for photo' : 'ocr transcription',
+    }));
+    const ocrService = { extractImageText };
+    const onOcrProgress = vi.fn();
+
+    const items: MaterialUploadItem[] = [
+      {
+        id: 'img-1',
+        filePath: '/p/photo.png',
+        fileName: 'photo.png',
+        fileSize: 1024,
+        kind: 'image',
+      },
+    ];
+
+    await createWorkspaceFromUploadedMaterials({
+      workspaceName: 'ws',
+      items,
+      onCreated: vi.fn(),
+      service: enterpriseLeadWorkspaceService,
+      ocrService,
+      onOcrProgress,
+    });
+
+    expect(extractImageText).toHaveBeenCalledTimes(1);
+    expect(extractImageText).toHaveBeenCalledWith('/p/photo.png');
+
+    const arg = createWorkspace.mock.calls[0]?.[0] as {
+      extractionSources?: Array<{ text?: string }>;
+    };
+    expect(arg.extractionSources?.[0]?.text).toBe('ocr transcription for photo');
+  });
+
+  test('skips OCR when the image item already has text', async () => {
+    const createWorkspace = vi.fn(async () => ({ success: true, data: buildWorkspace([]) }));
+    stubWindow({ createWorkspace });
+
+    const extractImageText = vi.fn(async () => ({ success: true, content: 'ignored' }));
+    const ocrService = { extractImageText };
+
+    await createWorkspaceFromUploadedMaterials({
+      workspaceName: 'ws',
+      items: [
+        {
+          id: 'img-existing',
+          filePath: '/p/existing.png',
+          fileName: 'existing.png',
+          fileSize: 1024,
+          kind: 'image',
+          text: 'already extracted text',
+        },
+      ],
+      onCreated: vi.fn(),
+      service: enterpriseLeadWorkspaceService,
+      ocrService,
+    });
+
+    expect(extractImageText).not.toHaveBeenCalled();
+  });
+
+  test('falls back to attachment-only when OCR fails', async () => {
+    const createWorkspace = vi.fn(async () => ({ success: true, data: buildWorkspace([]) }));
+    stubWindow({ createWorkspace });
+
+    const extractImageText = vi.fn(async () => ({
+      success: false,
+      error: 'OCR unavailable',
+    }));
+    const ocrService = { extractImageText };
+
+    await createWorkspaceFromUploadedMaterials({
+      workspaceName: 'ws',
+      items: [
+        {
+          id: 'img-fail',
+          filePath: '/p/fail.png',
+          fileName: 'fail.png',
+          fileSize: 2048,
+          kind: 'image',
+        },
+      ],
+      onCreated: vi.fn(),
+      service: enterpriseLeadWorkspaceService,
+      ocrService,
+    });
+
+    expect(extractImageText).toHaveBeenCalledTimes(1);
+    const arg = createWorkspace.mock.calls[0]?.[0] as {
+      extractionSources?: Array<{ text?: string; extractionStatus?: string }>;
+    };
+    expect(arg.extractionSources?.[0]?.text).toBeUndefined();
+    expect(arg.extractionSources?.[0]?.extractionStatus).toBe('extracted');
+  });
+
+  test('does not call OCR for non-image items', async () => {
+    const createWorkspace = vi.fn(async () => ({ success: true, data: buildWorkspace([]) }));
+    stubWindow({ createWorkspace });
+
+    const extractImageText = vi.fn(async () => ({ success: true, content: 'should not run' }));
+    const ocrService = { extractImageText };
+
+    await createWorkspaceFromUploadedMaterials({
+      workspaceName: 'ws',
+      items: [
+        { id: 'txt', filePath: '/p/a.txt', fileName: 'a.txt', fileSize: 10, kind: 'file', text: 'plain text content' },
+      ],
+      onCreated: vi.fn(),
+      service: enterpriseLeadWorkspaceService,
+      ocrService,
+    });
+
+    expect(extractImageText).not.toHaveBeenCalled();
+  });
 });

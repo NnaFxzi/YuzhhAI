@@ -265,7 +265,7 @@ import {
   performDataMigrationRestoreSync,
   performPendingDataMigrationRestoreSync,
 } from './libs/dataMigration/dataMigrationService';
-import { extractDocumentTextFromFile } from './libs/documentTextExtractor';
+import { extractDocumentTextFromFile, extractImageText } from './libs/documentTextExtractor';
 import {
   getHtmlSharePublicBaseUrl,
   getKitStoreUrl,
@@ -10210,6 +10210,45 @@ if (!gotTheLock) {
         return {
           success: false,
           error: error instanceof Error ? error.message : 'Failed to read file',
+        };
+      }
+    },
+  );
+
+  ipcMain.handle(
+    'dialog:extractImageText',
+    async (
+      event,
+      filePath?: string,
+    ): Promise<{
+      success: boolean;
+      content?: string;
+      parser?: string;
+      error?: string;
+    }> => {
+      try {
+        if (typeof filePath !== 'string' || !filePath.trim()) {
+          return { success: false, error: 'Missing file path' };
+        }
+        const webContents = event.sender;
+        const result = await extractImageText(filePath, {
+          onProgress: progress => {
+            try {
+              void webContents.send('dialog:extractImageText:progress', { filePath, progress });
+            } catch (sendError) {
+              console.warn('[dialog] failed to forward OCR progress', sendError);
+            }
+          },
+        });
+        return {
+          success: true,
+          content: result.content,
+          parser: result.parser,
+        };
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed to OCR image',
         };
       }
     },

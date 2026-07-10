@@ -219,11 +219,27 @@ export const WorkspaceCreate: React.FC<WorkspaceCreateProps> = ({ onCreated, onC
 
     setIsCreating(true);
     setError([]);
+    const dialogApi = window.electron?.dialog;
+    const ocrService = dialogApi?.extractImageText
+      ? {
+          extractImageText: (filePath: string) => dialogApi.extractImageText(filePath),
+        }
+      : undefined;
     void createWorkspaceFromUploadedMaterials({
       workspaceName: workspaceDisplayName,
       items: materials,
       settings: buildEnterpriseLeadWorkspaceSettingsFromCurrentConfig(),
       onCreated,
+      ocrService,
+      onOcrProgress: ({ itemId, progress }) => {
+        setMaterials(current =>
+          current.map(item =>
+            item.id === itemId
+              ? { ...item, ocrProgress: Math.max(0, Math.min(1, progress)) }
+              : item,
+          ),
+        );
+      },
     })
       .then(workspace => {
         if (!workspace) {
@@ -235,6 +251,13 @@ export const WorkspaceCreate: React.FC<WorkspaceCreateProps> = ({ onCreated, onC
       })
       .finally(() => {
         setIsCreating(false);
+        setMaterials(current =>
+          current.map(item =>
+            item.kind === 'image' && item.ocrProgress !== undefined
+              ? { ...item, ocrProgress: item.text ? 1 : 0 }
+              : item,
+          ),
+        );
       });
   };
 

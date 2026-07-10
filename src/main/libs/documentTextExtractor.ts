@@ -15,7 +15,23 @@ export const MAX_DOCUMENT_TEXT_READ_BYTES = 2 * 1024 * 1024;
 export const MAX_EXTRACTED_DOCUMENT_TEXT_CHARS = 2 * 1024 * 1024;
 export const MAX_RICH_DOCUMENT_BYTES = 50 * 1024 * 1024;
 
-export type DocumentTextParser = 'text' | 'docx' | 'xlsx' | 'pdf' | 'pptx';
+export type DocumentTextParser = 'text' | 'docx' | 'xlsx' | 'pdf' | 'pptx' | 'image';
+
+const HEIC_IMAGE_EXTENSIONS = new Set(['.heic', '.heif']);
+
+const OCR_IMAGE_EXTENSIONS = new Set([
+  '.png',
+  '.jpg',
+  '.jpeg',
+  '.webp',
+  '.gif',
+  '.bmp',
+  '.tif',
+  '.tiff',
+  ...HEIC_IMAGE_EXTENSIONS,
+]);
+
+export const SUPPORTED_OCR_LANGUAGES = ['eng', 'chi_sim'] as const;
 
 export interface ExtractedDocumentText {
   content: string;
@@ -295,6 +311,81 @@ const extractPdfText = async (filePath: string, size: number): Promise<Extracted
   }
 };
 
+const convertHeicToPng = async (filePath: string): Promise<Buffer> => {
+  const heic2anyModule = await import('heic2any');
+  const heic2any = (heic2anyModule.default ?? heic2anyModule) as unknown as (
+    options: { blob: Blob; toType?: string },
+  ) => Promise<Blob | Blob[]>;
+  const buffer = await fs.readFile(filePath);
+  const sourceBlob = new Blob([new Uint8Array(buffer)]);
+  const converted = await heic2any({
+    blob: sourceBlob,
+    toType: 'image/png',
+  });
+  const blob = Array.isArray(converted) ? converted[0] : converted;
+  if (!blob) {
+    throw new Error('heic2any returned empty result');
+  }
+  return Buffer.from(await blob.arrayBuffer());
+};
+
+export interface ExtractImageTextOptions {
+  onProgress?: (progress: number) => void;
+}
+
+export const extractImageText = async (
+  filePath: string,
+  options: ExtractImageTextOptions = {},
+): Promise<ExtractedDocumentText> => {
+  const normalizedPath = path.resolve(filePath.trim());
+  const stat = await fs.stat(normalizedPath);
+  if (!stat.isFile()) {
+    throw new Error('Not a file');
+  }
+  ensureRichDocumentSize(normalizedPath, stat.size);
+
+  const extension = getNormalizedExtension(normalizedPath);
+  const imageBuffer = HEIC_IMAGE_EXTENSIONS.has(extension)
+    ? await convertHeicToPng(normalizedPath)
+    : await fs.readFile(normalizedPath);
+
+  const requireForWorker = createRequire(__filename);
+  const tesseractModule = await import('tesseract.js');
+  const tesseract = (
+    tesseractModule as unknown as { default?: typeof tesseractModule } & typeof tesseractModule
+  ).default ?? tesseractModule;
+  const worker = await tesseract.createWorker(
+    [...SUPPORTED_OCR_LANGUAGES],
+    1,
+    {
+      workerPath: requireForWorker.resolve('tesseract.js/dist/worker.min.js'),
+      corePath: requireForWorker.resolve('tesseract.js-core/tesseract-core.wasm.js'),
+      logger: options.onProgress
+        ? (message: { status?: string; progress?: number }) => {
+            if (message.status === 'recognizing text' && typeof message.progress === 'number') {
+              options.onProgress(message.progress);
+            }
+          }
+        : undefined,
+    },
+  );
+
+  try {
+    const result = await worker.recognize(imageBuffer);
+    const rawContent = typeof result?.data?.text === 'string' ? result.data.text : '';
+    const content = rawContent.trim();
+    return {
+      content,
+      parser: 'image',
+      size: stat.size,
+      readBytes: stat.size,
+      truncated: content.length >= MAX_EXTRACTED_DOCUMENT_TEXT_CHARS,
+    };
+  } finally {
+    await worker.terminate();
+  }
+};
+
 export const extractDocumentTextFromFile = async (
   filePath: string,
 ): Promise<ExtractedDocumentText> => {
@@ -322,6 +413,9 @@ export const extractDocumentTextFromFile = async (
   }
   if (extension === dotExtension(EnterpriseLeadReadableDocumentExtension.Pptx)) {
     return extractPptxText(normalizedPath, stat.size);
+  }
+  if (OCR_IMAGE_EXTENSIONS.has(extension)) {
+    return extractImageText(normalizedPath);
   }
 
   throw new Error(`Unsupported readable document type: ${extension || 'unknown'}`);

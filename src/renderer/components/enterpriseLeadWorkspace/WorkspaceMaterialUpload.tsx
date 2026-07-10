@@ -315,33 +315,63 @@ export const WorkspaceMaterialUpload: React.FC<WorkspaceMaterialUploadProps> = (
 
       {items.length > 0 && (
         <ul className="grid gap-1.5 rounded-lg border border-border bg-surface px-3 py-2">
-          {items.map(item => (
-            <li
-              key={item.id}
-              className="grid grid-cols-[20px_minmax(0,1fr)_auto_auto] items-center gap-2 text-xs"
-            >
-              <span className="text-secondary">{getFileIcon(item)}</span>
-              <span className="truncate text-foreground" title={item.fileName}>
-                {getBaseName(item.fileName)}
-                <span className="text-secondary">.{getExtension(item.fileName)}</span>
-                {item.truncated && (
-                  <span className="ml-2 rounded bg-amber-500/15 px-1 text-amber-700 dark:text-amber-300">
-                    {t('enterpriseLeadMaterialListTruncated')}
-                  </span>
-                )}
-              </span>
-              <span className="text-secondary">{formatBytes(item.fileSize)}</span>
-              <button
-                type="button"
-                onClick={() => handleRemove(item.id)}
-                disabled={disabled}
-                aria-label={`Remove ${item.fileName}`}
-                className="grid h-6 w-6 place-items-center rounded text-secondary hover:bg-surface-raised hover:text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-50"
+          {items.map(item => {
+            const showOcrProgress =
+              item.kind === 'image' &&
+              typeof item.ocrProgress === 'number' &&
+              item.ocrProgress >= 0 &&
+              item.ocrProgress < 1 &&
+              !item.text;
+            const percentText = showOcrProgress
+              ? t('enterpriseLeadMaterialOcrProgressLabel', {
+                  percent: String(Math.round((item.ocrProgress ?? 0) * 100)),
+                })
+              : '';
+            return (
+              <li
+                key={item.id}
+                className="grid grid-cols-[20px_minmax(0,1fr)_auto_auto] items-center gap-2 text-xs"
               >
-                <XMarkIcon className="h-3.5 w-3.5" />
-              </button>
-            </li>
-          ))}
+                <span className="text-secondary">{getFileIcon(item)}</span>
+                <span className="truncate text-foreground" title={item.fileName}>
+                  {getBaseName(item.fileName)}
+                  <span className="text-secondary">.{getExtension(item.fileName)}</span>
+                  {item.truncated && (
+                    <span className="ml-2 rounded bg-amber-500/15 px-1 text-amber-700 dark:text-amber-300">
+                      {t('enterpriseLeadMaterialListTruncated')}
+                    </span>
+                  )}
+                  {item.kind === 'image' && item.text && (
+                    <span className="ml-2 rounded bg-emerald-500/15 px-1 text-emerald-700 dark:text-emerald-300">
+                      {t('enterpriseLeadMaterialOcrComplete')}
+                    </span>
+                  )}
+                </span>
+                {showOcrProgress ? (
+                  <span className="flex items-center gap-2 text-secondary" aria-live="polite">
+                    <span className="h-1 w-16 overflow-hidden rounded-full bg-surface-raised">
+                      <span
+                        className="block h-full bg-primary transition-all"
+                        style={{ width: `${Math.round((item.ocrProgress ?? 0) * 100)}%` }}
+                      />
+                    </span>
+                    <span className="tabular-nums">{percentText}</span>
+                  </span>
+                ) : (
+                  <span className="text-secondary">{formatBytes(item.fileSize)}</span>
+                )}
+                <button
+                  type="button"
+                  onClick={() => handleRemove(item.id)}
+                  disabled={disabled}
+                  aria-label={`Remove ${item.fileName}`}
+                  className="grid h-6 w-6 place-items-center rounded text-secondary hover:bg-surface-raised hover:text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <XMarkIcon className="h-3.5 w-3.5" />
+                </button>
+              </li>
+            );
+          })}
         </ul>
       )}
 
