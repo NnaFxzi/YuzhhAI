@@ -37,9 +37,11 @@ import authReducer from '../../store/slices/authSlice';
 import modelReducer from '../../store/slices/modelSlice';
 import skillReducer from '../../store/slices/skillSlice';
 import type { Skill } from '../../types/skill';
+import type { MaterialUploadItem } from './enterpriseLeadWorkspaceUi';
 import {
   buildCreationRecordConversationMessages,
   buildManualEnterpriseLeadWorkspaceDraft,
+  createWorkspaceFromUploadedMaterials,
   EnterpriseLeadEntryAction,
   EnterpriseLeadKnowledgeItemKind,
   EnterpriseLeadKnowledgeSection,
@@ -3812,5 +3814,153 @@ describe('enterprise lead workspace UI helpers', () => {
 
     expect(onSaved).not.toHaveBeenCalled();
     expect(onError).not.toHaveBeenCalled();
+  });
+});
+
+const stubWindow = (api: Record<string, unknown>): void => {
+  vi.stubGlobal('window', { electron: { enterpriseLeadWorkspace: api } });
+};
+
+const buildWorkspace = (
+  sources: Array<{ kind: string; label: string; text?: string }>,
+): unknown => ({
+  id: 'ws-1',
+  name: '华东线索',
+  type: 'enterprise_lead',
+  profile: {
+    companySummary: '',
+    productList: [],
+    productCapabilities: [],
+    targetCustomers: [],
+    applicationScenarios: [],
+    sellingPoints: [],
+    channelPreferences: [],
+    prohibitedClaims: [],
+    contactRules: [],
+    missingInfo: [],
+  },
+  extractionSources: sources.map((s, i) => ({ id: `s-${i}`, ...s })),
+  riskRules: [],
+  enabledAgentRoles: [],
+  workspaceAgents: [],
+  settings: {},
+  recentRunId: null,
+  createdAt: '2026-07-10T00:00:00.000Z',
+  updatedAt: '2026-07-10T00:00:00.000Z',
+});
+
+describe('createWorkspaceFromUploadedMaterials', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  test('creates a workspace with all materials as separate extractionSources', async () => {
+    const createWorkspace = vi.fn(async () => ({ success: true, data: buildWorkspace([]) }));
+    stubWindow({ createWorkspace });
+
+    const items: MaterialUploadItem[] = [
+      { id: 'a', filePath: '/p/a.pdf', fileName: 'a.pdf', fileSize: 100, kind: 'file', text: '主营' },
+      { id: 'b', filePath: '/p/b.png', fileName: 'b.png', fileSize: 50, kind: 'image' },
+    ];
+
+    const onCreated = vi.fn();
+    await createWorkspaceFromUploadedMaterials({
+      workspaceName: 'ws',
+      items,
+      onCreated,
+      service: enterpriseLeadWorkspaceService,
+    });
+
+    expect(createWorkspace).toHaveBeenCalledTimes(1);
+    const arg = createWorkspace.mock.calls[0]?.[0] as { extractionSources?: unknown[] };
+    expect(Array.isArray(arg.extractionSources)).toBe(true);
+    expect(arg.extractionSources).toHaveLength(2);
+    expect(onCreated).toHaveBeenCalledWith('ws-1');
+  });
+
+  test('processes each source that has text; swallows per-source failures', async () => {
+    const created = buildWorkspace([
+      { kind: 'file', label: 'a', text: 'foo' },
+      { kind: 'image', label: 'b' },
+    ]);
+    const createWorkspace = vi.fn(async () => ({ success: true, data: created }));
+    const processDocumentSource = vi.fn(async () => ({ success: true, data: created }));
+    stubWindow({ createWorkspace, processDocumentSource });
+
+    const consoleWarn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    await createWorkspaceFromUploadedMaterials({
+      workspaceName: 'ws',
+      items: [
+        { id: 'a', filePath: '/p/a', fileName: 'a', fileSize: 1, kind: 'file', text: 'foo' },
+        { id: 'b', filePath: '/p/b', fileName: 'b', fileSize: 1, kind: 'image' },
+      ],
+      onCreated: vi.fn(),
+      service: enterpriseLeadWorkspaceService,
+    });
+
+    // Only the source with text triggers processing
+    expect(processDocumentSource).toHaveBeenCalledTimes(1);
+    expect(processDocumentSource).toHaveBeenCalledWith('ws-1', expect.any(Array), 0);
+
+    // Now confirm the swallowed-failure path
+    processDocumentSource.mockRejectedValueOnce(new Error('boom'));
+    await createWorkspaceFromUploadedMaterials({
+      workspaceName: 'ws',
+      items: [
+        { id: 'c', filePath: '/p/c', fileName: 'c', fileSize: 1, kind: 'file', text: 'bar' },
+      ],
+      onCreated: vi.fn(),
+      service: enterpriseLeadWorkspaceService,
+    });
+    await new Promise<void>(resolve => queueMicrotask(() => resolve()));
+    expect(consoleWarn).toHaveBeenCalledWith(
+      expect.stringContaining('Failed to queue uploaded material processing'),
+      expect.any(Error),
+    );
+  });
+
+  test('returns null and skips onCreated when createWorkspace reports failure', async () => {
+    const createWorkspace = vi.fn(async () => ({ success: false, error: 'db down' }));
+    stubWindow({ createWorkspace });
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    const onCreated = vi.fn();
+    const result = await createWorkspaceFromUploadedMaterials({
+      workspaceName: 'ws',
+      items: [
+        { id: 'a', filePath: '/p/a', fileName: 'a', fileSize: 1, kind: 'file', text: 'x' },
+      ],
+      onCreated,
+      service: enterpriseLeadWorkspaceService,
+    });
+
+    expect(result).toBeNull();
+    expect(onCreated).not.toHaveBeenCalled();
+    expect(consoleError).toHaveBeenCalledWith(
+      expect.stringContaining('createWorkspace failed'),
+      'db down',
+    );
+  });
+
+  test('first item label is used as the seed sourceLabel fallback', async () => {
+    const createWorkspace = vi.fn(async () => ({ success: true, data: buildWorkspace([]) }));
+    stubWindow({ createWorkspace });
+
+    await createWorkspaceFromUploadedMaterials({
+      workspaceName: 'ws',
+      items: [
+        { id: 'first', filePath: '/p/first', fileName: 'first.pdf', fileSize: 1, kind: 'file', text: 'x' },
+      ],
+      onCreated: vi.fn(),
+      service: enterpriseLeadWorkspaceService,
+    });
+
+    const arg = createWorkspace.mock.calls[0]?.[0] as {
+      source?: { label?: string };
+      extractionSources?: Array<{ label?: string }>;
+    };
+    expect(arg.extractionSources?.[0]?.label).toBe('first.pdf');
   });
 });
