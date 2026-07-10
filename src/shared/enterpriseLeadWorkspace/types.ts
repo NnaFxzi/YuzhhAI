@@ -105,6 +105,7 @@ export interface EnterpriseLeadWorkspaceDraft {
   type: EnterpriseLeadWorkspaceType | string;
   profile: EnterpriseLeadWorkspaceProfile;
   source: EnterpriseLeadExtractionSource;
+  extractionSources?: EnterpriseLeadExtractionSource[];
   enabledAgentRoles: Array<EnterpriseLeadAgentRole | string>;
   settings?: EnterpriseLeadWorkspaceSettings;
   workspaceAgents: EnterpriseLeadWorkspaceAgentBinding[];
