@@ -20,6 +20,15 @@ export const EnterpriseLeadAgentRole = {
   SocialCopy: 'social_copy',
   PrivateDomainConversion: 'private_domain_conversion',
   ContentQuality: 'content_quality',
+  PromotionController: 'promotion_controller',
+  PromotionDataScraping: 'promotion_data_scraping',
+  PromotionDataCleaning: 'promotion_data_cleaning',
+  PromotionCompetitorInsight: 'promotion_competitor_insight',
+  PromotionLeadScoring: 'promotion_lead_scoring',
+  PromotionMultiPlatformAssets: 'promotion_multi_platform_assets',
+  PromotionPublishingSchedule: 'promotion_publishing_schedule',
+  PromotionAccountMonitoring: 'promotion_account_monitoring',
+  PromotionPerformanceReview: 'promotion_performance_review',
   Controller: 'controller',
   ProductUnderstanding: 'product_understanding',
   OpportunityRadar: 'opportunity_radar',
@@ -101,7 +110,8 @@ export const EnterpriseLeadTodoKind = {
   ReviewRisk: 'review_risk',
   ConfirmSource: 'confirm_source',
 } as const;
-export type EnterpriseLeadTodoKind = (typeof EnterpriseLeadTodoKind)[keyof typeof EnterpriseLeadTodoKind];
+export type EnterpriseLeadTodoKind =
+  (typeof EnterpriseLeadTodoKind)[keyof typeof EnterpriseLeadTodoKind];
 
 export const EnterpriseLeadDeliverableKind = {
   ProductProfile: 'product_profile',
@@ -113,6 +123,11 @@ export const EnterpriseLeadDeliverableKind = {
   SalesHandoff: 'sales_handoff',
   RiskReview: 'risk_review',
   FinalSummary: 'final_summary',
+  PromotionResearchData: 'promotion_research_data',
+  PromotionCleanDataset: 'promotion_clean_dataset',
+  PromotionCompetitorInsight: 'promotion_competitor_insight',
+  PromotionMetricReport: 'promotion_metric_report',
+  PromotionPerformanceReview: 'promotion_performance_review',
 } as const;
 export type EnterpriseLeadDeliverableKind =
   (typeof EnterpriseLeadDeliverableKind)[keyof typeof EnterpriseLeadDeliverableKind];

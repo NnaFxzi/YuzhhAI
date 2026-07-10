@@ -9,6 +9,7 @@ import {
   buildEnterpriseLeadWorkspaceKnowledgeScopeId,
   EnterpriseLeadAgentRole,
   EnterpriseLeadContentDeliveryMode,
+  EnterpriseLeadDeliverableKind,
   EnterpriseLeadDocumentExtractionStage,
   EnterpriseLeadDocumentExtractionStatus,
   EnterpriseLeadExtractionSourceKind,
@@ -39,6 +40,7 @@ import {
 import { EnterpriseLeadWorkspaceStore } from './store';
 import {
   buildDefaultEnterpriseLeadWorkspaceAgents,
+  buildDefaultPromotionDepartmentWorkspaceAgents,
   ENTERPRISE_LEAD_AGENT_WORKFLOW,
 } from './workflow';
 
@@ -2347,6 +2349,68 @@ describe('EnterpriseLeadWorkspaceService', () => {
       }),
     ]);
     expect(updatedSnapshot.archives).toEqual([]);
+  });
+
+  test('derives promotion department deliverable kinds from completed Agent tasks', () => {
+    const setup = createService();
+    db = setup.db;
+    const workspace = setup.service.createWorkspace({
+      ...draftPayload(),
+      workspaceAgents: buildDefaultPromotionDepartmentWorkspaceAgents(),
+    });
+    const snapshot = setup.service.createRun(workspace.id, '执行推广部闭环');
+    const runId = snapshot.currentRun?.id;
+    if (!runId) throw new Error('Expected promotion department run');
+
+    const completeTask = (role: EnterpriseLeadAgentRole, summary: string): void => {
+      const task = snapshot.tasks.find(item => item.role === role);
+      if (!task) throw new Error(`Expected task for ${role}`);
+      setup.store.updateTaskResult(task.id, {
+        role,
+        status: EnterpriseLeadTaskStatus.Completed,
+        summary,
+        outputs: {
+          role,
+          summary,
+        },
+        missingInfo: [],
+        todos: [],
+        risks: [],
+        handoffContext: {},
+      });
+    };
+
+    completeTask(EnterpriseLeadAgentRole.PromotionDataScraping, '原始线索已抓取。');
+    completeTask(EnterpriseLeadAgentRole.PromotionLeadScoring, '商机评分已完成。');
+    completeTask(EnterpriseLeadAgentRole.PromotionAccountMonitoring, '账户指标已监控。');
+    completeTask(EnterpriseLeadAgentRole.PromotionPerformanceReview, '推广复盘已归档。');
+
+    const updatedSnapshot = setup.service.getSnapshot(workspace.id, runId);
+
+    expect(updatedSnapshot.deliverables).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: EnterpriseLeadDeliverableKind.PromotionResearchData,
+          role: EnterpriseLeadAgentRole.PromotionDataScraping,
+          title: '数据抓取 Agent',
+        }),
+        expect.objectContaining({
+          kind: EnterpriseLeadDeliverableKind.OpportunityReport,
+          role: EnterpriseLeadAgentRole.PromotionLeadScoring,
+          title: '商机评分 Agent',
+        }),
+        expect.objectContaining({
+          kind: EnterpriseLeadDeliverableKind.PromotionMetricReport,
+          role: EnterpriseLeadAgentRole.PromotionAccountMonitoring,
+          title: '账户监控 Agent',
+        }),
+        expect.objectContaining({
+          kind: EnterpriseLeadDeliverableKind.PromotionPerformanceReview,
+          role: EnterpriseLeadAgentRole.PromotionPerformanceReview,
+          title: '复盘归档 Agent',
+        }),
+      ]),
+    );
   });
 
   test('listRuns returns summaries with counts newest first', () => {

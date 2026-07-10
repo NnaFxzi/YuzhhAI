@@ -2933,6 +2933,29 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadNoDeliverables: '暂无成果输出。',
     enterpriseLeadNoArchives: '暂无归档记录。',
     enterpriseLeadArchived: '已归档',
+    enterpriseLeadDepartmentPromotionTitle: '推广部',
+    enterpriseLeadAgentGroupPromotionLeadershipTitle: '推广管理组',
+    enterpriseLeadAgentGroupDataIntelligenceTitle: '数据情报组',
+    enterpriseLeadAgentGroupOpportunityStrategyTitle: '商机策略组',
+    enterpriseLeadAgentGroupContentAssetsTitle: '内容物料组',
+    enterpriseLeadAgentGroupQualityRiskTitle: '质检风控组',
+    enterpriseLeadAgentGroupOperationExecutionTitle: '运营执行组',
+    enterpriseLeadAgentGroupMonitoringReviewTitle: '监控复盘组',
+    enterpriseLeadAgentGroupPromotionLeadershipSummary: '目标拆解、任务调度和交付节奏',
+    enterpriseLeadAgentGroupDataIntelligenceSummary: '采集线索、清洗资料、观察竞品',
+    enterpriseLeadAgentGroupOpportunityStrategySummary: '识别高意向线索并提炼卖点',
+    enterpriseLeadAgentGroupContentAssetsSummary: '生成跨平台投放素材',
+    enterpriseLeadAgentGroupQualityRiskSummary: '检查风险、事实依据和合规表达',
+    enterpriseLeadAgentGroupOperationExecutionSummary: '安排发布节奏和运营待办',
+    enterpriseLeadAgentGroupMonitoringReviewSummary: '跟踪账号表现并沉淀复盘',
+    enterpriseLeadWorkbenchAddPromotionDepartmentTemplate: '添加推广部模板',
+    enterpriseLeadWorkbenchAgentGroupProgress: '{added}/{total} 已添加',
+    enterpriseLeadWorkbenchAgentGroupType: '工作流分组',
+    enterpriseLeadWorkbenchAgentGroupExpand: '展开',
+    enterpriseLeadWorkbenchAgentGroupCollapse: '收起',
+    enterpriseLeadWorkbenchAgentNotAdded: '未添加',
+    enterpriseLeadWorkbenchOtherAgentsTitle: '其他工作区 Agent',
+    enterpriseLeadWorkbenchOtherAgentsSummary: '手动补充的空间 Agent',
     enterpriseLeadAgentRoleProductSellingPointTitle: '产品卖点 Agent',
     enterpriseLeadAgentRoleProductSellingPointShortLabel: '卖',
     enterpriseLeadAgentRoleProductSellingPointDescription:
@@ -2967,6 +2990,78 @@ const translations: Record<LanguageType, Record<string, string>> = {
       '检查内容是否空泛、像 AI、缺少依据或缺少转化点，并给出改稿。',
     enterpriseLeadAgentRoleContentQualityInput: '内容草稿、平台要求、品牌语气、禁用表达',
     enterpriseLeadAgentRoleContentQualityOutput: '质检结论、问题清单、优化版本、发布提醒',
+    enterpriseLeadAgentRolePromotionControllerTitle: '推广总控 Agent',
+    enterpriseLeadAgentRolePromotionControllerShortLabel: '总',
+    enterpriseLeadAgentRolePromotionControllerDescription:
+      '理解推广目标、拆解任务、调度数据、商机、物料和监控 Agent，并汇总进度。',
+    enterpriseLeadAgentRolePromotionControllerInput:
+      '用户目标、推广阶段、工作空间资料、历史结果、人工约束',
+    enterpriseLeadAgentRolePromotionControllerOutput:
+      '推广计划、任务分派、阶段状态、风险与待确认事项',
+    enterpriseLeadAgentRolePromotionDataScrapingTitle: '数据抓取 Agent',
+    enterpriseLeadAgentRolePromotionDataScrapingShortLabel: '抓',
+    enterpriseLeadAgentRolePromotionDataScrapingDescription:
+      '抓取客户、竞品、平台内容、行业线索和公开资料，并保留来源。',
+    enterpriseLeadAgentRolePromotionDataScrapingInput:
+      '目标行业、关键词、平台范围、竞品名单、抓取限制',
+    enterpriseLeadAgentRolePromotionDataScrapingOutput:
+      '原始线索、来源链接、抓取时间、可信度、待清洗字段',
+    enterpriseLeadAgentRolePromotionDataCleaningTitle: '数据清洗 Agent',
+    enterpriseLeadAgentRolePromotionDataCleaningShortLabel: '洗',
+    enterpriseLeadAgentRolePromotionDataCleaningDescription:
+      '去重、补全和标准化抓取结果，形成可交给商机分析的结构化数据。',
+    enterpriseLeadAgentRolePromotionDataCleaningInput:
+      '原始线索、来源链接、字段规则、重复判断标准、人工标注',
+    enterpriseLeadAgentRolePromotionDataCleaningOutput:
+      '清洗数据集、重复项、字段缺口、可信度标记、清洗日志',
+    enterpriseLeadAgentRolePromotionCompetitorInsightTitle: '竞品洞察 Agent',
+    enterpriseLeadAgentRolePromotionCompetitorInsightShortLabel: '竞',
+    enterpriseLeadAgentRolePromotionCompetitorInsightDescription:
+      '分析竞品渠道、内容、关键词、卖点和活动节奏，找出推广机会。',
+    enterpriseLeadAgentRolePromotionCompetitorInsightInput:
+      '清洗数据、竞品名单、平台内容、关键词、行业资料',
+    enterpriseLeadAgentRolePromotionCompetitorInsightOutput:
+      '竞品机会、关键词、内容差距、可借鉴做法、风险提醒',
+    enterpriseLeadAgentRolePromotionLeadScoringTitle: '商机评分 Agent',
+    enterpriseLeadAgentRolePromotionLeadScoringShortLabel: '商',
+    enterpriseLeadAgentRolePromotionLeadScoringDescription:
+      '评估客户意向、匹配度、紧急程度和跟进价值，输出优先级。',
+    enterpriseLeadAgentRolePromotionLeadScoringInput:
+      '清洗客户数据、意图信号、ICP 条件、预算线索、历史互动',
+    enterpriseLeadAgentRolePromotionLeadScoringOutput:
+      '商机评分、分层优先级、判断依据、缺失信息、跟进建议',
+    enterpriseLeadAgentRolePromotionMultiPlatformAssetsTitle: '多平台物料 Agent',
+    enterpriseLeadAgentRolePromotionMultiPlatformAssetsShortLabel: '料',
+    enterpriseLeadAgentRolePromotionMultiPlatformAssetsDescription:
+      '按平台配置生成图文、短视频、广告、私域和落地页物料包。',
+    enterpriseLeadAgentRolePromotionMultiPlatformAssetsInput:
+      '卖点、商机分层、平台配置、可用素材、转化目标、禁用表达',
+    enterpriseLeadAgentRolePromotionMultiPlatformAssetsOutput:
+      '平台物料包、标题、正文、脚本、标签、CTA、需确认表达',
+    enterpriseLeadAgentRolePromotionPublishingScheduleTitle: '发布排期 Agent',
+    enterpriseLeadAgentRolePromotionPublishingScheduleShortLabel: '排',
+    enterpriseLeadAgentRolePromotionPublishingScheduleDescription:
+      '编排内容日历、发布时间、平台分发顺序和人工发布待办。',
+    enterpriseLeadAgentRolePromotionPublishingScheduleInput:
+      '物料包、平台优先级、账号节奏、审核状态、人工可执行时间',
+    enterpriseLeadAgentRolePromotionPublishingScheduleOutput:
+      '发布日历、分发顺序、人工待办、依赖关系、风险提醒',
+    enterpriseLeadAgentRolePromotionAccountMonitoringTitle: '账户监控 Agent',
+    enterpriseLeadAgentRolePromotionAccountMonitoringShortLabel: '监',
+    enterpriseLeadAgentRolePromotionAccountMonitoringDescription:
+      '监控账号曝光、点击、互动、线索、转化和成本异常，提示调整动作。',
+    enterpriseLeadAgentRolePromotionAccountMonitoringInput:
+      '指标快照、平台账号、活动目标、历史基线、预算或线索目标',
+    enterpriseLeadAgentRolePromotionAccountMonitoringOutput:
+      '异常指标、趋势判断、原因假设、调整动作、待确认数据',
+    enterpriseLeadAgentRolePromotionPerformanceReviewTitle: '复盘归档 Agent',
+    enterpriseLeadAgentRolePromotionPerformanceReviewShortLabel: '复',
+    enterpriseLeadAgentRolePromotionPerformanceReviewDescription:
+      '汇总推广表现、沉淀有效素材和失败原因，反哺下一轮推广。',
+    enterpriseLeadAgentRolePromotionPerformanceReviewInput:
+      '监控报告、发布记录、线索反馈、转化结果、人工结论',
+    enterpriseLeadAgentRolePromotionPerformanceReviewOutput:
+      '复盘结论、有效策略、失败原因、归档索引、下一轮建议',
     enterpriseLeadAgentRoleControllerTitle: '项目总控 Agent',
     enterpriseLeadAgentRoleControllerShortLabel: '总',
     enterpriseLeadAgentRoleControllerDescription: '理解目标、拆解任务、调度专业 Agent、汇总状态。',
@@ -7099,6 +7194,35 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadNoDeliverables: 'No deliverables yet.',
     enterpriseLeadNoArchives: 'No archives yet.',
     enterpriseLeadArchived: 'Archived',
+    enterpriseLeadDepartmentPromotionTitle: 'Promotion Department',
+    enterpriseLeadAgentGroupPromotionLeadershipTitle: 'Promotion Management',
+    enterpriseLeadAgentGroupDataIntelligenceTitle: 'Data Intelligence',
+    enterpriseLeadAgentGroupOpportunityStrategyTitle: 'Opportunity Strategy',
+    enterpriseLeadAgentGroupContentAssetsTitle: 'Content Assets',
+    enterpriseLeadAgentGroupQualityRiskTitle: 'Quality & Risk',
+    enterpriseLeadAgentGroupOperationExecutionTitle: 'Operations Execution',
+    enterpriseLeadAgentGroupMonitoringReviewTitle: 'Monitoring & Review',
+    enterpriseLeadAgentGroupPromotionLeadershipSummary:
+      'Goal breakdown, task dispatch, and delivery rhythm',
+    enterpriseLeadAgentGroupDataIntelligenceSummary:
+      'Collect leads, clean material, and watch competitors',
+    enterpriseLeadAgentGroupOpportunityStrategySummary:
+      'Identify high-intent leads and sharpen selling points',
+    enterpriseLeadAgentGroupContentAssetsSummary: 'Generate cross-platform campaign assets',
+    enterpriseLeadAgentGroupQualityRiskSummary:
+      'Review risk, factual support, and compliant wording',
+    enterpriseLeadAgentGroupOperationExecutionSummary:
+      'Plan publishing cadence and operations follow-ups',
+    enterpriseLeadAgentGroupMonitoringReviewSummary:
+      'Track account performance and preserve review notes',
+    enterpriseLeadWorkbenchAddPromotionDepartmentTemplate: 'Add promotion department template',
+    enterpriseLeadWorkbenchAgentGroupProgress: '{added}/{total} added',
+    enterpriseLeadWorkbenchAgentGroupType: 'Workflow group',
+    enterpriseLeadWorkbenchAgentGroupExpand: 'Expand',
+    enterpriseLeadWorkbenchAgentGroupCollapse: 'Collapse',
+    enterpriseLeadWorkbenchAgentNotAdded: 'Not added',
+    enterpriseLeadWorkbenchOtherAgentsTitle: 'Other workspace Agents',
+    enterpriseLeadWorkbenchOtherAgentsSummary: 'Supplemental workspace Agents added manually',
     enterpriseLeadAgentRoleProductSellingPointTitle: 'Product Selling Point Agent',
     enterpriseLeadAgentRoleProductSellingPointShortLabel: 'SELL',
     enterpriseLeadAgentRoleProductSellingPointDescription:
@@ -7146,6 +7270,78 @@ const translations: Record<LanguageType, Record<string, string>> = {
       'Content draft, platform requirements, brand tone, prohibited expressions',
     enterpriseLeadAgentRoleContentQualityOutput:
       'Quality review, issue list, optimized version, publishing reminders',
+    enterpriseLeadAgentRolePromotionControllerTitle: 'Promotion Controller Agent',
+    enterpriseLeadAgentRolePromotionControllerShortLabel: 'CTL',
+    enterpriseLeadAgentRolePromotionControllerDescription:
+      'Understands promotion goals, breaks down tasks, coordinates data, opportunity, asset, and monitoring Agents, and summarizes progress.',
+    enterpriseLeadAgentRolePromotionControllerInput:
+      'User goal, promotion stage, workspace material, historical results, human constraints',
+    enterpriseLeadAgentRolePromotionControllerOutput:
+      'Promotion plan, task assignments, stage status, risks and confirmation items',
+    enterpriseLeadAgentRolePromotionDataScrapingTitle: 'Data Scraping Agent',
+    enterpriseLeadAgentRolePromotionDataScrapingShortLabel: 'SCR',
+    enterpriseLeadAgentRolePromotionDataScrapingDescription:
+      'Collects customers, competitors, platform content, industry signals, and public material while preserving sources.',
+    enterpriseLeadAgentRolePromotionDataScrapingInput:
+      'Target industry, keywords, platform scope, competitor list, scraping limits',
+    enterpriseLeadAgentRolePromotionDataScrapingOutput:
+      'Raw leads, source links, captured time, confidence, fields to clean',
+    enterpriseLeadAgentRolePromotionDataCleaningTitle: 'Data Cleaning Agent',
+    enterpriseLeadAgentRolePromotionDataCleaningShortLabel: 'CLN',
+    enterpriseLeadAgentRolePromotionDataCleaningDescription:
+      'Deduplicates, enriches, and normalizes scraped results into structured data for opportunity analysis.',
+    enterpriseLeadAgentRolePromotionDataCleaningInput:
+      'Raw leads, source links, field rules, duplicate criteria, human labels',
+    enterpriseLeadAgentRolePromotionDataCleaningOutput:
+      'Clean dataset, duplicates, missing fields, confidence markers, cleaning log',
+    enterpriseLeadAgentRolePromotionCompetitorInsightTitle: 'Competitor Insight Agent',
+    enterpriseLeadAgentRolePromotionCompetitorInsightShortLabel: 'CMP',
+    enterpriseLeadAgentRolePromotionCompetitorInsightDescription:
+      'Analyzes competitor channels, content, keywords, selling points, and campaign rhythm to find opportunities.',
+    enterpriseLeadAgentRolePromotionCompetitorInsightInput:
+      'Clean data, competitor list, platform content, keywords, industry material',
+    enterpriseLeadAgentRolePromotionCompetitorInsightOutput:
+      'Competitor opportunities, keywords, content gaps, reusable patterns, risk reminders',
+    enterpriseLeadAgentRolePromotionLeadScoringTitle: 'Lead Scoring Agent',
+    enterpriseLeadAgentRolePromotionLeadScoringShortLabel: 'OPP',
+    enterpriseLeadAgentRolePromotionLeadScoringDescription:
+      'Evaluates intent, fit, urgency, and follow-up value to produce lead priority.',
+    enterpriseLeadAgentRolePromotionLeadScoringInput:
+      'Clean customer data, intent signals, ICP criteria, budget clues, historical interactions',
+    enterpriseLeadAgentRolePromotionLeadScoringOutput:
+      'Opportunity score, priority tier, reasoning, missing information, follow-up recommendation',
+    enterpriseLeadAgentRolePromotionMultiPlatformAssetsTitle: 'Multi-Platform Assets Agent',
+    enterpriseLeadAgentRolePromotionMultiPlatformAssetsShortLabel: 'AST',
+    enterpriseLeadAgentRolePromotionMultiPlatformAssetsDescription:
+      'Creates graphic, short-video, ad, private-domain, and landing-page asset packages by platform configuration.',
+    enterpriseLeadAgentRolePromotionMultiPlatformAssetsInput:
+      'Selling points, lead tiers, platform configuration, available assets, conversion goal, prohibited expressions',
+    enterpriseLeadAgentRolePromotionMultiPlatformAssetsOutput:
+      'Platform asset package, title, body, script, tags, CTA, expressions needing confirmation',
+    enterpriseLeadAgentRolePromotionPublishingScheduleTitle: 'Publishing Schedule Agent',
+    enterpriseLeadAgentRolePromotionPublishingScheduleShortLabel: 'CAL',
+    enterpriseLeadAgentRolePromotionPublishingScheduleDescription:
+      'Plans the content calendar, publishing times, platform distribution order, and human publishing todos.',
+    enterpriseLeadAgentRolePromotionPublishingScheduleInput:
+      'Asset package, platform priority, account rhythm, review status, human availability',
+    enterpriseLeadAgentRolePromotionPublishingScheduleOutput:
+      'Publishing calendar, distribution order, human todos, dependencies, risk reminders',
+    enterpriseLeadAgentRolePromotionAccountMonitoringTitle: 'Account Monitoring Agent',
+    enterpriseLeadAgentRolePromotionAccountMonitoringShortLabel: 'MON',
+    enterpriseLeadAgentRolePromotionAccountMonitoringDescription:
+      'Monitors impressions, clicks, interactions, leads, conversions, and cost anomalies, then suggests adjustments.',
+    enterpriseLeadAgentRolePromotionAccountMonitoringInput:
+      'Metric snapshot, platform account, campaign goal, historical baseline, budget or lead target',
+    enterpriseLeadAgentRolePromotionAccountMonitoringOutput:
+      'Anomalous metrics, trend judgment, cause hypotheses, adjustment actions, data to confirm',
+    enterpriseLeadAgentRolePromotionPerformanceReviewTitle: 'Performance Review Agent',
+    enterpriseLeadAgentRolePromotionPerformanceReviewShortLabel: 'REV',
+    enterpriseLeadAgentRolePromotionPerformanceReviewDescription:
+      'Summarizes promotion performance, preserves effective assets and failure reasons, and feeds the next round.',
+    enterpriseLeadAgentRolePromotionPerformanceReviewInput:
+      'Monitoring report, publishing record, lead feedback, conversion result, human conclusion',
+    enterpriseLeadAgentRolePromotionPerformanceReviewOutput:
+      'Review conclusion, effective strategies, failure reasons, archive index, next-round recommendations',
     enterpriseLeadAgentRoleControllerTitle: 'Controller Agent',
     enterpriseLeadAgentRoleControllerShortLabel: 'CTL',
     enterpriseLeadAgentRoleControllerDescription:

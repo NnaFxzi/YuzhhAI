@@ -1,4 +1,8 @@
 import {
+  type EnterpriseLeadAgentGroupId,
+  getPromotionDepartmentGroups,
+} from '../../../shared/enterpriseLeadWorkspace/agentOrganization';
+import {
   EnterpriseLeadAgentRole,
   type EnterpriseLeadAgentRole as EnterpriseLeadAgentRoleType,
   EnterpriseLeadContentPlatformId,
@@ -382,6 +386,12 @@ export interface AgentRoleLabelMetadata {
   safetyCritical: boolean;
 }
 
+export interface PromotionDepartmentAgentSection {
+  groupId: EnterpriseLeadAgentGroupId;
+  titleKey: string;
+  roles: AgentRoleLabelMetadata[];
+}
+
 export interface AgentCardTone {
   containerClassName: string;
   avatarClassName: string;
@@ -636,6 +646,87 @@ const AGENT_ROLE_LABELS: Record<EnterpriseLeadAgentRoleType, AgentRoleLabelMetad
     inputKey: 'enterpriseLeadAgentRoleContentQualityInput',
     outputKey: 'enterpriseLeadAgentRoleContentQualityOutput',
     safetyCritical: true,
+  },
+  [EnterpriseLeadAgentRole.PromotionController]: {
+    role: EnterpriseLeadAgentRole.PromotionController,
+    titleKey: 'enterpriseLeadAgentRolePromotionControllerTitle',
+    shortLabelKey: 'enterpriseLeadAgentRolePromotionControllerShortLabel',
+    descriptionKey: 'enterpriseLeadAgentRolePromotionControllerDescription',
+    inputKey: 'enterpriseLeadAgentRolePromotionControllerInput',
+    outputKey: 'enterpriseLeadAgentRolePromotionControllerOutput',
+    safetyCritical: true,
+  },
+  [EnterpriseLeadAgentRole.PromotionDataScraping]: {
+    role: EnterpriseLeadAgentRole.PromotionDataScraping,
+    titleKey: 'enterpriseLeadAgentRolePromotionDataScrapingTitle',
+    shortLabelKey: 'enterpriseLeadAgentRolePromotionDataScrapingShortLabel',
+    descriptionKey: 'enterpriseLeadAgentRolePromotionDataScrapingDescription',
+    inputKey: 'enterpriseLeadAgentRolePromotionDataScrapingInput',
+    outputKey: 'enterpriseLeadAgentRolePromotionDataScrapingOutput',
+    safetyCritical: true,
+  },
+  [EnterpriseLeadAgentRole.PromotionDataCleaning]: {
+    role: EnterpriseLeadAgentRole.PromotionDataCleaning,
+    titleKey: 'enterpriseLeadAgentRolePromotionDataCleaningTitle',
+    shortLabelKey: 'enterpriseLeadAgentRolePromotionDataCleaningShortLabel',
+    descriptionKey: 'enterpriseLeadAgentRolePromotionDataCleaningDescription',
+    inputKey: 'enterpriseLeadAgentRolePromotionDataCleaningInput',
+    outputKey: 'enterpriseLeadAgentRolePromotionDataCleaningOutput',
+    safetyCritical: true,
+  },
+  [EnterpriseLeadAgentRole.PromotionCompetitorInsight]: {
+    role: EnterpriseLeadAgentRole.PromotionCompetitorInsight,
+    titleKey: 'enterpriseLeadAgentRolePromotionCompetitorInsightTitle',
+    shortLabelKey: 'enterpriseLeadAgentRolePromotionCompetitorInsightShortLabel',
+    descriptionKey: 'enterpriseLeadAgentRolePromotionCompetitorInsightDescription',
+    inputKey: 'enterpriseLeadAgentRolePromotionCompetitorInsightInput',
+    outputKey: 'enterpriseLeadAgentRolePromotionCompetitorInsightOutput',
+    safetyCritical: false,
+  },
+  [EnterpriseLeadAgentRole.PromotionLeadScoring]: {
+    role: EnterpriseLeadAgentRole.PromotionLeadScoring,
+    titleKey: 'enterpriseLeadAgentRolePromotionLeadScoringTitle',
+    shortLabelKey: 'enterpriseLeadAgentRolePromotionLeadScoringShortLabel',
+    descriptionKey: 'enterpriseLeadAgentRolePromotionLeadScoringDescription',
+    inputKey: 'enterpriseLeadAgentRolePromotionLeadScoringInput',
+    outputKey: 'enterpriseLeadAgentRolePromotionLeadScoringOutput',
+    safetyCritical: false,
+  },
+  [EnterpriseLeadAgentRole.PromotionMultiPlatformAssets]: {
+    role: EnterpriseLeadAgentRole.PromotionMultiPlatformAssets,
+    titleKey: 'enterpriseLeadAgentRolePromotionMultiPlatformAssetsTitle',
+    shortLabelKey: 'enterpriseLeadAgentRolePromotionMultiPlatformAssetsShortLabel',
+    descriptionKey: 'enterpriseLeadAgentRolePromotionMultiPlatformAssetsDescription',
+    inputKey: 'enterpriseLeadAgentRolePromotionMultiPlatformAssetsInput',
+    outputKey: 'enterpriseLeadAgentRolePromotionMultiPlatformAssetsOutput',
+    safetyCritical: false,
+  },
+  [EnterpriseLeadAgentRole.PromotionPublishingSchedule]: {
+    role: EnterpriseLeadAgentRole.PromotionPublishingSchedule,
+    titleKey: 'enterpriseLeadAgentRolePromotionPublishingScheduleTitle',
+    shortLabelKey: 'enterpriseLeadAgentRolePromotionPublishingScheduleShortLabel',
+    descriptionKey: 'enterpriseLeadAgentRolePromotionPublishingScheduleDescription',
+    inputKey: 'enterpriseLeadAgentRolePromotionPublishingScheduleInput',
+    outputKey: 'enterpriseLeadAgentRolePromotionPublishingScheduleOutput',
+    safetyCritical: true,
+  },
+  [EnterpriseLeadAgentRole.PromotionAccountMonitoring]: {
+    role: EnterpriseLeadAgentRole.PromotionAccountMonitoring,
+    titleKey: 'enterpriseLeadAgentRolePromotionAccountMonitoringTitle',
+    shortLabelKey: 'enterpriseLeadAgentRolePromotionAccountMonitoringShortLabel',
+    descriptionKey: 'enterpriseLeadAgentRolePromotionAccountMonitoringDescription',
+    inputKey: 'enterpriseLeadAgentRolePromotionAccountMonitoringInput',
+    outputKey: 'enterpriseLeadAgentRolePromotionAccountMonitoringOutput',
+    safetyCritical: true,
+  },
+  [EnterpriseLeadAgentRole.PromotionPerformanceReview]: {
+    role: EnterpriseLeadAgentRole.PromotionPerformanceReview,
+    titleKey: 'enterpriseLeadAgentRolePromotionPerformanceReviewTitle',
+    shortLabelKey: 'enterpriseLeadAgentRolePromotionPerformanceReviewShortLabel',
+    descriptionKey: 'enterpriseLeadAgentRolePromotionPerformanceReviewDescription',
+    inputKey: 'enterpriseLeadAgentRolePromotionPerformanceReviewInput',
+    outputKey: 'enterpriseLeadAgentRolePromotionPerformanceReviewOutput',
+    safetyCritical: false,
   },
   [EnterpriseLeadAgentRole.Controller]: {
     role: EnterpriseLeadAgentRole.Controller,
@@ -1373,6 +1464,13 @@ export const buildCreationRecordConversationMessages = (
 
 export const getAgentRoleLabel = (role: EnterpriseLeadAgentRoleType): AgentRoleLabelMetadata =>
   AGENT_ROLE_LABELS[role];
+
+export const getPromotionDepartmentSections = (): PromotionDepartmentAgentSection[] =>
+  getPromotionDepartmentGroups().map(group => ({
+    groupId: group.id,
+    titleKey: group.titleKey,
+    roles: group.roles.map(role => getAgentRoleLabel(role)),
+  }));
 
 const isEnterpriseLeadAgentRole = (
   role: EnterpriseLeadTaskAgentRole,

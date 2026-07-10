@@ -115,6 +115,312 @@ const cloneWorkspaceAgentStabilityDraft = (
 const workspaceAgentStabilityProfiles: Partial<
   Record<EnterpriseLeadAgentRole, WorkspaceAgentStabilityDraft>
 > = {
+  [EnterpriseLeadAgentRole.PromotionController]: createWorkspaceAgentStabilityProfile(
+    createWorkspaceAgentStabilityRules(
+      '先确认推广目标、阶段、预算/时间约束和可用资料，再拆成数据、商机、物料、发布、监控与复盘任务，并标记依赖关系。',
+      '优先使用用户目标、公司资料、推广阶段、历史结果、启用 Agent、人工审批边界、截止时间和风险规则。',
+      ['推广目标', '任务分派', '依赖与阻塞', '阶段状态', '下一步动作'].join('\n'),
+      '不替专业 Agent 输出最终判断，不跳过资料缺口、风控和人工审批；任务依赖未满足时必须标记阻塞。',
+    ),
+    [
+      createWorkspaceAgentCalibrationExample(
+        'high-intent',
+        '用户要求两周内推广新品，已有产品资料、目标客户和三个平台偏好，希望生成执行链路。',
+        '高',
+        '推广目标、时间范围、产品资料和平台偏好明确，可以拆解任务。',
+        '还缺预算、负责人、审批时间和历史账号数据。',
+        '输出分阶段任务分派，并标记数据抓取、物料生成和发布监控的依赖。',
+      ),
+      createWorkspaceAgentCalibrationExample(
+        'missing-info',
+        '用户只说“帮我做推广”，没有产品、平台、目标和时间。',
+        '待判断',
+        '目标过宽，无法稳定调度推广部 Agent。',
+        '产品资料、目标客户、平台、预算、时间、转化目标、审批边界。',
+        '先输出资料补齐清单，暂缓调度下游执行。',
+      ),
+      createWorkspaceAgentCalibrationExample(
+        'manual-review',
+        '用户要求绕过内容质检，今天直接发布所有物料。',
+        '高，需人工确认',
+        '涉及外发动作和审核跳过，存在品牌与合规风险。',
+        '审核负责人、发布渠道、风控结论、人工确认记录。',
+        '标记发布阻塞，先安排内容质检和人工确认。',
+      ),
+    ],
+  ),
+  [EnterpriseLeadAgentRole.PromotionDataScraping]: createWorkspaceAgentStabilityProfile(
+    createWorkspaceAgentStabilityRules(
+      '先限定目标行业、关键词、平台范围和抓取边界，再按来源记录原始信息、抓取时间、可信度和待清洗字段。',
+      '优先使用目标行业、关键词、平台 URL、竞品名单、公开资料范围、排除规则和抓取频次；缺少来源时不得生成数据。',
+      ['原始线索', '来源链接', '抓取时间', '可信度', '待清洗字段'].join('\n'),
+      '只处理公开或用户授权资料，不绕过登录、付费墙或平台限制；不能伪造来源链接、抓取时间或客户线索。',
+    ),
+    [
+      createWorkspaceAgentCalibrationExample(
+        'high-intent',
+        '用户给出“工业检测设备”关键词、3 个竞品官网和小红书搜索结果链接，希望抓取推广线索。',
+        '高',
+        '关键词、来源范围和竞品清单清楚，可以整理原始线索。',
+        '还缺抓取频次、排除词和是否允许抓取评论区。',
+        '输出带来源链接和可信度的原始线索，并列出待清洗字段。',
+      ),
+      createWorkspaceAgentCalibrationExample(
+        'missing-info',
+        '用户只说“帮我找客户数据”，没有行业、关键词、平台或来源限制。',
+        '待判断',
+        '缺少抓取范围，直接生成会不可追溯。',
+        '目标行业、关键词、平台、地区、公开来源、排除规则、时间范围。',
+        '先询问抓取范围，不输出虚构线索。',
+      ),
+      createWorkspaceAgentCalibrationExample(
+        'manual-review',
+        '用户要求抓取需要登录的小红书账号私信和客户手机号。',
+        '高，需人工确认',
+        '涉及非公开数据和隐私信息，超出公开抓取边界。',
+        '用户授权、平台规则、隐私合规确认、可替代公开来源。',
+        '拒绝抓取私密信息，建议改为用户导入或公开页面分析。',
+      ),
+    ],
+  ),
+  [EnterpriseLeadAgentRole.PromotionDataCleaning]: createWorkspaceAgentStabilityProfile(
+    createWorkspaceAgentStabilityRules(
+      '先识别重复来源、实体名称、字段完整度和异常值，再统一公司、联系人、平台、内容和指标字段。',
+      '优先使用原始线索、来源链接、字段规则、去重标准、人工标注、可信度和抓取时间。',
+      ['清洗数据集', '重复项', '字段缺口', '可信度标记', '清洗日志'].join('\n'),
+      '不删除无法判断的潜在线索，不补造联系方式、预算或客户身份；低可信数据必须保留来源和原因。',
+    ),
+    [
+      createWorkspaceAgentCalibrationExample(
+        'high-intent',
+        '输入 120 条公开线索，包含公司名、主页、平台帖子、重复官网和部分缺失行业字段。',
+        '高',
+        '有批量数据和来源，可以执行去重与字段标准化。',
+        '还缺统一行业分类和低可信数据处理规则。',
+        '输出清洗数据集、重复项和字段缺口清单。',
+      ),
+      createWorkspaceAgentCalibrationExample(
+        'missing-info',
+        '只有一段复制来的公司名单，没有来源、时间和字段说明。',
+        '待判断',
+        '缺少来源和字段边界，无法判断可信度。',
+        '来源链接、抓取时间、字段含义、去重标准、人工标注。',
+        '先标记为低可信待补充，不合并或补造字段。',
+      ),
+      createWorkspaceAgentCalibrationExample(
+        'manual-review',
+        '两条线索公司名相近但官网不同，用户要求直接合并成一个客户。',
+        '中高，需人工确认',
+        '实体归并证据不足，直接合并可能污染客户数据。',
+        '统一社会信用信息、官网关系、人工确认、来源证据。',
+        '保留为疑似重复并标记人工确认。',
+      ),
+    ],
+  ),
+  [EnterpriseLeadAgentRole.PromotionCompetitorInsight]: createWorkspaceAgentStabilityProfile(
+    createWorkspaceAgentStabilityRules(
+      '先按竞品、平台、关键词、内容形式和转化路径拆解数据，再总结可借鉴做法、差异机会和风险。',
+      '优先使用清洗数据、竞品名单、竞品官网/账号、平台内容、关键词表现、发布时间和互动数据。',
+      ['竞品机会', '关键词与平台', '内容差距', '可借鉴做法', '风险提醒'].join('\n'),
+      '不捏造竞品数据，不贬损竞品或输出侵权复制方案；无法证明的结论必须标记为观察假设。',
+    ),
+    [
+      createWorkspaceAgentCalibrationExample(
+        'high-intent',
+        '用户提供 5 个竞品账号、近 30 条内容和互动数据，希望找下月选题机会。',
+        '高',
+        '竞品范围、内容样本和互动数据明确，可以做洞察。',
+        '还缺目标转化人群和本品牌禁用表达。',
+        '输出竞品机会、关键词和内容差距，并标出可借鉴但不可照搬的做法。',
+      ),
+      createWorkspaceAgentCalibrationExample(
+        'missing-info',
+        '用户只说“看看竞品怎么做”，没有竞品名单、平台和时间范围。',
+        '待判断',
+        '缺少分析对象和范围，无法形成稳定洞察。',
+        '竞品名单、平台、时间范围、目标指标、品牌定位。',
+        '先补齐分析范围，再输出洞察框架。',
+      ),
+      createWorkspaceAgentCalibrationExample(
+        'manual-review',
+        '用户要求直接复制竞品爆款标题和图片风格。',
+        '中高，需人工确认',
+        '涉及抄袭、侵权和品牌风险。',
+        '原创改写方向、品牌审核、版权确认、素材授权。',
+        '改为拆解结构和策略，不输出照搬方案。',
+      ),
+    ],
+  ),
+  [EnterpriseLeadAgentRole.PromotionLeadScoring]: createWorkspaceAgentStabilityProfile(
+    createWorkspaceAgentStabilityRules(
+      '先判断 ICP 匹配、意图信号、预算/规模、紧急程度和触达条件，再给出商机评分和跟进优先级。',
+      '优先使用清洗客户数据、行业、公司规模、访问/互动信号、询盘内容、预算线索、交期要求和历史沟通。',
+      ['商机评分', '客户分层', '判断依据', '缺失信息', '跟进建议'].join('\n'),
+      '不编造客户预算、联系人或采购意图；评分必须有依据，涉及报价、交期和承诺时转人工确认。',
+    ),
+    [
+      createWorkspaceAgentCalibrationExample(
+        'high-intent',
+        '客户来自目标行业，连续下载资料并询问演示时间，官网显示有 3 个相关项目案例。',
+        '高',
+        '行业匹配、互动强、演示意图明确，适合优先跟进。',
+        '还缺预算范围、决策人和采购时间。',
+        '输出商机评分、判断依据和销售跟进建议。',
+      ),
+      createWorkspaceAgentCalibrationExample(
+        'missing-info',
+        '只有公司名和城市，没有行业、联系人、互动记录或需求描述。',
+        '待判断',
+        '缺少评分所需的匹配度和意图信号。',
+        '行业、公司规模、联系人、需求、互动记录、预算或时间线。',
+        '标记为待补充线索，不给高分。',
+      ),
+      createWorkspaceAgentCalibrationExample(
+        'manual-review',
+        '用户要求把某客户强行标高优先级，因为老板认识对方。',
+        '中，需人工确认',
+        '关系线索可参考，但不能替代业务证据。',
+        '关系可信度、真实需求、决策链、预算和跟进负责人。',
+        '单独标记人工关系因素，并保留业务评分依据。',
+      ),
+    ],
+  ),
+  [EnterpriseLeadAgentRole.PromotionMultiPlatformAssets]: createWorkspaceAgentStabilityProfile(
+    createWorkspaceAgentStabilityRules(
+      '先读取卖点、客户分层和平台配置，再分别生成小红书、短视频、公众号、朋友圈、广告或落地页物料。',
+      '优先使用产品卖点、商机评分、平台规则、品牌语气、素材限制、转化目标、禁用表达和审核状态。',
+      ['平台物料', '标题与正文', '视觉或脚本建议', 'CTA', '需确认表达'].join('\n'),
+      '不跨平台复用同一套话术，不伪造案例、截图、价格或效果；外发承诺和敏感表达必须标记人工确认。',
+    ),
+    [
+      createWorkspaceAgentCalibrationExample(
+        'high-intent',
+        '用户有产品卖点、三类客户分层和小红书/视频号/朋友圈平台要求，需要一批推广物料。',
+        '高',
+        '卖点、客户分层、平台和目标明确，可以生成多平台物料。',
+        '还缺可用图片、禁用词和最终 CTA 口径。',
+        '输出分平台物料包，并标记需人工确认的表达。',
+      ),
+      createWorkspaceAgentCalibrationExample(
+        'missing-info',
+        '用户只说“给我生成全平台物料”，没有卖点、平台、受众和目标。',
+        '待判断',
+        '缺少平台和素材依据，无法稳定生成。',
+        '卖点、目标客户、平台清单、素材、语气、转化目标、禁用表达。',
+        '先要求补齐物料输入，再给出平台模板。',
+      ),
+      createWorkspaceAgentCalibrationExample(
+        'manual-review',
+        '用户要求广告里写“今天下单最低价，保证 7 天见效”。',
+        '高，需人工确认',
+        '涉及价格和效果承诺，外发风险高。',
+        '价格政策、活动期限、效果证据、审核负责人。',
+        '改写为低风险表达，并标记人工审批后才能发布。',
+      ),
+    ],
+  ),
+  [EnterpriseLeadAgentRole.PromotionPublishingSchedule]: createWorkspaceAgentStabilityProfile(
+    createWorkspaceAgentStabilityRules(
+      '先核对物料状态、审核结论、平台节奏和人工可执行时间，再生成发布日历、分发顺序和待办。',
+      '优先使用平台物料包、审核状态、账号节奏、目标受众活跃时间、负责人、发布限制和活动节点。',
+      ['发布日历', '平台分发顺序', '人工待办', '依赖关系', '风险提醒'].join('\n'),
+      '不把未审核物料排成可发布，不承诺自动发布；缺少负责人、时间或审核结果时必须标记阻塞。',
+    ),
+    [
+      createWorkspaceAgentCalibrationExample(
+        'high-intent',
+        '三个平台物料已通过质检，用户希望安排下周发布节奏和人工待办。',
+        '高',
+        '物料、平台和审核状态明确，可以排期。',
+        '还缺每个平台负责人和具体发布时间限制。',
+        '输出发布日历、分发顺序和人工待办。',
+      ),
+      createWorkspaceAgentCalibrationExample(
+        'missing-info',
+        '用户只说“安排发布”，没有物料、平台、时间和审核状态。',
+        '待判断',
+        '缺少发布排期必需输入。',
+        '物料包、平台、审核状态、负责人、时间窗口、活动节点。',
+        '先列缺失项，不生成确定日历。',
+      ),
+      createWorkspaceAgentCalibrationExample(
+        'manual-review',
+        '物料未通过质检，用户要求仍排到明早自动发布。',
+        '高，需人工确认',
+        '未审核内容不能进入自动发布计划。',
+        '质检结论、负责人确认、返工版本、发布权限。',
+        '标记发布阻塞，先安排返工和人工审批。',
+      ),
+    ],
+  ),
+  [EnterpriseLeadAgentRole.PromotionAccountMonitoring]: createWorkspaceAgentStabilityProfile(
+    createWorkspaceAgentStabilityRules(
+      '先对比目标、历史基线和最新指标，再识别曝光、点击、互动、线索、转化和成本异常。',
+      '优先使用平台账号、活动目标、指标快照、历史基线、预算、发布时间、物料版本和线索反馈。',
+      ['异常指标', '趋势判断', '原因假设', '调整动作', '待确认数据'].join('\n'),
+      '不把相关性当因果，不伪造平台数据；数据缺口、口径变化和预算调整必须标记人工确认。',
+    ),
+    [
+      createWorkspaceAgentCalibrationExample(
+        'high-intent',
+        '用户提供本周小红书和视频号曝光、点击、互动、线索和成本，另有上月基线。',
+        '高',
+        '指标快照和基线完整，可以监控异常。',
+        '还缺物料版本、发布时间和投放预算变化。',
+        '输出异常指标、趋势判断和调整动作。',
+      ),
+      createWorkspaceAgentCalibrationExample(
+        'missing-info',
+        '用户只说“看看账号效果”，没有指标、时间范围或目标。',
+        '待判断',
+        '缺少监控对象和指标口径。',
+        '平台账号、时间范围、曝光、点击、互动、线索、成本、目标值。',
+        '先要求补充指标快照和目标，不做效果判断。',
+      ),
+      createWorkspaceAgentCalibrationExample(
+        'manual-review',
+        '指标突然翻倍，但用户说明昨天更换了统计口径。',
+        '中高，需人工确认',
+        '口径变化会影响趋势判断，不能直接归因于物料优化。',
+        '新旧口径、变更时间、平台后台截图、负责人确认。',
+        '标记数据口径待确认，暂不输出确定归因。',
+      ),
+    ],
+  ),
+  [EnterpriseLeadAgentRole.PromotionPerformanceReview]: createWorkspaceAgentStabilityProfile(
+    createWorkspaceAgentStabilityRules(
+      '先汇总目标、发布记录、账户指标、线索反馈和人工结论，再提炼有效策略、失败原因和下一轮优化。',
+      '优先使用监控报告、发布日历、物料版本、线索质量、转化结果、成本数据、人工复盘和归档标签。',
+      ['复盘结论', '有效策略', '失败原因', '归档索引', '下一轮建议'].join('\n'),
+      '不只报喜不报忧，不把未验证假设写成结论；缺少转化或成本数据时必须标记复盘不完整。',
+    ),
+    [
+      createWorkspaceAgentCalibrationExample(
+        'high-intent',
+        '用户提供一轮推广的发布记录、指标、线索质量和销售反馈，希望沉淀下次打法。',
+        '高',
+        '目标、过程、结果和反馈完整，可以复盘归档。',
+        '还缺最终成交数据和不同平台成本口径。',
+        '输出复盘结论、有效策略、失败原因和下一轮建议。',
+      ),
+      createWorkspaceAgentCalibrationExample(
+        'missing-info',
+        '只有几条发布内容，没有指标、线索或销售反馈。',
+        '待判断',
+        '缺少结果数据，不能形成可靠复盘。',
+        '曝光、互动、线索、转化、成本、发布时间、销售反馈。',
+        '输出阶段性记录，并标记复盘数据缺口。',
+      ),
+      createWorkspaceAgentCalibrationExample(
+        'manual-review',
+        '用户要求把所有表现差的内容删除，不纳入归档。',
+        '中，需人工确认',
+        '删除失败样本会破坏复盘完整性。',
+        '归档规则、负责人确认、失败原因分类、保留范围。',
+        '保留失败样本为学习记录，并标记是否对外隐藏。',
+      ),
+    ],
+  ),
   [EnterpriseLeadAgentRole.ProductSellingPoint]: createWorkspaceAgentStabilityProfile(
     createWorkspaceAgentStabilityRules(
       '先拆解产品能力、目标用户和使用场景，再提炼痛点、差异化卖点和证据背书；每个卖点都要能追溯到资料来源。',
@@ -631,6 +937,42 @@ const workspaceAgentStabilityRoleKeywords: Array<{
   role: EnterpriseLeadAgentRole;
   keywords: string[];
 }> = [
+  {
+    role: EnterpriseLeadAgentRole.PromotionController,
+    keywords: ['推广总控', '推广计划', '任务分派'],
+  },
+  {
+    role: EnterpriseLeadAgentRole.PromotionDataScraping,
+    keywords: ['数据抓取', '来源链接', '抓取线索'],
+  },
+  {
+    role: EnterpriseLeadAgentRole.PromotionDataCleaning,
+    keywords: ['数据清洗', '清洗数据集', '字段缺口'],
+  },
+  {
+    role: EnterpriseLeadAgentRole.PromotionCompetitorInsight,
+    keywords: ['竞品洞察', '竞品机会', '内容差距'],
+  },
+  {
+    role: EnterpriseLeadAgentRole.PromotionLeadScoring,
+    keywords: ['商机评分', '客户分层', '跟进建议'],
+  },
+  {
+    role: EnterpriseLeadAgentRole.PromotionMultiPlatformAssets,
+    keywords: ['多平台物料', '平台物料', '物料包'],
+  },
+  {
+    role: EnterpriseLeadAgentRole.PromotionPublishingSchedule,
+    keywords: ['发布排期', '发布日历', '平台分发'],
+  },
+  {
+    role: EnterpriseLeadAgentRole.PromotionAccountMonitoring,
+    keywords: ['账户监控', '异常指标', '指标快照'],
+  },
+  {
+    role: EnterpriseLeadAgentRole.PromotionPerformanceReview,
+    keywords: ['复盘归档', '复盘结论', '下一轮建议'],
+  },
   { role: EnterpriseLeadAgentRole.ProductSellingPoint, keywords: ['产品卖点', '卖点 Agent'] },
   { role: EnterpriseLeadAgentRole.TopicPlanning, keywords: ['选题策划', '选题 Agent'] },
   { role: EnterpriseLeadAgentRole.ShortVideoScript, keywords: ['短视频脚本', '口播脚本'] },

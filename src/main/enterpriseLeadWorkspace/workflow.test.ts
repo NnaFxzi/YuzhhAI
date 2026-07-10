@@ -3,9 +3,11 @@ import { describe, expect, test } from 'vitest';
 import { EnterpriseLeadAgentRole } from '../../shared/enterpriseLeadWorkspace/constants';
 import {
   buildDefaultEnterpriseLeadWorkspaceAgents,
+  buildDefaultPromotionDepartmentWorkspaceAgents,
   ENTERPRISE_LEAD_AGENT_WORKFLOW,
   getDownstreamAgentRoles,
   getEnterpriseLeadAgentMetadata,
+  PROMOTION_DEPARTMENT_AGENT_WORKFLOW,
 } from './workflow';
 
 describe('enterprise lead agent workflow metadata', () => {
@@ -26,6 +28,39 @@ describe('enterprise lead agent workflow metadata', () => {
       shortLabel: '控',
       safetyCritical: true,
     });
+  });
+
+  test('registers promotion department workflow metadata', () => {
+    expect(PROMOTION_DEPARTMENT_AGENT_WORKFLOW.map(agent => agent.role)).toEqual([
+      EnterpriseLeadAgentRole.PromotionController,
+      EnterpriseLeadAgentRole.PromotionDataScraping,
+      EnterpriseLeadAgentRole.PromotionDataCleaning,
+      EnterpriseLeadAgentRole.PromotionCompetitorInsight,
+      EnterpriseLeadAgentRole.PromotionLeadScoring,
+      EnterpriseLeadAgentRole.ProductSellingPoint,
+      EnterpriseLeadAgentRole.PromotionMultiPlatformAssets,
+      EnterpriseLeadAgentRole.ContentQuality,
+      EnterpriseLeadAgentRole.PromotionPublishingSchedule,
+      EnterpriseLeadAgentRole.PromotionAccountMonitoring,
+      EnterpriseLeadAgentRole.PromotionPerformanceReview,
+    ]);
+    expect(
+      getEnterpriseLeadAgentMetadata(EnterpriseLeadAgentRole.PromotionDataScraping).title,
+    ).toBe('数据抓取 Agent');
+    expect(getDownstreamAgentRoles(EnterpriseLeadAgentRole.PromotionDataScraping)[0]).toBe(
+      EnterpriseLeadAgentRole.PromotionDataCleaning,
+    );
+  });
+
+  test('builds default promotion department workspace agents', () => {
+    const agents = buildDefaultPromotionDepartmentWorkspaceAgents();
+
+    expect(agents).toHaveLength(11);
+    expect(agents[0]).toMatchObject({
+      agentId: EnterpriseLeadAgentRole.PromotionController,
+      overrides: { name: '推广总控 Agent', icon: '总' },
+    });
+    expect(agents[1].overrides.systemPrompt).toContain('来源链接');
   });
 
   test('returns every downstream role after content planning', () => {

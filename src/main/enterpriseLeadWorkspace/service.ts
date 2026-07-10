@@ -458,20 +458,33 @@ const getDeliverableKind = (
     case EnterpriseLeadAgentRole.ProductSellingPoint:
     case EnterpriseLeadAgentRole.ProductUnderstanding:
       return EnterpriseLeadDeliverableKind.ProductProfile;
+    case EnterpriseLeadAgentRole.PromotionDataScraping:
+      return EnterpriseLeadDeliverableKind.PromotionResearchData;
+    case EnterpriseLeadAgentRole.PromotionDataCleaning:
+      return EnterpriseLeadDeliverableKind.PromotionCleanDataset;
+    case EnterpriseLeadAgentRole.PromotionCompetitorInsight:
+      return EnterpriseLeadDeliverableKind.PromotionCompetitorInsight;
     case EnterpriseLeadAgentRole.TopicPlanning:
     case EnterpriseLeadAgentRole.ShortVideoScript:
     case EnterpriseLeadAgentRole.SocialCopy:
+    case EnterpriseLeadAgentRole.PromotionMultiPlatformAssets:
       return EnterpriseLeadDeliverableKind.ContentDraft;
     case EnterpriseLeadAgentRole.PrivateDomainConversion:
       return EnterpriseLeadDeliverableKind.SalesHandoff;
     case EnterpriseLeadAgentRole.ContentQuality:
       return EnterpriseLeadDeliverableKind.RiskReview;
     case EnterpriseLeadAgentRole.OpportunityRadar:
+    case EnterpriseLeadAgentRole.PromotionLeadScoring:
       return EnterpriseLeadDeliverableKind.OpportunityReport;
     case EnterpriseLeadAgentRole.ContentPlanning:
       return EnterpriseLeadDeliverableKind.ContentDraft;
     case EnterpriseLeadAgentRole.SocialOperation:
+    case EnterpriseLeadAgentRole.PromotionPublishingSchedule:
       return EnterpriseLeadDeliverableKind.SocialPlan;
+    case EnterpriseLeadAgentRole.PromotionAccountMonitoring:
+      return EnterpriseLeadDeliverableKind.PromotionMetricReport;
+    case EnterpriseLeadAgentRole.PromotionPerformanceReview:
+      return EnterpriseLeadDeliverableKind.PromotionPerformanceReview;
     case EnterpriseLeadAgentRole.SalesHandoff:
       return EnterpriseLeadDeliverableKind.SalesHandoff;
     case EnterpriseLeadAgentRole.RiskReview:

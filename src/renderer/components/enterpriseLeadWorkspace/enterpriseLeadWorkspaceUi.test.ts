@@ -4,6 +4,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { Provider } from 'react-redux';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 
+import { EnterpriseLeadAgentGroupId } from '../../../shared/enterpriseLeadWorkspace/agentOrganization';
 import {
   EnterpriseLeadAgentRole,
   EnterpriseLeadContentDeliveryMode,
@@ -62,6 +63,7 @@ import {
   getEntryHomeActions,
   getHistoryModalState,
   getLaunchMode,
+  getPromotionDepartmentSections,
   getShellModeForEnterpriseLeadWorkspaceScreen,
   getWorkbenchAgentItems,
   getWorkbenchConfigSections,
@@ -114,6 +116,7 @@ import WorkspaceShell, {
 import WorkspaceStart from './WorkspaceStart';
 import {
   addLocalAgentBindingToWorkspace,
+  addSystemAgentBindingsToWorkspace,
   addSystemAgentBindingToWorkspace,
   buildWorkspaceAgentCalibrationRequest,
   buildWorkspaceAgentOverrides,
@@ -1580,6 +1583,36 @@ describe('enterprise lead workspace UI helpers', () => {
     });
   });
 
+  test('returns promotion department sections with localized role metadata', () => {
+    expect(getAgentRoleLabel(EnterpriseLeadAgentRole.PromotionAccountMonitoring)).toMatchObject({
+      role: EnterpriseLeadAgentRole.PromotionAccountMonitoring,
+      titleKey: 'enterpriseLeadAgentRolePromotionAccountMonitoringTitle',
+      outputKey: 'enterpriseLeadAgentRolePromotionAccountMonitoringOutput',
+      safetyCritical: true,
+    });
+
+    const sections = getPromotionDepartmentSections();
+
+    expect(sections.map(section => section.groupId)).toContain(
+      EnterpriseLeadAgentGroupId.MonitoringReview,
+    );
+    expect(
+      sections.find(section => section.groupId === EnterpriseLeadAgentGroupId.MonitoringReview)
+        ?.roles,
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          role: EnterpriseLeadAgentRole.PromotionAccountMonitoring,
+          titleKey: 'enterpriseLeadAgentRolePromotionAccountMonitoringTitle',
+        }),
+        expect.objectContaining({
+          role: EnterpriseLeadAgentRole.PromotionPerformanceReview,
+          titleKey: 'enterpriseLeadAgentRolePromotionPerformanceReviewTitle',
+        }),
+      ]),
+    );
+  });
+
   test('returns display metadata for dynamic workspace Agent tasks', () => {
     const display = getEnterpriseLeadTaskDisplay({
       role: 'agent-risk',
@@ -2130,7 +2163,7 @@ describe('enterprise lead workspace UI helpers', () => {
     expect(markup).not.toContain('展开工作区');
   });
 
-  test('renders agent management as a workspace-bound Agent list', () => {
+  test('renders agent management as a collapsed workspace-bound Agent hierarchy', () => {
     const markup = renderWorkbench({
       workspace: createWorkspace(
         'workspace-1',
@@ -2150,8 +2183,6 @@ describe('enterprise lead workspace UI helpers', () => {
     });
 
     expect(markup).toContain('Agent 团队');
-    expect(markup).toContain('Workspace Writer');
-    expect(markup).toContain('Workspace-only writer.');
     expect(markup).toContain('role="table"');
     expect(markup).toContain('role="columnheader"');
     expect(markup).toContain('Agent');
@@ -2159,13 +2190,18 @@ describe('enterprise lead workspace UI helpers', () => {
     expect(markup).toContain('模型 / 技能');
     expect(markup).toContain('状态');
     expect(markup).toContain('操作');
+    expect(markup).toContain('推广管理组');
+    expect(markup).toContain('其他工作区 Agent');
+    expect(markup).toContain('aria-expanded="false"');
     expect(markup).not.toContain('系统 Agent 只作为内置模板');
-    expect(markup).toContain('本空间自建');
-    expect(markup).toContain('已启用');
-    expect(markup).toContain('继承空间技能');
+    expect(markup).not.toContain('Workspace Writer');
+    expect(markup).not.toContain('Workspace-only writer.');
+    expect(markup).not.toContain('本空间自建');
+    expect(markup).not.toContain('已启用');
+    expect(markup).not.toContain('继承空间技能');
     expect(markup).not.toContain('选择要添加到工作区的已有 Agent');
-    expect(markup).toContain('编辑');
-    expect(markup).toContain('更多操作');
+    expect(markup).not.toContain('编辑');
+    expect(markup).not.toContain('更多操作');
     expect(markup).not.toContain('移出工作区');
     expect(markup).not.toContain('大模型');
     expect(markup).not.toContain('调研');
@@ -2220,9 +2256,12 @@ describe('enterprise lead workspace UI helpers', () => {
     expect(markup).not.toContain('系统 Agent 模板');
     expect(markup).not.toContain('产品内置的只读模板');
     expect(markup).not.toContain('展开模板库');
+    expect(markup).toContain('推广管理组');
+    expect(markup).toContain('其他工作区 Agent');
+    expect(markup).toContain('aria-expanded="false"');
     expect(markup).not.toContain('添加到本空间');
-    expect(markup).toContain('系统内置模板');
-    expect(markup).toContain('本空间自建');
+    expect(markup).not.toContain('系统内置模板');
+    expect(markup).not.toContain('本空间自建');
   });
 
   test('keeps workspace configuration status out of agent management panel', () => {
@@ -2374,7 +2413,9 @@ describe('enterprise lead workspace UI helpers', () => {
     });
 
     expect(markup).toContain('Agent 团队');
-    expect(markup).toContain('Workspace Writer');
+    expect(markup).toContain('其他工作区 Agent');
+    expect(markup).toContain('aria-expanded="false"');
+    expect(markup).not.toContain('Workspace Writer');
     expect(markup).not.toContain('任务执行');
     expect(markup).not.toContain('还没有当前任务');
     expect(markup).not.toContain('启动 Agent 任务');
@@ -2397,34 +2438,66 @@ describe('enterprise lead workspace UI helpers', () => {
 
     const markup = renderWorkbench({ workspace });
 
-    expect(markup).toContain('Global Writer');
-    expect(markup).toContain('Global writer description.');
-    expect(markup).toContain('本地 Agent');
-    expect(markup).toContain('deepseek/deepseek-chat');
+    expect(markup).toContain('其他工作区 Agent');
+    expect(markup).toContain('aria-expanded="false"');
+    expect(markup).not.toContain('Global Writer');
+    expect(markup).not.toContain('Global writer description.');
+    expect(markup).not.toContain('本地 Agent');
+    expect(markup).not.toContain('deepseek/deepseek-chat');
   });
 
-  test('renders legacy enabled roles as editable workspace-owned Agents', () => {
+  test('renders legacy enabled roles under collapsed other workspace Agents', () => {
     const markup = renderWorkbench({
       workspace: createWorkspace('workspace-1', [EnterpriseLeadAgentRole.Controller]),
     });
 
-    expect(markup).toContain('项目总控 Agent');
-    expect(markup).toContain('编辑');
-    expect(markup).toContain('系统内置模板');
+    expect(markup).toContain('其他工作区 Agent');
+    expect(markup).toContain('aria-expanded="false"');
+    expect(markup).not.toContain('项目总控 Agent');
+    expect(markup).not.toContain('编辑');
+    expect(markup).not.toContain('系统内置模板');
     expect(markup).not.toContain('旧版角色');
     expect(markup).not.toContain('选择要添加到工作区的已有 Agent');
   });
 
-  test('renders default execution Agents as editable workspace-owned Agents', () => {
+  test('renders default execution Agents inside collapsed promotion groups', () => {
     const markup = renderWorkbench({
       workspace: createWorkspace('workspace-1', [EnterpriseLeadAgentRole.ProductSellingPoint]),
     });
 
-    expect(markup).toContain('产品卖点 Agent');
-    expect(markup).toContain('编辑');
-    expect(markup).toContain('系统内置模板');
+    expect(markup).toContain('商机策略组');
+    expect(markup).toContain('1/2 已添加');
+    expect(markup).toContain('aria-expanded="false"');
+    expect(markup).not.toContain('产品卖点 Agent');
+    expect(markup).not.toContain('编辑');
+    expect(markup).not.toContain('系统内置模板');
     expect(markup).not.toContain('旧版角色');
     expect(markup).not.toContain('选择要添加到工作区的已有 Agent');
+  });
+
+  test('renders promotion department template entry in agent management', () => {
+    const markup = renderWorkbench({ workspace: createWorkspace('workspace-1') });
+
+    expect(markup).toContain('添加推广部模板');
+  });
+
+  test('renders current workspace Agents in collapsed promotion department hierarchy', () => {
+    const markup = renderWorkbench({
+      workspace: createWorkspace('workspace-1', [
+        EnterpriseLeadAgentRole.Controller,
+        EnterpriseLeadAgentRole.ProductSellingPoint,
+      ]),
+    });
+
+    expect(markup).toContain('推广管理组');
+    expect(markup).toContain('数据情报组');
+    expect(markup).toContain('商机策略组');
+    expect(markup).toContain('1/2 已添加');
+    expect(markup).toContain('aria-expanded="false"');
+    expect(markup).toContain('其他工作区 Agent');
+    expect(markup).not.toContain('数据抓取 Agent');
+    expect(markup).not.toContain('未添加');
+    expect(markup).not.toContain('项目总控 Agent');
   });
 
   test('does not leak run task controls into agent management cards', () => {
@@ -2583,6 +2656,43 @@ describe('enterprise lead workspace UI helpers', () => {
     ];
     const stabilityDrafts = agentDrafts.map(agent =>
       createWorkspaceAgentStabilityDraft({ agentId: agent.agentId, name: agent.name }),
+    );
+
+    expect(new Set(stabilityDrafts.map(draft => draft.rules.workStyle)).size).toBe(5);
+    expect(new Set(stabilityDrafts.map(draft => draft.rules.outputFormat)).size).toBe(5);
+    expect(new Set(stabilityDrafts.map(draft => draft.examples[0].sampleInput)).size).toBe(5);
+    expect(new Set(stabilityDrafts.map(draft => draft.checks?.['high-intent']?.[0])).size).toBe(5);
+    agentDrafts.forEach((agent, index) => {
+      expect(stabilityDrafts[index].rules.outputFormat).toContain(agent.outputMarker);
+      expect(stabilityDrafts[index].checks?.['high-intent']?.[0]).toContain(agent.outputMarker);
+    });
+  });
+
+  test('generates distinct promotion department rules, examples, and checks', () => {
+    const agentDrafts = [
+      {
+        agentId: EnterpriseLeadAgentRole.PromotionDataScraping,
+        outputMarker: '来源链接',
+      },
+      {
+        agentId: EnterpriseLeadAgentRole.PromotionLeadScoring,
+        outputMarker: '商机评分',
+      },
+      {
+        agentId: EnterpriseLeadAgentRole.PromotionMultiPlatformAssets,
+        outputMarker: '平台物料',
+      },
+      {
+        agentId: EnterpriseLeadAgentRole.PromotionAccountMonitoring,
+        outputMarker: '异常指标',
+      },
+      {
+        agentId: EnterpriseLeadAgentRole.PromotionPerformanceReview,
+        outputMarker: '复盘结论',
+      },
+    ];
+    const stabilityDrafts = agentDrafts.map(agent =>
+      createWorkspaceAgentStabilityDraft({ agentId: agent.agentId }),
     );
 
     expect(new Set(stabilityDrafts.map(draft => draft.rules.workStyle)).size).toBe(5);
@@ -3343,6 +3453,54 @@ describe('enterprise lead workspace UI helpers', () => {
       },
     ]);
     expect(duplicate).toEqual(added);
+  });
+
+  test('adds a batch of system templates without duplicating existing promotion roles', () => {
+    const existing = [
+      {
+        agentId: EnterpriseLeadAgentRole.PromotionDataScraping,
+        source: EnterpriseLeadWorkspaceAgentSource.SystemTemplate,
+        templateId: EnterpriseLeadAgentRole.PromotionDataScraping,
+        enabled: true,
+        order: 0,
+        overrides: {
+          name: '数据抓取 Agent',
+        },
+      },
+    ];
+    const added = addSystemAgentBindingsToWorkspace(existing, [
+      {
+        agentId: EnterpriseLeadAgentRole.PromotionDataScraping,
+        source: EnterpriseLeadWorkspaceAgentSource.SystemTemplate,
+        templateId: EnterpriseLeadAgentRole.PromotionDataScraping,
+        enabled: true,
+        order: 0,
+        overrides: {
+          name: '数据抓取 Agent',
+        },
+      },
+      {
+        agentId: EnterpriseLeadAgentRole.PromotionAccountMonitoring,
+        source: EnterpriseLeadWorkspaceAgentSource.SystemTemplate,
+        templateId: EnterpriseLeadAgentRole.PromotionAccountMonitoring,
+        enabled: true,
+        order: 1,
+        overrides: {
+          name: '账户监控 Agent',
+        },
+      },
+    ]);
+
+    expect(added).toEqual([
+      expect.objectContaining({
+        agentId: EnterpriseLeadAgentRole.PromotionDataScraping,
+        order: 0,
+      }),
+      expect.objectContaining({
+        agentId: EnterpriseLeadAgentRole.PromotionAccountMonitoring,
+        order: 1,
+      }),
+    ]);
   });
 
   test('adds local Agents as workspace bindings without duplicating agent ids', () => {

@@ -384,6 +384,28 @@ describe('enterprise lead workspace validation', () => {
     ]);
   });
 
+  test('preserves promotion department agent roles during settings updates', () => {
+    const current = buildDefaultEnterpriseLeadWorkspaceSettings();
+
+    const update = normalizeEnterpriseLeadWorkspaceSettingsUpdate(
+      {
+        enabledAgentRoles: [
+          EnterpriseLeadAgentRole.PromotionDataScraping,
+          EnterpriseLeadAgentRole.PromotionLeadScoring,
+          EnterpriseLeadAgentRole.PromotionAccountMonitoring,
+          EnterpriseLeadAgentRole.PromotionDataScraping,
+        ],
+      },
+      current,
+    );
+
+    expect(update.enabledAgentRoles).toEqual([
+      EnterpriseLeadAgentRole.PromotionDataScraping,
+      EnterpriseLeadAgentRole.PromotionLeadScoring,
+      EnterpriseLeadAgentRole.PromotionAccountMonitoring,
+    ]);
+  });
+
   test('preserves external research fields during partial settings updates', () => {
     const current = normalizeEnterpriseLeadWorkspaceSettings({
       externalResearch: {

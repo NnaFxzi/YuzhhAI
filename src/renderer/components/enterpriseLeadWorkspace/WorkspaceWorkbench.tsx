@@ -2,6 +2,8 @@ import {
   ArrowDownIcon,
   ArrowUpIcon,
   CheckCircleIcon,
+  ChevronDownIcon,
+  ChevronRightIcon,
   EllipsisHorizontalIcon,
   NoSymbolIcon,
   PlusIcon,
@@ -9,6 +11,7 @@ import {
   XMarkIcon,
 } from '@heroicons/react/24/outline';
 import { AgentId } from '@shared/agent';
+import { EnterpriseLeadAgentGroupId } from '@shared/enterpriseLeadWorkspace/agentOrganization';
 import {
   EnterpriseLeadAgentRole,
   EnterpriseLeadContentAgentRoles,
@@ -43,6 +46,7 @@ import {
   EnterpriseLeadWorkbenchStatusTone,
   getAgentRoleLabel,
   getEffectiveWorkspaceAgent,
+  getPromotionDepartmentSections,
   type WorkspaceAgentTemplate,
 } from './enterpriseLeadWorkspaceUi';
 import {
@@ -121,6 +125,19 @@ const workspaceAgentOperationFeedbackLabelKeys: Record<
     saved: 'enterpriseLeadWorkbenchAgentOperationCreateSaved',
     error: 'enterpriseLeadWorkbenchAgentOperationCreateError',
   },
+};
+
+const workspaceAgentGroupSummaryLabelKeys: Record<EnterpriseLeadAgentGroupId, string> = {
+  [EnterpriseLeadAgentGroupId.PromotionLeadership]:
+    'enterpriseLeadAgentGroupPromotionLeadershipSummary',
+  [EnterpriseLeadAgentGroupId.DataIntelligence]: 'enterpriseLeadAgentGroupDataIntelligenceSummary',
+  [EnterpriseLeadAgentGroupId.OpportunityStrategy]:
+    'enterpriseLeadAgentGroupOpportunityStrategySummary',
+  [EnterpriseLeadAgentGroupId.ContentAssets]: 'enterpriseLeadAgentGroupContentAssetsSummary',
+  [EnterpriseLeadAgentGroupId.QualityRisk]: 'enterpriseLeadAgentGroupQualityRiskSummary',
+  [EnterpriseLeadAgentGroupId.OperationExecution]:
+    'enterpriseLeadAgentGroupOperationExecutionSummary',
+  [EnterpriseLeadAgentGroupId.MonitoringReview]: 'enterpriseLeadAgentGroupMonitoringReviewSummary',
 };
 
 export const getWorkspaceAgentOperationFeedbackLabelKey = (
@@ -420,6 +437,15 @@ export const addSystemAgentBindingToWorkspace = (
     },
   ]);
 };
+
+export const addSystemAgentBindingsToWorkspace = (
+  workspaceAgents: EnterpriseLeadWorkspaceAgentBinding[],
+  templates: EnterpriseLeadWorkspaceAgentBinding[],
+): EnterpriseLeadWorkspaceAgentBinding[] =>
+  templates.reduce(
+    (bindings, template) => addSystemAgentBindingToWorkspace(bindings, template),
+    workspaceAgents,
+  );
 
 export const addLocalAgentBindingToWorkspace = (
   workspaceAgents: EnterpriseLeadWorkspaceAgentBinding[],
@@ -1994,6 +2020,9 @@ export const WorkspaceWorkbench: React.FC<WorkspaceWorkbenchProps> = ({
   const [openAgentMenuId, setOpenAgentMenuId] = useState<string | null>(null);
   const [confirmingRemoveAgentId, setConfirmingRemoveAgentId] = useState<string | null>(null);
   const [isAgentLibraryOpen, setIsAgentLibraryOpen] = useState(false);
+  const [expandedWorkspaceAgentGroupIds, setExpandedWorkspaceAgentGroupIds] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [saveState, setSaveState] = useState<WorkspaceWorkbenchSaveState>('idle');
   const [agentOperation, setAgentOperation] = useState<WorkspaceAgentOperation | null>(null);
   const agentMenuButtonRefs = useRef(new Map<string, HTMLButtonElement>());
@@ -2006,6 +2035,7 @@ export const WorkspaceWorkbench: React.FC<WorkspaceWorkbenchProps> = ({
     setOpenAgentMenuId(null);
     setConfirmingRemoveAgentId(null);
     setIsAgentLibraryOpen(false);
+    setExpandedWorkspaceAgentGroupIds(new Set());
     saveInFlightRef.current = false;
     setSaveState('idle');
     setAgentOperation(null);
@@ -2030,12 +2060,38 @@ export const WorkspaceWorkbench: React.FC<WorkspaceWorkbenchProps> = ({
           : [],
     [legacyEnabledRoles, storedBindings],
   );
-  const systemTemplateBindings = useMemo(
+  const systemTemplateBindings = useMemo(() => {
+    const promotionRoles = getPromotionDepartmentSections().flatMap(section =>
+      section.roles.map(role => role.role),
+    );
+    const seenTemplateIds = new Set<string>();
+    const templates = [
+      ...buildDefaultWorkspaceAgentBindings(EnterpriseLeadContentAgentRoles),
+      ...buildDefaultWorkspaceAgentBindings(promotionRoles),
+    ].filter(binding => {
+      const templateId = binding.templateId ?? binding.agentId;
+      if (seenTemplateIds.has(templateId)) {
+        return false;
+      }
+      seenTemplateIds.add(templateId);
+      return true;
+    });
+
+    return prepareWorkspaceAgentBindings(templates);
+  }, []);
+  const promotionDepartmentSections = useMemo(() => getPromotionDepartmentSections(), []);
+  const promotionTemplateBindings = useMemo(
     () =>
       prepareWorkspaceAgentBindings(
-        buildDefaultWorkspaceAgentBindings(EnterpriseLeadContentAgentRoles),
+        buildDefaultWorkspaceAgentBindings(
+          promotionDepartmentSections.flatMap(section => section.roles.map(role => role.role)),
+        ),
       ),
-    [],
+    [promotionDepartmentSections],
+  );
+  const promotionTemplateBindingById = useMemo(
+    () => new Map(promotionTemplateBindings.map(binding => [binding.agentId, binding])),
+    [promotionTemplateBindings],
   );
   const addedSystemTemplateIds = useMemo(
     () =>
@@ -2106,6 +2162,19 @@ export const WorkspaceWorkbench: React.FC<WorkspaceWorkbenchProps> = ({
         getEffectiveWorkspaceAgent(binding, workspaceAgentTemplateById.get(binding.agentId)),
       ),
     [workspaceAgentBindings, workspaceAgentTemplateById],
+  );
+  const effectiveWorkspaceAgentById = useMemo(
+    () => new Map(effectiveWorkspaceAgents.map(agent => [agent.id, agent])),
+    [effectiveWorkspaceAgents],
+  );
+  const promotionRoleIds = useMemo(
+    () =>
+      new Set(promotionDepartmentSections.flatMap(section => section.roles.map(role => role.role))),
+    [promotionDepartmentSections],
+  );
+  const otherWorkspaceAgents = useMemo(
+    () => effectiveWorkspaceAgents.filter(agent => !promotionRoleIds.has(agent.id as never)),
+    [effectiveWorkspaceAgents, promotionRoleIds],
   );
   const editingBinding = workspaceAgentBindings.find(binding => binding.agentId === editingAgentId);
   const availableModelRefs = useMemo(
@@ -2221,6 +2290,22 @@ export const WorkspaceWorkbench: React.FC<WorkspaceWorkbenchProps> = ({
     );
   };
 
+  const addPromotionDepartmentTemplateToWorkspace = (): void => {
+    if (saveInFlightRef.current) {
+      return;
+    }
+
+    const nextBindings = addSystemAgentBindingsToWorkspace(
+      workspaceAgentBindings,
+      promotionTemplateBindings,
+    );
+    if (nextBindings.length === workspaceAgentBindings.length) {
+      return;
+    }
+
+    void saveWorkspaceAgents(nextBindings, undefined, WorkspaceAgentOperation.AddTemplate);
+  };
+
   const addLocalAgentToWorkspace = (agentId: string): void => {
     const agent = localAgentTemplateById.get(agentId);
     if (!agent || addedAgentIds.has(agent.id) || saveInFlightRef.current) {
@@ -2327,7 +2412,22 @@ export const WorkspaceWorkbench: React.FC<WorkspaceWorkbenchProps> = ({
     setCreateAgentValidationErrors([]);
   };
 
-  const renderWorkspaceAgentRow = (agent: ReturnType<typeof getEffectiveWorkspaceAgent>) => {
+  const toggleWorkspaceAgentGroup = (groupId: string): void => {
+    setExpandedWorkspaceAgentGroupIds(previous => {
+      const next = new Set(previous);
+      if (next.has(groupId)) {
+        next.delete(groupId);
+      } else {
+        next.add(groupId);
+      }
+      return next;
+    });
+  };
+
+  const renderWorkspaceAgentRow = (
+    agent: ReturnType<typeof getEffectiveWorkspaceAgent>,
+    options: { nested?: boolean } = {},
+  ) => {
     const agentIndex = effectiveWorkspaceAgents.findIndex(item => item.id === agent.id);
     const agentStatusClassName = agent.enabled
       ? statusBadgeClassNames[EnterpriseLeadWorkbenchStatusTone.Enabled]
@@ -2351,14 +2451,22 @@ export const WorkspaceWorkbench: React.FC<WorkspaceWorkbenchProps> = ({
         : source === EnterpriseLeadWorkspaceAgentSource.LocalAgent
           ? 'bg-sky-500/10 text-sky-700 ring-1 ring-sky-500/20 dark:text-sky-300'
           : 'bg-primary/10 text-primary ring-1 ring-primary/20';
+    const rowClassName = options.nested
+      ? 'grid min-h-[76px] grid-cols-[minmax(220px,1.35fr)_minmax(220px,1.2fr)_minmax(160px,0.9fr)_120px_112px] items-center gap-4 border-t border-border/50 bg-surface/35 py-3 pl-14 pr-4'
+      : 'grid min-h-[76px] grid-cols-[minmax(220px,1.35fr)_minmax(220px,1.2fr)_minmax(160px,0.9fr)_120px_112px] items-center gap-4 border-t border-border/70 px-4 py-3 first:border-t-0';
 
     return (
-      <div
-        key={agent.id}
-        role="row"
-        className="grid min-h-[76px] grid-cols-[minmax(220px,1.35fr)_minmax(220px,1.2fr)_minmax(160px,0.9fr)_120px_112px] items-center gap-4 border-t border-border/70 px-4 py-3 first:border-t-0"
-      >
-        <div role="cell" className="flex min-w-0 items-center gap-3">
+      <div key={agent.id} role="row" className={rowClassName}>
+        <div role="cell" className="relative flex min-w-0 items-center gap-3">
+          {options.nested ? (
+            <>
+              <span
+                aria-hidden="true"
+                className="absolute -left-6 -bottom-3 -top-3 w-px bg-border/70"
+              />
+              <span aria-hidden="true" className="absolute -left-6 top-1/2 h-px w-4 bg-border/70" />
+            </>
+          ) : null}
           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-sm font-semibold text-primary ring-1 ring-primary/10">
             {avatarLabel}
           </div>
@@ -2475,9 +2583,222 @@ export const WorkspaceWorkbench: React.FC<WorkspaceWorkbenchProps> = ({
     );
   };
 
+  const renderWorkspaceAgentGroupHeader = (
+    key: string,
+    title: string,
+    options: {
+      addedCount?: number;
+      summary?: string;
+      sourceLabelKey?: string;
+      totalCount?: number;
+      expanded: boolean;
+      onToggle: () => void;
+    },
+  ) => {
+    const complete =
+      options.addedCount !== undefined &&
+      options.totalCount !== undefined &&
+      options.addedCount >= options.totalCount;
+    const partial =
+      options.addedCount !== undefined &&
+      options.totalCount !== undefined &&
+      options.addedCount > 0 &&
+      options.addedCount < options.totalCount;
+    const progressClassName = complete
+      ? 'bg-emerald-500/10 text-emerald-700 ring-1 ring-emerald-500/20 dark:text-emerald-300'
+      : partial
+        ? 'bg-amber-500/10 text-amber-700 ring-1 ring-amber-500/20 dark:text-amber-300'
+        : 'bg-slate-500/10 text-slate-600 ring-1 ring-slate-500/15 dark:text-slate-300';
+    const buttonStateClassName = options.expanded
+      ? 'border-primary/20 bg-primary/5'
+      : 'border-transparent hover:border-border/80 hover:bg-surface-raised/60';
+    const toggleClassName = options.expanded
+      ? 'bg-primary/10 text-primary ring-1 ring-primary/20'
+      : 'bg-surface-raised text-secondary ring-1 ring-border/70';
+
+    return (
+      <div key={key} role="row" className="border-t border-border/70 bg-background px-3 py-2">
+        <div role="cell" className="col-span-5">
+          <button
+            type="button"
+            aria-expanded={options.expanded}
+            onClick={options.onToggle}
+            className={`grid min-h-[58px] w-full grid-cols-[minmax(220px,1.35fr)_minmax(220px,1.2fr)_minmax(160px,0.9fr)_120px_112px] items-center gap-4 rounded-lg border px-3 py-2 text-left transition-colors focus:outline-none focus:ring-2 focus:ring-primary/20 ${buttonStateClassName}`}
+          >
+            <span className="flex min-w-0 items-center gap-3">
+              <span
+                className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors ${toggleClassName}`}
+              >
+                {options.expanded ? (
+                  <ChevronDownIcon className="h-4 w-4" />
+                ) : (
+                  <ChevronRightIcon className="h-4 w-4" />
+                )}
+              </span>
+              <span className="min-w-0">
+                <span className="block truncate text-sm font-semibold text-foreground">
+                  {title}
+                </span>
+                <span className="mt-0.5 block truncate text-xs text-secondary">
+                  {options.summary || title}
+                </span>
+              </span>
+            </span>
+            <span className="line-clamp-2 text-xs leading-5 text-secondary">
+              {options.summary || title}
+            </span>
+            <span className="truncate text-xs font-medium text-secondary">
+              {i18nService.t(options.sourceLabelKey ?? 'enterpriseLeadWorkbenchAgentGroupType')}
+            </span>
+            <span
+              className={`inline-flex w-fit rounded-full px-2.5 py-1 text-xs font-medium ${progressClassName}`}
+            >
+              {options.addedCount === undefined || options.totalCount === undefined
+                ? title
+                : i18nService
+                    .t('enterpriseLeadWorkbenchAgentGroupProgress')
+                    .replace('{added}', String(options.addedCount))
+                    .replace('{total}', String(options.totalCount))}
+            </span>
+            <span className="justify-self-end text-xs font-medium text-primary">
+              {options.expanded
+                ? i18nService.t('enterpriseLeadWorkbenchAgentGroupCollapse')
+                : i18nService.t('enterpriseLeadWorkbenchAgentGroupExpand')}
+            </span>
+          </button>
+        </div>
+      </div>
+    );
+  };
+
+  const renderMissingPromotionAgentRow = (
+    binding: EnterpriseLeadWorkspaceAgentBinding,
+    options: { nested?: boolean } = {},
+  ) => {
+    const agent = getEffectiveWorkspaceAgent(binding);
+    const templateId = binding.templateId ?? binding.agentId;
+    const fallbackInitial = agent.name.trim().charAt(0).toUpperCase() || '#';
+    const avatarLabel = agent.icon.length <= 2 ? agent.icon || fallbackInitial : fallbackInitial;
+    const rowClassName = options.nested
+      ? 'grid min-h-[76px] grid-cols-[minmax(220px,1.35fr)_minmax(220px,1.2fr)_minmax(160px,0.9fr)_120px_112px] items-center gap-4 border-t border-border/50 bg-surface/35 py-3 pl-14 pr-4 opacity-80'
+      : 'grid min-h-[76px] grid-cols-[minmax(220px,1.35fr)_minmax(220px,1.2fr)_minmax(160px,0.9fr)_120px_112px] items-center gap-4 border-t border-border/70 px-4 py-3 opacity-80';
+
+    return (
+      <div key={`missing-${templateId}`} role="row" className={rowClassName}>
+        <div role="cell" className="relative flex min-w-0 items-center gap-3">
+          {options.nested ? (
+            <>
+              <span
+                aria-hidden="true"
+                className="absolute -left-6 -bottom-3 -top-3 w-px bg-border/70"
+              />
+              <span aria-hidden="true" className="absolute -left-6 top-1/2 h-px w-4 bg-border/70" />
+            </>
+          ) : null}
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-500/10 text-sm font-semibold text-slate-500 ring-1 ring-slate-500/15 dark:text-slate-300">
+            {avatarLabel}
+          </div>
+          <div className="min-w-0">
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="truncate text-sm font-semibold text-foreground">{agent.name}</span>
+              <span className="shrink-0 rounded-full bg-slate-500/10 px-2 py-0.5 text-[11px] font-medium text-slate-600 ring-1 ring-slate-500/15 dark:text-slate-300">
+                {i18nService.t('enterpriseLeadWorkbenchAgentSourceSystemTemplate')}
+              </span>
+            </div>
+            <p className="mt-1 truncate text-xs text-secondary">{templateId}</p>
+          </div>
+        </div>
+        <div role="cell" className="min-w-0">
+          <p className="line-clamp-2 text-sm leading-5 text-secondary">
+            {agent.description || i18nService.t('enterpriseLeadWorkbenchNoAgentDescription')}
+          </p>
+        </div>
+        <div role="cell" className="min-w-0">
+          <p className="truncate text-sm font-medium text-foreground">
+            {i18nService.t('enterpriseLeadWorkbenchAgentDefaultModel')}
+          </p>
+          <p className="mt-1 truncate text-xs text-secondary">
+            {i18nService.t('enterpriseLeadWorkbenchAgentInheritedSkills')}
+          </p>
+        </div>
+        <div role="cell">
+          <span className="inline-flex rounded-full bg-slate-500/10 px-2.5 py-1 text-xs font-medium text-slate-600 ring-1 ring-slate-500/15 dark:text-slate-300">
+            {i18nService.t('enterpriseLeadWorkbenchAgentNotAdded')}
+          </span>
+        </div>
+        <div role="cell" className="flex items-center justify-end">
+          <button
+            type="button"
+            onClick={() => addSystemAgentToWorkspace(templateId)}
+            disabled={saveState === 'saving'}
+            className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-border px-2.5 text-xs font-medium text-foreground transition-colors hover:bg-surface-raised disabled:cursor-not-allowed disabled:opacity-55"
+          >
+            <PlusIcon className="h-3.5 w-3.5" />
+            {i18nService.t('enterpriseLeadWorkbenchAddSystemAgent')}
+          </button>
+        </div>
+      </div>
+    );
+  };
+
+  const renderPromotionWorkspaceAgentRow = (role: string, options: { nested?: boolean } = {}) => {
+    const existingAgent = effectiveWorkspaceAgentById.get(role);
+    if (existingAgent) {
+      return renderWorkspaceAgentRow(existingAgent, options);
+    }
+
+    const template = promotionTemplateBindingById.get(role);
+    return template ? renderMissingPromotionAgentRow(template, options) : null;
+  };
+
+  const renderSystemTemplateCard = (binding: EnterpriseLeadWorkspaceAgentBinding) => {
+    const agent = getEffectiveWorkspaceAgent(binding);
+    const templateId = binding.templateId ?? binding.agentId;
+    const isAdded = addedSystemTemplateIds.has(templateId);
+    const fallbackInitial = agent.name.trim().charAt(0).toUpperCase() || '#';
+    const avatarLabel = agent.icon.length <= 2 ? agent.icon || fallbackInitial : fallbackInitial;
+
+    return (
+      <div
+        key={templateId}
+        className="flex min-w-0 items-center justify-between gap-3 rounded-lg border border-border/70 bg-surface px-3 py-2"
+      >
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-500/10 text-xs font-semibold text-slate-600 ring-1 ring-slate-500/15 dark:text-slate-300">
+            {avatarLabel}
+          </div>
+          <div className="min-w-0">
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="truncate text-sm font-medium text-foreground">{agent.name}</span>
+              <span className="shrink-0 rounded-full bg-slate-500/10 px-2 py-0.5 text-[11px] font-medium text-slate-600 ring-1 ring-slate-500/15 dark:text-slate-300">
+                {i18nService.t('enterpriseLeadWorkbenchAgentSourceSystemTemplate')}
+              </span>
+            </div>
+            <p className="mt-1 truncate text-xs text-secondary">
+              {agent.description || templateId}
+            </p>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() => addSystemAgentToWorkspace(templateId)}
+          disabled={isAdded || saveState === 'saving'}
+          className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-border px-2.5 text-xs font-medium text-foreground transition-colors hover:bg-background disabled:cursor-not-allowed disabled:opacity-55"
+        >
+          <PlusIcon className="h-3.5 w-3.5" />
+          {i18nService.t(
+            isAdded
+              ? 'enterpriseLeadWorkbenchSystemAgentAlreadyAdded'
+              : 'enterpriseLeadWorkbenchAddSystemAgent',
+          )}
+        </button>
+      </div>
+    );
+  };
+
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-y-auto bg-surface-raised px-6 py-5">
-      <div className="mx-auto flex w-full max-w-7xl flex-col gap-4">
+      <div className="flex w-full min-w-0 flex-col gap-4">
         <section className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-border bg-background shadow-sm">
           <header className="flex flex-wrap items-start justify-between gap-3 border-b border-border px-5 py-4">
             <div className="min-w-0">
@@ -2507,6 +2828,20 @@ export const WorkspaceWorkbench: React.FC<WorkspaceWorkbenchProps> = ({
               </p>
             </div>
             <div className="flex shrink-0 flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={addPromotionDepartmentTemplateToWorkspace}
+                disabled={
+                  saveState === 'saving' ||
+                  promotionTemplateBindings.every(binding =>
+                    addedSystemTemplateIds.has(binding.templateId ?? binding.agentId),
+                  )
+                }
+                className="inline-flex h-9 items-center gap-2 rounded-lg border border-border px-3 text-xs font-medium text-foreground transition-colors hover:bg-surface-raised disabled:cursor-not-allowed disabled:opacity-55"
+              >
+                <PlusIcon className="h-4 w-4" />
+                {i18nService.t('enterpriseLeadWorkbenchAddPromotionDepartmentTemplate')}
+              </button>
               <button
                 type="button"
                 onClick={() => setIsAgentLibraryOpen(value => !value)}
@@ -2565,7 +2900,55 @@ export const WorkspaceWorkbench: React.FC<WorkspaceWorkbenchProps> = ({
                   </div>
                 </div>
                 <div role="rowgroup" className="divide-y divide-border/70">
-                  {effectiveWorkspaceAgents.map(agent => renderWorkspaceAgentRow(agent))}
+                  {promotionDepartmentSections.flatMap(section => {
+                    const addedCount = section.roles.filter(role =>
+                      effectiveWorkspaceAgentById.has(role.role),
+                    ).length;
+                    const expanded = expandedWorkspaceAgentGroupIds.has(section.groupId);
+                    const summary = i18nService.t(
+                      workspaceAgentGroupSummaryLabelKeys[section.groupId],
+                    );
+
+                    return [
+                      renderWorkspaceAgentGroupHeader(
+                        `group-${section.groupId}`,
+                        i18nService.t(section.titleKey),
+                        {
+                          addedCount,
+                          summary,
+                          totalCount: section.roles.length,
+                          expanded,
+                          onToggle: () => toggleWorkspaceAgentGroup(section.groupId),
+                        },
+                      ),
+                      ...(expanded
+                        ? section.roles.map(role =>
+                            renderPromotionWorkspaceAgentRow(role.role, { nested: true }),
+                          )
+                        : []),
+                    ];
+                  })}
+                  {otherWorkspaceAgents.length > 0
+                    ? [
+                        renderWorkspaceAgentGroupHeader(
+                          'group-other-agents',
+                          i18nService.t('enterpriseLeadWorkbenchOtherAgentsTitle'),
+                          {
+                            addedCount: otherWorkspaceAgents.length,
+                            expanded: expandedWorkspaceAgentGroupIds.has('other-agents'),
+                            sourceLabelKey: 'enterpriseLeadWorkbenchAgentGroupType',
+                            summary: i18nService.t('enterpriseLeadWorkbenchOtherAgentsSummary'),
+                            totalCount: otherWorkspaceAgents.length,
+                            onToggle: () => toggleWorkspaceAgentGroup('other-agents'),
+                          },
+                        ),
+                        ...(expandedWorkspaceAgentGroupIds.has('other-agents')
+                          ? otherWorkspaceAgents.map(agent =>
+                              renderWorkspaceAgentRow(agent, { nested: true }),
+                            )
+                          : []),
+                      ]
+                    : null}
                 </div>
               </div>
             )}
@@ -2651,54 +3034,45 @@ export const WorkspaceWorkbench: React.FC<WorkspaceWorkbenchProps> = ({
                       )}
                   </span>
                 </div>
-                <div className="grid gap-2">
-                  {systemTemplateBindings.map(binding => {
-                    const agent = getEffectiveWorkspaceAgent(binding);
-                    const templateId = binding.templateId ?? binding.agentId;
-                    const isAdded = addedSystemTemplateIds.has(templateId);
-                    const fallbackInitial = agent.name.trim().charAt(0).toUpperCase() || '#';
-                    const avatarLabel =
-                      agent.icon.length <= 2 ? agent.icon || fallbackInitial : fallbackInitial;
-
-                    return (
-                      <div
-                        key={templateId}
-                        className="flex min-w-0 items-center justify-between gap-3 rounded-lg border border-border/70 bg-surface px-3 py-2"
+                <div className="grid gap-3">
+                  <div className="rounded-lg border border-border/70 bg-background px-3 py-3">
+                    <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                      <h4 className="text-sm font-semibold text-foreground">
+                        {i18nService.t('enterpriseLeadDepartmentPromotionTitle')}
+                      </h4>
+                      <button
+                        type="button"
+                        onClick={addPromotionDepartmentTemplateToWorkspace}
+                        disabled={
+                          saveState === 'saving' ||
+                          promotionTemplateBindings.every(binding =>
+                            addedSystemTemplateIds.has(binding.templateId ?? binding.agentId),
+                          )
+                        }
+                        className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-border px-2.5 text-xs font-medium text-foreground transition-colors hover:bg-surface disabled:cursor-not-allowed disabled:opacity-55"
                       >
-                        <div className="flex min-w-0 items-center gap-3">
-                          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-500/10 text-xs font-semibold text-slate-600 ring-1 ring-slate-500/15 dark:text-slate-300">
-                            {avatarLabel}
-                          </div>
-                          <div className="min-w-0">
-                            <div className="flex min-w-0 items-center gap-2">
-                              <span className="truncate text-sm font-medium text-foreground">
-                                {agent.name}
-                              </span>
-                              <span className="shrink-0 rounded-full bg-slate-500/10 px-2 py-0.5 text-[11px] font-medium text-slate-600 ring-1 ring-slate-500/15 dark:text-slate-300">
-                                {i18nService.t('enterpriseLeadWorkbenchAgentSourceSystemTemplate')}
-                              </span>
-                            </div>
-                            <p className="mt-1 truncate text-xs text-secondary">
-                              {agent.description || templateId}
-                            </p>
+                        <PlusIcon className="h-3.5 w-3.5" />
+                        {i18nService.t('enterpriseLeadWorkbenchAddPromotionDepartmentTemplate')}
+                      </button>
+                    </div>
+                    <div className="grid gap-3">
+                      {promotionDepartmentSections.map(section => (
+                        <div key={section.groupId} className="grid gap-2">
+                          <h5 className="text-xs font-semibold text-secondary">
+                            {i18nService.t(section.titleKey)}
+                          </h5>
+                          <div className="grid gap-2">
+                            {section.roles
+                              .map(role => promotionTemplateBindingById.get(role.role))
+                              .filter((binding): binding is EnterpriseLeadWorkspaceAgentBinding =>
+                                Boolean(binding),
+                              )
+                              .map(binding => renderSystemTemplateCard(binding))}
                           </div>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => addSystemAgentToWorkspace(templateId)}
-                          disabled={isAdded || saveState === 'saving'}
-                          className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-border px-2.5 text-xs font-medium text-foreground transition-colors hover:bg-background disabled:cursor-not-allowed disabled:opacity-55"
-                        >
-                          <PlusIcon className="h-3.5 w-3.5" />
-                          {i18nService.t(
-                            isAdded
-                              ? 'enterpriseLeadWorkbenchSystemAgentAlreadyAdded'
-                              : 'enterpriseLeadWorkbenchAddSystemAgent',
-                          )}
-                        </button>
-                      </div>
-                    );
-                  })}
+                      ))}
+                    </div>
+                  </div>
                 </div>
               </section>
             </div>
