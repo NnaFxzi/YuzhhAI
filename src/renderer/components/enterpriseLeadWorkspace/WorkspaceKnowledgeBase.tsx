@@ -1714,7 +1714,10 @@ export const WorkspaceKnowledgeBase: React.FC<WorkspaceKnowledgeBaseProps> = ({
           showFeedbackMessage('exception', 'enterpriseLeadKnowledgeFileSelectionUnavailable');
           return;
         }
-        const upload = await resolveEnterpriseLeadKnowledgeDocumentUpload(dialogApi, source.filePath);
+        const upload = await resolveEnterpriseLeadKnowledgeDocumentUpload(
+          dialogApi,
+          source.filePath,
+        );
         if (
           upload.outcome !== EnterpriseLeadKnowledgeDocumentUploadOutcome.Ready ||
           !upload.document?.text.trim()
