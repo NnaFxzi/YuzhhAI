@@ -141,6 +141,25 @@ export default defineConfig({
         },
         onstart() {},
       },
+      {
+        entry: 'src/main/knowledgeBase/knowledgeDocumentIndexWorker.ts',
+        vite: {
+          build: {
+            sourcemap: true,
+            outDir: 'dist-electron',
+            emptyOutDir: false,
+            minify: false,
+            rollupOptions: {
+              external: ['better-sqlite3'],
+              output: {
+                entryFileNames: 'knowledge-index-worker.js',
+                inlineDynamicImports: true,
+              },
+            },
+          },
+        },
+        onstart() {},
+      },
     ]),
     renderer(),
   ],

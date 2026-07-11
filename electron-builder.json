@@ -284,6 +284,7 @@
   },
   "electronVersion": "40.2.1",
   "asarUnpack": [
+    "dist-electron/knowledge-index-worker.js",
     "node_modules/@img/**",
     "node_modules/better-sqlite3/**",
     "node_modules/node-nim/**",

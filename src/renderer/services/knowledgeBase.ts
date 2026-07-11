@@ -14,6 +14,7 @@ import type {
   KnowledgeImportSelectionRequest,
   KnowledgeListDocumentsRequest,
   KnowledgeRetryDocumentRequest,
+  KnowledgeRetryLocalIndexRequest,
 } from '../../shared/knowledgeBase/types';
 
 interface KnowledgeBaseApi {
@@ -35,6 +36,9 @@ interface KnowledgeBaseApi {
   ) => Promise<KnowledgeBaseIpcResult<KnowledgeDocumentListItem>>;
   retryDocument: (
     input: KnowledgeRetryDocumentRequest,
+  ) => Promise<KnowledgeBaseIpcResult<KnowledgeDocumentListItem>>;
+  retryLocalIndex: (
+    input: KnowledgeRetryLocalIndexRequest,
   ) => Promise<KnowledgeBaseIpcResult<KnowledgeDocumentListItem>>;
 }
 
@@ -115,4 +119,9 @@ export const knowledgeBaseService = {
     documentVersionId: string,
   ): Promise<KnowledgeDocumentListItem> =>
     request(api => api.retryDocument({ documentId, documentVersionId })),
+  retryLocalIndex: (
+    documentId: string,
+    documentVersionId: string,
+  ): Promise<KnowledgeDocumentListItem> =>
+    request(api => api.retryLocalIndex({ documentId, documentVersionId })),
 };

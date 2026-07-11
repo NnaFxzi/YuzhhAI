@@ -173,6 +173,7 @@ import {
 import { registerSkillHandlers } from './ipcHandlers/skills';
 import { registerKnowledgeBaseHandlers } from './knowledgeBase/ipcHandlers';
 import { createKnowledgeBaseFoundation, type KnowledgeBaseFoundation, } from './knowledgeBase/knowledgeBaseFoundation';
+import { resolveKnowledgeDocumentIndexWorkerPath } from './knowledgeBase/knowledgeDocumentIndexWorkerPath';
 import { KnowledgeDocumentServiceError } from './knowledgeBase/knowledgeDocumentService';
 import {
   type CoworkAgentEngine,
@@ -1651,6 +1652,12 @@ const getKnowledgeBaseFoundation = (): KnowledgeBaseFoundation => {
   if (!knowledgeBaseFoundation) {
     knowledgeBaseFoundation = createKnowledgeBaseFoundation({
       db: getStore().getDatabase(),
+      databasePath: getStore().getDbPath(),
+      indexWorkerScriptPath: resolveKnowledgeDocumentIndexWorkerPath({
+        isPackaged: app.isPackaged,
+        moduleDirectory: __dirname,
+        resourcesPath: process.resourcesPath,
+      }),
       userDataPath: app.getPath('userData'),
       workspaceStore: getEnterpriseLeadWorkspaceStore(),
       extractDocumentText: (managedPath, options) =>
@@ -11472,6 +11479,12 @@ if (!gotTheLock) {
     }
 
     sqliteBackupManager?.stopPeriodicBackupLoop();
+
+    if (knowledgeBaseFoundation) {
+      await knowledgeBaseFoundation.shutdown().catch(error => {
+        console.error('[KnowledgeBase] Failed to stop local index worker:', error);
+      });
+    }
 
     // Close the SQLite database to flush the WAL and release the file lock.
     try {

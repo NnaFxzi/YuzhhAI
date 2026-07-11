@@ -88,6 +88,17 @@ function syncCurrentOpenClawRuntimeForTarget(context) {
   return { runtimeRoot: currentRoot, targetId };
 }
 
+function getMissingPreinstalledPluginIds(plugins, installedPluginIds) {
+  const installed = new Set(installedPluginIds);
+  return plugins
+    .filter(plugin => (
+      plugin?.id
+      && plugin.optional !== true
+      && !installed.has(plugin.id)
+    ))
+    .map(plugin => plugin.id);
+}
+
 function verifyPreinstalledPlugins(runtimeRoot, buildHint) {
   const pkgPath = path.join(__dirname, '..', 'package.json');
   let plugins = [];
@@ -103,15 +114,10 @@ function verifyPreinstalledPlugins(runtimeRoot, buildHint) {
   }
 
   const extensionsDir = path.join(runtimeRoot, 'third-party-extensions');
-  const missing = [];
-
-  for (const plugin of plugins) {
-    if (!plugin.id) continue;
-    const pluginDir = path.join(extensionsDir, plugin.id);
-    if (!existsSync(pluginDir)) {
-      missing.push(plugin.id);
-    }
-  }
+  const installedPluginIds = plugins
+    .filter(plugin => plugin?.id && existsSync(path.join(extensionsDir, plugin.id)))
+    .map(plugin => plugin.id);
+  const missing = getMissingPreinstalledPluginIds(plugins, installedPluginIds);
 
   if (missing.length > 0) {
     throw new Error(
@@ -121,7 +127,22 @@ function verifyPreinstalledPlugins(runtimeRoot, buildHint) {
     );
   }
 
-  console.log(`[electron-builder-hooks] Verified ${plugins.length} preinstalled OpenClaw plugin(s).`);
+  const installed = new Set(installedPluginIds);
+  const requiredVerifiedCount = plugins.filter(
+    plugin => plugin?.id && plugin.optional !== true,
+  ).length;
+  const optionalPresentCount = plugins.filter(
+    plugin => plugin?.id && plugin.optional === true && installed.has(plugin.id),
+  ).length;
+  const optionalOmittedCount = plugins.filter(
+    plugin => plugin?.id && plugin.optional === true && !installed.has(plugin.id),
+  ).length;
+  console.log(
+    '[electron-builder-hooks] OpenClaw plugins: '
+    + `required verified ${requiredVerifiedCount}, `
+    + `optional present ${optionalPresentCount}, `
+    + `optional omitted ${optionalOmittedCount}.`,
+  );
 }
 
 function hasCompiledLocalExtension(runtimeRoot, extensionId) {
@@ -604,4 +625,5 @@ async function afterPack(context) {
 module.exports = {
   beforePack,
   afterPack,
+  getMissingPreinstalledPluginIds,
 };

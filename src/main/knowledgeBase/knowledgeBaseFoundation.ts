@@ -5,6 +5,12 @@ import Database from 'better-sqlite3';
 import { EnterpriseLeadWorkspaceStore } from '../enterpriseLeadWorkspace/store';
 import { extractDocumentTextFromFile } from '../libs/documentTextExtractor';
 import { EnterpriseLeadKnowledgeCompatibilityAdapter } from './enterpriseLeadKnowledgeCompatibilityAdapter';
+import {
+  type KnowledgeDocumentIndexExecutor,
+  WorkerKnowledgeDocumentIndexExecutor,
+} from './knowledgeDocumentIndexExecutor';
+import { KnowledgeDocumentIndexService } from './knowledgeDocumentIndexService';
+import { KnowledgeDocumentIndexStore } from './knowledgeDocumentIndexStore';
 import { KnowledgeDocumentService } from './knowledgeDocumentService';
 import { KnowledgeDocumentStore } from './knowledgeDocumentStore';
 import { KnowledgeIngestionJobStore } from './knowledgeIngestionJobStore';
@@ -28,6 +34,8 @@ export interface KnowledgeBaseFoundation {
   documentService: KnowledgeDocumentService;
   documentStore: KnowledgeDocumentStore;
   ingestionService: KnowledgeIngestionService;
+  indexingService: KnowledgeDocumentIndexService;
+  indexStore: KnowledgeDocumentIndexStore;
   jobStore: KnowledgeIngestionJobStore;
   managedFileStore: KnowledgeManagedFileStore;
   migrationStore: KnowledgeMigrationStore;
@@ -35,10 +43,19 @@ export interface KnowledgeBaseFoundation {
   selectionTokenStore: KnowledgeSelectionTokenStore;
   recoverMigrateAndStart: (workspaces: LegacyKnowledgeWorkspace[], now?: string) => Promise<void>;
   deleteWorkspaceData: (workspaceId: string) => void;
+  shutdown: () => Promise<void>;
+}
+
+export interface KnowledgeDocumentIndexExecutorFactoryInput {
+  store: KnowledgeDocumentIndexStore;
+  databasePath: string | null;
 }
 
 export const recoverAndMigrateKnowledgeBase = async (options: {
   jobStore: Pick<KnowledgeIngestionJobStore, 'recoverAbandonedJobs'>;
+  indexStore: Pick<KnowledgeDocumentIndexStore,
+    'recoverAbandonedIndexing' | 'reconcileMissingStates'
+  >;
   migrationService: Pick<KnowledgeMigrationService, 'migrateWorkspace'>;
   workspaces: LegacyKnowledgeWorkspace[];
   staleBefore: string;
@@ -47,6 +64,7 @@ export const recoverAndMigrateKnowledgeBase = async (options: {
   onReady?: () => void;
 }): Promise<void> => {
   options.jobStore.recoverAbandonedJobs(options.staleBefore, options.now);
+  options.indexStore.recoverAbandonedIndexing(options.staleBefore, options.now);
   for (const workspace of options.workspaces) {
     try {
       await options.migrationService.migrateWorkspace(workspace);
@@ -54,12 +72,18 @@ export const recoverAndMigrateKnowledgeBase = async (options: {
       options.onMigrationError?.(workspace.id, error);
     }
   }
+  options.indexStore.reconcileMissingStates(options.now);
   options.onReady?.();
 };
 
 export const createKnowledgeBaseFoundation = (options: {
   db: Database.Database;
   userDataPath: string;
+  databasePath?: string;
+  indexWorkerScriptPath?: string;
+  indexExecutorFactory?: (
+    input: KnowledgeDocumentIndexExecutorFactoryInput,
+  ) => KnowledgeDocumentIndexExecutor;
   workspaceStore?: EnterpriseLeadWorkspaceStore;
   extractDocumentText?: (
     managedPath: string,
@@ -69,8 +93,24 @@ export const createKnowledgeBaseFoundation = (options: {
     },
   ) => Promise<LocalKnowledgeExtractionResult>;
 }): KnowledgeBaseFoundation => {
+  const databasePath = options.databasePath?.trim() ? options.databasePath : null;
+  const indexWorkerScriptPath = options.indexWorkerScriptPath?.trim()
+    ? options.indexWorkerScriptPath
+    : null;
+  if (!options.indexExecutorFactory && (!databasePath || !indexWorkerScriptPath)) {
+    throw new Error('Knowledge document index worker paths are required');
+  }
+
   const workspaceStore = options.workspaceStore ?? new EnterpriseLeadWorkspaceStore(options.db);
   const documentStore = new KnowledgeDocumentStore(options.db);
+  const indexStore = new KnowledgeDocumentIndexStore(options.db);
+  const indexExecutor = options.indexExecutorFactory
+    ? options.indexExecutorFactory({ store: indexStore, databasePath })
+    : new WorkerKnowledgeDocumentIndexExecutor({
+        databasePath: databasePath!,
+        workerScriptPath: indexWorkerScriptPath!,
+      });
+  const indexingService = new KnowledgeDocumentIndexService(indexExecutor, indexStore);
   const jobStore = new KnowledgeIngestionJobStore(options.db);
   const migrationStore = new KnowledgeMigrationStore(options.db);
   const selectionTokenStore = new KnowledgeSelectionTokenStore();
@@ -90,16 +130,19 @@ export const createKnowledgeBaseFoundation = (options: {
     db: options.db,
     documentStore,
     jobStore,
+    indexStore,
     managedFileStore,
     selectionTokenStore,
     compatibilityAdapter,
     workspaceExists: workspaceId => Boolean(workspaceStore.getWorkspace(workspaceId)),
     onJobsQueued: () => ingestionService.wake(),
+    onIndexQueued: () => indexingService.wake(),
   });
   ingestionService = new KnowledgeIngestionService({
     db: options.db,
     documentStore,
     jobStore,
+    indexStore,
     managedFileStore,
     extractDocumentText:
       options.extractDocumentText ??
@@ -108,6 +151,7 @@ export const createKnowledgeBaseFoundation = (options: {
           extensionHint: extractionOptions.extensionHint,
           image: { onProgress: extractionOptions.onProgress },
         })),
+    onIndexQueued: () => indexingService.wake(),
     onDocumentUpdated: (workspaceId, documentId) => {
       if (!workspaceStore.getWorkspace(workspaceId)) {
         return;
@@ -131,6 +175,8 @@ export const createKnowledgeBaseFoundation = (options: {
     documentService,
     documentStore,
     ingestionService,
+    indexingService,
+    indexStore,
     jobStore,
     managedFileStore,
     migrationStore,
@@ -138,6 +184,7 @@ export const createKnowledgeBaseFoundation = (options: {
     selectionTokenStore,
     deleteWorkspaceData: (workspaceId: string): void => {
       const transaction = options.db.transaction(() => {
+        indexStore.deleteWorkspaceIndex(workspaceId);
         jobStore.deleteWorkspaceJobs(workspaceId);
         documentStore.deleteWorkspaceDocuments(workspaceId);
         migrationStore.deleteState(workspaceId);
@@ -183,6 +230,7 @@ export const createKnowledgeBaseFoundation = (options: {
       const staleBefore = new Date((Number.isFinite(nowMs) ? nowMs : Date.now()) + 1).toISOString();
       await recoverAndMigrateKnowledgeBase({
         jobStore,
+        indexStore,
         migrationService,
         workspaces: workspacesWithStableSourceIds,
         staleBefore,
@@ -190,8 +238,14 @@ export const createKnowledgeBaseFoundation = (options: {
         onMigrationError: (workspaceId, error) => {
           console.warn(`[KnowledgeBase] Failed to migrate workspace ${workspaceId}:`, error);
         },
-        onReady: () => ingestionService.wake(),
+        onReady: () => {
+          ingestionService.wake();
+          indexingService.wake();
+        },
       });
+    },
+    shutdown: async (): Promise<void> => {
+      await indexingService.shutdown();
     },
   };
 };

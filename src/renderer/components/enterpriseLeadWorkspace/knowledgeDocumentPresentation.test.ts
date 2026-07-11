@@ -2,19 +2,23 @@ import { afterEach, describe, expect, test } from 'vitest';
 
 import {
   KnowledgeBaseErrorCode,
+  KnowledgeDocumentIndexStatus,
   KnowledgeDocumentSourceMode,
   KnowledgeDocumentStatus,
   KnowledgeIngestionJobStatus,
   KnowledgeIngestionStage,
 } from '../../../shared/knowledgeBase/constants';
 import type {
+  KnowledgeDocumentIndexSummary,
   KnowledgeDocumentListItem,
   KnowledgeImportBatchResult,
 } from '../../../shared/knowledgeBase/types';
 import { i18nService } from '../../services/i18n';
 import {
+  canRetryKnowledgeDocumentIndex,
   filterKnowledgeDocuments,
   getKnowledgeDocumentErrorKey,
+  getKnowledgeDocumentIndexStatusKey,
   getKnowledgeDocumentStatusKey,
   shouldPollKnowledgeDocuments,
   summarizeKnowledgeImportBatch,
@@ -41,9 +45,24 @@ const documentItem = (
     errorCode: null,
     updatedAt: '2026-07-11T00:00:00.000Z',
   },
+  localIndex: null,
   createdAt: '2026-07-11T00:00:00.000Z',
   updatedAt: '2026-07-11T00:00:00.000Z',
   deletedAt: null,
+  ...overrides,
+});
+
+const createIndexSummary = (
+  status: KnowledgeDocumentIndexStatus,
+  overrides: Partial<KnowledgeDocumentIndexSummary> = {},
+): KnowledgeDocumentIndexSummary => ({
+  documentVersionId: 'version-a',
+  status,
+  chunkCount: 0,
+  attemptCount: 1,
+  errorCode: null,
+  updatedAt: '2026-07-11T00:00:00.000Z',
+  completedAt: null,
   ...overrides,
 });
 
@@ -112,6 +131,72 @@ describe('knowledge document presentation', () => {
     expect(shouldPollKnowledgeDocuments([documentItem({ currentJob: null })])).toBe(false);
   });
 
+  test.each([
+    [KnowledgeDocumentIndexStatus.Pending, 'enterpriseKnowledgeLocalIndexStatusPending'],
+    [KnowledgeDocumentIndexStatus.Indexing, 'enterpriseKnowledgeLocalIndexStatusIndexing'],
+    [KnowledgeDocumentIndexStatus.Indexed, 'enterpriseKnowledgeLocalIndexStatusIndexed'],
+    [
+      KnowledgeDocumentIndexStatus.NotApplicable,
+      'enterpriseKnowledgeLocalIndexStatusNotApplicable',
+    ],
+    [KnowledgeDocumentIndexStatus.Failed, 'enterpriseKnowledgeLocalIndexStatusFailed'],
+  ])('maps local-index status %s to %s', (status, key) => {
+    expect(getKnowledgeDocumentIndexStatusKey(status)).toBe(key);
+  });
+
+  test.each([
+    KnowledgeDocumentIndexStatus.Pending,
+    KnowledgeDocumentIndexStatus.Indexing,
+  ])('polls while local indexing is %s even after ingestion completes', status => {
+    expect(
+      shouldPollKnowledgeDocuments([
+        documentItem({
+          currentJob: null,
+          localIndex: createIndexSummary(status),
+        }),
+      ]),
+    ).toBe(true);
+  });
+
+  test.each([
+    KnowledgeDocumentIndexStatus.Indexed,
+    KnowledgeDocumentIndexStatus.NotApplicable,
+    KnowledgeDocumentIndexStatus.Failed,
+  ])('stops polling when local indexing is terminal: %s', status => {
+    expect(
+      shouldPollKnowledgeDocuments([
+        documentItem({
+          currentJob: null,
+          localIndex: createIndexSummary(status),
+        }),
+      ]),
+    ).toBe(false);
+  });
+
+  test('allows local-index retry only for an active failed current version', () => {
+    const failed = documentItem({
+      currentVersionId: 'version-a',
+      deletedAt: null,
+      localIndex: createIndexSummary(KnowledgeDocumentIndexStatus.Failed, {
+        documentVersionId: 'version-a',
+      }),
+    });
+
+    expect(canRetryKnowledgeDocumentIndex(failed)).toBe(true);
+    expect(
+      canRetryKnowledgeDocumentIndex({
+        ...failed,
+        deletedAt: '2026-07-11T00:00:00.000Z',
+      }),
+    ).toBe(false);
+    expect(
+      canRetryKnowledgeDocumentIndex({
+        ...failed,
+        localIndex: { ...failed.localIndex!, documentVersionId: 'old-version' },
+      }),
+    ).toBe(false);
+  });
+
   test('filters by case-insensitive display name, MIME type, and status', () => {
     const failed = documentItem({
       id: 'document-2',
@@ -142,5 +227,51 @@ describe('knowledge document presentation', () => {
     expect(getKnowledgeDocumentErrorKey(KnowledgeBaseErrorCode.PersistenceFailed)).toBe(
       'enterpriseKnowledgeErrorPersistence',
     );
+  });
+
+  test.each([
+    {
+      language: 'zh' as const,
+      expected: [
+        '文档解析',
+        '本地搜索索引',
+        '尚未建立',
+        '等待建立',
+        '建立中',
+        '已就绪',
+        '无可索引文本',
+        '建立失败',
+        '重试索引',
+      ],
+    },
+    {
+      language: 'en' as const,
+      expected: [
+        'Document parsing',
+        'Local search index',
+        'Not indexed yet',
+        'Waiting to index',
+        'Indexing',
+        'Ready',
+        'No indexable text',
+        'Indexing failed',
+        'Retry indexing',
+      ],
+    },
+  ])('publishes complete $language local-index copy', ({ language, expected }) => {
+    i18nService.setLanguage(language, { persist: false });
+    const keys = [
+      'enterpriseKnowledgeDocumentParsing',
+      'enterpriseKnowledgeLocalIndex',
+      'enterpriseKnowledgeLocalIndexStatusNotStarted',
+      'enterpriseKnowledgeLocalIndexStatusPending',
+      'enterpriseKnowledgeLocalIndexStatusIndexing',
+      'enterpriseKnowledgeLocalIndexStatusIndexed',
+      'enterpriseKnowledgeLocalIndexStatusNotApplicable',
+      'enterpriseKnowledgeLocalIndexStatusFailed',
+      'enterpriseKnowledgeRetryLocalIndex',
+    ];
+
+    expect(keys.map(key => i18nService.t(key))).toEqual(expected);
   });
 });

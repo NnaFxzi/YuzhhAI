@@ -1,5 +1,6 @@
 import type {
   KnowledgeBaseErrorCode,
+  KnowledgeDocumentIndexStatus,
   KnowledgeDocumentSourceMode,
   KnowledgeDocumentStatus,
   KnowledgeDocumentVisibility,
@@ -104,6 +105,16 @@ export interface KnowledgeIngestionJobSummary {
   updatedAt: string;
 }
 
+export interface KnowledgeDocumentIndexSummary {
+  documentVersionId: string;
+  status: KnowledgeDocumentIndexStatus;
+  chunkCount: number;
+  attemptCount: number;
+  errorCode: string | null;
+  updatedAt: string;
+  completedAt: string | null;
+}
+
 export interface KnowledgeDocumentListItem {
   id: string;
   displayName: string;
@@ -115,6 +126,7 @@ export interface KnowledgeDocumentListItem {
   mimeType: string | null;
   contentHash: string | null;
   currentJob: KnowledgeIngestionJobSummary | null;
+  localIndex: KnowledgeDocumentIndexSummary | null;
   createdAt: string;
   updatedAt: string;
   deletedAt: string | null;
@@ -191,6 +203,11 @@ export interface KnowledgeDocumentRevisionRequest {
 }
 
 export interface KnowledgeRetryDocumentRequest {
+  documentId: string;
+  documentVersionId: string;
+}
+
+export interface KnowledgeRetryLocalIndexRequest {
   documentId: string;
   documentVersionId: string;
 }

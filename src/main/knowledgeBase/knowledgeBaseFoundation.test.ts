@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -5,7 +6,10 @@ import path from 'node:path';
 import Database from 'better-sqlite3';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 
+import { EnterpriseLeadWorkspaceType } from '../../shared/enterpriseLeadWorkspace/constants';
 import {
+  KnowledgeDocumentIndexAttemptOutcome,
+  KnowledgeDocumentIndexStatus,
   KnowledgeDocumentSourceMode,
   KnowledgeDocumentStatus,
   KnowledgeMigrationStatus,
@@ -13,8 +17,10 @@ import {
 import { EnterpriseLeadWorkspaceStore } from '../enterpriseLeadWorkspace/store';
 import {
   createKnowledgeBaseFoundation,
+  type KnowledgeBaseFoundation,
   recoverAndMigrateKnowledgeBase,
 } from './knowledgeBaseFoundation';
+import { InlineKnowledgeDocumentIndexExecutor } from './knowledgeDocumentIndexExecutor';
 import type {
   KnowledgeMigrationResult,
   LegacyKnowledgeWorkspace,
@@ -29,6 +35,32 @@ const completedMigrationResult = (workspaceId: string): KnowledgeMigrationResult
   diagnostics: [],
 });
 
+type FoundationOptions = Parameters<typeof createKnowledgeBaseFoundation>[0];
+
+const createTestFoundation = (
+  options: Omit<FoundationOptions, 'indexExecutorFactory'>,
+): KnowledgeBaseFoundation => createKnowledgeBaseFoundation({
+  ...options,
+  indexExecutorFactory: ({ store }) => new InlineKnowledgeDocumentIndexExecutor(store),
+});
+
+const ensureTestWorkspace = (db: Database.Database, workspaceId: string): void => {
+  const store = new EnterpriseLeadWorkspaceStore(db);
+  if (store.getWorkspace(workspaceId)) return;
+  const now = '2026-07-11T00:00:00.000Z';
+  db.prepare(`
+    INSERT INTO enterprise_lead_workspaces (
+      id, name, type, profile, extraction_sources, risk_rules,
+      enabled_agent_roles, settings, workspace_agents, recent_run_id,
+      created_at, updated_at
+    ) VALUES (?, ?, 'enterprise_lead', ?, '[]', '[]', '[]', NULL, NULL, NULL, ?, ?)
+  `).run(workspaceId, workspaceId, JSON.stringify({
+    companySummary: '', productList: [], productCapabilities: [], targetCustomers: [],
+    applicationScenarios: [], sellingPoints: [], channelPreferences: [], prohibitedClaims: [],
+    contactRules: [], missingInfo: [],
+  }), now, now);
+};
+
 describe('knowledge base foundation', () => {
   const databases: Database.Database[] = [];
   const temporaryDirectories: string[] = [];
@@ -42,6 +74,66 @@ describe('knowledge base foundation', () => {
     );
   });
 
+  const createFoundationFixture = async () => {
+    const db = new Database(':memory:');
+    databases.push(db);
+    const userDataPath = await fs.mkdtemp(path.join(os.tmpdir(), 'lobsterai-foundation-index-'));
+    temporaryDirectories.push(userDataPath);
+    const workspaceStore = new EnterpriseLeadWorkspaceStore(db);
+    const workspace = workspaceStore.createWorkspace({
+      name: 'Index test workspace',
+      type: EnterpriseLeadWorkspaceType.EnterpriseLead,
+      profile: {
+        companySummary: '',
+        productList: [],
+        productCapabilities: [],
+        targetCustomers: [],
+        applicationScenarios: [],
+        sellingPoints: [],
+        channelPreferences: [],
+        prohibitedClaims: [],
+        contactRules: [],
+        missingInfo: [],
+      },
+      extractionSources: [],
+      enabledAgentRoles: [],
+    });
+    let executor!: InlineKnowledgeDocumentIndexExecutor;
+    const foundation = createKnowledgeBaseFoundation({
+      db,
+      userDataPath,
+      workspaceStore,
+      indexExecutorFactory: ({ store }) => {
+        executor = new InlineKnowledgeDocumentIndexExecutor(store);
+        return executor;
+      },
+    });
+    const createReadyDocument = (text: string) =>
+      foundation.documentStore.createDocumentWithVersion({
+        workspaceId: workspace.id,
+        displayName: `${randomUUID()}.txt`,
+        sourceMode: KnowledgeDocumentSourceMode.Managed,
+        status: KnowledgeDocumentStatus.Ready,
+        version: {
+          contentHash: randomUUID().replace(/-/g, '').padEnd(64, '0'),
+          managedPath: `blobs/test/${randomUUID()}`,
+          mimeType: 'text/plain',
+          fileSize: text.length,
+          sourceMtime: null,
+          parser: 'text',
+          extractedText: text,
+          extractionPartial: false,
+        },
+      });
+    const schedule = (target: ReturnType<typeof createReadyDocument>) =>
+      foundation.indexStore.scheduleCurrentVersion({
+        workspaceId: workspace.id,
+        documentId: target.document.id,
+        documentVersionId: target.version.id,
+      });
+    return { db, executor, foundation, workspace, createReadyDocument, schedule };
+  };
+
   test('recovers abandoned jobs before migrating workspaces', async () => {
     const events: string[] = [];
     await recoverAndMigrateKnowledgeBase({
@@ -49,6 +141,16 @@ describe('knowledge base foundation', () => {
         recoverAbandonedJobs: () => {
           events.push('recover-jobs');
           return 0;
+        },
+      },
+      indexStore: {
+        recoverAbandonedIndexing: () => {
+          events.push('recover-index');
+          return 0;
+        },
+        reconcileMissingStates: () => {
+          events.push('reconcile-index');
+          return { pendingCount: 0, notApplicableCount: 0 };
         },
       },
       migrationService: {
@@ -63,7 +165,13 @@ describe('knowledge base foundation', () => {
       onReady: () => events.push('wake'),
     });
 
-    expect(events).toEqual(['recover-jobs', 'migrate:workspace-a', 'wake']);
+    expect(events).toEqual([
+      'recover-jobs',
+      'recover-index',
+      'migrate:workspace-a',
+      'reconcile-index',
+      'wake',
+    ]);
   });
 
   test('continues migrating later workspaces after one migration fails', async () => {
@@ -77,6 +185,10 @@ describe('knowledge base foundation', () => {
     await expect(
       recoverAndMigrateKnowledgeBase({
         jobStore: { recoverAbandonedJobs: () => 0 },
+        indexStore: {
+          recoverAbandonedIndexing: () => 0,
+          reconcileMissingStates: () => ({ pendingCount: 0, notApplicableCount: 0 }),
+        },
         migrationService: {
           migrateWorkspace: async workspace => {
             if (workspace.id === 'workspace-a') throw new Error('broken legacy source');
@@ -99,7 +211,8 @@ describe('knowledge base foundation', () => {
     databases.push(db);
     const userDataPath = await fs.mkdtemp(path.join(os.tmpdir(), 'lobsterai-foundation-'));
     temporaryDirectories.push(userDataPath);
-    const foundation = createKnowledgeBaseFoundation({ db, userDataPath });
+    ensureTestWorkspace(db, 'workspace-a');
+    const foundation = createTestFoundation({ db, userDataPath });
 
     await foundation.recoverMigrateAndStart(
       [{ id: 'workspace-a', extractionSources: [] }],
@@ -141,7 +254,7 @@ describe('knowledge base foundation', () => {
       ],
       enabledAgentRoles: [],
     });
-    const foundation = createKnowledgeBaseFoundation({ db, userDataPath, workspaceStore });
+    const foundation = createTestFoundation({ db, userDataPath, workspaceStore });
 
     await foundation.recoverMigrateAndStart([workspace]);
 
@@ -182,7 +295,7 @@ describe('knowledge base foundation', () => {
       ],
       enabledAgentRoles: [],
     });
-    const foundation = createKnowledgeBaseFoundation({ db, userDataPath, workspaceStore });
+    const foundation = createTestFoundation({ db, userDataPath, workspaceStore });
 
     await foundation.recoverMigrateAndStart([workspace]);
     const updatedWorkspace = workspaceStore.updateWorkspaceSources(workspace.id, [
@@ -212,7 +325,8 @@ describe('knowledge base foundation', () => {
       parser: 'text',
       truncated: false,
     });
-    const foundation = createKnowledgeBaseFoundation({
+    ensureTestWorkspace(db, 'workspace-a');
+    const foundation = createTestFoundation({
       db,
       userDataPath,
       extractDocumentText,
@@ -252,7 +366,8 @@ describe('knowledge base foundation', () => {
       parser: 'text',
       truncated: false,
     });
-    const foundation = createKnowledgeBaseFoundation({
+    ensureTestWorkspace(db, 'workspace-a');
+    const foundation = createTestFoundation({
       db,
       userDataPath,
       extractDocumentText,
@@ -299,7 +414,8 @@ describe('knowledge base foundation', () => {
     databases.push(db);
     const userDataPath = await fs.mkdtemp(path.join(os.tmpdir(), 'lobsterai-foundation-'));
     temporaryDirectories.push(userDataPath);
-    const foundation = createKnowledgeBaseFoundation({ db, userDataPath });
+    ensureTestWorkspace(db, 'workspace-a');
+    const foundation = createTestFoundation({ db, userDataPath });
     const created = foundation.documentStore.createDocumentWithVersion({
       workspaceId: 'workspace-a',
       displayName: '待删除资料',
@@ -337,5 +453,45 @@ describe('knowledge base foundation', () => {
     expect(
       db.prepare('SELECT COUNT(*) AS count FROM knowledge_ingestion_job_attempts').get(),
     ).toEqual({ count: 0 });
+  });
+
+  test('recovers, reconciles, and wakes ingestion before local indexing', async () => {
+    const fixture = await createFoundationFixture();
+    const ready = fixture.createReadyDocument('searchable');
+    const running = fixture.createReadyDocument('recover me');
+    fixture.schedule(running);
+    fixture.foundation.indexStore.claimNext('2026-07-11T00:59:59.000Z');
+
+    await fixture.foundation.recoverMigrateAndStart(
+      [fixture.workspace],
+      '2026-07-11T01:00:00.000Z',
+    );
+    await fixture.foundation.indexingService.waitForIdle();
+
+    expect(fixture.foundation.indexStore.getState(ready.version.id)?.status).toBe(
+      KnowledgeDocumentIndexStatus.Indexed,
+    );
+    expect(fixture.foundation.indexStore.listAttempts(running.version.id)[0].outcome).toBe(
+      KnowledgeDocumentIndexAttemptOutcome.Abandoned,
+    );
+  });
+
+  test('deletes index rows before normalized workspace documents', async () => {
+    const fixture = await createFoundationFixture();
+    const target = fixture.createReadyDocument('workspace text');
+    fixture.schedule(target);
+    await fixture.executor.runUntilIdle();
+
+    fixture.foundation.deleteWorkspaceData(fixture.workspace.id);
+
+    expect(fixture.foundation.indexStore.getState(target.version.id)).toBeNull();
+    expect(fixture.foundation.indexStore.listVersionChunks(target.version.id)).toEqual([]);
+    expect(fixture.foundation.documentStore.getDocument(target.document.id)).toBeNull();
+  });
+
+  test('shuts down the index executor before the database is closed', async () => {
+    const fixture = await createFoundationFixture();
+    await fixture.foundation.shutdown();
+    await expect(fixture.executor.runUntilIdle()).rejects.toThrow('index_worker_unavailable');
   });
 });

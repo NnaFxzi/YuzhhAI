@@ -1,15 +1,20 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
 
 import {
+  KnowledgeDocumentIndexStatus,
   KnowledgeDocumentSourceMode,
   KnowledgeDocumentStatus,
   KnowledgeIngestionJobStatus,
   KnowledgeIngestionStage,
 } from '../../../shared/knowledgeBase/constants';
-import type { KnowledgeDocumentListItem } from '../../../shared/knowledgeBase/types';
+import type {
+  KnowledgeDocumentIndexSummary,
+  KnowledgeDocumentListItem,
+} from '../../../shared/knowledgeBase/types';
 import {
   createKnowledgeDocumentPollingController,
   createKnowledgeDocumentRequestSequencer,
+  retryKnowledgeDocumentLocalIndex,
   runKnowledgeDocumentGenerationTask,
 } from './useWorkspaceKnowledgeDocuments';
 
@@ -31,6 +36,7 @@ const deferred = <T>(): Deferred<T> => {
 
 const documentItem = (
   jobStatus: KnowledgeIngestionJobStatus,
+  overrides: Partial<KnowledgeDocumentListItem> = {},
 ): KnowledgeDocumentListItem => ({
   id: 'document-1',
   displayName: 'manual.pdf',
@@ -53,9 +59,25 @@ const documentItem = (
     errorCode: null,
     updatedAt: '2026-07-11T00:00:00.000Z',
   },
+  localIndex: null,
   createdAt: '2026-07-11T00:00:00.000Z',
   updatedAt: '2026-07-11T00:00:00.000Z',
   deletedAt: null,
+  ...overrides,
+});
+
+const createIndexSummary = (
+  status: KnowledgeDocumentIndexStatus,
+  overrides: Partial<KnowledgeDocumentIndexSummary> = {},
+): KnowledgeDocumentIndexSummary => ({
+  documentVersionId: 'version-a',
+  status,
+  chunkCount: 0,
+  attemptCount: 1,
+  errorCode: null,
+  updatedAt: '2026-07-11T00:00:00.000Z',
+  completedAt: null,
+  ...overrides,
 });
 
 describe('knowledge document polling controller', () => {
@@ -106,6 +128,65 @@ describe('knowledge document polling controller', () => {
     expect(loadDocuments).toHaveBeenCalledTimes(1);
     await vi.advanceTimersByTimeAsync(1);
     expect(loadDocuments).toHaveBeenCalledTimes(2);
+  });
+
+  test.each([
+    KnowledgeDocumentIndexStatus.Pending,
+    KnowledgeDocumentIndexStatus.Indexing,
+  ])('polls again while local indexing remains %s', async status => {
+    vi.useFakeTimers();
+    const localIndex = createIndexSummary(status, { documentVersionId: 'version-1' });
+    const loadDocuments = vi
+      .fn()
+      .mockResolvedValueOnce([
+        documentItem(KnowledgeIngestionJobStatus.Completed, {
+          currentJob: null,
+          localIndex,
+        }),
+      ])
+      .mockResolvedValueOnce([
+        documentItem(KnowledgeIngestionJobStatus.Completed, {
+          currentJob: null,
+          localIndex: createIndexSummary(KnowledgeDocumentIndexStatus.Indexed, {
+            documentVersionId: 'version-1',
+          }),
+        }),
+      ]);
+    const controller = createKnowledgeDocumentPollingController({
+      loadDocuments,
+      onDocuments: vi.fn(),
+      onError: vi.fn(),
+    });
+
+    await controller.refresh();
+    await vi.advanceTimersByTimeAsync(2_000);
+    await vi.advanceTimersByTimeAsync(4_000);
+
+    expect(loadDocuments).toHaveBeenCalledTimes(2);
+  });
+
+  test.each([
+    KnowledgeDocumentIndexStatus.Indexed,
+    KnowledgeDocumentIndexStatus.NotApplicable,
+    KnowledgeDocumentIndexStatus.Failed,
+  ])('does not poll again when local indexing is terminal: %s', async status => {
+    vi.useFakeTimers();
+    const loadDocuments = vi.fn().mockResolvedValue([
+      documentItem(KnowledgeIngestionJobStatus.Completed, {
+        currentJob: null,
+        localIndex: createIndexSummary(status, { documentVersionId: 'version-1' }),
+      }),
+    ]);
+    const controller = createKnowledgeDocumentPollingController({
+      loadDocuments,
+      onDocuments: vi.fn(),
+      onError: vi.fn(),
+    });
+
+    await controller.refresh();
+    await vi.advanceTimersByTimeAsync(4_000);
+
+    expect(loadDocuments).toHaveBeenCalledTimes(1);
   });
 
   test('ignores an old workspace response after disposal', async () => {
@@ -212,6 +293,23 @@ describe('knowledge document generation task', () => {
     await expect(task).rejects.toThrow('old workspace failure');
     expect(onCurrentError).not.toHaveBeenCalled();
     expect(onCurrentSettled).not.toHaveBeenCalled();
+  });
+});
+
+describe('knowledge document local-index retry', () => {
+  test('retries local indexing with the exact document and version', async () => {
+    const document = documentItem(KnowledgeIngestionJobStatus.Completed, {
+      id: 'document-a',
+      currentVersionId: 'version-a',
+      localIndex: createIndexSummary(KnowledgeDocumentIndexStatus.Failed),
+    });
+    const retryLocalIndex = vi.fn(async () => document);
+    const retryDocument = vi.fn(async () => document);
+
+    await retryKnowledgeDocumentLocalIndex({ retryLocalIndex }, document);
+
+    expect(retryLocalIndex).toHaveBeenCalledWith('document-a', 'version-a');
+    expect(retryDocument).not.toHaveBeenCalled();
   });
 });
 

@@ -15,6 +15,7 @@ import type {
   KnowledgeImportSelectionRequest,
   KnowledgeListDocumentsRequest,
   KnowledgeRetryDocumentRequest,
+  KnowledgeRetryLocalIndexRequest,
 } from '../../shared/knowledgeBase/types';
 import {
   KnowledgeDocumentService,
@@ -34,6 +35,7 @@ type KnowledgeDocumentServiceApi = Pick<
   | 'listDocuments'
   | 'restoreDocument'
   | 'retryDocument'
+  | 'retryLocalIndex'
 >;
 
 export interface KnowledgeBaseHandlerDeps {
@@ -134,6 +136,16 @@ const readRetryInput = (value: unknown): KnowledgeRetryDocumentRequest => {
   };
 };
 
+const readRetryLocalIndexInput = (value: unknown): KnowledgeRetryLocalIndexRequest => {
+  if (!isRecord(value)) {
+    throw new KnowledgeDocumentServiceError(KnowledgeBaseErrorCodes.InvalidRequest);
+  }
+  return {
+    documentId: requireString(value.documentId),
+    documentVersionId: requireString(value.documentVersionId),
+  };
+};
+
 const toIpcError = (error: unknown): KnowledgeBaseIpcError => {
   if (error instanceof KnowledgeDocumentServiceError) {
     return {
@@ -214,5 +226,8 @@ export const registerKnowledgeBaseHandlers = (deps: KnowledgeBaseHandlerDeps): v
   );
   ipcMain.handle(KnowledgeBaseIpc.RetryDocument, async (_event, input: unknown) =>
     invokeSafely(() => deps.documentService.retryDocument(readRetryInput(input))),
+  );
+  ipcMain.handle(KnowledgeBaseIpc.RetryLocalIndex, async (_event, input: unknown) =>
+    invokeSafely(() => deps.documentService.retryLocalIndex(readRetryLocalIndexInput(input))),
   );
 };

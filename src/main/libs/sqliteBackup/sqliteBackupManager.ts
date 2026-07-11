@@ -4,6 +4,7 @@ import fs from 'fs';
 import path from 'path';
 
 import { DB_FILENAME } from '../../appConstants';
+import { applySqliteConnectionPolicy } from '../sqliteConnectionPolicy';
 import {
   SQLITE_BACKUP_ALWAYS_ON_STARTUP_ENV,
   SQLITE_BACKUP_DIR_NAME,
@@ -45,15 +46,6 @@ type SqliteBackupProgress = {
 const SQLITE_BACKUP_PROGRESS_PAGE_RATE = 100;
 
 const SINGLE_BACKUP_FILE_NAME = SQLITE_BACKUP_FILE_NAME;
-
-const applyRecommendedPragmas = (db: Database.Database): void => {
-  // WAL mode: persists across connections, never reverts. NORMAL sync is safe under WAL
-  // (no data loss on OS crash; power-loss risk is the same as DELETE mode).
-  db.pragma('journal_mode = WAL');
-  db.pragma('synchronous = NORMAL');
-  db.pragma('cache_size = -8000'); // 8 MB; negative value = kibibytes
-  db.pragma('wal_autocheckpoint = 1000'); // checkpoint every ~4 MB of WAL writes
-};
 
 const isRecoverableSqliteStartupError = (error: unknown): boolean => {
   if (!error || typeof error !== 'object') return false;
@@ -480,7 +472,7 @@ export const openSqliteDatabaseWithRecovery = (
 
   try {
     db = new Database(dbFilePath);
-    applyRecommendedPragmas(db);
+    applySqliteConnectionPolicy(db);
     return db;
   } catch (error) {
     try {
@@ -502,7 +494,7 @@ export const openSqliteDatabaseWithRecovery = (
     }
 
     const recoveredDb = new Database(dbFilePath);
-    applyRecommendedPragmas(recoveredDb);
+    applySqliteConnectionPolicy(recoveredDb);
     return recoveredDb;
   }
 };

@@ -87,6 +87,7 @@ import type {
   KnowledgeImportSelectionRequest,
   KnowledgeListDocumentsRequest,
   KnowledgeRetryDocumentRequest,
+  KnowledgeRetryLocalIndexRequest,
 } from '../../shared/knowledgeBase/types';
 import type {
   ListLocalWebServicesOptions,
@@ -717,6 +718,9 @@ interface IElectronAPI {
     ) => Promise<KnowledgeBaseIpcResult<KnowledgeDocumentListItem>>;
     retryDocument: (
       input: KnowledgeRetryDocumentRequest,
+    ) => Promise<KnowledgeBaseIpcResult<KnowledgeDocumentListItem>>;
+    retryLocalIndex: (
+      input: KnowledgeRetryLocalIndexRequest,
     ) => Promise<KnowledgeBaseIpcResult<KnowledgeDocumentListItem>>;
   };
   enterpriseLeadWorkspace: {

@@ -20,6 +20,7 @@ const documentItem = (): KnowledgeDocumentListItem => ({
   mimeType: 'application/pdf',
   contentHash: 'a'.repeat(64),
   currentJob: null,
+  localIndex: null,
   createdAt: '2026-07-11T00:00:00.000Z',
   updatedAt: '2026-07-11T00:00:00.000Z',
   deletedAt: null,
@@ -145,5 +146,24 @@ describe('knowledgeBaseService', () => {
     await expect(
       knowledgeBaseService.listDocuments('workspace-a', KnowledgeDocumentVisibility.Active),
     ).rejects.toMatchObject({ code: KnowledgeBaseErrorCode.PersistenceFailed });
+  });
+
+  test('renderer service unwraps local-index retry without using ingestion retry', async () => {
+    const retryLocalIndex = vi.fn(async () => ({
+      success: true as const,
+      data: documentItem(),
+    }));
+    const retryDocument = vi.fn();
+    installApi({ retryLocalIndex, retryDocument });
+
+    await expect(
+      knowledgeBaseService.retryLocalIndex('document-a', 'version-a'),
+    ).resolves.toEqual(documentItem());
+
+    expect(retryLocalIndex).toHaveBeenCalledWith({
+      documentId: 'document-a',
+      documentVersionId: 'version-a',
+    });
+    expect(retryDocument).not.toHaveBeenCalled();
   });
 });

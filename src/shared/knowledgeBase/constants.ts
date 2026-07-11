@@ -98,6 +98,51 @@ export const KnowledgeBaseIpc = {
   ListDocuments: 'knowledgeBase:documents:list',
   RestoreDocument: 'knowledgeBase:documents:restore',
   RetryDocument: 'knowledgeBase:documents:retry',
+  RetryLocalIndex: 'knowledgeBase:documents:retryLocalIndex',
   SelectFiles: 'knowledgeBase:files:select',
 } as const;
 export type KnowledgeBaseIpc = (typeof KnowledgeBaseIpc)[keyof typeof KnowledgeBaseIpc];
+
+export const KnowledgeDocumentIndexStatus = {
+  Pending: 'pending',
+  Indexing: 'indexing',
+  Indexed: 'indexed',
+  NotApplicable: 'not_applicable',
+  Failed: 'failed',
+} as const;
+export type KnowledgeDocumentIndexStatus =
+  (typeof KnowledgeDocumentIndexStatus)[keyof typeof KnowledgeDocumentIndexStatus];
+
+export const KnowledgeDocumentIndexAttemptOutcome = {
+  Running: 'running',
+  Indexed: 'indexed',
+  Failed: 'failed',
+  Cancelled: 'cancelled',
+  Abandoned: 'abandoned',
+} as const;
+export type KnowledgeDocumentIndexAttemptOutcome =
+  (typeof KnowledgeDocumentIndexAttemptOutcome)[keyof typeof KnowledgeDocumentIndexAttemptOutcome];
+
+export const KnowledgeDocumentIndexTokenizer = {
+  TrigramV1: 'fts5_trigram_v1',
+  CjkBigramV1: 'unicode61_cjk_bigram_v1',
+} as const;
+export type KnowledgeDocumentIndexTokenizer =
+  (typeof KnowledgeDocumentIndexTokenizer)[keyof typeof KnowledgeDocumentIndexTokenizer];
+
+export const KnowledgeDocumentIndexErrorCode = {
+  ProcessingFailed: 'index_processing_failed',
+  WorkerUnavailable: 'index_worker_unavailable',
+  StateConflict: 'index_state_conflict',
+} as const;
+export type KnowledgeDocumentIndexErrorCode =
+  (typeof KnowledgeDocumentIndexErrorCode)[keyof typeof KnowledgeDocumentIndexErrorCode];
+
+export const KNOWLEDGE_CHUNK_TARGET_CHARS = 18_000;
+export const KNOWLEDGE_CHUNK_OVERLAP_CHARS = 800;
+export const KNOWLEDGE_INDEX_WRITE_BATCH_CHUNKS = 8;
+export const KNOWLEDGE_INDEX_WORKER_WRITE_BATCH_CHUNKS = 8;
+export const KNOWLEDGE_INDEX_WORKER_WRITER_YIELD_MS = 1;
+export const KNOWLEDGE_INDEX_CLEANUP_BATCH_ROWS = 64;
+export const KNOWLEDGE_INDEX_WORKER_CLEANUP_BATCH_ROWS = 64;
+export const KNOWLEDGE_INDEX_WORKER_CLEANUP_YIELD_MS = 105;

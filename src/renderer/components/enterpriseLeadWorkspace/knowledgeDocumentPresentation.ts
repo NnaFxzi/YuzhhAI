@@ -1,6 +1,8 @@
 import {
   type KnowledgeBaseErrorCode,
   KnowledgeBaseErrorCode as KnowledgeBaseErrorCodes,
+  type KnowledgeDocumentIndexStatus,
+  KnowledgeDocumentIndexStatus as KnowledgeDocumentIndexStatuses,
   type KnowledgeDocumentStatus,
   KnowledgeDocumentStatus as KnowledgeDocumentStatuses,
   KnowledgeIngestionJobStatus,
@@ -29,6 +31,15 @@ const statusKeys: Record<KnowledgeDocumentStatus, string> = {
   [KnowledgeDocumentStatuses.Failed]: 'enterpriseKnowledgeDocumentStatusFailed',
 };
 
+const indexStatusKeys: Record<KnowledgeDocumentIndexStatus, string> = {
+  [KnowledgeDocumentIndexStatuses.Pending]: 'enterpriseKnowledgeLocalIndexStatusPending',
+  [KnowledgeDocumentIndexStatuses.Indexing]: 'enterpriseKnowledgeLocalIndexStatusIndexing',
+  [KnowledgeDocumentIndexStatuses.Indexed]: 'enterpriseKnowledgeLocalIndexStatusIndexed',
+  [KnowledgeDocumentIndexStatuses.NotApplicable]:
+    'enterpriseKnowledgeLocalIndexStatusNotApplicable',
+  [KnowledgeDocumentIndexStatuses.Failed]: 'enterpriseKnowledgeLocalIndexStatusFailed',
+};
+
 const errorKeys: Partial<Record<KnowledgeBaseErrorCode, string>> = {
   [KnowledgeBaseErrorCodes.InvalidRequest]: 'enterpriseKnowledgeErrorPersistence',
   [KnowledgeBaseErrorCodes.InvalidSelectionToken]: 'enterpriseKnowledgeErrorInvalidSelection',
@@ -48,6 +59,10 @@ const errorKeys: Partial<Record<KnowledgeBaseErrorCode, string>> = {
 
 export const getKnowledgeDocumentStatusKey = (status: KnowledgeDocumentStatus): string =>
   statusKeys[status];
+
+export const getKnowledgeDocumentIndexStatusKey = (
+  status: KnowledgeDocumentIndexStatus,
+): string => indexStatusKeys[status];
 
 export const getKnowledgeDocumentErrorKey = (code: KnowledgeBaseErrorCode): string =>
   errorKeys[code] ?? 'enterpriseKnowledgeErrorPersistence';
@@ -73,8 +88,17 @@ export const shouldPollKnowledgeDocuments = (
   documents.some(
     document =>
       document.currentJob?.status === KnowledgeIngestionJobStatus.Queued ||
-      document.currentJob?.status === KnowledgeIngestionJobStatus.Running,
+      document.currentJob?.status === KnowledgeIngestionJobStatus.Running ||
+      document.localIndex?.status === KnowledgeDocumentIndexStatuses.Pending ||
+      document.localIndex?.status === KnowledgeDocumentIndexStatuses.Indexing,
   );
+
+export const canRetryKnowledgeDocumentIndex = (
+  document: KnowledgeDocumentListItem,
+): boolean =>
+  !document.deletedAt &&
+  document.localIndex?.status === KnowledgeDocumentIndexStatuses.Failed &&
+  document.localIndex.documentVersionId === document.currentVersionId;
 
 export const filterKnowledgeDocuments = (
   documents: KnowledgeDocumentListItem[],

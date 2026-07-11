@@ -4,6 +4,7 @@ import Database from 'better-sqlite3';
 
 import {
   KnowledgeDocumentSourceMode,
+  type KnowledgeDocumentStatus,
   KnowledgeDocumentVisibility as KnowledgeDocumentVisibilities,
   type KnowledgeDocumentVisibility,
 } from '../../shared/knowledgeBase/constants';
@@ -415,12 +416,13 @@ export class KnowledgeDocumentStore {
     documentId: string,
     expectedRevision: number,
     version: CreateKnowledgeDocumentInput['version'],
+    status?: KnowledgeDocumentStatus,
   ): {
     document: KnowledgeDocument;
     version: KnowledgeDocumentVersion;
   } {
     const transaction = this.db.transaction(() => {
-      this.requireExpectedRevision(documentId, expectedRevision);
+      const current = this.requireExpectedRevision(documentId, expectedRevision);
       const now = new Date().toISOString();
       const versionId = randomUUID();
       this.insertVersion(documentId, versionId, version, now);
@@ -428,11 +430,11 @@ export class KnowledgeDocumentStore {
         .prepare(
           `
           UPDATE knowledge_documents
-          SET current_version_id = ?, revision = revision + 1, updated_at = ?
+          SET current_version_id = ?, status = ?, revision = revision + 1, updated_at = ?
           WHERE id = ? AND revision = ?
         `,
         )
-        .run(versionId, now, documentId, expectedRevision);
+        .run(versionId, status ?? current.status, now, documentId, expectedRevision);
 
       this.throwIfRevisionUpdateMissed(documentId, result.changes);
       return {

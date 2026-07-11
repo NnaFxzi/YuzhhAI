@@ -10,6 +10,7 @@ import type {
   KnowledgeImportSelectionRequest,
   KnowledgeListDocumentsRequest,
   KnowledgeRetryDocumentRequest,
+  KnowledgeRetryLocalIndexRequest,
 } from '../../shared/knowledgeBase/types';
 
 type Invoke = (channel: string, ...args: unknown[]) => Promise<unknown>;
@@ -33,6 +34,9 @@ export interface KnowledgeBasePreloadBridge {
   ) => Promise<KnowledgeBaseIpcResult<KnowledgeDocumentListItem>>;
   retryDocument: (
     input: KnowledgeRetryDocumentRequest,
+  ) => Promise<KnowledgeBaseIpcResult<KnowledgeDocumentListItem>>;
+  retryLocalIndex: (
+    input: KnowledgeRetryLocalIndexRequest,
   ) => Promise<KnowledgeBaseIpcResult<KnowledgeDocumentListItem>>;
 }
 
@@ -65,6 +69,10 @@ export const createKnowledgeBasePreloadBridge = (
     >,
   retryDocument: input =>
     invoke(KnowledgeBaseIpc.RetryDocument, input) as Promise<
+      KnowledgeBaseIpcResult<KnowledgeDocumentListItem>
+    >,
+  retryLocalIndex: input =>
+    invoke(KnowledgeBaseIpc.RetryLocalIndex, input) as Promise<
       KnowledgeBaseIpcResult<KnowledgeDocumentListItem>
     >,
 });

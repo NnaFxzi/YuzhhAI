@@ -73,8 +73,31 @@ describe('KnowledgeDocumentStore', () => {
 
     expect(next.document.currentVersionId).toBe(next.version.id);
     expect(next.document.revision).toBe(2);
+    expect(next.document.status).toBe(created.document.status);
     expect(store.getVersion(created.version.id)?.extractedText).toBe('原始资料文本');
     expect(store.getVersion(next.version.id)?.extractedText).toBe('第二版资料文本');
+  });
+
+  test('adds a version and changes status with one revision increment', () => {
+    const created = store.createDocumentWithVersion(createInput());
+
+    const next = store.addVersion(
+      created.document.id,
+      created.document.revision,
+      {
+        ...createInput().version,
+        contentHash: 'c'.repeat(64),
+        extractedText: null,
+      },
+      KnowledgeDocumentStatus.CompletedWithoutText,
+    );
+
+    expect(next.document).toMatchObject({
+      currentVersionId: next.version.id,
+      revision: created.document.revision + 1,
+      status: KnowledgeDocumentStatus.CompletedWithoutText,
+    });
+    expect(store.getVersion(created.version.id)?.extractedText).toBe('原始资料文本');
   });
 
   test('soft deletes and restores documents with optimistic revisions', () => {

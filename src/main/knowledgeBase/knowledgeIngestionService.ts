@@ -5,6 +5,7 @@ import Database from 'better-sqlite3';
 import {
   KNOWLEDGE_GENERAL_JOB_CONCURRENCY,
   KnowledgeBaseErrorCode,
+  KnowledgeDocumentIndexStatus,
   KnowledgeDocumentStatus,
   KnowledgeIngestionJobStatus,
   KnowledgeIngestionStage,
@@ -13,6 +14,11 @@ import type {
   KnowledgeIngestionJob,
   KnowledgeIngestionJobAttempt,
 } from '../../shared/knowledgeBase/types';
+import {
+  type KnowledgeDocumentIndexStore,
+  runTransientSqliteWriteTransactionUntilSuccess,
+  type TransientSqliteBusyRetryDelay,
+} from './knowledgeDocumentIndexStore';
 import { KnowledgeDocumentStore } from './knowledgeDocumentStore';
 import {
   KnowledgeIngestionJobStateError,
@@ -35,6 +41,14 @@ const OCR_EXTENSIONS = new Set([
 
 const SAFE_EXTRACTION_ERROR_MESSAGE = 'Local document extraction failed';
 
+const getSafeErrorCode = (error: unknown): string | null =>
+  typeof error === 'object' &&
+  error !== null &&
+  'code' in error &&
+  typeof error.code === 'string'
+    ? error.code
+    : null;
+
 export interface LocalKnowledgeExtractionResult {
   content: string;
   parser: string;
@@ -44,6 +58,7 @@ export interface LocalKnowledgeExtractionResult {
 export interface KnowledgeIngestionServiceOptions {
   db: Database.Database;
   documentStore: KnowledgeDocumentStore;
+  indexStore: Pick<KnowledgeDocumentIndexStore, 'scheduleCurrentVersion'>;
   jobStore: KnowledgeIngestionJobStore;
   managedFileStore: KnowledgeManagedFileStore;
   extractDocumentText: (
@@ -54,12 +69,16 @@ export interface KnowledgeIngestionServiceOptions {
     },
   ) => Promise<LocalKnowledgeExtractionResult>;
   onDocumentUpdated?: (workspaceId: string, documentId: string) => void;
+  onIndexQueued?: () => void;
+  busyRetryDelay?: TransientSqliteBusyRetryDelay;
 }
 
 export class KnowledgeIngestionService {
   private drainPromise: Promise<void> | null = null;
 
   private wakeRequested = false;
+
+  private indexWakeRequested = false;
 
   private ocrTail: Promise<void> = Promise.resolve();
 
@@ -97,13 +116,23 @@ export class KnowledgeIngestionService {
         Array.from({ length: KNOWLEDGE_GENERAL_JOB_CONCURRENCY }, () => this.runWorker()),
       );
     } while (this.wakeRequested);
+    if (this.indexWakeRequested) {
+      this.indexWakeRequested = false;
+      this.notifyIndexQueued();
+    }
   }
 
   private async runWorker(): Promise<void> {
-    let claim = this.options.jobStore.claimNextJob();
+    let claim = await runTransientSqliteWriteTransactionUntilSuccess(
+      () => this.options.jobStore.claimNextJob(),
+      this.options.busyRetryDelay,
+    );
     while (claim) {
       await this.processClaim(claim.job, claim.attempt);
-      claim = this.options.jobStore.claimNextJob();
+      claim = await runTransientSqliteWriteTransactionUntilSuccess(
+        () => this.options.jobStore.claimNextJob(),
+        this.options.busyRetryDelay,
+      );
     }
   }
 
@@ -135,7 +164,9 @@ export class KnowledgeIngestionService {
         this.options.jobStore.cancel(job.id);
         return;
       }
-      this.notifyDocumentUpdated(job.workspaceId, job.documentId);
+      if (this.options.onDocumentUpdated) {
+        await this.notifyDocumentUpdated(job.workspaceId, job.documentId);
+      }
 
       const extract = (): Promise<LocalKnowledgeExtractionResult> =>
         this.options.extractDocumentText(
@@ -163,7 +194,7 @@ export class KnowledgeIngestionService {
         ? KnowledgeDocumentStatus.Ready
         : KnowledgeDocumentStatus.CompletedWithoutText;
 
-      const committed = this.options.db.transaction(() => {
+      const commit = this.options.db.transaction(() => {
         const applied = this.options.documentStore.applyExtractionResult({
           documentId: document.id,
           documentVersionId: version.id,
@@ -174,31 +205,48 @@ export class KnowledgeIngestionService {
         });
         if (!applied) {
           this.options.jobStore.cancel(job.id);
-          return false;
+          return null;
         }
         this.options.jobStore.complete(job.id, attempt.id);
-        return true;
-      })();
+        return this.options.indexStore.scheduleCurrentVersion({
+          workspaceId: job.workspaceId,
+          documentId: job.documentId,
+          documentVersionId: job.documentVersionId,
+        });
+      });
+      const committed = await runTransientSqliteWriteTransactionUntilSuccess(
+        commit,
+        this.options.busyRetryDelay,
+      );
       if (committed) {
-        this.notifyDocumentUpdated(job.workspaceId, job.documentId);
+        if (this.options.onDocumentUpdated) {
+          await this.notifyDocumentUpdated(job.workspaceId, job.documentId);
+        }
+        if (committed.status === KnowledgeDocumentIndexStatus.Pending) {
+          this.indexWakeRequested = true;
+        }
       }
-    } catch {
-      this.failClaim(job, attempt);
+    } catch (error) {
+      await this.failClaim(job, attempt, error);
     }
   }
 
-  private failClaim(job: KnowledgeIngestionJob, attempt: KnowledgeIngestionJobAttempt): void {
+  private async failClaim(
+    job: KnowledgeIngestionJob,
+    attempt: KnowledgeIngestionJobAttempt,
+    processingError: unknown,
+  ): Promise<void> {
     try {
-      const failed = this.options.db.transaction(() => {
+      const persistFailure = this.options.db.transaction(() => {
+        const currentJob = this.options.jobStore.getJob(job.id);
+        if (currentJob?.status !== KnowledgeIngestionJobStatus.Running) {
+          return false;
+        }
         const statusUpdated = this.options.documentStore.setDocumentStatusIfCurrentVersion({
           documentId: job.documentId,
           documentVersionId: job.documentVersionId,
           status: KnowledgeDocumentStatus.Failed,
         });
-        const currentJob = this.options.jobStore.getJob(job.id);
-        if (currentJob?.status !== KnowledgeIngestionJobStatus.Running) {
-          return false;
-        }
         if (!statusUpdated) {
           this.options.jobStore.cancel(job.id);
           return false;
@@ -208,12 +256,21 @@ export class KnowledgeIngestionService {
           message: SAFE_EXTRACTION_ERROR_MESSAGE,
         });
         return true;
-      })();
+      });
+      const failed = await runTransientSqliteWriteTransactionUntilSuccess(
+        persistFailure,
+        this.options.busyRetryDelay,
+      );
       if (failed) {
-        this.notifyDocumentUpdated(job.workspaceId, job.documentId);
+        if (this.options.onDocumentUpdated) {
+          await this.notifyDocumentUpdated(job.workspaceId, job.documentId);
+        }
       }
     } catch (error) {
-      console.error('[KnowledgeBase] Failed to persist ingestion failure:', error);
+      console.error('[KnowledgeBase] Failed to persist ingestion failure:', {
+        processingErrorCode: getSafeErrorCode(processingError),
+        persistenceErrorCode: getSafeErrorCode(error),
+      });
     }
   }
 
@@ -231,11 +288,24 @@ export class KnowledgeIngestionService {
     }
   }
 
-  private notifyDocumentUpdated(workspaceId: string, documentId: string): void {
+  private async notifyDocumentUpdated(workspaceId: string, documentId: string): Promise<void> {
     try {
-      this.options.onDocumentUpdated?.(workspaceId, documentId);
+      await runTransientSqliteWriteTransactionUntilSuccess(
+        () => this.options.onDocumentUpdated?.(workspaceId, documentId),
+        this.options.busyRetryDelay,
+      );
     } catch (error) {
-      console.warn('[KnowledgeBase] Failed to update compatibility projection:', error);
+      console.warn('[KnowledgeBase] Failed to update compatibility projection:', {
+        errorCode: getSafeErrorCode(error),
+      });
+    }
+  }
+
+  private notifyIndexQueued(): void {
+    try {
+      this.options.onIndexQueued?.();
+    } catch (error) {
+      console.warn('[KnowledgeBase] Failed to wake local index worker:', error);
     }
   }
 }

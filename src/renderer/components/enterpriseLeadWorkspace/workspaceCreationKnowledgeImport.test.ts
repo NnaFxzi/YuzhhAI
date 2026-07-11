@@ -86,6 +86,7 @@ const documentItem = (itemId: string, displayName: string): KnowledgeDocumentLis
   mimeType: 'application/pdf',
   contentHash: itemId.padEnd(64, 'a'),
   currentJob: null,
+  localIndex: null,
   createdAt: '2026-07-11T00:00:00.000Z',
   updatedAt: '2026-07-11T00:00:00.000Z',
   deletedAt: null,

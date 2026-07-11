@@ -10,6 +10,7 @@ import {
 import React, { useEffect, useMemo, useState } from 'react';
 
 import {
+  KnowledgeDocumentIndexStatus as KnowledgeDocumentIndexStatuses,
   type KnowledgeDocumentStatus,
   KnowledgeDocumentStatus as KnowledgeDocumentStatuses,
   KnowledgeDocumentVisibility as KnowledgeDocumentVisibilities,
@@ -25,8 +26,10 @@ import type {
 } from '../../../shared/knowledgeBase/types';
 import { i18nService } from '../../services/i18n';
 import {
+  canRetryKnowledgeDocumentIndex,
   filterKnowledgeDocuments,
   getKnowledgeDocumentErrorKey,
+  getKnowledgeDocumentIndexStatusKey,
   getKnowledgeDocumentStatusKey,
   type KnowledgeDocumentStatusFilter,
   summarizeKnowledgeImportBatch,
@@ -51,6 +54,7 @@ export interface WorkspaceKnowledgeDocumentsPanelActions {
   delete: (document: KnowledgeDocumentListItem) => Promise<void>;
   restore: (document: KnowledgeDocumentListItem) => Promise<void>;
   retry: (document: KnowledgeDocumentListItem) => Promise<void>;
+  retryLocalIndex: (document: KnowledgeDocumentListItem) => Promise<void>;
 }
 
 export const createWorkspaceKnowledgeDocumentsPanelActions = (
@@ -77,6 +81,9 @@ export const createWorkspaceKnowledgeDocumentsPanelActions = (
   retry: async document => {
     await state.retryDocument(document);
     await onWorkspaceProjectionChange?.();
+  },
+  retryLocalIndex: async document => {
+    await state.retryLocalIndex(document);
   },
 });
 
@@ -156,6 +163,7 @@ interface KnowledgeDocumentRowProps {
   onDeleteRequest: () => void;
   onRestore: () => void;
   onRetry: () => void;
+  onRetryLocalIndex: () => void;
 }
 
 const KnowledgeDocumentRow = ({
@@ -166,6 +174,7 @@ const KnowledgeDocumentRow = ({
   onDeleteRequest,
   onRestore,
   onRetry,
+  onRetryLocalIndex,
 }: KnowledgeDocumentRowProps): React.ReactElement => {
   const currentJob = document.currentJob;
   const jobIsActive =
@@ -177,7 +186,7 @@ const KnowledgeDocumentRow = ({
   return (
     <article
       data-document-id={document.id}
-      className="rounded-lg border border-border bg-background p-4 shadow-sm transition-colors hover:border-primary/25"
+      className="rounded-lg border border-border bg-background p-4 shadow-sm transition-colors hover:border-primary/25 [content-visibility:auto] [contain-intrinsic-size:auto_160px]"
     >
       <div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
         <button
@@ -211,6 +220,9 @@ const KnowledgeDocumentRow = ({
                 : statusClassNames[document.status]
             }`}
           >
+            {!isDeleted ? (
+              <span className="mr-1">{i18nService.t('enterpriseKnowledgeDocumentParsing')}</span>
+            ) : null}
             {i18nService.t(
               isDeleted
                 ? 'enterpriseKnowledgeDocumentStatusDeleted'
@@ -273,6 +285,47 @@ const KnowledgeDocumentRow = ({
           ) : null}
         </div>
       ) : null}
+
+      {!isDeleted ? (
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border/70 pt-3 text-xs">
+          <span className="font-medium text-secondary">
+            {i18nService.t('enterpriseKnowledgeLocalIndex')}
+          </span>
+          <span className="flex items-center gap-2 text-secondary">
+            <span
+              role="status"
+              aria-live="polite"
+              aria-atomic="true"
+              className="flex items-center gap-2"
+            >
+              <span>
+                {document.localIndex
+                  ? i18nService.t(getKnowledgeDocumentIndexStatusKey(document.localIndex.status))
+                  : i18nService.t('enterpriseKnowledgeLocalIndexStatusNotStarted')}
+              </span>
+              {document.localIndex?.status === KnowledgeDocumentIndexStatuses.Indexed ? (
+                <span>
+                  {formatTranslation('enterpriseKnowledgeLocalIndexChunkCount', {
+                    count: document.localIndex.chunkCount,
+                  })}
+                </span>
+              ) : null}
+            </span>
+            {canRetryKnowledgeDocumentIndex(document) ? (
+              <button
+                type="button"
+                data-retry-local-index-document-id={document.id}
+                disabled={disabled}
+                className="inline-flex h-8 items-center gap-1.5 rounded-md border border-primary/20 bg-primary/10 px-2.5 font-semibold text-primary disabled:opacity-45"
+                onClick={onRetryLocalIndex}
+              >
+                <ArrowPathIcon className="h-4 w-4" />
+                {i18nService.t('enterpriseKnowledgeRetryLocalIndex')}
+              </button>
+            ) : null}
+          </span>
+        </div>
+      ) : null}
     </article>
   );
 };
@@ -294,6 +347,7 @@ export interface WorkspaceKnowledgeDocumentsPanelViewProps {
   onDeleteCancel: () => void;
   onRestore: (document: KnowledgeDocumentListItem) => void;
   onRetry: (document: KnowledgeDocumentListItem) => void;
+  onRetryLocalIndex: (document: KnowledgeDocumentListItem) => void;
   onCloseDetails: () => void;
 }
 
@@ -314,6 +368,7 @@ export const WorkspaceKnowledgeDocumentsPanelView = ({
   onDeleteCancel,
   onRestore,
   onRetry,
+  onRetryLocalIndex,
   onCloseDetails,
 }: WorkspaceKnowledgeDocumentsPanelViewProps): React.ReactElement => {
   const sourceRows =
@@ -477,6 +532,7 @@ export const WorkspaceKnowledgeDocumentsPanelView = ({
                 onDeleteRequest={() => onDeleteRequest(document.id)}
                 onRestore={() => onRestore(document)}
                 onRetry={() => onRetry(document)}
+                onRetryLocalIndex={() => onRetryLocalIndex(document)}
               />
             ))}
           </div>
@@ -652,6 +708,7 @@ export default function WorkspaceKnowledgeDocumentsPanel({
       onDeleteCancel={() => setPendingDeleteId(null)}
       onRestore={document => ignoreRejectedAction(actions.restore(document))}
       onRetry={document => ignoreRejectedAction(actions.retry(document))}
+      onRetryLocalIndex={document => ignoreRejectedAction(actions.retryLocalIndex(document))}
       onCloseDetails={() => setDetailsOpen(false)}
     />
   );

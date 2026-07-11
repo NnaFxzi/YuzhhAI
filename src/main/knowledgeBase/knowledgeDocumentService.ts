@@ -4,13 +4,16 @@ import {
   KNOWLEDGE_MAX_WORKSPACE_LOGICAL_BYTES,
   type KnowledgeBaseErrorCode,
   KnowledgeBaseErrorCode as KnowledgeBaseErrorCodes,
+  KnowledgeDocumentIndexStatus,
   KnowledgeDocumentSourceMode,
   KnowledgeDocumentStatus,
 } from '../../shared/knowledgeBase/constants';
 import type {
+  CreateKnowledgeDocumentInput,
   KnowledgeDocument,
   KnowledgeDocumentDetails,
   KnowledgeDocumentDetailsRequest,
+  KnowledgeDocumentIndexSummary,
   KnowledgeDocumentListItem,
   KnowledgeDocumentRevisionRequest,
   KnowledgeDocumentSummary,
@@ -21,8 +24,16 @@ import type {
   KnowledgeIngestionJobSummary,
   KnowledgeListDocumentsRequest,
   KnowledgeRetryDocumentRequest,
+  KnowledgeRetryLocalIndexRequest,
 } from '../../shared/knowledgeBase/types';
 import type { EnterpriseLeadKnowledgeCompatibilityAdapter } from './enterpriseLeadKnowledgeCompatibilityAdapter';
+import {
+  KnowledgeDocumentIndexStateError,
+  type KnowledgeDocumentIndexStore,
+  runTransientSqliteWriteTransactionUntilSuccess,
+  type TransientSqliteBusyRetryDelay,
+} from './knowledgeDocumentIndexStore';
+import type { KnowledgeDocumentIndexState } from './knowledgeDocumentIndexTypes';
 import {
   KnowledgeDocumentRevisionConflictError,
   KnowledgeDocumentStore,
@@ -51,6 +62,13 @@ type KnowledgeCompatibilityAdapter = Pick<
 export interface KnowledgeDocumentServiceOptions {
   db: Database.Database;
   documentStore: KnowledgeDocumentStore;
+  indexStore: Pick<KnowledgeDocumentIndexStore,
+    | 'deactivateVersion'
+    | 'getState'
+    | 'listStates'
+    | 'retryFailedVersion'
+    | 'scheduleCurrentVersion'
+  >;
   jobStore: KnowledgeIngestionJobStore;
   managedFileStore: KnowledgeManagedFileStore;
   selectionTokenStore: KnowledgeSelectionTokenStore;
@@ -58,6 +76,8 @@ export interface KnowledgeDocumentServiceOptions {
   workspaceExists: (workspaceId: string) => boolean;
   inspectFile?: (absolutePath: string) => Promise<KnowledgeFileInspection>;
   onJobsQueued?: () => void;
+  onIndexQueued?: () => void;
+  busyRetryDelay?: TransientSqliteBusyRetryDelay;
 }
 
 export class KnowledgeDocumentServiceError extends Error {
@@ -147,14 +167,20 @@ export class KnowledgeDocumentService {
     const jobsByTarget = new Map(
       jobs.map(job => [this.buildTargetKey(job.documentId, job.documentVersionId), job]),
     );
-    return this.options.documentStore
-      .listDocuments(workspaceId, { visibility: input.visibility })
-      .map(document =>
-        this.toListItem(
-          document,
-          jobsByTarget.get(this.buildTargetKey(document.id, document.currentVersionId)) ?? null,
-        ),
-      );
+    const statesByVersion = new Map(
+      this.options.indexStore
+        .listStates(workspaceId)
+        .map(state => [state.documentVersionId, state]),
+    );
+    return this.options.documentStore.listDocuments(workspaceId, {
+      visibility: input.visibility,
+    }).map(document =>
+      this.toListItem(
+        document,
+        jobsByTarget.get(this.buildTargetKey(document.id, document.currentVersionId)) ?? null,
+        statesByVersion.get(document.currentVersionId) ?? null,
+      ),
+    );
   }
 
   getDocumentDetails(input: KnowledgeDocumentDetailsRequest): KnowledgeDocumentDetails {
@@ -164,6 +190,7 @@ export class KnowledgeDocumentService {
       document: this.toListItem(
         this.toSummary(document, version),
         this.options.jobStore.getCurrentJob(document.id, version.id),
+        this.options.indexStore.getState(version.id),
       ),
       activeVersion: {
         id: version.id,
@@ -184,15 +211,28 @@ export class KnowledgeDocumentService {
           input.expectedRevision,
         );
         this.options.jobStore.cancelQueuedJobsForDocument(existing.id);
+        const hadIndexState =
+          this.options.indexStore.getState(existing.currentVersionId) !== null;
+        if (hadIndexState) {
+          this.options.indexStore.deactivateVersion({
+            workspaceId: existing.workspaceId,
+            documentId: existing.id,
+            documentVersionId: existing.currentVersionId,
+          });
+        }
         const item = this.toListItemFromDocument(deleted);
         this.options.compatibilityAdapter.upsertDocument(
           deleted.workspaceId,
           item,
           this.getCompatibilityProjectionOptions(deleted),
         );
-        return item;
+        return { item, hadIndexState };
       });
-      return transaction();
+      const result = transaction();
+      if (result.hadIndexState) {
+        this.notifyIndexQueued();
+      }
+      return result.item;
     } catch (error) {
       throw this.toServiceError(error);
     }
@@ -202,6 +242,9 @@ export class KnowledgeDocumentService {
     try {
       const transaction = this.options.db.transaction(() => {
         const existing = this.requireDocument(input.documentId);
+        if (!existing.deletedAt) {
+          throw new KnowledgeDocumentServiceError(KnowledgeBaseErrorCodes.JobStateConflict);
+        }
         if (existing.deletedAt && existing.sourceMode === KnowledgeDocumentSourceMode.Managed) {
           const version = this.requireVersion(existing.currentVersionId);
           if (
@@ -216,15 +259,82 @@ export class KnowledgeDocumentService {
           existing.id,
           input.expectedRevision,
         );
+        const indexState = this.options.indexStore.scheduleCurrentVersion({
+          workspaceId: restored.workspaceId,
+          documentId: restored.id,
+          documentVersionId: restored.currentVersionId,
+        });
         const item = this.toListItemFromDocument(restored);
         this.options.compatibilityAdapter.upsertDocument(
           restored.workspaceId,
           item,
           this.getCompatibilityProjectionOptions(restored),
         );
-        return item;
+        return { item, indexState };
       });
-      return transaction();
+      const result = transaction();
+      if (result.indexState.status === KnowledgeDocumentIndexStatus.Pending) {
+        this.notifyIndexQueued();
+      }
+      return result.item;
+    } catch (error) {
+      throw this.toServiceError(error);
+    }
+  }
+
+  replaceParsedDocumentVersion(input: {
+    documentId: string;
+    expectedRevision: number;
+    version: CreateKnowledgeDocumentInput['version'];
+  }): KnowledgeDocumentListItem {
+    try {
+      if (!input.version.parser?.trim()) {
+        throw new KnowledgeDocumentServiceError(KnowledgeBaseErrorCodes.InvalidRequest);
+      }
+      const transaction = this.options.db.transaction(() => {
+        const existing = this.requireDocument(input.documentId);
+        if (existing.deletedAt) {
+          throw new KnowledgeDocumentServiceError(KnowledgeBaseErrorCodes.JobStateConflict);
+        }
+        const hadPreviousIndexState =
+          this.options.indexStore.getState(existing.currentVersionId) !== null;
+        if (hadPreviousIndexState) {
+          this.options.indexStore.deactivateVersion({
+            workspaceId: existing.workspaceId,
+            documentId: existing.id,
+            documentVersionId: existing.currentVersionId,
+          });
+        }
+        const status = input.version.extractedText?.trim()
+          ? KnowledgeDocumentStatus.Ready
+          : KnowledgeDocumentStatus.CompletedWithoutText;
+        const replaced = this.options.documentStore.addVersion(
+          existing.id,
+          input.expectedRevision,
+          input.version,
+          status,
+        );
+        const indexState = this.options.indexStore.scheduleCurrentVersion({
+          workspaceId: replaced.document.workspaceId,
+          documentId: replaced.document.id,
+          documentVersionId: replaced.version.id,
+        });
+        const item = this.toListItemFromDocument(replaced.document);
+        this.options.compatibilityAdapter.upsertDocument(
+          replaced.document.workspaceId,
+          item,
+          this.getCompatibilityProjectionOptions(replaced.document),
+        );
+        return { item, indexState, hadPreviousIndexState };
+      });
+      const result = transaction();
+      if (
+        result.hadPreviousIndexState ||
+        result.indexState.status === KnowledgeDocumentIndexStatus.Pending
+      ) {
+        this.notifyIndexQueued();
+      }
+      return result.item;
     } catch (error) {
       throw this.toServiceError(error);
     }
@@ -262,6 +372,27 @@ export class KnowledgeDocumentService {
       });
       const item = transaction();
       this.options.onJobsQueued?.();
+      return item;
+    } catch (error) {
+      throw this.toServiceError(error);
+    }
+  }
+
+  retryLocalIndex(input: KnowledgeRetryLocalIndexRequest): KnowledgeDocumentListItem {
+    try {
+      const transaction = this.options.db.transaction(() => {
+        const document = this.requireDocument(input.documentId);
+        if (document.deletedAt || document.currentVersionId !== input.documentVersionId) {
+          throw new KnowledgeDocumentServiceError(KnowledgeBaseErrorCodes.JobStateConflict);
+        }
+        this.options.indexStore.retryFailedVersion({
+          documentId: document.id,
+          documentVersionId: document.currentVersionId,
+        });
+        return this.toListItemFromDocument(document);
+      });
+      const item = transaction();
+      this.notifyIndexQueued();
       return item;
     } catch (error) {
       throw this.toServiceError(error);
@@ -330,7 +461,18 @@ export class KnowledgeDocumentService {
             documentVersionId: created.version.id,
           })
         : null;
-      const item = this.toListItem(this.toSummary(created.document, created.version), job);
+      const indexState = inspection.canExtractText
+        ? null
+        : this.options.indexStore.scheduleCurrentVersion({
+            workspaceId,
+            documentId: created.document.id,
+            documentVersionId: created.version.id,
+          });
+      const item = this.toListItem(
+        this.toSummary(created.document, created.version),
+        job,
+        indexState,
+      );
       this.options.compatibilityAdapter.upsertDocument(
         workspaceId,
         item,
@@ -338,7 +480,10 @@ export class KnowledgeDocumentService {
       );
       return { document: item, queuedJob: Boolean(job) };
     });
-    return transaction();
+    return runTransientSqliteWriteTransactionUntilSuccess(
+      transaction,
+      this.options.busyRetryDelay,
+    );
   }
 
   private requireWorkspace(workspaceId: string): void {
@@ -378,6 +523,7 @@ export class KnowledgeDocumentService {
     return this.toListItem(
       this.toSummary(document, version),
       this.options.jobStore.getCurrentJob(document.id, document.currentVersionId),
+      this.options.indexStore.getState(document.currentVersionId),
     );
   }
 
@@ -396,6 +542,7 @@ export class KnowledgeDocumentService {
   private toListItem(
     document: KnowledgeDocumentSummary,
     job: KnowledgeIngestionJob | null,
+    indexState: KnowledgeDocumentIndexState | null,
   ): KnowledgeDocumentListItem {
     return {
       id: document.id,
@@ -408,10 +555,36 @@ export class KnowledgeDocumentService {
       mimeType: document.mimeType,
       contentHash: document.contentHash,
       currentJob: job ? this.toJobSummary(job) : null,
+      localIndex: this.toIndexSummary(indexState),
       createdAt: document.createdAt,
       updatedAt: document.updatedAt,
       deletedAt: document.deletedAt,
     };
+  }
+
+  private toIndexSummary(
+    state: KnowledgeDocumentIndexState | null,
+  ): KnowledgeDocumentIndexSummary | null {
+    if (!state) {
+      return null;
+    }
+    return {
+      documentVersionId: state.documentVersionId,
+      status: state.status,
+      chunkCount: state.chunkCount,
+      attemptCount: state.attemptCount,
+      errorCode: state.errorCode,
+      updatedAt: state.updatedAt,
+      completedAt: state.completedAt,
+    };
+  }
+
+  private notifyIndexQueued(): void {
+    try {
+      this.options.onIndexQueued?.();
+    } catch (error) {
+      console.warn('[KnowledgeBase] Failed to wake local index worker:', error);
+    }
   }
 
   private toJobSummary(job: KnowledgeIngestionJob): KnowledgeIngestionJobSummary {
@@ -454,6 +627,9 @@ export class KnowledgeDocumentService {
       });
     }
     if (error instanceof KnowledgeIngestionJobStateError) {
+      return new KnowledgeDocumentServiceError(KnowledgeBaseErrorCodes.JobStateConflict);
+    }
+    if (error instanceof KnowledgeDocumentIndexStateError) {
       return new KnowledgeDocumentServiceError(KnowledgeBaseErrorCodes.JobStateConflict);
     }
     return new KnowledgeDocumentServiceError(KnowledgeBaseErrorCodes.PersistenceFailed, {

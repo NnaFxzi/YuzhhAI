@@ -58,4 +58,19 @@ describe('createKnowledgeBasePreloadBridge', () => {
       selectionToken: 'token-a',
     });
   });
+
+  test('preload invokes the dedicated local-index retry channel', async () => {
+    const invoke = vi.fn(async () => ({ success: true, data: null }));
+    const bridge = createKnowledgeBasePreloadBridge(invoke);
+
+    await bridge.retryLocalIndex({
+      documentId: 'document-a',
+      documentVersionId: 'version-a',
+    });
+
+    expect(invoke).toHaveBeenCalledWith(KnowledgeBaseIpc.RetryLocalIndex, {
+      documentId: 'document-a',
+      documentVersionId: 'version-a',
+    });
+  });
 });

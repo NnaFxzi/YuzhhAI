@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest';
+
 import {
   KnowledgeBaseErrorCode,
   KnowledgeBaseIpc,
@@ -34,6 +35,7 @@ const documentItem = (): KnowledgeDocumentListItem => ({
   mimeType: 'application/pdf',
   contentHash: 'a'.repeat(64),
   currentJob: null,
+  localIndex: null,
   createdAt: '2026-07-11T00:00:00.000Z',
   updatedAt: '2026-07-11T00:00:00.000Z',
   deletedAt: null,
@@ -72,6 +74,7 @@ const makeDeps = (): {
     deleteDocument: vi.fn(() => documentItem()),
     restoreDocument: vi.fn(() => documentItem()),
     retryDocument: vi.fn(() => documentItem()),
+    retryLocalIndex: vi.fn(() => documentItem()),
   };
   return {
     deps: {
@@ -314,6 +317,61 @@ describe('registerKnowledgeBaseHandlers', () => {
     registerKnowledgeBaseHandlers(deps);
 
     const result = await registeredHandlers.get(KnowledgeBaseIpc.RetryDocument)?.(
+      createEvent().event,
+      { documentId: 'document-1', documentVersionId: 'version-1' },
+    );
+
+    expect(result).toEqual({
+      success: false,
+      error: { code: KnowledgeBaseErrorCode.PersistenceFailed },
+    });
+    expect(JSON.stringify(result)).not.toContain('/private/customer');
+    expect(JSON.stringify(result)).not.toContain('SQLITE_BUSY');
+  });
+
+  test('routes a validated local-index retry to the dedicated service method', async () => {
+    const { deps, documentService } = makeDeps();
+    registerKnowledgeBaseHandlers(deps);
+
+    const result = await registeredHandlers.get(KnowledgeBaseIpc.RetryLocalIndex)?.(
+      createEvent().event,
+      { documentId: ' document-a ', documentVersionId: ' version-a ' },
+    );
+
+    expect(documentService.retryLocalIndex).toHaveBeenCalledWith({
+      documentId: 'document-a',
+      documentVersionId: 'version-a',
+    });
+    expect(result).toMatchObject({ success: true });
+  });
+
+  test.each([
+    null,
+    {},
+    { documentId: '', documentVersionId: 'version-a' },
+    { documentId: 'document-a', documentVersionId: '   ' },
+    { documentId: 'document-a', documentVersionId: 7 },
+  ])('rejects invalid local-index retry input without calling service', async input => {
+    const { deps, documentService } = makeDeps();
+    registerKnowledgeBaseHandlers(deps);
+
+    await expect(
+      registeredHandlers.get(KnowledgeBaseIpc.RetryLocalIndex)?.(createEvent().event, input),
+    ).resolves.toEqual({
+      success: false,
+      error: { code: KnowledgeBaseErrorCode.InvalidRequest },
+    });
+    expect(documentService.retryLocalIndex).not.toHaveBeenCalled();
+  });
+
+  test('does not expose unknown local-index retry failures', async () => {
+    const { deps, documentService } = makeDeps();
+    documentService.retryLocalIndex = vi.fn(() => {
+      throw new Error('/private/customer/secret.pdf SQLITE_BUSY');
+    });
+    registerKnowledgeBaseHandlers(deps);
+
+    const result = await registeredHandlers.get(KnowledgeBaseIpc.RetryLocalIndex)?.(
       createEvent().event,
       { documentId: 'document-1', documentVersionId: 'version-1' },
     );

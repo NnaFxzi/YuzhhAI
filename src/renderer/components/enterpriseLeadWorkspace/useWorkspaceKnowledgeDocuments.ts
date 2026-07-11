@@ -141,6 +141,13 @@ export const createKnowledgeDocumentRequestSequencer = (): KnowledgeDocumentRequ
 
 type KnowledgeBaseServiceApi = typeof knowledgeBaseService;
 
+export const retryKnowledgeDocumentLocalIndex = async (
+  service: Pick<KnowledgeBaseServiceApi, 'retryLocalIndex'>,
+  document: KnowledgeDocumentListItem,
+): Promise<void> => {
+  await service.retryLocalIndex(document.id, document.currentVersionId);
+};
+
 export interface WorkspaceKnowledgeDocumentsState {
   documents: KnowledgeDocumentListItem[];
   deletedDocuments: KnowledgeDocumentListItem[];
@@ -157,6 +164,7 @@ export interface WorkspaceKnowledgeDocumentsState {
   deleteDocument: (document: KnowledgeDocumentListItem) => Promise<void>;
   restoreDocument: (document: KnowledgeDocumentListItem) => Promise<void>;
   retryDocument: (document: KnowledgeDocumentListItem) => Promise<void>;
+  retryLocalIndex: (document: KnowledgeDocumentListItem) => Promise<void>;
   loadDetails: (documentId: string) => Promise<void>;
 }
 
@@ -361,6 +369,11 @@ export const useWorkspaceKnowledgeDocuments = (
     retryDocument: document =>
       runMutation(
         () => service.retryDocument(document.id, document.currentVersionId).then(() => undefined),
+        refresh,
+      ),
+    retryLocalIndex: document =>
+      runMutation(
+        () => retryKnowledgeDocumentLocalIndex(service, document),
         refresh,
       ),
     loadDetails: async documentId => {
