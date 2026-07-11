@@ -35,6 +35,8 @@ import {
   normalizeEnterpriseLeadWorkspaceSettingsUpdate,
   normalizeWorkspaceProfile,
 } from '../../shared/enterpriseLeadWorkspace/validation';
+import { KNOWLEDGE_DOCUMENT_LEGACY_SOURCE_PREFIX } from '../../shared/knowledgeBase/constants';
+import { buildLegacyKnowledgeSourceId } from '../knowledgeBase/legacyKnowledgeSourceIdentity';
 
 const defaultRiskRules = [
   'no_real_publish',
@@ -607,26 +609,162 @@ export class EnterpriseLeadWorkspaceStore {
   updateWorkspaceSources(
     workspaceId: string,
     sources: EnterpriseLeadExtractionSource[],
+    options: {
+      transformReconciledSources?: (
+        sources: EnterpriseLeadExtractionSource[],
+      ) => EnterpriseLeadExtractionSource[];
+    } = {},
   ): EnterpriseLeadWorkspace {
     const workspace = this.getWorkspace(workspaceId);
     if (!workspace) {
       throw new Error('Enterprise lead workspace not found');
     }
 
-    const normalizedSources = normalizeEnterpriseLeadExtractionSources(sources);
-    const now = new Date().toISOString();
-
-    this.db.prepare(`
-      UPDATE enterprise_lead_workspaces
-      SET extraction_sources = ?, updated_at = ?
-      WHERE id = ?
-    `).run(
-      JSON.stringify(normalizedSources),
-      now,
-      workspace.id,
+    const reconciledSources = this.reconcileNormalizedKnowledgeSources(
+      workspace,
+      normalizeEnterpriseLeadExtractionSources(sources),
     );
+    const normalizedSources = options.transformReconciledSources
+      ? normalizeEnterpriseLeadExtractionSources(
+          options.transformReconciledSources(reconciledSources),
+        )
+      : reconciledSources;
+    return this.writeWorkspaceSources(workspace.id, normalizedSources);
+  }
 
-    const updated = this.getWorkspace(workspace.id);
+  upsertWorkspaceSourceById(
+    workspaceId: string,
+    source: EnterpriseLeadExtractionSource,
+  ): EnterpriseLeadWorkspace {
+    const transaction = this.db.transaction(() => {
+      const workspace = this.getWorkspace(workspaceId);
+      if (!workspace) {
+        throw new Error('Enterprise lead workspace not found');
+      }
+      const normalizedSource = normalizeEnterpriseLeadExtractionSources([source])[0];
+      const sourceId = normalizedSource?.id?.trim();
+      if (!normalizedSource || !sourceId) {
+        throw new Error('Enterprise lead workspace source id is required');
+      }
+      const sourceIndex = workspace.extractionSources.findIndex(item => item.id === sourceId);
+      const sources = [...workspace.extractionSources];
+      if (sourceIndex >= 0) {
+        sources[sourceIndex] = normalizedSource;
+      } else {
+        sources.push(normalizedSource);
+      }
+      return this.writeWorkspaceSources(workspaceId, sources);
+    });
+    return transaction();
+  }
+
+  removeWorkspaceSourceById(workspaceId: string, sourceId: string): boolean {
+    const transaction = this.db.transaction(() => {
+      const workspace = this.getWorkspace(workspaceId);
+      if (!workspace) {
+        throw new Error('Enterprise lead workspace not found');
+      }
+      const normalizedSourceId = sourceId.trim();
+      if (!normalizedSourceId) {
+        throw new Error('Enterprise lead workspace source id is required');
+      }
+      const sources = workspace.extractionSources.filter(item => item.id !== normalizedSourceId);
+      if (sources.length === workspace.extractionSources.length) {
+        return false;
+      }
+      this.writeWorkspaceSources(workspaceId, sources);
+      return true;
+    });
+    return transaction();
+  }
+
+  private reconcileNormalizedKnowledgeSources(
+    workspace: EnterpriseLeadWorkspace,
+    incomingSources: EnterpriseLeadExtractionSource[],
+  ): EnterpriseLeadExtractionSource[] {
+    const normalizedTableExists = this.db
+      .prepare(
+        `
+        SELECT 1
+        FROM sqlite_master
+        WHERE type = 'table' AND name = 'knowledge_documents'
+        LIMIT 1
+      `,
+      )
+      .get();
+    if (!normalizedTableExists) {
+      return incomingSources;
+    }
+
+    const documentRows = this.db
+      .prepare(
+        `
+        SELECT id, legacy_source_id, deleted_at
+        FROM knowledge_documents
+        WHERE workspace_id = ?
+      `,
+      )
+      .all(workspace.id) as Array<{
+      id: string;
+      legacy_source_id: string | null;
+      deleted_at: string | null;
+    }>;
+    const activeSourceIds = new Set<string>();
+    const deletedSourceIds = new Set<string>();
+    for (const row of documentRows) {
+      const sourceId =
+        row.legacy_source_id?.trim() ||
+        `${KNOWLEDGE_DOCUMENT_LEGACY_SOURCE_PREFIX}${row.id}`;
+      (row.deleted_at ? deletedSourceIds : activeSourceIds).add(sourceId);
+    }
+
+    const authoritativeSources = new Map<string, EnterpriseLeadExtractionSource>();
+    for (const source of workspace.extractionSources) {
+      const sourceId = source.id?.trim();
+      if (sourceId && activeSourceIds.has(sourceId)) {
+        authoritativeSources.set(sourceId, source);
+      }
+    }
+
+    const retainedSourceIds = new Set<string>();
+    const reconciledSources: EnterpriseLeadExtractionSource[] = [];
+    for (const [sourceIndex, source] of incomingSources.entries()) {
+      const sourceId =
+        source.id?.trim() || buildLegacyKnowledgeSourceId(workspace.id, source, sourceIndex);
+      if (sourceId && deletedSourceIds.has(sourceId)) {
+        continue;
+      }
+      if (sourceId && activeSourceIds.has(sourceId)) {
+        retainedSourceIds.add(sourceId);
+        reconciledSources.push(authoritativeSources.get(sourceId) ?? { ...source, id: sourceId });
+        continue;
+      }
+      reconciledSources.push(source);
+    }
+    for (const [sourceId, source] of authoritativeSources) {
+      if (!retainedSourceIds.has(sourceId)) {
+        reconciledSources.push(source);
+      }
+    }
+    return reconciledSources;
+  }
+
+  private writeWorkspaceSources(
+    workspaceId: string,
+    sources: EnterpriseLeadExtractionSource[],
+  ): EnterpriseLeadWorkspace {
+    const now = new Date().toISOString();
+    this.db
+      .prepare(
+        `
+        UPDATE enterprise_lead_workspaces
+        SET extraction_sources = ?, updated_at = ?
+        WHERE id = ?
+      `,
+      )
+      .run(JSON.stringify(sources), now, workspaceId);
+
+    const updated = this.getWorkspace(workspaceId);
     if (!updated) {
       throw new Error('Enterprise lead workspace not found');
     }

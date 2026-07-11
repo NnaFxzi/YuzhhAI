@@ -7,6 +7,7 @@ import {
 } from '../../shared/agent/externalResearch';
 import {
   EnterpriseLeadAgentRole,
+  EnterpriseLeadExtractionSourceKind,
   EnterpriseLeadRiskLevel,
   EnterpriseLeadRunStatus,
   EnterpriseLeadTaskStatus,
@@ -15,6 +16,11 @@ import {
   EnterpriseLeadWorkspaceType,
 } from '../../shared/enterpriseLeadWorkspace/constants';
 import { buildDefaultEnterpriseLeadWorkspaceSettings } from '../../shared/enterpriseLeadWorkspace/validation';
+import {
+  KnowledgeDocumentSourceMode,
+  KnowledgeDocumentStatus,
+} from '../../shared/knowledgeBase/constants';
+import { KnowledgeDocumentStore } from '../knowledgeBase/knowledgeDocumentStore';
 import { EnterpriseLeadWorkspaceStore } from './store';
 
 const createStore = (): { db: Database.Database; store: EnterpriseLeadWorkspaceStore } => {
@@ -99,6 +105,125 @@ describe('EnterpriseLeadWorkspaceStore', () => {
     ]);
     expect(store.getWorkspace(workspace.id)).toEqual(workspace);
     expect(store.listWorkspaces()).toEqual([workspace]);
+  });
+
+  test('upserts one stable source without replacing unrelated legacy entries', () => {
+    setupStore();
+    const workspace = store.createWorkspace({
+      name: '兼容投影测试',
+      type: EnterpriseLeadWorkspaceType.EnterpriseLead,
+      profile,
+      extractionSources: [
+        {
+          id: 'legacy-a',
+          kind: EnterpriseLeadExtractionSourceKind.File,
+          label: '旧资料',
+          text: '保留原文',
+        },
+      ],
+      enabledAgentRoles: [],
+    });
+
+    store.upsertWorkspaceSourceById(workspace.id, {
+      id: 'knowledge-document:doc-1',
+      kind: EnterpriseLeadExtractionSourceKind.File,
+      label: 'Managed.pdf',
+    });
+    store.upsertWorkspaceSourceById(workspace.id, {
+      id: 'knowledge-document:doc-1',
+      kind: EnterpriseLeadExtractionSourceKind.File,
+      label: 'Renamed.pdf',
+    });
+
+    expect(store.getWorkspace(workspace.id)?.extractionSources).toEqual([
+      expect.objectContaining({ id: 'legacy-a', text: '保留原文' }),
+      expect.objectContaining({ id: 'knowledge-document:doc-1', label: 'Renamed.pdf' }),
+    ]);
+  });
+
+  test('removes only the matching stable source id', () => {
+    setupStore();
+    const workspace = store.createWorkspace({
+      name: '兼容投影删除测试',
+      type: EnterpriseLeadWorkspaceType.EnterpriseLead,
+      profile,
+      extractionSources: [
+        { id: 'legacy-a', kind: EnterpriseLeadExtractionSourceKind.File, label: '旧资料' },
+        {
+          id: 'knowledge-document:doc-1',
+          kind: EnterpriseLeadExtractionSourceKind.File,
+          label: 'Managed.pdf',
+        },
+      ],
+      enabledAgentRoles: [],
+    });
+
+    expect(
+      store.removeWorkspaceSourceById(workspace.id, 'knowledge-document:doc-1'),
+    ).toBe(true);
+    expect(store.getWorkspace(workspace.id)?.extractionSources).toEqual([
+      expect.objectContaining({ id: 'legacy-a' }),
+    ]);
+    expect(store.removeWorkspaceSourceById(workspace.id, 'missing')).toBe(false);
+  });
+
+  test('uses normalized legacy ids as authoritative sources and deletion tombstones', () => {
+    setupStore();
+    const workspace = store.createWorkspace({
+      name: '迁移投影保护测试',
+      type: EnterpriseLeadWorkspaceType.EnterpriseLead,
+      profile,
+      extractionSources: [
+        {
+          id: 'legacy-a',
+          kind: EnterpriseLeadExtractionSourceKind.File,
+          label: '最新投影',
+          text: '保留正文',
+        },
+      ],
+      enabledAgentRoles: [],
+    });
+    const documentStore = new KnowledgeDocumentStore(db!);
+    const created = documentStore.createDocumentWithVersion({
+      workspaceId: workspace.id,
+      legacySourceId: 'legacy-a',
+      displayName: 'legacy.pdf',
+      sourceMode: KnowledgeDocumentSourceMode.Managed,
+      status: KnowledgeDocumentStatus.Ready,
+      version: {
+        contentHash: 'a'.repeat(64),
+        managedPath: `blobs/aa/${'a'.repeat(64)}`,
+        mimeType: 'application/pdf',
+        fileSize: 10,
+        sourceMtime: 100,
+        parser: 'pdf',
+        extractedText: '保留正文',
+        extractionPartial: false,
+      },
+    });
+
+    const protectedWorkspace = store.updateWorkspaceSources(workspace.id, [
+      {
+        id: 'legacy-a',
+        kind: EnterpriseLeadExtractionSourceKind.File,
+        label: '旧页面的过期投影',
+      },
+    ]);
+    expect(protectedWorkspace.extractionSources[0]).toMatchObject({
+      id: 'legacy-a',
+      label: '最新投影',
+      text: '保留正文',
+    });
+
+    documentStore.softDeleteDocument(created.document.id, created.document.revision);
+    const afterStaleWrite = store.updateWorkspaceSources(workspace.id, [
+      {
+        id: 'legacy-a',
+        kind: EnterpriseLeadExtractionSourceKind.File,
+        label: '旧页面尝试重新写入',
+      },
+    ]);
+    expect(afterStaleWrite.extractionSources).toEqual([]);
   });
 
   test('deletes a workspace with its runs, tasks, and pending versions', () => {

@@ -52,8 +52,16 @@ export const SUPPORTED_DOCUMENT_TEXT_EXTENSIONS = new Set([
   ...EnterpriseLeadReadableDocumentExtensions.map(dotExtension),
 ]);
 
-const getNormalizedExtension = (filePath: string): string =>
-  path.extname(filePath).trim().toLowerCase();
+const normalizeExtensionHint = (value?: string): string => {
+  const trimmed = value?.trim().toLowerCase() ?? '';
+  if (!trimmed) {
+    return '';
+  }
+  return trimmed.startsWith('.') ? trimmed : `.${trimmed}`;
+};
+
+const getNormalizedExtension = (filePath: string, extensionHint?: string): string =>
+  path.extname(filePath).trim().toLowerCase() || normalizeExtensionHint(extensionHint);
 
 export const isSupportedDocumentTextFile = (filePath: string): boolean =>
   SUPPORTED_DOCUMENT_TEXT_EXTENSIONS.has(getNormalizedExtension(filePath));
@@ -332,10 +340,12 @@ const convertHeicToPng = async (filePath: string): Promise<Buffer> => {
 
 export interface ExtractImageTextOptions {
   assetPaths?: OcrAssetPaths;
+  extensionHint?: string;
   onProgress?: (progress: number) => void;
 }
 
 export interface ExtractDocumentTextOptions {
+  extensionHint?: string;
   image?: ExtractImageTextOptions;
 }
 
@@ -350,7 +360,7 @@ export const extractImageText = async (
   }
   ensureRichDocumentSize(normalizedPath, stat.size);
 
-  const extension = getNormalizedExtension(normalizedPath);
+  const extension = getNormalizedExtension(normalizedPath, options.extensionHint);
   const imageBuffer = HEIC_IMAGE_EXTENSIONS.has(extension)
     ? await convertHeicToPng(normalizedPath)
     : await fs.readFile(normalizedPath);
@@ -420,7 +430,7 @@ export const extractDocumentTextFromFile = async (
     throw new Error('Not a file');
   }
 
-  const extension = getNormalizedExtension(normalizedPath);
+  const extension = getNormalizedExtension(normalizedPath, options.extensionHint);
   if (TEXT_DOCUMENT_EXTENSIONS.has(extension)) {
     return extractPlainTextFile(normalizedPath, stat.size);
   }
@@ -440,7 +450,10 @@ export const extractDocumentTextFromFile = async (
     return extractPptxText(normalizedPath, stat.size);
   }
   if (OCR_IMAGE_EXTENSIONS.has(extension)) {
-    return extractImageText(normalizedPath, options.image);
+    return extractImageText(normalizedPath, {
+      ...options.image,
+      extensionHint: extension,
+    });
   }
 
   throw new Error(`Unsupported readable document type: ${extension || 'unknown'}`);

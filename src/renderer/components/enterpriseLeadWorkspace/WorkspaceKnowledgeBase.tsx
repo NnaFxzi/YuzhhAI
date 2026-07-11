@@ -1,7 +1,5 @@
 import {
   ArchiveBoxXMarkIcon,
-  ArrowPathIcon,
-  ArrowUpTrayIcon,
   BuildingOffice2Icon,
   CheckCircleIcon,
   DocumentTextIcon,
@@ -21,7 +19,6 @@ import {
   EnterpriseLeadImageAttachmentExtensions,
   EnterpriseLeadKnowledgeIndexStatus,
   EnterpriseLeadReadableDocumentExtensions,
-  EnterpriseLeadSourceDocumentFileFilterExtensions,
 } from '../../../shared/enterpriseLeadWorkspace/constants';
 import type {
   EnterpriseLeadExtractionSource,
@@ -29,13 +26,8 @@ import type {
   EnterpriseLeadWorkspaceProfile,
   EnterpriseLeadWorkspaceSnapshot,
 } from '../../../shared/enterpriseLeadWorkspace/types';
-import {
-  enterpriseLeadWorkspaceService,
-  EnterpriseLeadWorkspaceServiceError,
-} from '../../services/enterpriseLeadWorkspace';
+import { enterpriseLeadWorkspaceService } from '../../services/enterpriseLeadWorkspace';
 import { i18nService } from '../../services/i18n';
-import { type Artifact, ArtifactTypeValue } from '../../types/artifact';
-import DocumentRenderer from '../artifacts/renderers/DocumentRenderer';
 import {
   type EditableKnowledgeField,
   EnterpriseLeadKnowledgeItemKind,
@@ -44,10 +36,7 @@ import {
   getWorkspaceKnowledgeSections,
   type WorkspaceKnowledgeItem,
 } from './enterpriseLeadWorkspaceUi';
-import {
-  EnterpriseLeadKnowledgeDocumentUploadOutcome,
-  resolveEnterpriseLeadKnowledgeDocumentUpload,
-} from './knowledgeDocumentUpload';
+import WorkspaceKnowledgeDocumentsPanel from './WorkspaceKnowledgeDocumentsPanel';
 
 interface WorkspaceKnowledgeBaseProps {
   workspace: EnterpriseLeadWorkspace;
@@ -198,35 +187,6 @@ const itemKindLabelKeys: Record<EnterpriseLeadKnowledgeItemKind, string> = {
   [EnterpriseLeadKnowledgeItemKind.Deliverable]: 'enterpriseLeadKnowledgeKindDeliverable',
   [EnterpriseLeadKnowledgeItemKind.Archive]: 'enterpriseLeadKnowledgeKindArchive',
 };
-
-const sourceKindLabelKeys: Record<string, string> = {
-  [EnterpriseLeadExtractionSourceKind.Blank]: 'enterpriseLeadKnowledgeDocumentTypeBlank',
-  [EnterpriseLeadExtractionSourceKind.Conversation]:
-    'enterpriseLeadKnowledgeDocumentTypeConversation',
-  [EnterpriseLeadExtractionSourceKind.File]: 'enterpriseLeadKnowledgeDocumentTypeFile',
-  [EnterpriseLeadExtractionSourceKind.Image]: 'enterpriseLeadKnowledgeDocumentTypeImage',
-  [EnterpriseLeadExtractionSourceKind.Manual]: 'enterpriseLeadKnowledgeDocumentTypeManual',
-  web: 'enterpriseLeadKnowledgeDocumentTypeWeb',
-};
-
-const documentSourceTypeOptions = [
-  EnterpriseLeadExtractionSourceKind.File,
-  EnterpriseLeadExtractionSourceKind.Image,
-  EnterpriseLeadExtractionSourceKind.Manual,
-  EnterpriseLeadExtractionSourceKind.Conversation,
-  'web',
-] as const;
-
-const documentFileFilters = [
-  {
-    name: 'Documents',
-    extensions: [...EnterpriseLeadSourceDocumentFileFilterExtensions],
-  },
-  {
-    name: 'All files',
-    extensions: ['*'],
-  },
-];
 
 export const enterpriseLeadReadableDocumentExtensions = new Set<string>(
   EnterpriseLeadReadableDocumentExtensions,
@@ -552,42 +512,6 @@ export const ignoreEnterpriseLeadKnowledgeItemInProfile = (
   return nextProfile;
 };
 
-const getSourceIndexFromItemId = (item: WorkspaceKnowledgeItem): number => {
-  const match = /^source-(\d+)$/.exec(item.id);
-  return match ? Number.parseInt(match[1] ?? '-1', 10) : -1;
-};
-
-const getSourceExtractedKnowledgeKeys = (source?: EnterpriseLeadExtractionSource): string[] =>
-  Array.from(
-    new Set((source?.extractedKnowledgeKeys ?? []).map(key => key.trim()).filter(Boolean)),
-  );
-
-const getPreservedKnowledgeKeysFromSources = (
-  sources: EnterpriseLeadExtractionSource[],
-): Set<string> => {
-  const keys = new Set<string>();
-  sources.forEach(source => {
-    getSourceExtractedKnowledgeKeys(source).forEach(key => keys.add(key));
-  });
-  return keys;
-};
-
-const getSourceKindLabel = (kind?: string): string =>
-  i18nService.t(
-    kind && sourceKindLabelKeys[kind]
-      ? sourceKindLabelKeys[kind]
-      : 'enterpriseLeadKnowledgeDocumentTypeUnknown',
-  );
-
-const documentStatusLabelKeys: Record<string, string> = {
-  [EnterpriseLeadDocumentExtractionStatus.Pending]: 'enterpriseLeadKnowledgeDocumentStatusPending',
-  [EnterpriseLeadDocumentExtractionStatus.Extracting]:
-    'enterpriseLeadKnowledgeDocumentStatusExtracting',
-  [EnterpriseLeadDocumentExtractionStatus.Extracted]:
-    'enterpriseLeadKnowledgeDocumentStatusExtracted',
-  [EnterpriseLeadDocumentExtractionStatus.Failed]: 'enterpriseLeadKnowledgeDocumentStatusFailed',
-};
-
 const documentStatusTextKeys: Record<string, string> = {
   [EnterpriseLeadDocumentExtractionStatus.Pending]:
     'enterpriseLeadKnowledgeDocumentPendingExtractText',
@@ -597,22 +521,6 @@ const documentStatusTextKeys: Record<string, string> = {
     'enterpriseLeadKnowledgeDocumentExtractedText',
   [EnterpriseLeadDocumentExtractionStatus.Failed]:
     'enterpriseLeadKnowledgeDocumentFailedExtractText',
-};
-
-const documentStatusClassNames: Record<string, string> = {
-  [EnterpriseLeadDocumentExtractionStatus.Pending]:
-    'bg-amber-500/10 text-amber-700 dark:text-amber-300',
-  [EnterpriseLeadDocumentExtractionStatus.Extracting]: 'bg-primary/10 text-primary',
-  [EnterpriseLeadDocumentExtractionStatus.Extracted]:
-    'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
-  [EnterpriseLeadDocumentExtractionStatus.Failed]: 'bg-red-500/10 text-red-700 dark:text-red-300',
-};
-
-const vectorIndexStatusLabelKeys: Record<string, string> = {
-  [EnterpriseLeadKnowledgeIndexStatus.Pending]: 'enterpriseLeadKnowledgeVectorStatusPending',
-  [EnterpriseLeadKnowledgeIndexStatus.Indexing]: 'enterpriseLeadKnowledgeVectorStatusIndexing',
-  [EnterpriseLeadKnowledgeIndexStatus.Indexed]: 'enterpriseLeadKnowledgeVectorStatusIndexed',
-  [EnterpriseLeadKnowledgeIndexStatus.Failed]: 'enterpriseLeadKnowledgeVectorStatusFailed',
 };
 
 export const enterpriseLeadKnowledgeVectorIndexStatusClassNames: Record<string, string> = {
@@ -670,8 +578,9 @@ export const isEnterpriseLeadDocumentProcessing = (
 export const canRetryEnterpriseLeadDocumentProcessing = (
   source?: Pick<
     EnterpriseLeadExtractionSource,
-    'extractionStatus' | 'filePath' | 'kind' | 'text' | 'vectorIndexStatus'
-  >,
+    'extractionStatus' | 'text' | 'vectorIndexStatus'
+  > &
+    Partial<Pick<EnterpriseLeadExtractionSource, 'filePath' | 'kind'>>,
 ): boolean => {
   if (isEnterpriseLeadDocumentProcessing(source)) {
     return false;
@@ -692,9 +601,6 @@ export const canRetryEnterpriseLeadDocumentProcessing = (
     vectorIndexStatus !== EnterpriseLeadKnowledgeIndexStatus.Indexed
   );
 };
-
-const getVectorIndexStatusLabel = (status: string): string =>
-  i18nService.t(vectorIndexStatusLabelKeys[status] ?? 'enterpriseLeadKnowledgeVectorStatusPending');
 
 export const getEnterpriseLeadKnowledgeVectorIndexSummary = (
   source?: Pick<
@@ -721,14 +627,6 @@ export const getEnterpriseLeadKnowledgeVectorIndexSummary = (
   }
   return i18nService.t('enterpriseLeadKnowledgeVectorPendingText');
 };
-
-const getVectorIndexStatusClassName = (status: string): string =>
-  enterpriseLeadKnowledgeVectorIndexStatusClassNames[status] ??
-  enterpriseLeadKnowledgeVectorIndexStatusClassNames[EnterpriseLeadKnowledgeIndexStatus.Pending] ??
-  '';
-
-const getDocumentStatusLabel = (status: string): string =>
-  i18nService.t(documentStatusLabelKeys[status] ?? 'enterpriseLeadKnowledgeDocumentStatusPending');
 
 const getDocumentStatusDescription = (status: string): string =>
   i18nService.t(
@@ -766,24 +664,6 @@ export const getEnterpriseLeadKnowledgeDocumentStatusDescription = (
     return i18nService.t('enterpriseLeadKnowledgeDocumentPartialExtractedText');
   }
   return getDocumentStatusDescription(status);
-};
-
-const getDocumentStatusClassName = (status: string): string =>
-  documentStatusClassNames[status] ??
-  documentStatusClassNames[EnterpriseLeadDocumentExtractionStatus.Pending] ??
-  '';
-
-const formatFileSize = (size?: number | null): string => {
-  if (!size || !Number.isFinite(size) || size <= 0) {
-    return '';
-  }
-  if (size < 1024) {
-    return `${Math.round(size)} B`;
-  }
-  if (size < 1024 * 1024) {
-    return `${(size / 1024).toFixed(1)} KB`;
-  }
-  return `${(size / 1024 / 1024).toFixed(1)} MB`;
 };
 
 const getEditableItemField = (item: WorkspaceKnowledgeItem): EditableKnowledgeField | null =>
@@ -855,68 +735,13 @@ export const shouldShowEnterpriseLeadKnowledgeDetailPanel = (
   _activeView: KnowledgeView,
   _selectedItemId: string,
 ): boolean => false;
-type ModalMode =
-  | 'none'
-  | 'company'
-  | 'item'
-  | 'document'
-  | 'documentPreview'
-  | 'deleteDocument'
-  | 'deleteKnowledgeBatch';
+type ModalMode = 'none' | 'company' | 'item' | 'deleteKnowledgeBatch';
 type ItemModalMode = 'add' | 'edit';
-type DeleteDocumentScope = 'document' | 'document_and_knowledge';
 
 interface KnowledgeTableRow {
   item: WorkspaceKnowledgeItem;
   section: ReturnType<typeof getWorkspaceKnowledgeSections>[number];
 }
-
-interface DocumentDraft {
-  mode: 'add' | 'edit';
-  sourceIndex: number;
-  name: string;
-  category: string;
-  fileName: string;
-  fileSize: number | null;
-  sourceType: string;
-  note: string;
-  summary: string;
-  extractImmediately: boolean;
-}
-
-interface DeleteDocumentDraft {
-  sourceIndex: number;
-  scope: DeleteDocumentScope;
-}
-
-const createEmptyDocumentDraft = (): DocumentDraft => ({
-  category: '',
-  extractImmediately: true,
-  fileName: '',
-  fileSize: null,
-  mode: 'add',
-  name: '',
-  note: '',
-  summary: '',
-  sourceIndex: -1,
-  sourceType: EnterpriseLeadExtractionSourceKind.Manual,
-});
-
-const createDocumentDraftFromSource = (
-  source: EnterpriseLeadExtractionSource,
-  sourceIndex: number,
-): DocumentDraft => ({
-  category: source.filePath ?? '',
-  extractImmediately: false,
-  fileName: source.fileName ?? getFileNameFromPath(source.filePath ?? ''),
-  fileSize: source.fileSize ?? null,
-  mode: 'edit',
-  name: source.label,
-  note: source.text ?? '',
-  summary: source.summary ?? '',
-  sourceIndex,
-  sourceType: source.kind || EnterpriseLeadExtractionSourceKind.Manual,
-});
 
 function getFileNameFromPath(filePath: string): string {
   const normalized = filePath.trim();
@@ -925,12 +750,6 @@ function getFileNameFromPath(filePath: string): string {
   }
   return normalized.split(/[\\/]/).filter(Boolean).pop() ?? normalized;
 }
-
-const getFileNameWithoutExtension = (filePath: string): string => {
-  const fileName = getFileNameFromPath(filePath);
-  const dotIndex = fileName.lastIndexOf('.');
-  return dotIndex > 0 ? fileName.slice(0, dotIndex) : fileName;
-};
 
 function getFileExtension(filePath: string): string {
   const fileName = getFileNameFromPath(filePath);
@@ -1168,13 +987,12 @@ export const WorkspaceKnowledgeBase: React.FC<WorkspaceKnowledgeBaseProps> = ({
     null,
   );
   const [activeView, setActiveView] = useState<KnowledgeView>('documents');
-  const [selectedItemId, setSelectedItemId] = useState(
+  const [, setSelectedItemId] = useState(
     enterpriseLeadKnowledgeInitialSelectedItemId,
   );
   const [selectedKnowledgeItemIds, setSelectedKnowledgeItemIds] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<KnowledgeStatusFilter>('all');
-  const [documentStatusFilter, setDocumentStatusFilter] = useState<DocumentStatusFilter>('all');
   const [modalMode, setModalMode] = useState<ModalMode>('none');
   const [activeCompanyField, setActiveCompanyField] = useState<CompanyDraftField>('companySummary');
   const [companyDraft, setCompanyDraft] = useState<CompanyDraft>(() =>
@@ -1183,17 +1001,11 @@ export const WorkspaceKnowledgeBase: React.FC<WorkspaceKnowledgeBaseProps> = ({
   const [itemDraft, setItemDraft] = useState<ItemDraft>(() =>
     createItemDraft(EnterpriseLeadKnowledgeSection.Company),
   );
-  const [documentDraft, setDocumentDraft] = useState<DocumentDraft>(createEmptyDocumentDraft);
-  const [deleteDocumentDraft, setDeleteDocumentDraft] = useState<DeleteDocumentDraft>({
-    scope: 'document',
-    sourceIndex: -1,
-  });
   const requestRef = useRef(0);
   const automaticVectorSyncKeysRef = useRef<Set<string>>(new Set());
   const automaticVectorSyncPromiseRef = useRef<Promise<EnterpriseLeadWorkspace | null> | null>(
     null,
   );
-  const documentProcessingRefreshTokenRef = useRef(0);
   const pendingSelectionRef = useRef<{
     field: keyof EnterpriseLeadWorkspaceProfile;
     index: number;
@@ -1230,13 +1042,6 @@ export const WorkspaceKnowledgeBase: React.FC<WorkspaceKnowledgeBaseProps> = ({
     setCurrentWorkspace(workspace);
     setCompanyDraft(buildCompanyDraft(workspace.profile));
   }, [workspace]);
-
-  useEffect(
-    () => () => {
-      documentProcessingRefreshTokenRef.current += 1;
-    },
-    [],
-  );
 
   useEffect(() => {
     const requestId = requestRef.current + 1;
@@ -1318,15 +1123,6 @@ export const WorkspaceKnowledgeBase: React.FC<WorkspaceKnowledgeBaseProps> = ({
     currentWorkspace.profile,
     knowledgeRows.map(row => row.item),
   );
-  const filteredDocumentRows = documentRows.filter(({ item }) => {
-    const sourceIndex = getSourceIndexFromItemId(item);
-    const source = currentWorkspace.extractionSources[sourceIndex];
-    const extractionStatus = getDocumentExtractionStatus(source);
-    const matchesQuery = doesEnterpriseLeadKnowledgeDocumentMatchQuery(item, source, searchQuery);
-    const matchesStatus =
-      documentStatusFilter === 'all' || documentStatusFilter === extractionStatus;
-    return matchesQuery && matchesStatus;
-  });
   const normalizedQuery = normalizeEnterpriseLeadKnowledgeQuery(searchQuery);
   const filteredKnowledgeRows = knowledgeRows.filter(({ item, section }) => {
     const searchableText = [
@@ -1374,58 +1170,6 @@ export const WorkspaceKnowledgeBase: React.FC<WorkspaceKnowledgeBaseProps> = ({
   const areAllFilteredKnowledgeItemsSelected =
     filteredSelectableKnowledgeItems.length > 0 &&
     filteredSelectableKnowledgeItems.every(item => selectedKnowledgeItemIdSet.has(item.id));
-  const documentPreviewText = documentDraft.note.trim();
-  const documentFileName = documentDraft.fileName || getFileNameFromPath(documentDraft.category);
-  const documentExtension = getFileExtension(documentDraft.category || documentFileName);
-  const documentPreviewCharCount = documentPreviewText.replace(/\s/g, '').length;
-  const previewDocumentSource =
-    documentDraft.sourceIndex >= 0
-      ? currentWorkspace.extractionSources[documentDraft.sourceIndex]
-      : undefined;
-  const originalDocumentPreviewArtifact = useMemo<Artifact | null>(() => {
-    if (
-      !previewDocumentSource ||
-      !canPreviewEnterpriseLeadOriginalDocument(previewDocumentSource)
-    ) {
-      return null;
-    }
-    const filePath = previewDocumentSource.filePath?.trim();
-    if (!filePath) {
-      return null;
-    }
-    const timestamp = Date.parse(
-      previewDocumentSource.updatedAt ?? previewDocumentSource.createdAt ?? '',
-    );
-    const fileName =
-      documentFileName || previewDocumentSource.fileName || getFileNameFromPath(filePath);
-
-    return {
-      content: '',
-      createdAt: Number.isNaN(timestamp) ? 0 : timestamp,
-      fileName,
-      filePath,
-      id: `enterprise-lead-source-${documentDraft.sourceIndex}`,
-      messageId: `enterprise-lead-source-${documentDraft.sourceIndex}`,
-      sessionId: currentWorkspace.id,
-      source: 'file',
-      title: documentDraft.name || previewDocumentSource.label || fileName,
-      type: ArtifactTypeValue.Document,
-    };
-  }, [
-    currentWorkspace.id,
-    documentDraft.name,
-    documentDraft.sourceIndex,
-    documentFileName,
-    previewDocumentSource,
-  ]);
-  const deletingDocumentSource =
-    deleteDocumentDraft.sourceIndex >= 0
-      ? currentWorkspace.extractionSources[deleteDocumentDraft.sourceIndex]
-      : undefined;
-  const deletingDocumentKnowledgeKeys = getSourceExtractedKnowledgeKeys(deletingDocumentSource);
-  const canDeleteDocumentKnowledge = deletingDocumentKnowledgeKeys.length > 0;
-  const isDocumentPreviewModal = modalMode === 'documentPreview';
-  const isDeleteDocumentModal = modalMode === 'deleteDocument';
   const isDeleteKnowledgeBatchModal = modalMode === 'deleteKnowledgeBatch';
   const activeCompanyFieldConfig = getCompanyDraftFieldConfig(activeCompanyField);
   const activeCompanyValue = companyDraft[activeCompanyField];
@@ -1466,52 +1210,6 @@ export const WorkspaceKnowledgeBase: React.FC<WorkspaceKnowledgeBaseProps> = ({
     }
   };
 
-  const saveSources = async (
-    nextSources: EnterpriseLeadExtractionSource[],
-    successMessageKey: string,
-    options: { showSuccess?: boolean } = {},
-  ): Promise<EnterpriseLeadWorkspace | null> => {
-    setIsSaving(true);
-    clearFeedbackMessage();
-    try {
-      const pendingAutomaticVectorSync = automaticVectorSyncPromiseRef.current;
-      if (pendingAutomaticVectorSync) {
-        await pendingAutomaticVectorSync.catch(() => null);
-      }
-      const updatedWorkspace = await enterpriseLeadWorkspaceService.updateWorkspaceSources(
-        currentWorkspace.id,
-        nextSources,
-      );
-      if (!updatedWorkspace) {
-        throw new Error('Workspace source update returned empty result');
-      }
-      setCurrentWorkspace(updatedWorkspace);
-      onWorkspaceUpdated?.(updatedWorkspace);
-      if (options.showSuccess !== false) {
-        showFeedbackMessage('success', successMessageKey);
-      }
-      return updatedWorkspace;
-    } catch (saveError) {
-      const isApiUnavailable =
-        saveError instanceof Error &&
-        saveError.message === EnterpriseLeadWorkspaceServiceError.UpdateSourcesApiUnavailable;
-      const isUnexpectedEmpty =
-        saveError instanceof Error &&
-        saveError.message === 'Workspace source update returned empty result';
-      showFeedbackMessage(
-        isApiUnavailable || isUnexpectedEmpty ? 'exception' : 'failure',
-        isApiUnavailable
-          ? 'enterpriseLeadKnowledgeDocumentApiUnavailable'
-          : isUnexpectedEmpty
-            ? 'enterpriseLeadKnowledgeUnexpectedError'
-            : 'enterpriseLeadKnowledgeSaveFailed',
-      );
-      return null;
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
   const openCompanyModal = (): void => {
     setCompanyDraft(buildCompanyDraft(currentWorkspace.profile));
     setActiveCompanyField('companySummary');
@@ -1523,23 +1221,13 @@ export const WorkspaceKnowledgeBase: React.FC<WorkspaceKnowledgeBaseProps> = ({
     setModalMode('item');
   };
 
-  const openDocumentModal = (): void => {
-    setDocumentDraft(createEmptyDocumentDraft());
-    setModalMode('document');
-  };
-
   const applyMetricFilter = (metricId: EnterpriseLeadKnowledgeMetricId): void => {
     const filter = getEnterpriseLeadKnowledgeMetricFilter(metricId);
     setActiveView(filter.activeView);
-    setDocumentStatusFilter(filter.documentStatusFilter);
     setStatusFilter(filter.statusFilter);
     setSearchQuery('');
     setSelectedItemId('');
     clearSelectedKnowledgeItems();
-  };
-
-  const syncDocumentSources = async (): Promise<void> => {
-    await saveSources(currentWorkspace.extractionSources, 'enterpriseLeadKnowledgeSourcesSynced');
   };
 
   useEffect(() => {
@@ -1601,182 +1289,6 @@ export const WorkspaceKnowledgeBase: React.FC<WorkspaceKnowledgeBaseProps> = ({
       cancelled = true;
     };
   }, [currentWorkspace, isSaving, isVectorSyncing, onWorkspaceUpdated]);
-
-  const selectDocumentFile = async (): Promise<void> => {
-    const dialogApi = window.electron?.dialog;
-    if (!dialogApi?.selectFile) {
-      showFeedbackMessage('exception', 'enterpriseLeadKnowledgeFileSelectionUnavailable');
-      return;
-    }
-
-    clearFeedbackMessage();
-    const result = await dialogApi.selectFile({
-      title: i18nService.t('enterpriseLeadKnowledgeChooseDocumentFile'),
-      filters: documentFileFilters,
-    });
-    if (!result.success || !result.path) {
-      if (!result.success) {
-        showFeedbackMessage('failure', 'enterpriseLeadKnowledgeFileSelectionFailed');
-      }
-      return;
-    }
-
-    const upload = await resolveEnterpriseLeadKnowledgeDocumentUpload(dialogApi, result.path);
-    if (!upload.document) {
-      showFeedbackMessage('failure', 'enterpriseLeadKnowledgeFileUnsupported');
-      return;
-    }
-
-    switch (upload.outcome) {
-      case EnterpriseLeadKnowledgeDocumentUploadOutcome.Ready:
-        if (upload.document.truncated) {
-          showFeedbackMessage('exception', 'enterpriseLeadKnowledgeFileTextTruncated');
-        }
-        break;
-      case EnterpriseLeadKnowledgeDocumentUploadOutcome.ReadFailed:
-        showFeedbackMessage('failure', 'enterpriseLeadKnowledgeFileReadFailed');
-        break;
-      case EnterpriseLeadKnowledgeDocumentUploadOutcome.ImageNeedsSummary:
-        showFeedbackMessage('exception', 'enterpriseLeadKnowledgeImageFileSelected');
-        break;
-      case EnterpriseLeadKnowledgeDocumentUploadOutcome.AttachmentOnly:
-        showFeedbackMessage('exception', 'enterpriseLeadKnowledgeFileReadUnsupported');
-        break;
-      case EnterpriseLeadKnowledgeDocumentUploadOutcome.Unsupported:
-        showFeedbackMessage('failure', 'enterpriseLeadKnowledgeFileUnsupported');
-        return;
-    }
-
-    setDocumentDraft({
-      ...documentDraft,
-      category: upload.document.filePath,
-      fileName: upload.document.fileName,
-      fileSize: upload.document.fileSize,
-      name: documentDraft.name.trim()
-        ? documentDraft.name
-        : getFileNameWithoutExtension(upload.document.fileName),
-      note: upload.document.text,
-      extractImmediately: upload.document.extractImmediately,
-      sourceType: upload.document.sourceType,
-    });
-  };
-
-  const openEditDocumentModal = (item: WorkspaceKnowledgeItem): void => {
-    const sourceIndex = getSourceIndexFromItemId(item);
-    const source = currentWorkspace.extractionSources[sourceIndex];
-    if (!source || isEnterpriseLeadDocumentProcessing(source)) {
-      return;
-    }
-    setSelectedItemId(item.id);
-    setDocumentDraft(createDocumentDraftFromSource(source, sourceIndex));
-    setModalMode('document');
-  };
-
-  const openPreviewDocumentModal = (item: WorkspaceKnowledgeItem): void => {
-    const sourceIndex = getSourceIndexFromItemId(item);
-    const source = currentWorkspace.extractionSources[sourceIndex];
-    if (!source) {
-      return;
-    }
-    setSelectedItemId(item.id);
-    setDocumentDraft(createDocumentDraftFromSource(source, sourceIndex));
-    setModalMode('documentPreview');
-  };
-
-  const openDeleteDocumentModal = (item: WorkspaceKnowledgeItem): void => {
-    const sourceIndex = getSourceIndexFromItemId(item);
-    const source = currentWorkspace.extractionSources[sourceIndex];
-    if (!source || isEnterpriseLeadDocumentProcessing(source)) {
-      return;
-    }
-    setSelectedItemId(item.id);
-    setDeleteDocumentDraft({
-      scope: 'document',
-      sourceIndex,
-    });
-    setModalMode('deleteDocument');
-  };
-
-  const retryDocumentProcessing = async (item: WorkspaceKnowledgeItem): Promise<void> => {
-    const sourceIndex = getSourceIndexFromItemId(item);
-    const source = currentWorkspace.extractionSources[sourceIndex];
-    if (!source || !canRetryEnterpriseLeadDocumentProcessing(source)) {
-      return;
-    }
-
-    setIsSaving(true);
-    clearFeedbackMessage();
-    try {
-      let sources = currentWorkspace.extractionSources;
-      if (!source.text?.trim()) {
-        const dialogApi = window.electron?.dialog;
-        if (!dialogApi?.extractImageText || !source.filePath?.trim()) {
-          showFeedbackMessage('exception', 'enterpriseLeadKnowledgeFileSelectionUnavailable');
-          return;
-        }
-        const upload = await resolveEnterpriseLeadKnowledgeDocumentUpload(dialogApi, source.filePath);
-        if (
-          upload.outcome !== EnterpriseLeadKnowledgeDocumentUploadOutcome.Ready ||
-          !upload.document?.text.trim()
-        ) {
-          switch (upload.outcome) {
-            case EnterpriseLeadKnowledgeDocumentUploadOutcome.ImageNeedsSummary:
-              showFeedbackMessage('exception', 'enterpriseLeadKnowledgeImageFileSelected');
-              break;
-            case EnterpriseLeadKnowledgeDocumentUploadOutcome.ReadFailed:
-              showFeedbackMessage('failure', 'enterpriseLeadKnowledgeFileReadFailed');
-              break;
-            default:
-              showFeedbackMessage('failure', 'enterpriseLeadKnowledgeFileUnsupported');
-          }
-          return;
-        }
-        const now = new Date().toISOString();
-        sources = [...sources];
-        sources[sourceIndex] = {
-          ...source,
-          fileName: upload.document.fileName,
-          filePath: upload.document.filePath,
-          fileSize: upload.document.fileSize ?? undefined,
-          kind: upload.document.sourceType,
-          text: upload.document.text,
-          extractionError: undefined,
-          extractionStatus: EnterpriseLeadDocumentExtractionStatus.Pending,
-          vectorIndexError: undefined,
-          vectorIndexStatus: EnterpriseLeadKnowledgeIndexStatus.Pending,
-          updatedAt: now,
-        };
-      }
-      const queuedWorkspace = await enterpriseLeadWorkspaceService.processDocumentSource(
-        currentWorkspace.id,
-        sources,
-        sourceIndex,
-      );
-      if (!queuedWorkspace) {
-        throw new Error('Workspace document processing returned empty result');
-      }
-      setCurrentWorkspace(queuedWorkspace);
-      setCompanyDraft(buildCompanyDraft(queuedWorkspace.profile));
-      onWorkspaceUpdated?.(queuedWorkspace);
-      setActiveView('documents');
-      setSelectedItemId(item.id);
-      showFeedbackMessage('success', 'enterpriseLeadKnowledgeDocumentReprocessQueued');
-      void refreshWorkspaceAfterDocumentProcessing(queuedWorkspace.id, sourceIndex);
-    } catch (queueError) {
-      const isApiUnavailable =
-        queueError instanceof Error &&
-        queueError.message ===
-          EnterpriseLeadWorkspaceServiceError.ProcessDocumentSourceApiUnavailable;
-      showFeedbackMessage(
-        isApiUnavailable ? 'exception' : 'failure',
-        isApiUnavailable
-          ? 'enterpriseLeadKnowledgeDocumentApiUnavailable'
-          : 'enterpriseLeadKnowledgeSaveFailed',
-      );
-    } finally {
-      setIsSaving(false);
-    }
-  };
 
   const openEditModalForRow = (row: KnowledgeTableRow): void => {
     if (!isEditableItem(row.item)) {
@@ -1913,220 +1425,6 @@ export const WorkspaceKnowledgeBase: React.FC<WorkspaceKnowledgeBaseProps> = ({
         : 'enterpriseLeadKnowledgeItemAdded',
     );
     setModalMode('none');
-  };
-
-  const refreshWorkspaceAfterDocumentProcessing = async (
-    workspaceId: string,
-    sourceIndex: number,
-  ): Promise<void> => {
-    const refreshToken = documentProcessingRefreshTokenRef.current + 1;
-    documentProcessingRefreshTokenRef.current = refreshToken;
-    for (let attempt = 0; attempt < 20; attempt += 1) {
-      await new Promise(resolve => {
-        window.setTimeout(resolve, 1500);
-      });
-      if (documentProcessingRefreshTokenRef.current !== refreshToken) {
-        return;
-      }
-
-      const latestWorkspace = await enterpriseLeadWorkspaceService.getWorkspace(workspaceId);
-      if (!latestWorkspace || documentProcessingRefreshTokenRef.current !== refreshToken) {
-        continue;
-      }
-      setCurrentWorkspace(latestWorkspace);
-      setCompanyDraft(buildCompanyDraft(latestWorkspace.profile));
-      onWorkspaceUpdated?.(latestWorkspace);
-
-      const source = latestWorkspace.extractionSources[sourceIndex];
-      if (
-        source?.extractionStatus !== EnterpriseLeadDocumentExtractionStatus.Extracting &&
-        source?.vectorIndexStatus !== EnterpriseLeadKnowledgeIndexStatus.Indexing
-      ) {
-        return;
-      }
-    }
-  };
-
-  const handleSaveDocumentDraft = async (): Promise<void> => {
-    const name = documentDraft.name.trim();
-    if (!name) {
-      showFeedbackMessage('failure', 'enterpriseLeadKnowledgeDocumentNameRequired');
-      return;
-    }
-    const sourcePath = documentDraft.category.trim();
-    if (!sourcePath) {
-      showFeedbackMessage('failure', 'enterpriseLeadKnowledgeDocumentFileRequired');
-      return;
-    }
-    const sourceText = documentDraft.note.trim();
-    if (documentDraft.extractImmediately && !sourceText) {
-      showFeedbackMessage('failure', 'enterpriseLeadKnowledgeDocumentExtractTextRequired');
-      return;
-    }
-
-    const now = new Date().toISOString();
-    const nextSource: EnterpriseLeadExtractionSource = {
-      kind: documentDraft.sourceType || EnterpriseLeadExtractionSourceKind.File,
-      label: name,
-      filePath: sourcePath,
-      fileName: documentDraft.fileName || getFileNameFromPath(sourcePath),
-      fileSize: documentDraft.fileSize ?? undefined,
-      text: sourceText || undefined,
-      summary: documentDraft.summary.trim() || undefined,
-      ...(documentDraft.extractImmediately && sourceText
-        ? {
-            extractionError: undefined,
-            extractionStatus: EnterpriseLeadDocumentExtractionStatus.Extracting,
-          }
-        : documentDraft.mode === 'add'
-          ? { extractionStatus: EnterpriseLeadDocumentExtractionStatus.Pending }
-          : {}),
-      createdAt: now,
-      updatedAt: now,
-    };
-    const nextSources = [...currentWorkspace.extractionSources];
-    if (documentDraft.mode === 'edit' && documentDraft.sourceIndex >= 0) {
-      const previousSource = nextSources[documentDraft.sourceIndex];
-      if (!previousSource) {
-        showFeedbackMessage('exception', 'enterpriseLeadKnowledgeDocumentMissingError');
-        return;
-      }
-      nextSources[documentDraft.sourceIndex] = {
-        ...previousSource,
-        ...nextSource,
-        createdAt: previousSource.createdAt ?? now,
-      };
-    } else {
-      nextSources.unshift(nextSource);
-    }
-
-    if (documentDraft.extractImmediately && sourceText) {
-      const sourceIndex =
-        documentDraft.mode === 'edit' && documentDraft.sourceIndex >= 0
-          ? documentDraft.sourceIndex
-          : 0;
-      setIsSaving(true);
-      clearFeedbackMessage();
-      try {
-        const queuedWorkspace = await enterpriseLeadWorkspaceService.processDocumentSource(
-          currentWorkspace.id,
-          nextSources,
-          sourceIndex,
-        );
-        if (!queuedWorkspace) {
-          throw new Error('Workspace document processing returned empty result');
-        }
-        setCurrentWorkspace(queuedWorkspace);
-        setCompanyDraft(buildCompanyDraft(queuedWorkspace.profile));
-        onWorkspaceUpdated?.(queuedWorkspace);
-        setActiveView('documents');
-        setSelectedItemId(`source-${sourceIndex}`);
-        setModalMode('none');
-        showFeedbackMessage(
-          'success',
-          documentDraft.mode === 'edit'
-            ? 'enterpriseLeadKnowledgeDocumentUpdatedProcessingQueued'
-            : 'enterpriseLeadKnowledgeDocumentProcessingQueued',
-        );
-        void refreshWorkspaceAfterDocumentProcessing(queuedWorkspace.id, sourceIndex);
-      } catch (queueError) {
-        const isApiUnavailable =
-          queueError instanceof Error &&
-          queueError.message ===
-            EnterpriseLeadWorkspaceServiceError.ProcessDocumentSourceApiUnavailable;
-        showFeedbackMessage(
-          isApiUnavailable ? 'exception' : 'failure',
-          isApiUnavailable
-            ? 'enterpriseLeadKnowledgeDocumentApiUnavailable'
-            : 'enterpriseLeadKnowledgeSaveFailed',
-        );
-      } finally {
-        setIsSaving(false);
-      }
-      return;
-    }
-
-    const savedWorkspace = await saveSources(
-      nextSources,
-      documentDraft.mode === 'edit'
-        ? 'enterpriseLeadKnowledgeDocumentUpdated'
-        : 'enterpriseLeadKnowledgeDocumentAdded',
-    );
-    if (!savedWorkspace) {
-      return;
-    }
-    setModalMode('none');
-  };
-
-  const handleDeleteDocumentSource = async (): Promise<void> => {
-    const sourceIndex = deleteDocumentDraft.sourceIndex;
-    const source = currentWorkspace.extractionSources[sourceIndex];
-    if (sourceIndex < 0 || !source) {
-      return;
-    }
-    const nextSources = currentWorkspace.extractionSources.filter(
-      (_source, index) => index !== sourceIndex,
-    );
-    const shouldDeleteKnowledge =
-      deleteDocumentDraft.scope === 'document_and_knowledge' && canDeleteDocumentKnowledge;
-
-    setIsSaving(true);
-    clearFeedbackMessage();
-    try {
-      const pendingAutomaticVectorSync = automaticVectorSyncPromiseRef.current;
-      if (pendingAutomaticVectorSync) {
-        await pendingAutomaticVectorSync.catch(() => null);
-      }
-
-      let latestWorkspace = currentWorkspace;
-      if (shouldDeleteKnowledge) {
-        const nextProfile = removeEnterpriseLeadKnowledgeKeysFromProfile(
-          latestWorkspace.profile,
-          deletingDocumentKnowledgeKeys,
-          getPreservedKnowledgeKeysFromSources(nextSources),
-        );
-        const profiledWorkspace = await enterpriseLeadWorkspaceService.updateWorkspaceProfile(
-          latestWorkspace.id,
-          nextProfile,
-        );
-        if (!profiledWorkspace) {
-          throw new Error('Workspace profile update returned empty result');
-        }
-        latestWorkspace = profiledWorkspace;
-      }
-
-      const updatedWorkspace = await enterpriseLeadWorkspaceService.updateWorkspaceSources(
-        latestWorkspace.id,
-        nextSources,
-      );
-      if (!updatedWorkspace) {
-        throw new Error('Workspace source update returned empty result');
-      }
-      setCurrentWorkspace(updatedWorkspace);
-      setCompanyDraft(buildCompanyDraft(updatedWorkspace.profile));
-      onWorkspaceUpdated?.(updatedWorkspace);
-      setSelectedItemId('');
-      setModalMode('none');
-      showFeedbackMessage(
-        'success',
-        shouldDeleteKnowledge
-          ? 'enterpriseLeadKnowledgeDocumentAndKnowledgeDeleted'
-          : 'enterpriseLeadKnowledgeDocumentDeleted',
-      );
-    } catch (deleteError) {
-      const isUnexpectedEmpty =
-        deleteError instanceof Error &&
-        (deleteError.message === 'Workspace profile update returned empty result' ||
-          deleteError.message === 'Workspace source update returned empty result');
-      showFeedbackMessage(
-        isUnexpectedEmpty ? 'exception' : 'failure',
-        isUnexpectedEmpty
-          ? 'enterpriseLeadKnowledgeUnexpectedError'
-          : 'enterpriseLeadKnowledgeSaveFailed',
-      );
-    } finally {
-      setIsSaving(false);
-    }
   };
 
   const archiveKnowledgeItem = async (item: WorkspaceKnowledgeItem): Promise<void> => {
@@ -2270,27 +1568,10 @@ export const WorkspaceKnowledgeBase: React.FC<WorkspaceKnowledgeBaseProps> = ({
             <button
               type="button"
               className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-background px-3 text-sm font-medium text-secondary shadow-sm transition-colors hover:bg-surface-raised hover:text-foreground"
-              disabled={isSaving}
-              onClick={() => void syncDocumentSources()}
-            >
-              <ArrowPathIcon className={actionIconClassName} />
-              {i18nService.t('enterpriseLeadKnowledgeSyncDocuments')}
-            </button>
-            <button
-              type="button"
-              className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-background px-3 text-sm font-medium text-secondary shadow-sm transition-colors hover:bg-surface-raised hover:text-foreground"
               onClick={openCompanyModal}
             >
               <BuildingOffice2Icon className={actionIconClassName} />
               {i18nService.t('enterpriseLeadKnowledgeMaintainCompany')}
-            </button>
-            <button
-              type="button"
-              className="inline-flex h-9 items-center gap-2 rounded-lg bg-primary px-3 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
-              onClick={openDocumentModal}
-            >
-              <PlusIcon className={actionIconClassName} />
-              {i18nService.t('enterpriseLeadKnowledgeAddDocument')}
             </button>
           </div>
         </div>
@@ -2394,6 +1675,12 @@ export const WorkspaceKnowledgeBase: React.FC<WorkspaceKnowledgeBaseProps> = ({
             </div>
           </div>
 
+          {activeView === 'documents' ? (
+            <div className="min-h-0 flex-1">
+              <WorkspaceKnowledgeDocumentsPanel workspaceId={currentWorkspace.id} />
+            </div>
+          ) : (
+            <>
           <div className={getEnterpriseLeadKnowledgeToolbarGridClassName(activeView)}>
             <label className="flex h-10 min-w-0 items-center gap-2 rounded-lg border border-border bg-surface px-3 text-sm text-secondary">
               <MagnifyingGlassIcon className="h-4 w-4 shrink-0" />
@@ -2401,61 +1688,30 @@ export const WorkspaceKnowledgeBase: React.FC<WorkspaceKnowledgeBaseProps> = ({
                 type="search"
                 value={searchQuery}
                 onChange={event => setSearchQuery(event.target.value)}
-                placeholder={i18nService.t(
-                  activeView === 'documents'
-                    ? 'enterpriseLeadKnowledgeDocumentSearchPlaceholder'
-                    : 'enterpriseLeadKnowledgeKnowledgeSearchPlaceholder',
-                )}
+                placeholder={i18nService.t('enterpriseLeadKnowledgeKnowledgeSearchPlaceholder')}
                 className="min-w-0 flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-tertiary"
               />
             </label>
-            {activeView === 'documents' ? (
-              <select
-                value={documentStatusFilter}
-                onChange={event =>
-                  setDocumentStatusFilter(event.target.value as DocumentStatusFilter)
-                }
-                className="h-10 rounded-lg border border-border bg-background px-3 text-sm text-secondary outline-none"
-              >
-                <option value="all">
-                  {i18nService.t('enterpriseLeadKnowledgeDocumentStatusAll')}
-                </option>
-                <option value={EnterpriseLeadDocumentExtractionStatus.Pending}>
-                  {i18nService.t('enterpriseLeadKnowledgeDocumentStatusPending')}
-                </option>
-                <option value={EnterpriseLeadDocumentExtractionStatus.Extracting}>
-                  {i18nService.t('enterpriseLeadKnowledgeDocumentStatusExtracting')}
-                </option>
-                <option value={EnterpriseLeadDocumentExtractionStatus.Extracted}>
-                  {i18nService.t('enterpriseLeadKnowledgeDocumentStatusExtracted')}
-                </option>
-                <option value={EnterpriseLeadDocumentExtractionStatus.Failed}>
-                  {i18nService.t('enterpriseLeadKnowledgeDocumentStatusFailed')}
-                </option>
-              </select>
-            ) : (
-              <select
-                value={statusFilter}
-                onChange={event => setStatusFilter(event.target.value as KnowledgeStatusFilter)}
-                className="h-10 rounded-lg border border-border bg-background px-3 text-sm text-secondary outline-none"
-              >
-                <option value="all">{i18nService.t('enterpriseLeadKnowledgeFilterAll')}</option>
-                <option value="pending">
-                  {i18nService.t('enterpriseLeadKnowledgeStatusPendingConfirmation')}
-                </option>
-                <option value="confirmed">
-                  {i18nService.t('enterpriseLeadKnowledgeStatusConfirmed')}
-                </option>
-                <option value="editable">
-                  {i18nService.t('enterpriseLeadKnowledgeFilterEditable')}
-                </option>
-                <option value="readonly">
-                  {i18nService.t('enterpriseLeadKnowledgeFilterReadonly')}
-                </option>
-              </select>
-            )}
-            {activeView === 'knowledge' &&
-            shouldShowEnterpriseLeadKnowledgeBatchConfirmAction(
+            <select
+              value={statusFilter}
+              onChange={event => setStatusFilter(event.target.value as KnowledgeStatusFilter)}
+              className="h-10 rounded-lg border border-border bg-background px-3 text-sm text-secondary outline-none"
+            >
+              <option value="all">{i18nService.t('enterpriseLeadKnowledgeFilterAll')}</option>
+              <option value="pending">
+                {i18nService.t('enterpriseLeadKnowledgeStatusPendingConfirmation')}
+              </option>
+              <option value="confirmed">
+                {i18nService.t('enterpriseLeadKnowledgeStatusConfirmed')}
+              </option>
+              <option value="editable">
+                {i18nService.t('enterpriseLeadKnowledgeFilterEditable')}
+              </option>
+              <option value="readonly">
+                {i18nService.t('enterpriseLeadKnowledgeFilterReadonly')}
+              </option>
+            </select>
+            {shouldShowEnterpriseLeadKnowledgeBatchConfirmAction(
               filteredPendingKnowledgeItems.length,
             ) ? (
               <button
@@ -2470,11 +1726,11 @@ export const WorkspaceKnowledgeBase: React.FC<WorkspaceKnowledgeBaseProps> = ({
                   { count: filteredPendingKnowledgeItems.length },
                 )}
               </button>
-            ) : activeView === 'knowledge' ? (
+            ) : (
               <div className="inline-flex h-10 items-center justify-center rounded-lg border border-border bg-surface px-3 text-sm font-medium text-secondary">
                 {i18nService.t('enterpriseLeadKnowledgeNoPendingHint')}
               </div>
-            ) : null}
+            )}
             {shouldShowEnterpriseLeadKnowledgeToolbarAddAction(activeView) ? (
               <button
                 type="button"
@@ -2538,198 +1794,7 @@ export const WorkspaceKnowledgeBase: React.FC<WorkspaceKnowledgeBaseProps> = ({
           ) : null}
 
           <div className="min-h-0 flex-1 overflow-auto">
-            {activeView === 'documents' ? (
-              filteredDocumentRows.length > 0 ? (
-                <div className="w-full min-w-0 p-3 text-sm">
-                  <div className="sticky top-0 z-10 grid grid-cols-[minmax(150px,1fr)_72px_76px_minmax(96px,0.46fr)_minmax(108px,0.46fr)_112px_minmax(252px,286px)] items-center gap-2.5 border-b border-border bg-background/95 px-4 py-2 text-xs font-semibold text-secondary backdrop-blur">
-                    <span className={enterpriseLeadKnowledgeDocumentHeaderClassName}>
-                      {i18nService.t('enterpriseLeadKnowledgeTableDocument')}
-                    </span>
-                    <span className={enterpriseLeadKnowledgeDocumentHeaderClassName}>
-                      {i18nService.t('enterpriseLeadKnowledgeTableType')}
-                    </span>
-                    <span className={enterpriseLeadKnowledgeDocumentHeaderClassName}>
-                      {i18nService.t('enterpriseLeadKnowledgeTableStatus')}
-                    </span>
-                    <span className={enterpriseLeadKnowledgeDocumentHeaderClassName}>
-                      {i18nService.t('enterpriseLeadKnowledgeTableAiExtract')}
-                    </span>
-                    <span className={enterpriseLeadKnowledgeDocumentHeaderClassName}>
-                      {i18nService.t('enterpriseLeadKnowledgeTableVectorIndex')}
-                    </span>
-                    <span className={enterpriseLeadKnowledgeDocumentHeaderClassName}>
-                      {i18nService.t('enterpriseLeadKnowledgeTableUpdated')}
-                    </span>
-                    <span className={enterpriseLeadKnowledgeDocumentHeaderLastClassName}>
-                      {i18nService.t('enterpriseLeadKnowledgeTableActions')}
-                    </span>
-                  </div>
-                  <div className="grid gap-2 pt-2">
-                    {filteredDocumentRows.map(row => {
-                      const { item } = row;
-                      const sourceIndex = getSourceIndexFromItemId(item);
-                      const source = currentWorkspace.extractionSources[sourceIndex];
-                      const extractionStatus = getDocumentExtractionStatus(source);
-                      const vectorIndexStatus = getEnterpriseLeadKnowledgeVectorIndexStatus(source);
-                      const isDocumentProcessing = isEnterpriseLeadDocumentProcessing(source);
-                      const canRetryDocument = canRetryEnterpriseLeadDocumentProcessing(source);
-                      const isSelected = selectedItemId === item.id;
-                      const sourceTextLength = source?.text?.replace(/\s/g, '').length ?? 0;
-                      const sourceDetail =
-                        source?.fileName ||
-                        source?.filePath ||
-                        item.secondaryText ||
-                        i18nService.t('enterpriseLeadKnowledgeDocumentSourceManaged');
-                      return (
-                        <div
-                          key={item.id}
-                          className={`relative grid min-h-[76px] cursor-pointer grid-cols-[minmax(150px,1fr)_72px_76px_minmax(96px,0.46fr)_minmax(108px,0.46fr)_112px_minmax(252px,286px)] items-center gap-2.5 rounded-lg border px-4 py-3 transition-colors ${
-                            isSelected
-                              ? 'border-primary/25 bg-background shadow-[0_0_0_1px_rgba(59,130,246,0.12)]'
-                              : 'border-transparent bg-background hover:border-border hover:bg-surface/50'
-                          }`}
-                          onClick={() => setSelectedItemId(item.id)}
-                        >
-                          {isSelected ? (
-                            <span className="absolute bottom-3 left-0 top-3 w-1 rounded-r-full bg-primary" />
-                          ) : null}
-                          <div className="flex min-w-0 items-center gap-3 pl-2">
-                            <span
-                              className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg ${
-                                isSelected
-                                  ? 'bg-primary/10 text-primary'
-                                  : 'bg-surface-raised text-secondary'
-                              }`}
-                            >
-                              <DocumentTextIcon className="h-5 w-5" />
-                            </span>
-                            <div className="min-w-0">
-                              <p className="truncate text-sm font-semibold text-foreground">
-                                {item.text}
-                              </p>
-                              <p className="mt-1 truncate text-xs text-secondary">{sourceDetail}</p>
-                              {source?.summary ? (
-                                <p className="mt-1 line-clamp-1 text-xs text-tertiary">
-                                  {source.summary}
-                                </p>
-                              ) : null}
-                            </div>
-                          </div>
-
-                          <div className="min-w-0">
-                            <span className="inline-flex max-w-full items-center truncate whitespace-nowrap rounded-md bg-primary/10 px-1.5 py-1 text-xs font-semibold text-primary">
-                              {getSourceKindLabel(item.metaText)}
-                            </span>
-                          </div>
-                          <div className="min-w-0">
-                            <span
-                              className={`inline-flex max-w-full truncate whitespace-nowrap rounded-md px-1.5 py-1 text-xs font-semibold ${getDocumentStatusClassName(
-                                extractionStatus,
-                              )}`}
-                            >
-                              {getDocumentStatusLabel(extractionStatus)}
-                            </span>
-                          </div>
-
-                          <div className="min-w-0">
-                            <p className="line-clamp-1 text-sm font-medium text-foreground">
-                              {getEnterpriseLeadKnowledgeDocumentStatusDescription(source)}
-                            </p>
-                            {sourceTextLength > 0 ? (
-                              <p className="mt-1 text-xs text-tertiary">
-                                {i18nService
-                                  .t('enterpriseLeadKnowledgeDocumentPreviewStats')
-                                  .replace('{count}', String(sourceTextLength))}
-                              </p>
-                            ) : null}
-                          </div>
-
-                          <div className="min-w-0">
-                            <span
-                              className={`inline-flex max-w-full truncate whitespace-nowrap rounded-md px-1.5 py-1 text-xs font-semibold ${getVectorIndexStatusClassName(
-                                vectorIndexStatus,
-                              )}`}
-                            >
-                              {getVectorIndexStatusLabel(vectorIndexStatus)}
-                            </span>
-                            <p className="mt-1 line-clamp-1 text-xs text-tertiary">
-                              {getEnterpriseLeadKnowledgeVectorIndexSummary(source)}
-                            </p>
-                          </div>
-
-                          <div className="truncate text-sm text-secondary">
-                            {formatKnowledgeDate(item.updatedAt ?? item.createdAt) ||
-                              i18nService.t('enterpriseLeadKnowledgeUnknownTime')}
-                          </div>
-
-                          <div className="flex min-w-0 items-center justify-end gap-1.5 whitespace-nowrap">
-                            <button
-                              type="button"
-                              disabled={isSaving}
-                              className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md bg-primary/10 px-2 text-xs font-semibold text-primary transition-colors hover:bg-primary/15 disabled:cursor-not-allowed disabled:opacity-45"
-                              onClick={event => {
-                                event.stopPropagation();
-                                openPreviewDocumentModal(item);
-                              }}
-                            >
-                              <DocumentTextIcon className="h-4 w-4" />
-                              {i18nService.t('enterpriseLeadKnowledgePreviewDocument')}
-                            </button>
-                            {canRetryDocument ? (
-                              <button
-                                type="button"
-                                disabled={isSaving}
-                                className="inline-flex h-8 shrink-0 items-center gap-1 rounded-md border border-primary/20 bg-primary/10 px-2 text-xs font-medium text-primary transition-colors hover:bg-primary/15 disabled:cursor-not-allowed disabled:opacity-45"
-                                onClick={event => {
-                                  event.stopPropagation();
-                                  void retryDocumentProcessing(item);
-                                }}
-                              >
-                                <ArrowPathIcon className="h-4 w-4" />
-                                {i18nService.t('enterpriseLeadKnowledgeReprocessDocument')}
-                              </button>
-                            ) : null}
-                            <button
-                              type="button"
-                              disabled={isSaving || isDocumentProcessing}
-                              className="inline-flex h-8 shrink-0 items-center gap-1 rounded-md border border-border bg-background px-2 text-xs font-medium text-secondary transition-colors hover:bg-surface-raised hover:text-foreground disabled:cursor-not-allowed disabled:opacity-45"
-                              onClick={event => {
-                                event.stopPropagation();
-                                openEditDocumentModal(item);
-                              }}
-                            >
-                              <PencilSquareIcon className="h-4 w-4" />
-                              {i18nService.t('edit')}
-                            </button>
-                            <button
-                              type="button"
-                              disabled={isSaving || isDocumentProcessing}
-                              className="inline-flex h-8 shrink-0 items-center gap-1 rounded-md border border-red-500/20 bg-background px-2 text-xs font-medium text-red-600 transition-colors hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-45 dark:text-red-300"
-                              onClick={event => {
-                                event.stopPropagation();
-                                openDeleteDocumentModal(item);
-                              }}
-                            >
-                              <TrashIcon className="h-4 w-4" />
-                              {i18nService.t('delete')}
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              ) : (
-                <div className="grid min-h-[320px] place-items-center px-6 text-center">
-                  <div>
-                    <DocumentTextIcon className="mx-auto h-10 w-10 text-tertiary" />
-                    <p className="mt-3 text-sm leading-6 text-secondary">
-                      {i18nService.t('enterpriseLeadKnowledgeDocumentEmpty')}
-                    </p>
-                  </div>
-                </div>
-              )
-            ) : filteredKnowledgeRows.length > 0 ? (
+            {filteredKnowledgeRows.length > 0 ? (
               <div className="min-w-[1120px]">
                 <div className="min-w-0">
                   <table className="w-full table-fixed border-separate border-spacing-0 text-sm">
@@ -2909,6 +1974,8 @@ export const WorkspaceKnowledgeBase: React.FC<WorkspaceKnowledgeBaseProps> = ({
               </div>
             )}
           </div>
+            </>
+          )}
         </section>
       </div>
 
@@ -2916,55 +1983,31 @@ export const WorkspaceKnowledgeBase: React.FC<WorkspaceKnowledgeBaseProps> = ({
         <div className="fixed inset-0 z-50 grid place-items-center bg-black/25 px-4 py-6">
           <section
             className={`flex max-h-[calc(100vh-48px)] w-full flex-col overflow-hidden rounded-xl border border-border bg-background shadow-2xl ${
-              isDocumentPreviewModal
-                ? 'h-[calc(100vh-64px)] max-w-5xl'
-                : isDeleteKnowledgeBatchModal
-                  ? 'max-w-xl'
-                  : isDeleteDocumentModal
-                    ? 'max-w-xl'
-                    : modalMode === 'document'
-                      ? 'max-w-2xl'
-                      : modalMode === 'company'
-                        ? 'h-[720px] max-w-4xl'
-                        : 'max-w-3xl'
+              isDeleteKnowledgeBatchModal
+                ? 'max-w-xl'
+                : modalMode === 'company'
+                  ? 'h-[720px] max-w-4xl'
+                  : 'max-w-3xl'
             }`}
           >
             <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-4">
               <div>
                 <h2 className="text-base font-semibold text-foreground">
-                  {isDocumentPreviewModal
-                    ? i18nService.t('enterpriseLeadKnowledgePreviewDocumentModalTitle')
-                    : isDeleteKnowledgeBatchModal
-                      ? i18nService.t('enterpriseLeadKnowledgeBatchDeleteModalTitle')
-                      : isDeleteDocumentModal
-                        ? i18nService.t('enterpriseLeadKnowledgeDeleteDocumentModalTitle')
-                        : modalMode === 'document'
-                          ? i18nService.t(
-                              documentDraft.mode === 'edit'
-                                ? 'enterpriseLeadKnowledgeEditDocumentModalTitle'
-                                : 'enterpriseLeadKnowledgeAddDocumentModalTitle',
-                            )
-                          : modalMode === 'company'
-                            ? i18nService.t('enterpriseLeadKnowledgeCompanyModalTitle')
-                            : itemDraft.mode === 'edit'
-                              ? i18nService.t('enterpriseLeadKnowledgeEditModalTitle')
-                              : i18nService.t('enterpriseLeadKnowledgeAddModalTitle')}
+                  {isDeleteKnowledgeBatchModal
+                    ? i18nService.t('enterpriseLeadKnowledgeBatchDeleteModalTitle')
+                    : modalMode === 'company'
+                      ? i18nService.t('enterpriseLeadKnowledgeCompanyModalTitle')
+                      : itemDraft.mode === 'edit'
+                        ? i18nService.t('enterpriseLeadKnowledgeEditModalTitle')
+                        : i18nService.t('enterpriseLeadKnowledgeAddModalTitle')}
                 </h2>
-                {!isDocumentPreviewModal ? (
-                  <p className="mt-1 text-sm text-secondary">
-                    {i18nService.t(
-                      isDeleteKnowledgeBatchModal
-                        ? 'enterpriseLeadKnowledgeBatchDeleteModalSubtitle'
-                        : isDeleteDocumentModal
-                          ? 'enterpriseLeadKnowledgeDeleteDocumentModalSubtitle'
-                          : modalMode === 'document'
-                            ? documentDraft.mode === 'edit'
-                              ? 'enterpriseLeadKnowledgeEditDocumentModalSubtitle'
-                              : 'enterpriseLeadKnowledgeAddDocumentModalSubtitle'
-                            : 'enterpriseLeadKnowledgeModalSubtitle',
-                    )}
-                  </p>
-                ) : null}
+                <p className="mt-1 text-sm text-secondary">
+                  {i18nService.t(
+                    isDeleteKnowledgeBatchModal
+                      ? 'enterpriseLeadKnowledgeBatchDeleteModalSubtitle'
+                      : 'enterpriseLeadKnowledgeModalSubtitle',
+                  )}
+                </p>
               </div>
               <button
                 type="button"
@@ -2977,144 +2020,12 @@ export const WorkspaceKnowledgeBase: React.FC<WorkspaceKnowledgeBaseProps> = ({
 
             <div
               className={
-                isDocumentPreviewModal || modalMode === 'company'
+                modalMode === 'company'
                   ? 'min-h-0 flex-1 overflow-hidden'
                   : 'min-h-0 flex-1 overflow-y-auto px-5 py-4'
               }
             >
-              {isDocumentPreviewModal ? (
-                <div className="flex h-full min-h-0 flex-col bg-background">
-                  <div className="shrink-0 border-b border-border px-5 py-4">
-                    <div className="flex min-w-0 items-start gap-3">
-                      <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
-                        <DocumentTextIcon className="h-5 w-5" />
-                      </div>
-                      <div className="min-w-0">
-                        <h3 className="truncate text-base font-semibold text-foreground">
-                          {documentDraft.name || documentFileName}
-                        </h3>
-                        <p className="mt-1 truncate text-xs text-secondary">
-                          {[
-                            getSourceKindLabel(documentDraft.sourceType),
-                            documentFileName || documentDraft.category,
-                            formatFileSize(documentDraft.fileSize),
-                            formatKnowledgeDate(
-                              previewDocumentSource?.updatedAt ?? previewDocumentSource?.createdAt,
-                            ),
-                            i18nService
-                              .t('enterpriseLeadKnowledgeDocumentPreviewStats')
-                              .replace('{count}', String(documentPreviewCharCount)),
-                          ]
-                            .filter(Boolean)
-                            .join(' · ')}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="min-h-0 flex-1 overflow-hidden bg-surface">
-                    {originalDocumentPreviewArtifact ? (
-                      <div className="h-full min-h-0 overflow-hidden">
-                        <DocumentRenderer artifact={originalDocumentPreviewArtifact} />
-                      </div>
-                    ) : documentPreviewText ? (
-                      <div className="h-full overflow-auto px-6 py-5">
-                        <div className="mx-auto max-w-4xl whitespace-pre-wrap font-sans text-sm leading-7 text-foreground">
-                          {documentPreviewText}
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="grid h-full min-h-[260px] place-items-center text-center">
-                        <div>
-                          <DocumentTextIcon className="mx-auto h-10 w-10 text-tertiary" />
-                          <p className="mt-3 text-sm text-secondary">
-                            {i18nService.t('enterpriseLeadKnowledgeDocumentPreviewEmpty')}
-                          </p>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ) : isDeleteDocumentModal ? (
-                <div className="grid gap-4">
-                  <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-4 py-3">
-                    <div className="flex items-start gap-3">
-                      <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-amber-500/10 text-amber-700 dark:text-amber-300">
-                        <ArchiveBoxXMarkIcon className="h-5 w-5" />
-                      </div>
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold text-foreground">
-                          {deletingDocumentSource?.label ||
-                            i18nService.t('enterpriseLeadKnowledgeUnknownDocument')}
-                        </p>
-                        <p className="mt-1 text-xs leading-5 text-secondary">
-                          {i18nService.t('enterpriseLeadKnowledgeDeleteDocumentWarning')}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="grid gap-2">
-                    <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-border bg-surface px-4 py-3 transition-colors hover:bg-surface-raised">
-                      <input
-                        type="radio"
-                        checked={deleteDocumentDraft.scope === 'document'}
-                        onChange={() =>
-                          setDeleteDocumentDraft({
-                            ...deleteDocumentDraft,
-                            scope: 'document',
-                          })
-                        }
-                        className="mt-1 h-4 w-4 border-border text-primary"
-                      />
-                      <span className="min-w-0">
-                        <span className="block text-sm font-semibold text-foreground">
-                          {i18nService.t('enterpriseLeadKnowledgeDeleteDocumentOnlyTitle')}
-                        </span>
-                        <span className="mt-1 block text-xs leading-5 text-secondary">
-                          {i18nService.t('enterpriseLeadKnowledgeDeleteDocumentOnlyDesc')}
-                        </span>
-                      </span>
-                    </label>
-
-                    <label
-                      className={`flex items-start gap-3 rounded-lg border px-4 py-3 transition-colors ${
-                        canDeleteDocumentKnowledge
-                          ? 'cursor-pointer border-red-500/25 bg-red-500/5 hover:bg-red-500/10'
-                          : 'cursor-not-allowed border-border bg-surface opacity-60'
-                      }`}
-                    >
-                      <input
-                        type="radio"
-                        disabled={!canDeleteDocumentKnowledge}
-                        checked={deleteDocumentDraft.scope === 'document_and_knowledge'}
-                        onChange={() =>
-                          setDeleteDocumentDraft({
-                            ...deleteDocumentDraft,
-                            scope: 'document_and_knowledge',
-                          })
-                        }
-                        className="mt-1 h-4 w-4 border-border text-red-600 disabled:cursor-not-allowed"
-                      />
-                      <span className="min-w-0">
-                        <span className="block text-sm font-semibold text-red-700 dark:text-red-300">
-                          {i18nService.t('enterpriseLeadKnowledgeDeleteWithKnowledgeTitle')}
-                        </span>
-                        <span className="mt-1 block text-xs leading-5 text-secondary">
-                          {canDeleteDocumentKnowledge
-                            ? formatEnterpriseLeadKnowledgeMessage(
-                                'enterpriseLeadKnowledgeDeleteWithKnowledgeDesc',
-                                { count: deletingDocumentKnowledgeKeys.length },
-                              )
-                            : i18nService.t(
-                                'enterpriseLeadKnowledgeDeleteWithKnowledgeUnavailable',
-                              )}
-                        </span>
-                      </span>
-                    </label>
-                  </div>
-                </div>
-              ) : isDeleteKnowledgeBatchModal ? (
+              {isDeleteKnowledgeBatchModal ? (
                 <div className="grid gap-4">
                   <div className="rounded-lg border border-red-500/20 bg-red-500/5 px-4 py-3">
                     <div className="flex items-start gap-3">
@@ -3145,279 +2056,6 @@ export const WorkspaceKnowledgeBase: React.FC<WorkspaceKnowledgeBaseProps> = ({
                     </div>
                   </div>
                 </div>
-              ) : modalMode === 'document' ? (
-                documentDraft.mode === 'edit' ? (
-                  <div className="grid gap-4">
-                    <div className="rounded-lg border border-border bg-surface px-4 py-3">
-                      <div className="flex min-w-0 items-start gap-3">
-                        <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
-                          <DocumentTextIcon className="h-5 w-5" />
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <p className="truncate text-sm font-semibold text-foreground">
-                              {documentFileName || documentDraft.category || documentDraft.name}
-                            </p>
-                            <span className="rounded-md bg-primary/10 px-2 py-1 text-xs font-semibold text-primary">
-                              {documentExtension.toUpperCase() ||
-                                getSourceKindLabel(documentDraft.sourceType)}
-                            </span>
-                          </div>
-                          <p className="mt-1 truncate text-xs leading-5 text-secondary">
-                            {[
-                              getSourceKindLabel(documentDraft.sourceType),
-                              formatFileSize(documentDraft.fileSize),
-                              formatKnowledgeDate(
-                                previewDocumentSource?.updatedAt ??
-                                  previewDocumentSource?.createdAt,
-                              ),
-                            ]
-                              .filter(Boolean)
-                              .join(' · ')}
-                          </p>
-                          {documentDraft.category ? (
-                            <p className="mt-2 truncate text-xs text-tertiary">
-                              {documentDraft.category}
-                            </p>
-                          ) : null}
-                        </div>
-                      </div>
-                    </div>
-
-                    <label className="grid gap-1.5">
-                      <span className="text-xs font-semibold text-secondary">
-                        {i18nService.t('enterpriseLeadKnowledgeDocumentNameField')}
-                      </span>
-                      <input
-                        type="text"
-                        value={documentDraft.name}
-                        onChange={event =>
-                          setDocumentDraft({
-                            ...documentDraft,
-                            name: event.target.value,
-                          })
-                        }
-                        className="h-10 rounded-lg border border-border bg-surface px-3 text-sm text-foreground outline-none transition-colors focus:border-primary/60 focus:ring-2 focus:ring-primary/10"
-                      />
-                    </label>
-
-                    <label className="grid gap-1.5">
-                      <span className="text-xs font-semibold text-secondary">
-                        {i18nService.t('enterpriseLeadKnowledgeDocumentSummaryField')}
-                      </span>
-                      <textarea
-                        value={documentDraft.summary}
-                        onChange={event =>
-                          setDocumentDraft({
-                            ...documentDraft,
-                            summary: event.target.value,
-                          })
-                        }
-                        className="min-h-[140px] resize-y rounded-lg border border-border bg-surface px-3 py-2 text-sm leading-6 text-foreground outline-none transition-colors focus:border-primary/60 focus:ring-2 focus:ring-primary/10"
-                        placeholder={i18nService.t(
-                          'enterpriseLeadKnowledgeDocumentSummaryPlaceholder',
-                        )}
-                      />
-                    </label>
-
-                    <div className="rounded-lg border border-border bg-surface px-3 py-3">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div className="flex min-w-0 items-center gap-2">
-                          <DocumentTextIcon className="h-4 w-4 shrink-0 text-secondary" />
-                          <span className="text-sm font-semibold text-foreground">
-                            {i18nService.t('enterpriseLeadKnowledgeDocumentContentStatusTitle')}
-                          </span>
-                        </div>
-                        {documentPreviewText ? (
-                          <div className="flex items-center gap-2 text-xs text-secondary">
-                            <span className="rounded-md bg-emerald-500/10 px-2 py-1 font-semibold text-emerald-700 dark:text-emerald-300">
-                              {i18nService.t(
-                                'enterpriseLeadKnowledgeDocumentPreviewExtractedBadge',
-                              )}
-                            </span>
-                            <span>
-                              {i18nService
-                                .t('enterpriseLeadKnowledgeDocumentPreviewStats')
-                                .replace('{count}', String(documentPreviewCharCount))}
-                            </span>
-                          </div>
-                        ) : (
-                          <span className="rounded-md bg-surface-raised px-2 py-1 text-xs font-medium text-tertiary">
-                            {i18nService.t('enterpriseLeadKnowledgeDocumentContentStatusEmpty')}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="grid gap-4">
-                    <div>
-                      <button
-                        type="button"
-                        className="grid min-h-[116px] w-full place-items-center rounded-lg border border-dashed border-border bg-surface px-5 py-5 text-center transition-colors hover:border-primary/50 hover:bg-primary/5"
-                        onClick={() => {
-                          void selectDocumentFile();
-                        }}
-                      >
-                        <span>
-                          <ArrowUpTrayIcon className="mx-auto h-10 w-10 text-primary" />
-                          <span className="mt-3 block text-sm font-semibold text-foreground">
-                            {documentDraft.fileName || documentDraft.category
-                              ? i18nService.t('enterpriseLeadKnowledgeChangeDocumentFile')
-                              : i18nService.t('enterpriseLeadKnowledgeSelectDocumentFile')}
-                          </span>
-                          <span className="mt-1 block text-xs leading-5 text-secondary">
-                            {i18nService.t('enterpriseLeadKnowledgeUploadSubtitle')}
-                          </span>
-                        </span>
-                      </button>
-
-                      {documentDraft.category ? (
-                        <div className="mt-3 rounded-lg border border-border bg-surface p-3">
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0">
-                              <p className="truncate text-sm font-semibold text-foreground">
-                                {documentFileName}
-                              </p>
-                              <p className="mt-1 text-xs leading-5 text-secondary">
-                                {[
-                                  getSourceKindLabel(documentDraft.sourceType),
-                                  formatFileSize(documentDraft.fileSize),
-                                  formatKnowledgeDate(new Date().toISOString()),
-                                ]
-                                  .filter(Boolean)
-                                  .join(' · ')}
-                              </p>
-                            </div>
-                            <span className="shrink-0 rounded-md bg-primary/10 px-2 py-1 text-xs font-semibold text-primary">
-                              {documentExtension.toUpperCase() ||
-                                i18nService.t('enterpriseLeadKnowledgeDocumentTypeFile')}
-                            </span>
-                          </div>
-                          <div className="mt-3 flex items-start gap-2 border-t border-border pt-3 text-xs leading-5 text-secondary">
-                            <DocumentTextIcon className="mt-0.5 h-4 w-4 shrink-0" />
-                            <span>
-                              {i18nService.t('enterpriseLeadKnowledgeDocumentSourceManaged')}
-                            </span>
-                          </div>
-                        </div>
-                      ) : null}
-                    </div>
-
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <label className="grid gap-1.5">
-                        <span className="text-xs font-semibold text-secondary">
-                          {i18nService.t('enterpriseLeadKnowledgeDocumentNameField')}
-                        </span>
-                        <input
-                          type="text"
-                          value={documentDraft.name}
-                          onChange={event =>
-                            setDocumentDraft({
-                              ...documentDraft,
-                              name: event.target.value,
-                            })
-                          }
-                          className="h-10 rounded-lg border border-border bg-surface px-3 text-sm text-foreground outline-none transition-colors focus:border-primary/60 focus:ring-2 focus:ring-primary/10"
-                        />
-                      </label>
-
-                      <div className="grid gap-1.5">
-                        <span className="text-xs font-semibold text-secondary">
-                          {i18nService.t('enterpriseLeadKnowledgeDocumentSourceTypeField')}
-                        </span>
-                        <select
-                          value={documentDraft.sourceType}
-                          onChange={event =>
-                            setDocumentDraft({
-                              ...documentDraft,
-                              sourceType: event.target.value,
-                            })
-                          }
-                          className="h-10 rounded-lg border border-border bg-surface px-3 text-sm text-foreground outline-none transition-colors focus:border-primary/60 focus:ring-2 focus:ring-primary/10"
-                        >
-                          {documentSourceTypeOptions.map(option => {
-                            return (
-                              <option key={option} value={option}>
-                                {getSourceKindLabel(option)}
-                              </option>
-                            );
-                          })}
-                        </select>
-                      </div>
-                    </div>
-
-                    <label className="grid gap-1.5">
-                      <span className="text-xs font-semibold text-secondary">
-                        {i18nService.t('enterpriseLeadKnowledgeDocumentSummaryField')}
-                      </span>
-                      <textarea
-                        value={documentDraft.summary}
-                        onChange={event =>
-                          setDocumentDraft({
-                            ...documentDraft,
-                            summary: event.target.value,
-                          })
-                        }
-                        className="min-h-[96px] resize-y rounded-lg border border-border bg-surface px-3 py-2 text-sm leading-6 text-foreground outline-none transition-colors focus:border-primary/60 focus:ring-2 focus:ring-primary/10"
-                        placeholder={i18nService.t(
-                          'enterpriseLeadKnowledgeDocumentSummaryPlaceholder',
-                        )}
-                      />
-                    </label>
-
-                    <div className="rounded-lg border border-border bg-surface px-3 py-3">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div className="flex min-w-0 items-center gap-2">
-                          <DocumentTextIcon className="h-4 w-4 shrink-0 text-secondary" />
-                          <span className="text-sm font-semibold text-foreground">
-                            {i18nService.t('enterpriseLeadKnowledgeDocumentContentStatusTitle')}
-                          </span>
-                        </div>
-                        {documentPreviewText ? (
-                          <div className="flex items-center gap-2 text-xs text-secondary">
-                            <span className="rounded-md bg-emerald-500/10 px-2 py-1 font-semibold text-emerald-700 dark:text-emerald-300">
-                              {i18nService.t(
-                                'enterpriseLeadKnowledgeDocumentPreviewExtractedBadge',
-                              )}
-                            </span>
-                            <span>
-                              {i18nService
-                                .t('enterpriseLeadKnowledgeDocumentPreviewStats')
-                                .replace('{count}', String(documentPreviewCharCount))}
-                            </span>
-                          </div>
-                        ) : (
-                          <span className="rounded-md bg-surface-raised px-2 py-1 text-xs font-medium text-tertiary">
-                            {i18nService.t('enterpriseLeadKnowledgeDocumentContentStatusEmpty')}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    <label className="flex items-start gap-2 rounded-md border border-border bg-surface px-2.5 py-2">
-                      <input
-                        type="checkbox"
-                        checked={documentDraft.extractImmediately}
-                        onChange={event =>
-                          setDocumentDraft({
-                            ...documentDraft,
-                            extractImmediately: event.target.checked,
-                          })
-                        }
-                        className="mt-0.5 h-3.5 w-3.5 rounded border-border text-primary"
-                      />
-                      <span className="min-w-0">
-                        <span className="block text-xs font-semibold text-foreground">
-                          {i18nService.t('enterpriseLeadKnowledgeExtractAfterAdd')}
-                        </span>
-                        <span className="mt-0.5 block text-[11px] leading-4 text-secondary">
-                          {i18nService.t('enterpriseLeadKnowledgeExtractAfterAddDesc')}
-                        </span>
-                      </span>
-                    </label>
-                  </div>
-                )
               ) : modalMode === 'company' ? (
                 <div className="grid h-full min-h-0 grid-cols-1 lg:grid-cols-[280px_minmax(0,1fr)]">
                   <aside className="min-h-0 overflow-y-auto border-b border-border bg-surface/60 p-4 lg:border-b-0 lg:border-r">
@@ -3546,7 +2184,7 @@ export const WorkspaceKnowledgeBase: React.FC<WorkspaceKnowledgeBaseProps> = ({
               )}
             </div>
 
-            {isDeleteDocumentModal || isDeleteKnowledgeBatchModal ? (
+            {isDeleteKnowledgeBatchModal ? (
               <div className="flex items-center justify-end gap-3 border-t border-border px-5 py-4">
                 <button
                   type="button"
@@ -3558,87 +2196,38 @@ export const WorkspaceKnowledgeBase: React.FC<WorkspaceKnowledgeBaseProps> = ({
                 </button>
                 <button
                   type="button"
-                  disabled={
-                    isSaving ||
-                    (isDeleteKnowledgeBatchModal && selectedDeletableKnowledgeItems.length === 0)
-                  }
-                  className={`inline-flex h-9 items-center gap-2 rounded-lg px-4 text-sm font-semibold text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
-                    isDeleteKnowledgeBatchModal
-                      ? 'bg-amber-600 hover:bg-amber-700'
-                      : 'bg-red-600 hover:bg-red-700'
-                  }`}
-                  onClick={() =>
-                    void (isDeleteKnowledgeBatchModal
-                      ? handleDeleteSelectedKnowledgeItems()
-                      : handleDeleteDocumentSource())
-                  }
+                  disabled={isSaving || selectedDeletableKnowledgeItems.length === 0}
+                  className="inline-flex h-9 items-center gap-2 rounded-lg bg-amber-600 px-4 text-sm font-semibold text-white transition-colors hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  onClick={() => void handleDeleteSelectedKnowledgeItems()}
                 >
-                  {isDeleteKnowledgeBatchModal ? (
-                    <ArchiveBoxXMarkIcon className="h-4 w-4" />
-                  ) : (
-                    <TrashIcon className="h-4 w-4" />
-                  )}
+                  <ArchiveBoxXMarkIcon className="h-4 w-4" />
                   {isSaving
                     ? i18nService.t('saving')
-                    : isDeleteKnowledgeBatchModal
-                      ? formatEnterpriseLeadKnowledgeMessage(
-                          'enterpriseLeadKnowledgeBatchDeleteAction',
-                          { count: selectedDeletableKnowledgeItems.length },
-                        )
-                      : i18nService.t(
-                          deleteDocumentDraft.scope === 'document_and_knowledge'
-                            ? 'enterpriseLeadKnowledgeDeleteWithKnowledgeAction'
-                            : 'enterpriseLeadKnowledgeDeleteDocumentAction',
-                        )}
-                </button>
-              </div>
-            ) : !isDocumentPreviewModal ? (
-              <div
-                className={`flex items-center gap-3 border-t border-border px-5 py-4 ${
-                  modalMode === 'document' && documentDraft.mode === 'edit'
-                    ? 'justify-end'
-                    : 'justify-between'
-                }`}
-              >
-                {modalMode === 'document' && documentDraft.mode === 'edit' ? null : (
-                  <p className="text-xs text-secondary">
-                    {i18nService.t(
-                      modalMode === 'document'
-                        ? 'enterpriseLeadKnowledgeDocumentModalHint'
-                        : 'enterpriseLeadKnowledgeModalHint',
-                    )}
-                  </p>
-                )}
-                <button
-                  type="button"
-                  disabled={
-                    isSaving ||
-                    (modalMode === 'document' &&
-                      (!documentDraft.name.trim() || !documentDraft.category.trim()))
-                  }
-                  className="inline-flex h-9 items-center rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
-                  onClick={
-                    modalMode === 'document'
-                      ? handleSaveDocumentDraft
-                      : modalMode === 'company'
-                        ? handleSaveCompanyDraft
-                        : handleSaveItemDraft
-                  }
-                >
-                  {isSaving
-                    ? i18nService.t('saving')
-                    : i18nService.t(
-                        modalMode === 'document'
-                          ? documentDraft.mode === 'edit'
-                            ? 'enterpriseLeadKnowledgeUpdateDocument'
-                            : documentDraft.extractImmediately
-                              ? 'enterpriseLeadKnowledgeAddAndExtract'
-                              : 'enterpriseLeadKnowledgeSaveDocument'
-                          : 'enterpriseLeadKnowledgeSaveAction',
+                    : formatEnterpriseLeadKnowledgeMessage(
+                        'enterpriseLeadKnowledgeBatchDeleteAction',
+                        { count: selectedDeletableKnowledgeItems.length },
                       )}
                 </button>
               </div>
-            ) : null}
+            ) : (
+              <div className="flex items-center justify-between gap-3 border-t border-border px-5 py-4">
+                <p className="text-xs text-secondary">
+                  {i18nService.t('enterpriseLeadKnowledgeModalHint')}
+                </p>
+                <button
+                  type="button"
+                  disabled={isSaving}
+                  className="inline-flex h-9 items-center rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+                  onClick={
+                    modalMode === 'company' ? handleSaveCompanyDraft : handleSaveItemDraft
+                  }
+                >
+                  {isSaving
+                    ? i18nService.t('saving')
+                    : i18nService.t('enterpriseLeadKnowledgeSaveAction')}
+                </button>
+              </div>
+            )}
           </section>
         </div>
       )}

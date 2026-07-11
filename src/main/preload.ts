@@ -59,6 +59,7 @@ import { OpenClawEngineIpc } from '../shared/openclawEngine/constants';
 import { PermissionIpcChannel } from '../shared/permissions/constants';
 import type { Platform } from '../shared/platform';
 import { NimQrLoginIpc } from './ipcHandlers/nimQrLogin';
+import { createKnowledgeBasePreloadBridge } from './knowledgeBase/preloadBridge';
 import { OpenClawSessionIpc } from './openclawSession/constants';
 import { OpenClawSessionPolicyIpc } from './openclawSessionPolicy/constants';
 
@@ -200,6 +201,9 @@ contextBridge.exposeInMainWorld('electron', {
     applyPromptPatchToAgent: (request: ContentQualityRegressionApplyPromptPatchRequest) =>
       ipcRenderer.invoke(ContentQualityRegressionIpc.ApplyPromptPatchToAgent, request),
   },
+  knowledgeBase: createKnowledgeBasePreloadBridge((channel, ...args) =>
+    ipcRenderer.invoke(channel, ...args),
+  ),
   enterpriseLeadWorkspace: {
     listWorkspaces: () => ipcRenderer.invoke(EnterpriseLeadWorkspaceIpc.ListWorkspaces),
     getWorkspace: (id: string) => ipcRenderer.invoke(EnterpriseLeadWorkspaceIpc.GetWorkspace, id),

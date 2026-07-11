@@ -495,7 +495,11 @@ export const EnterpriseLeadWorkspaceView: React.FC<EnterpriseLeadWorkspaceViewPr
 
     if (page === EnterpriseLeadWorkspaceInternalPage.KnowledgeBase) {
       return (
-        <WorkspaceKnowledgeBase workspace={workspace} onWorkspaceUpdated={handleWorkspaceUpdated} />
+        <WorkspaceKnowledgeBase
+          key={workspace.id}
+          workspace={workspace}
+          onWorkspaceUpdated={handleWorkspaceUpdated}
+        />
       );
     }
 

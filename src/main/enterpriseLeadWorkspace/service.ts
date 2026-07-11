@@ -660,7 +660,11 @@ export class EnterpriseLeadWorkspaceService {
     const sourcesWithIds = ensureEnterpriseLeadSourceIds(sources);
     return this.store.updateWorkspaceSources(
       workspaceId,
-      this.syncWorkspaceSourcesToVectorIndex(workspaceId, sourcesWithIds),
+      sourcesWithIds,
+      {
+        transformReconciledSources: reconciledSources =>
+          this.syncWorkspaceSourcesToVectorIndex(workspaceId, reconciledSources),
+      },
     );
   }
 

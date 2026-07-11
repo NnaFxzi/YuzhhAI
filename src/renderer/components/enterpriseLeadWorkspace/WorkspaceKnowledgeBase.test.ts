@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+
 import { describe, expect, test } from 'vitest';
 
 import {
@@ -61,6 +63,20 @@ import {
 } from './WorkspaceKnowledgeBase';
 
 describe('WorkspaceKnowledgeBase layout', () => {
+  test('mounts normalized document management without renderer path reads', () => {
+    const source = fs.readFileSync(
+      new URL('./WorkspaceKnowledgeBase.tsx', import.meta.url),
+      'utf8',
+    );
+
+    expect(source).toContain('WorkspaceKnowledgeDocumentsPanel');
+    expect(source).toContain(
+      '<WorkspaceKnowledgeDocumentsPanel workspaceId={currentWorkspace.id}',
+    );
+    expect(source).not.toContain('resolveEnterpriseLeadKnowledgeDocumentUpload');
+    expect(source).not.toContain('window.electron.dialog');
+  });
+
   const getPercent = (className: string): number => {
     const match = /^w-\[(\d+)%\]$/.exec(className);
     return match ? Number.parseInt(match[1] ?? '0', 10) : 0;

@@ -23,7 +23,12 @@ import {
 } from '../../shared/enterpriseLeadWorkspace/constants';
 import type { EnterpriseLeadWorkspaceDraft } from '../../shared/enterpriseLeadWorkspace/types';
 import { buildDefaultEnterpriseLeadWorkspaceSettings } from '../../shared/enterpriseLeadWorkspace/validation';
+import {
+  KnowledgeDocumentSourceMode,
+  KnowledgeDocumentStatus,
+} from '../../shared/knowledgeBase/constants';
 import type { ModelClientAdapter, ModelGenerationInput } from '../industryPack/modelClientAdapter';
+import { KnowledgeDocumentStore } from '../knowledgeBase/knowledgeDocumentStore';
 import { ContentKnowledgeSourceType } from '../libs/contentKnowledgeRetrieval';
 import { ContentKnowledgeVectorStore } from '../libs/contentKnowledgeVectorStore';
 import {
@@ -289,6 +294,63 @@ describe('EnterpriseLeadWorkspaceService', () => {
 
     expect(searchResult.matched).toBe(true);
     expect(searchResult.hits[0].chunk.text).toContain('工业包装服务');
+  });
+
+  test('preserves normalized knowledge document projections from stale legacy updates', () => {
+    const setup = createService();
+    db = setup.db;
+    const workspace = setup.service.createWorkspace({
+      ...draftPayload(),
+      extractionSources: [],
+    });
+    const created = new KnowledgeDocumentStore(setup.db).createDocumentWithVersion({
+      workspaceId: workspace.id,
+      displayName: 'manual.pdf',
+      sourceMode: KnowledgeDocumentSourceMode.Managed,
+      status: KnowledgeDocumentStatus.Ready,
+      version: {
+        contentHash: 'a'.repeat(64),
+        managedPath: `blobs/aa/${'a'.repeat(64)}`,
+        mimeType: 'application/pdf',
+        fileSize: 10,
+        sourceMtime: 100,
+        parser: 'pdf',
+        extractedText: null,
+        extractionPartial: false,
+      },
+    });
+    const normalizedSourceId = `knowledge-document:${created.document.id}`;
+    setup.store.upsertWorkspaceSourceById(workspace.id, {
+      id: normalizedSourceId,
+      kind: EnterpriseLeadExtractionSourceKind.File,
+      label: '最新文档状态',
+      fileName: 'manual.pdf',
+      text: '已迁移的本地正文',
+      extractionStatus: EnterpriseLeadDocumentExtractionStatus.Extracted,
+      vectorIndexStatus: EnterpriseLeadKnowledgeIndexStatus.Pending,
+    });
+
+    const updated = setup.service.updateWorkspaceSources(workspace.id, [
+      {
+        id: 'legacy-manual',
+        kind: EnterpriseLeadExtractionSourceKind.Manual,
+        label: '旧页面仍可编辑的手工资料',
+        text: '手工正文',
+      },
+    ]);
+
+    expect(updated.extractionSources).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'legacy-manual', text: '手工正文' }),
+        expect.objectContaining({
+          id: normalizedSourceId,
+          label: '最新文档状态',
+          extractionStatus: EnterpriseLeadDocumentExtractionStatus.Extracted,
+          vectorIndexStatus: EnterpriseLeadKnowledgeIndexStatus.Indexed,
+          vectorChunkCount: 1,
+        }),
+      ]),
+    );
   });
 
   test('queues document extraction and vector indexing without waiting for the model response', async () => {

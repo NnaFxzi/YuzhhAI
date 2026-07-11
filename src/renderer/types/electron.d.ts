@@ -77,6 +77,18 @@ import type {
   ResolvedKitCapabilities,
 } from '../../shared/kit/constants';
 import type {
+  KnowledgeBaseIpcResult,
+  KnowledgeDocumentDetails,
+  KnowledgeDocumentDetailsRequest,
+  KnowledgeDocumentListItem,
+  KnowledgeDocumentRevisionRequest,
+  KnowledgeFileSelection,
+  KnowledgeImportBatchResult,
+  KnowledgeImportSelectionRequest,
+  KnowledgeListDocumentsRequest,
+  KnowledgeRetryDocumentRequest,
+} from '../../shared/knowledgeBase/types';
+import type {
   ListLocalWebServicesOptions,
   LocalWebService,
 } from '../../shared/localWebServices/constants';
@@ -685,6 +697,27 @@ interface IElectronAPI {
     applyPromptPatchToAgent: (
       request: ContentQualityRegressionApplyPromptPatchRequest,
     ) => Promise<ContentQualityRegressionApplyPromptPatchResponse>;
+  };
+  knowledgeBase: {
+    selectFiles: () => Promise<KnowledgeBaseIpcResult<KnowledgeFileSelection | null>>;
+    importSelection: (
+      input: KnowledgeImportSelectionRequest,
+    ) => Promise<KnowledgeBaseIpcResult<KnowledgeImportBatchResult>>;
+    listDocuments: (
+      input: KnowledgeListDocumentsRequest,
+    ) => Promise<KnowledgeBaseIpcResult<KnowledgeDocumentListItem[]>>;
+    getDocumentDetails: (
+      input: KnowledgeDocumentDetailsRequest,
+    ) => Promise<KnowledgeBaseIpcResult<KnowledgeDocumentDetails>>;
+    deleteDocument: (
+      input: KnowledgeDocumentRevisionRequest,
+    ) => Promise<KnowledgeBaseIpcResult<KnowledgeDocumentListItem>>;
+    restoreDocument: (
+      input: KnowledgeDocumentRevisionRequest,
+    ) => Promise<KnowledgeBaseIpcResult<KnowledgeDocumentListItem>>;
+    retryDocument: (
+      input: KnowledgeRetryDocumentRequest,
+    ) => Promise<KnowledgeBaseIpcResult<KnowledgeDocumentListItem>>;
   };
   enterpriseLeadWorkspace: {
     listWorkspaces: () => Promise<EnterpriseLeadIpcResult<EnterpriseLeadWorkspace[]>>;

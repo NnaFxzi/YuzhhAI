@@ -87,6 +87,7 @@ import {
   DataMigrationRestoreStatus,
 } from '../shared/dataMigration/constants';
 import { DialogIpc } from '../shared/dialog/constants';
+import { EnterpriseLeadSourceDocumentFileFilterExtensions } from '../shared/enterpriseLeadWorkspace/constants';
 import {
   HtmlShareAccessMode,
   type HtmlShareAccessMode as HtmlShareAccessModeValue,
@@ -98,6 +99,7 @@ import {
 } from '../shared/htmlShare/constants';
 import type { PositioningReportInput } from '../shared/industryPack/positioning';
 import type { KitReference, ResolvedKitCapabilities } from '../shared/kit/constants';
+import { KnowledgeBaseErrorCode } from '../shared/knowledgeBase/constants';
 import {
   type ListLocalWebServicesOptions,
   type LocalWebService,
@@ -200,6 +202,12 @@ import {
   registerScheduledTaskHandlers,
 } from './ipcHandlers/scheduledTask';
 import { registerSkillHandlers } from './ipcHandlers/skills';
+import { registerKnowledgeBaseHandlers } from './knowledgeBase/ipcHandlers';
+import {
+  createKnowledgeBaseFoundation,
+  type KnowledgeBaseFoundation,
+} from './knowledgeBase/knowledgeBaseFoundation';
+import { KnowledgeDocumentServiceError } from './knowledgeBase/knowledgeDocumentService';
 import {
   type CoworkAgentEngine,
   CoworkEngineRouter,
@@ -1399,6 +1407,7 @@ let industryPackLoader: IndustryPackLoader | null = null;
 let industryPackStore: IndustryPackStore | null = null;
 let enterpriseLeadWorkspaceStore: EnterpriseLeadWorkspaceStore | null = null;
 let enterpriseLeadWorkspaceService: EnterpriseLeadWorkspaceService | null = null;
+let knowledgeBaseFoundation: KnowledgeBaseFoundation | null = null;
 let contentGenerationService: ContentGenerationService | null = null;
 let positioningService: PositioningService | null = null;
 let agentExternalResearchStore: AgentExternalResearchStore | null = null;
@@ -1692,6 +1701,25 @@ const getEnterpriseLeadWorkspaceService = (): EnterpriseLeadWorkspaceService => 
     });
   }
   return enterpriseLeadWorkspaceService;
+};
+
+const getKnowledgeBaseFoundation = (): KnowledgeBaseFoundation => {
+  if (!knowledgeBaseFoundation) {
+    knowledgeBaseFoundation = createKnowledgeBaseFoundation({
+      db: getStore().getDatabase(),
+      userDataPath: app.getPath('userData'),
+      workspaceStore: getEnterpriseLeadWorkspaceStore(),
+      extractDocumentText: (managedPath, options) =>
+        extractDocumentTextFromFile(managedPath, {
+          extensionHint: options.extensionHint,
+          image: {
+            assetPaths: workspaceOcrAssetPaths,
+            onProgress: options.onProgress,
+          },
+        }),
+    });
+  }
+  return knowledgeBaseFoundation;
 };
 
 const getAgentExternalResearchStore = (): AgentExternalResearchStore => {
@@ -6318,7 +6346,15 @@ if (!gotTheLock) {
         getEnterpriseLeadWorkspaceService().extractDraftFromConversation(text),
       createWorkspace: draft => getEnterpriseLeadWorkspaceService().createWorkspace(draft),
       deleteWorkspace: workspaceId =>
-        getEnterpriseLeadWorkspaceService().deleteWorkspace(workspaceId),
+        getStore()
+          .getDatabase()
+          .transaction(() => {
+            const deleted = getEnterpriseLeadWorkspaceService().deleteWorkspace(workspaceId);
+            if (deleted) {
+              getKnowledgeBaseFoundation().deleteWorkspaceData(workspaceId);
+            }
+            return deleted;
+          })(),
       updateWorkspaceProfile: (workspaceId, profile) =>
         getEnterpriseLeadWorkspaceService().updateWorkspaceProfile(workspaceId, profile),
       updateWorkspaceSources: (workspaceId, sources) =>
@@ -6352,6 +6388,57 @@ if (!gotTheLock) {
         getEnterpriseLeadWorkspaceService().archiveRun(workspaceId, runId),
     },
   });
+
+  const knowledgeBase = getKnowledgeBaseFoundation();
+  registerKnowledgeBaseHandlers({
+    documentService: knowledgeBase.documentService,
+    selectionTokenStore: knowledgeBase.selectionTokenStore,
+    showOpenDialog: async event => {
+      const ownerWindow = BrowserWindow.fromWebContents(event.sender);
+      const options = {
+        properties: ['openFile', 'multiSelections'] as ('openFile' | 'multiSelections')[],
+        filters: [
+          {
+            name: t('knowledgeBaseDocumentFiles'),
+            extensions: [...EnterpriseLeadSourceDocumentFileFilterExtensions],
+          },
+        ],
+      };
+      return ownerWindow
+        ? dialog.showOpenDialog(ownerWindow, options)
+        : dialog.showOpenDialog(options);
+    },
+    statSelectedFile: async absolutePath => {
+      const displayName = path.basename(absolutePath);
+      try {
+        const stat = await fs.promises.stat(absolutePath);
+        if (!stat.isFile()) {
+          throw new KnowledgeDocumentServiceError(KnowledgeBaseErrorCode.UnsupportedFileType, {
+            fileName: displayName,
+          });
+        }
+        return {
+          absolutePath,
+          displayName,
+          fileSize: stat.size,
+          sourceMtime: stat.mtimeMs,
+        };
+      } catch (error) {
+        if (error instanceof KnowledgeDocumentServiceError) {
+          throw error;
+        }
+        throw new KnowledgeDocumentServiceError(KnowledgeBaseErrorCode.SelectedFileMissing, {
+          fileName: displayName,
+        });
+      }
+    },
+  });
+
+  void getKnowledgeBaseFoundation()
+    .recoverMigrateAndStart(getEnterpriseLeadWorkspaceStore().listWorkspaces())
+    .catch(error => {
+      console.error('[KnowledgeBase] Shadow migration failed:', error);
+    });
 
   ipcMain.handle(OpenClawEngineIpc.GetStatus, async () => {
     try {

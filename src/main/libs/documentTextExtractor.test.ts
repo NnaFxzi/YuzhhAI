@@ -251,4 +251,13 @@ describe('documentTextExtractor', () => {
     expect(isSupportedDocumentTextFile('/tmp/report.pdf')).toBe(true);
     expect(isSupportedDocumentTextFile('/tmp/slides.pptx')).toBe(true);
   });
+
+  test('parses an extensionless managed blob using an extension hint', async () => {
+    const filePath = path.join(tmpDir, 'managed-blob');
+    await fs.writeFile(filePath, '# Local knowledge');
+
+    const result = await extractDocumentTextFromFile(filePath, { extensionHint: '.md' });
+
+    expect(result).toMatchObject({ content: '# Local knowledge', parser: 'text' });
+  });
 });
