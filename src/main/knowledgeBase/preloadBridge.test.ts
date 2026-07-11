@@ -1,9 +1,6 @@
 import { describe, expect, test, vi } from 'vitest';
 
-import {
-  KnowledgeBaseIpc,
-  KnowledgeDocumentVisibility,
-} from '../../shared/knowledgeBase/constants';
+import { KnowledgeBaseIpc, KnowledgeDocumentVisibility, } from '../../shared/knowledgeBase/constants';
 import { createKnowledgeBasePreloadBridge } from './preloadBridge';
 
 describe('createKnowledgeBasePreloadBridge', () => {
@@ -12,7 +9,11 @@ describe('createKnowledgeBasePreloadBridge', () => {
     const bridge = createKnowledgeBasePreloadBridge(invoke);
 
     await bridge.selectFiles();
-    await bridge.importSelection({ workspaceId: 'workspace-a', selectionToken: 'token-a' });
+    await bridge.importSelection({
+      workspaceId: 'workspace-a',
+      selectionToken: 'token-a',
+      itemIds: ['item-a'],
+    });
     await bridge.listDocuments({
       workspaceId: 'workspace-a',
       visibility: KnowledgeDocumentVisibility.Active,
@@ -24,7 +25,14 @@ describe('createKnowledgeBasePreloadBridge', () => {
 
     expect(invoke.mock.calls).toEqual([
       [KnowledgeBaseIpc.SelectFiles],
-      [KnowledgeBaseIpc.ImportSelection, { workspaceId: 'workspace-a', selectionToken: 'token-a' }],
+      [
+        KnowledgeBaseIpc.ImportSelection,
+        {
+          workspaceId: 'workspace-a',
+          selectionToken: 'token-a',
+          itemIds: ['item-a'],
+        },
+      ],
       [
         KnowledgeBaseIpc.ListDocuments,
         { workspaceId: 'workspace-a', visibility: KnowledgeDocumentVisibility.Active },
@@ -37,5 +45,17 @@ describe('createKnowledgeBasePreloadBridge', () => {
         { documentId: 'document-a', documentVersionId: 'version-a' },
       ],
     ]);
+  });
+
+  test('keeps full-selection imports backward compatible when item ids are omitted', async () => {
+    const invoke = vi.fn(async () => ({ success: true, data: null }));
+    const bridge = createKnowledgeBasePreloadBridge(invoke);
+
+    await bridge.importSelection({ workspaceId: 'workspace-a', selectionToken: 'token-a' });
+
+    expect(invoke).toHaveBeenCalledWith(KnowledgeBaseIpc.ImportSelection, {
+      workspaceId: 'workspace-a',
+      selectionToken: 'token-a',
+    });
   });
 });

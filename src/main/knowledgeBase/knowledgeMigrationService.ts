@@ -18,14 +18,14 @@ import type {
 } from '../../shared/knowledgeBase/types';
 import type { KnowledgeDocumentStore } from './knowledgeDocumentStore';
 import type { KnowledgeIngestionJobStore } from './knowledgeIngestionJobStore';
-import type {
-  ImportedKnowledgeBlob,
-  KnowledgeManagedFileStore,
-} from './knowledgeManagedFileStore';
+import type { ImportedKnowledgeBlob, KnowledgeManagedFileStore } from './knowledgeManagedFileStore';
 import type { KnowledgeMigrationStore } from './knowledgeMigrationStore';
-import { buildLegacyKnowledgeSourceId } from './legacyKnowledgeSourceIdentity';
+import {
+  buildLegacyKnowledgeSourceId,
+  isNormalizedKnowledgeProjectionSourceId,
+} from './legacyKnowledgeSourceIdentity';
 
-const KNOWLEDGE_LEGACY_MIGRATION_VERSION = 1;
+const KNOWLEDGE_LEGACY_MIGRATION_VERSION = 2;
 const extractableLegacyExtensions = new Set(
   [...EnterpriseLeadReadableDocumentExtensions, ...EnterpriseLeadImageAttachmentExtensions].map(
     extension => `.${extension}`,
@@ -99,21 +99,11 @@ export class KnowledgeMigrationService {
       throw new Error('Workspace id is required');
     }
     const sources = Array.isArray(workspace.extractionSources) ? workspace.extractionSources : [];
-    const initialState = this.options.migrationStore.begin(
+    this.options.migrationStore.begin(
       workspaceId,
       KNOWLEDGE_LEGACY_MIGRATION_VERSION,
       sources.length,
     );
-    if (initialState.status === KnowledgeMigrationStatus.Completed) {
-      return {
-        workspaceId,
-        sourceCount: sources.length,
-        migratedCount: initialState.migratedCount,
-        skippedCount: sources.length,
-        status: initialState.status,
-        diagnostics: initialState.diagnostics,
-      };
-    }
 
     let migratedCount = 0;
     let skippedCount = 0;
@@ -125,14 +115,14 @@ export class KnowledgeMigrationService {
         continue;
       }
       const legacySourceId = buildLegacyKnowledgeSourceId(workspaceId, source, sourceIndex);
+      if (isNormalizedKnowledgeProjectionSourceId(legacySourceId)) {
+        skippedCount += 1;
+        continue;
+      }
       if (this.options.documentStore.findByLegacySourceId(workspaceId, legacySourceId)) {
         skippedCount += 1;
         migratedCount += 1;
-        this.options.migrationStore.recordProgress(
-          workspaceId,
-          migratedCount,
-          legacySourceId,
-        );
+        this.options.migrationStore.recordProgress(workspaceId, migratedCount, legacySourceId);
         continue;
       }
 
@@ -149,6 +139,15 @@ export class KnowledgeMigrationService {
         });
         const now = new Date().toISOString();
         const transaction = this.options.db.transaction(() => {
+          if (this.options.documentStore.findByLegacySourceId(workspaceId, legacySourceId)) {
+            this.options.migrationStore.recordProgress(
+              workspaceId,
+              migratedCount + 1,
+              legacySourceId,
+              now,
+            );
+            return false;
+          }
           const created = this.options.documentStore.createDocumentWithVersion({
             ...documentInput,
             legacySourceSnapshotJson: JSON.stringify(source),
@@ -169,24 +168,22 @@ export class KnowledgeMigrationService {
             legacySourceId,
             now,
           );
+          return true;
         });
-        transaction();
+        const published = transaction();
         migratedCount += 1;
+        if (!published) {
+          skippedCount += 1;
+        }
       } catch (error) {
         diagnostics.push(migrationErrorMessage(source.label || legacySourceId, error));
-        const failedState = this.options.migrationStore.fail(workspaceId, diagnostics);
-        return {
-          workspaceId,
-          sourceCount: sources.length,
-          migratedCount,
-          skippedCount,
-          status: failedState.status,
-          diagnostics: failedState.diagnostics,
-        };
       }
     }
 
-    const completedState = this.options.migrationStore.complete(workspaceId, diagnostics);
+    const completedState =
+      diagnostics.length > 0
+        ? this.options.migrationStore.fail(workspaceId, diagnostics)
+        : this.options.migrationStore.complete(workspaceId, diagnostics);
     return {
       workspaceId,
       sourceCount: sources.length,
@@ -224,8 +221,8 @@ export class KnowledgeMigrationService {
       cleanOptionalText(input.source.fileName) || getFileNameFromPath(originalPath);
     const canExtractManagedFile = Boolean(
       input.blob &&
-        !input.sourceText &&
-        extractableLegacyExtensions.has(getFileExtension(sourceFileName || originalPath)),
+      !input.sourceText &&
+      extractableLegacyExtensions.has(getFileExtension(sourceFileName || originalPath)),
     );
     const displayName = canExtractManagedFile
       ? sourceFileName || originalPath
@@ -257,7 +254,6 @@ export class KnowledgeMigrationService {
       },
     };
   }
-
 }
 
 const getFileNameFromPath = (filePath: string): string =>

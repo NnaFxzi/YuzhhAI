@@ -168,12 +168,12 @@ export interface KnowledgeBaseIpcError {
 }
 
 export type KnowledgeBaseIpcResult<T> =
-  | { success: true; data: T }
-  | { success: false; error: KnowledgeBaseIpcError };
+  { success: true; data: T } | { success: false; error: KnowledgeBaseIpcError };
 
 export interface KnowledgeImportSelectionRequest {
   workspaceId: string;
   selectionToken: string;
+  itemIds?: string[];
 }
 
 export interface KnowledgeListDocumentsRequest {

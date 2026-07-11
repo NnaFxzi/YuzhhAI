@@ -26,16 +26,10 @@ import { CoworkSystemMessageKind } from '../common/coworkSystemMessages';
 import type { OpenClawSessionPatch } from '../common/openclawSession';
 import { buildSessionTitleFromInput } from '../common/sessionTitle';
 import { buildScheduledTaskEnginePrompt } from '../scheduledTask/enginePrompt';
-import {
-  migrateScheduledTaskRunsToOpenclaw,
-  migrateScheduledTasksToOpenclaw,
-} from '../scheduledTask/migrate';
+import { migrateScheduledTaskRunsToOpenclaw, migrateScheduledTasksToOpenclaw, } from '../scheduledTask/migrate';
 import { AgentId, AgentIpcChannel } from '../shared/agent/constants';
 import type { DomesticResearchConfig } from '../shared/agent/domesticResearch';
-import type {
-  ExternalResearchEditConfig,
-  ExternalResearchProviderTestInput,
-} from '../shared/agent/externalResearch';
+import type { ExternalResearchEditConfig, ExternalResearchProviderTestInput, } from '../shared/agent/externalResearch';
 import { ManagedPresetAgentId } from '../shared/agent/managedPresetAgents';
 import { AppIpcChannel } from '../shared/app/constants';
 import { AppSettingsAutoLaunchErrorCode, AppSettingsIpc } from '../shared/appSettings/constants';
@@ -73,10 +67,7 @@ import {
 } from '../shared/cowork/imageAttachments';
 import type { LayeredCoworkSettingsUpdate } from '../shared/cowork/layeredSettings';
 import { containsPlanModePrompt } from '../shared/cowork/planMode';
-import {
-  type CoworkSelectedTextSnippet,
-  normalizeCoworkSelectedTextSnippets,
-} from '../shared/cowork/selectedText';
+import { type CoworkSelectedTextSnippet, normalizeCoworkSelectedTextSnippets, } from '../shared/cowork/selectedText';
 import {
   type CoworkWorkspaceAgentSelection,
   normalizeCoworkWorkspaceAgentSelection,
@@ -105,19 +96,9 @@ import {
   type LocalWebService,
   LocalWebServicesIpc,
 } from '../shared/localWebServices/constants';
-import {
-  canonicalizeMediaModelId,
-  HAPPYHORSE_1_1_MODEL_ID,
-  mediaModelDisplayName,
-} from '../shared/mediaModelAliases';
-import {
-  normalizeNotificationSettings,
-  type NotificationSettings,
-} from '../shared/notifications/constants';
-import {
-  OpenClawEngineIpc,
-  OpenClawGatewayRepairErrorCode,
-} from '../shared/openclawEngine/constants';
+import { canonicalizeMediaModelId, HAPPYHORSE_1_1_MODEL_ID, mediaModelDisplayName, } from '../shared/mediaModelAliases';
+import { normalizeNotificationSettings, type NotificationSettings, } from '../shared/notifications/constants';
+import { OpenClawEngineIpc, OpenClawGatewayRepairErrorCode, } from '../shared/openclawEngine/constants';
 import { PlatformRegistry } from '../shared/platform';
 import { OpenClawProviderId, ProviderName } from '../shared/providers';
 import type { ShellOpenFailureReason as ShellOpenFailureReasonType } from '../shared/shell/constants';
@@ -127,14 +108,7 @@ import { AgentDomesticResearchStore } from './agentDomesticResearchStore';
 import { AgentExternalResearchService } from './agentExternalResearchService';
 import { AgentExternalResearchStore } from './agentExternalResearchStore';
 import { AgentManager } from './agentManager';
-import {
-  APP_DISPLAY_NAME,
-  APP_ID,
-  APP_NAME,
-  APP_PROTOCOL,
-  APP_USER_MODEL_ID,
-  DB_FILENAME,
-} from './appConstants';
+import { APP_DISPLAY_NAME, APP_ID, APP_NAME, APP_PROTOCOL, APP_USER_MODEL_ID, DB_FILENAME, } from './appConstants';
 import { installMainApplicationMenu } from './appMenu';
 import { createLocalFileProtocolResponse } from './artifactLocalFileProtocol';
 import {
@@ -143,12 +117,7 @@ import {
   createDefaultAuthQuotaGateState,
   normalizeAuthQuota,
 } from './authQuota';
-import {
-  type AutoLaunchStatus,
-  getAutoLaunchStatus,
-  isAutoLaunched,
-  setAutoLaunchEnabled,
-} from './autoLaunchManager';
+import { type AutoLaunchStatus, getAutoLaunchStatus, isAutoLaunched, setAutoLaunchEnabled, } from './autoLaunchManager';
 import { getRecentComputerUseLogEntries } from './computerUse/computerUseLogs';
 import {
   type CoworkEffectiveSettingsInput,
@@ -203,10 +172,7 @@ import {
 } from './ipcHandlers/scheduledTask';
 import { registerSkillHandlers } from './ipcHandlers/skills';
 import { registerKnowledgeBaseHandlers } from './knowledgeBase/ipcHandlers';
-import {
-  createKnowledgeBaseFoundation,
-  type KnowledgeBaseFoundation,
-} from './knowledgeBase/knowledgeBaseFoundation';
+import { createKnowledgeBaseFoundation, type KnowledgeBaseFoundation, } from './knowledgeBase/knowledgeBaseFoundation';
 import { KnowledgeDocumentServiceError } from './knowledgeBase/knowledgeDocumentService';
 import {
   type CoworkAgentEngine,
@@ -216,11 +182,7 @@ import {
 } from './libs/agentEngine';
 import { AppUpdateCoordinator, INSTALLATION_UUID_KEY } from './libs/appUpdateCoordinator';
 import { AuthCallbackRouter } from './libs/authCallbackRouter';
-import {
-  appendCallbackReturnTo,
-  appendLoginParams,
-  startAuthLocalCallback,
-} from './libs/authLocalCallbackServer';
+import { appendCallbackReturnTo, appendLoginParams, startAuthLocalCallback, } from './libs/authLocalCallbackServer';
 import {
   clearServerModelMetadata,
   getAllServerModelMetadata,
@@ -294,10 +256,7 @@ import {
   isPreviewServerUrl,
   stopHtmlPreviewServer,
 } from './libs/htmlPreviewServer';
-import {
-  type ArtifactFileShareSourceType,
-  packageArtifactFile,
-} from './libs/htmlShare/artifactFileSharePackager';
+import { type ArtifactFileShareSourceType, packageArtifactFile, } from './libs/htmlShare/artifactFileSharePackager';
 import {
   getHtmlShareBySource,
   updateHtmlShare,
@@ -340,10 +299,7 @@ import {
 } from './libs/openclawConfigImpact';
 import { buildProviderSelection, OpenClawConfigSync } from './libs/openclawConfigSync';
 import { OpenClawEngineManager, type OpenClawEngineStatus } from './libs/openclawEngineManager';
-import {
-  backupOpenClawConfig,
-  getOpenClawGatewayRepairBusyError,
-} from './libs/openclawGatewayRepair';
+import { backupOpenClawConfig, getOpenClawGatewayRepairBusyError, } from './libs/openclawGatewayRepair';
 import {
   addMemoryEntry,
   deleteMemoryEntry,
@@ -357,10 +313,7 @@ import {
   updateMemoryEntry,
   writeBootstrapFile,
 } from './libs/openclawMemoryFile';
-import {
-  collectReferencedEnvVarNames,
-  pickReferencedSecretEnvVars,
-} from './libs/openclawSecretEnv';
+import { collectReferencedEnvVarNames, pickReferencedSecretEnvVars, } from './libs/openclawSecretEnv';
 import { startOpenClawTokenProxy, stopOpenClawTokenProxy } from './libs/openclawTokenProxy';
 import { migrateMainAgentWorkspace } from './libs/openclawWorkspaceMigration';
 import { isHiddenUserPluginId } from './libs/pluginManager';
@@ -392,10 +345,7 @@ import {
 } from './mediaGenerationReferences';
 import { OpenClawSessionIpc } from './openclawSession/constants';
 import { OpenClawSessionPolicyIpc } from './openclawSessionPolicy/constants';
-import {
-  loadOpenClawSessionPolicyConfig,
-  saveOpenClawSessionPolicyConfig,
-} from './openclawSessionPolicy/store';
+import { loadOpenClawSessionPolicyConfig, saveOpenClawSessionPolicyConfig, } from './openclawSessionPolicy/store';
 import { registerVoiceInputPermissionHandler } from './permissions/voiceInputPermission';
 import { SharedCredentialStore } from './sharedCredentialStore';
 import { SkillManager } from './skillManager';
@@ -404,13 +354,7 @@ import { SqliteStore } from './sqliteStore';
 import { StartupProfiler } from './startupProfiler';
 import { SubagentMessageStore } from './subagentMessageStore';
 import { SubagentRunStore } from './subagentRunStore';
-import {
-  createTray,
-  destroyTray,
-  setTrayDevelopmentActions,
-  updateTrayMenu,
-  updateTrayReminder,
-} from './trayManager';
+import { createTray, destroyTray, setTrayDevelopmentActions, updateTrayMenu, updateTrayReminder, } from './trayManager';
 import {
   AppWindowStoreKey,
   MIN_APP_WINDOW_HEIGHT,
@@ -6389,57 +6333,6 @@ if (!gotTheLock) {
     },
   });
 
-  const knowledgeBase = getKnowledgeBaseFoundation();
-  registerKnowledgeBaseHandlers({
-    documentService: knowledgeBase.documentService,
-    selectionTokenStore: knowledgeBase.selectionTokenStore,
-    showOpenDialog: async event => {
-      const ownerWindow = BrowserWindow.fromWebContents(event.sender);
-      const options = {
-        properties: ['openFile', 'multiSelections'] as ('openFile' | 'multiSelections')[],
-        filters: [
-          {
-            name: t('knowledgeBaseDocumentFiles'),
-            extensions: [...EnterpriseLeadSourceDocumentFileFilterExtensions],
-          },
-        ],
-      };
-      return ownerWindow
-        ? dialog.showOpenDialog(ownerWindow, options)
-        : dialog.showOpenDialog(options);
-    },
-    statSelectedFile: async absolutePath => {
-      const displayName = path.basename(absolutePath);
-      try {
-        const stat = await fs.promises.stat(absolutePath);
-        if (!stat.isFile()) {
-          throw new KnowledgeDocumentServiceError(KnowledgeBaseErrorCode.UnsupportedFileType, {
-            fileName: displayName,
-          });
-        }
-        return {
-          absolutePath,
-          displayName,
-          fileSize: stat.size,
-          sourceMtime: stat.mtimeMs,
-        };
-      } catch (error) {
-        if (error instanceof KnowledgeDocumentServiceError) {
-          throw error;
-        }
-        throw new KnowledgeDocumentServiceError(KnowledgeBaseErrorCode.SelectedFileMissing, {
-          fileName: displayName,
-        });
-      }
-    },
-  });
-
-  void getKnowledgeBaseFoundation()
-    .recoverMigrateAndStart(getEnterpriseLeadWorkspaceStore().listWorkspaces())
-    .catch(error => {
-      console.error('[KnowledgeBase] Shadow migration failed:', error);
-    });
-
   ipcMain.handle(OpenClawEngineIpc.GetStatus, async () => {
     try {
       const manager = getOpenClawEngineManager();
@@ -11663,6 +11556,57 @@ if (!gotTheLock) {
     initializeKeyfromAttribution(store);
     refreshEndpointsTestMode(store);
     sqliteBackupManager = new SqliteBackupManager(app.getPath('userData'));
+
+    const knowledgeBase = getKnowledgeBaseFoundation();
+    registerKnowledgeBaseHandlers({
+      documentService: knowledgeBase.documentService,
+      selectionTokenStore: knowledgeBase.selectionTokenStore,
+      showOpenDialog: async event => {
+        const ownerWindow = BrowserWindow.fromWebContents(event.sender);
+        const options = {
+          properties: ['openFile', 'multiSelections'] as ('openFile' | 'multiSelections')[],
+          filters: [
+            {
+              name: t('knowledgeBaseDocumentFiles'),
+              extensions: [...EnterpriseLeadSourceDocumentFileFilterExtensions],
+            },
+          ],
+        };
+        return ownerWindow
+          ? dialog.showOpenDialog(ownerWindow, options)
+          : dialog.showOpenDialog(options);
+      },
+      statSelectedFile: async absolutePath => {
+        const displayName = path.basename(absolutePath);
+        try {
+          const stat = await fs.promises.stat(absolutePath);
+          if (!stat.isFile()) {
+            throw new KnowledgeDocumentServiceError(KnowledgeBaseErrorCode.UnsupportedFileType, {
+              fileName: displayName,
+            });
+          }
+          return {
+            absolutePath,
+            displayName,
+            fileSize: stat.size,
+            sourceMtime: stat.mtimeMs,
+          };
+        } catch (error) {
+          if (error instanceof KnowledgeDocumentServiceError) {
+            throw error;
+          }
+          throw new KnowledgeDocumentServiceError(KnowledgeBaseErrorCode.SelectedFileMissing, {
+            fileName: displayName,
+          });
+        }
+      },
+    });
+
+    void knowledgeBase
+      .recoverMigrateAndStart(getEnterpriseLeadWorkspaceStore().listWorkspaces())
+      .catch(error => {
+        console.error('[KnowledgeBase] Shadow migration failed:', error);
+      });
 
     const startSqliteBackupLoop = async (): Promise<void> => {
       if (!sqliteBackupManager) return;

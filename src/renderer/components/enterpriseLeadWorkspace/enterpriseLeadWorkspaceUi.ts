@@ -5,23 +5,16 @@ import {
 import {
   EnterpriseLeadAgentRole,
   type EnterpriseLeadAgentRole as EnterpriseLeadAgentRoleType,
-  EnterpriseLeadAttachmentOnlyDocumentExtensions,
   EnterpriseLeadContentPlatformId,
-  EnterpriseLeadDocumentExtractionStatus,
   EnterpriseLeadExtractionSourceKind,
-  EnterpriseLeadImageAttachmentExtensions,
-  EnterpriseLeadKnowledgeIndexStatus,
-  EnterpriseLeadReadableDocumentExtensions,
   EnterpriseLeadResearchCapabilityId,
   EnterpriseLeadSkillCapabilityId,
-  EnterpriseLeadSourceDocumentFileFilterExtensions,
   EnterpriseLeadTaskStatus,
   type EnterpriseLeadTaskStatus as EnterpriseLeadTaskStatusType,
   EnterpriseLeadWorkspaceType,
 } from '../../../shared/enterpriseLeadWorkspace/constants';
 import type {
   EnterpriseLeadAgentTask,
-  EnterpriseLeadExtractionSource,
   EnterpriseLeadTaskAgentRole,
   EnterpriseLeadWorkspace,
   EnterpriseLeadWorkspaceAgentBinding,
@@ -31,7 +24,6 @@ import type {
   EnterpriseLeadWorkspaceSettings,
   EnterpriseLeadWorkspaceSnapshot,
 } from '../../../shared/enterpriseLeadWorkspace/types';
-import { enterpriseLeadWorkspaceService } from '../../services/enterpriseLeadWorkspace';
 
 export const EnterpriseLeadWorkspaceLaunchMode = {
   FirstLaunch: 'first_launch',
@@ -63,39 +55,6 @@ export const WorkspaceCreateBranchScreen = {
 } as const;
 export type WorkspaceCreateBranchScreen =
   (typeof WorkspaceCreateBranchScreen)[keyof typeof WorkspaceCreateBranchScreen];
-
-export const MAX_MATERIAL_UPLOAD_BYTES = 50 * 1024 * 1024;
-
-export const ENTERPRISE_LEAD_MATERIAL_ACCEPT_EXTENSIONS = [
-  ...EnterpriseLeadReadableDocumentExtensions,
-  ...EnterpriseLeadImageAttachmentExtensions,
-  ...EnterpriseLeadAttachmentOnlyDocumentExtensions,
-] as const;
-
-export const ENTERPRISE_LEAD_MATERIAL_DIALOG_FILTERS = [
-  {
-    name: 'enterpriseLeadMaterialFilterSupported',
-    extensions: [...EnterpriseLeadSourceDocumentFileFilterExtensions],
-  },
-  {
-    name: 'enterpriseLeadMaterialFilterAllFiles',
-    extensions: ['*'],
-  },
-] as const;
-
-export interface MaterialUploadItem {
-  id: string;
-  filePath: string;
-  fileName: string;
-  fileSize: number | null;
-  kind:
-    | typeof EnterpriseLeadExtractionSourceKind.File
-    | typeof EnterpriseLeadExtractionSourceKind.Image;
-  text?: string;
-  truncated?: boolean;
-  ocrProgress?: number;
-  ocrError?: string;
-}
 
 export const EnterpriseLeadWorkspaceShellMode = {
   Focused: 'focused',
@@ -395,187 +354,6 @@ export const buildManualEnterpriseLeadWorkspaceDraft = ({
     settings,
     workspaceAgents: [],
   };
-};
-
-type UploadedMaterialsService = Pick<
-  typeof enterpriseLeadWorkspaceService,
-  'createWorkspace' | 'processDocumentSource'
->;
-
-export interface CreateWorkspaceFromUploadedMaterialsInput {
-  workspaceName: string;
-  items: MaterialUploadItem[];
-  settings?: EnterpriseLeadWorkspaceSettings;
-  onCreated: (workspaceId: string) => void;
-  service?: UploadedMaterialsService;
-  ocrService?: CreateWorkspaceFromUploadedMaterialsOcrService;
-  onOcrProgress?: (payload: { fileName: string; progress: number; itemId: string }) => void;
-}
-
-export interface CreateWorkspaceFromUploadedMaterialsOcrService {
-  extractImageText: (filePath: string) => Promise<{
-    success: boolean;
-    content?: string;
-    error?: string;
-  }>;
-}
-
-const isImageMaterialKind = (
-  kind: MaterialUploadItem['kind'],
-): boolean => kind === EnterpriseLeadExtractionSourceKind.Image;
-
-export const createWorkspaceFromUploadedMaterials = async ({
-  workspaceName,
-  items,
-  settings,
-  onCreated,
-  service = enterpriseLeadWorkspaceService,
-  ocrService,
-  onOcrProgress,
-}: CreateWorkspaceFromUploadedMaterialsInput): Promise<EnterpriseLeadWorkspace | null> => {
-  const now = new Date().toISOString();
-
-  const resolvedItems: MaterialUploadItem[] = await Promise.all(
-    items.map(async (item): Promise<MaterialUploadItem> => {
-      if (!isImageMaterialKind(item.kind)) {
-        return item;
-      }
-      const existingText = item.text?.trim();
-      if (existingText) {
-        return item;
-      }
-      if (!ocrService) {
-        return item;
-      }
-      let progressListener: ((progress: number) => void) | null = null;
-      let unsubscribeProgress: (() => void) | null = null;
-      const dialogApi =
-        typeof window !== 'undefined' ? window.electron?.dialog : undefined;
-      if (onOcrProgress && dialogApi?.onExtractImageTextProgress) {
-        const progressApi = dialogApi.onExtractImageTextProgress;
-        progressListener = (progress: number): void => {
-          onOcrProgress({
-            fileName: item.fileName,
-            itemId: item.id,
-            progress,
-          });
-        };
-        unsubscribeProgress = progressApi(payload => {
-          if (payload.filePath !== item.filePath) {
-            return;
-          }
-          progressListener?.(payload.progress);
-        });
-      }
-      try {
-        const result = await ocrService.extractImageText(item.filePath);
-        const extractedText = result.success ? result.content?.trim() : undefined;
-        if (extractedText) {
-          return { ...item, text: extractedText, truncated: false };
-        }
-        return item;
-      } catch (error) {
-        console.warn('[EnterpriseLeadWorkspace] OCR failed for', item.fileName, error);
-        return item;
-      } finally {
-        unsubscribeProgress?.();
-        progressListener = null;
-      }
-    }),
-  );
-
-  const fallbackLabel =
-    resolvedItems[0]?.fileName?.trim() ||
-    resolvedItems[0]?.filePath ||
-    workspaceName.trim();
-
-  const baseDraft = buildManualEnterpriseLeadWorkspaceDraft({
-    name: workspaceName,
-    mode: WorkspaceCreateStartMode.Material,
-    sourceLabel: fallbackLabel,
-    settings,
-  });
-
-  const extractionSources: EnterpriseLeadExtractionSource[] = resolvedItems.map(item => {
-    const hasText = Boolean(item.text?.trim());
-    return {
-      kind: item.kind,
-      label: item.fileName?.trim() || item.filePath,
-      filePath: item.filePath,
-      fileName: item.fileName,
-      fileSize: typeof item.fileSize === 'number' && item.fileSize > 0 ? item.fileSize : undefined,
-      text: item.text?.trim() || undefined,
-      ...(item.truncated ? { extractionPartial: true } : {}),
-      ...(hasText
-        ? {
-            extractionStatus: EnterpriseLeadDocumentExtractionStatus.Pending,
-            vectorIndexStatus: EnterpriseLeadKnowledgeIndexStatus.Pending,
-          }
-        : {
-            extractionStatus: EnterpriseLeadDocumentExtractionStatus.Extracted,
-            vectorIndexStatus: EnterpriseLeadKnowledgeIndexStatus.Indexed,
-          }),
-      createdAt: now,
-      updatedAt: now,
-    };
-  });
-
-  let workspace: EnterpriseLeadWorkspace | null = null;
-  try {
-    const primaryResolvedItem = resolvedItems[0];
-    const primaryHasText = Boolean(primaryResolvedItem?.text?.trim());
-    workspace = await service.createWorkspace({
-      ...baseDraft,
-      source: {
-        kind: primaryResolvedItem?.kind ?? EnterpriseLeadExtractionSourceKind.File,
-        label: fallbackLabel,
-        filePath: primaryResolvedItem?.filePath,
-        fileName: primaryResolvedItem?.fileName,
-        fileSize:
-          typeof primaryResolvedItem?.fileSize === 'number' && primaryResolvedItem.fileSize > 0
-            ? primaryResolvedItem.fileSize
-            : undefined,
-        text: primaryResolvedItem?.text?.trim() || undefined,
-        ...(primaryHasText
-          ? {
-              extractionStatus: EnterpriseLeadDocumentExtractionStatus.Pending,
-              vectorIndexStatus: EnterpriseLeadKnowledgeIndexStatus.Pending,
-            }
-          : {
-              extractionStatus: EnterpriseLeadDocumentExtractionStatus.Extracted,
-              vectorIndexStatus: EnterpriseLeadKnowledgeIndexStatus.Indexed,
-            }),
-        createdAt: now,
-        updatedAt: now,
-      },
-      extractionSources,
-    });
-  } catch (error) {
-    console.error('[EnterpriseLeadWorkspace] createWorkspace failed', error);
-    return null;
-  }
-
-  if (!workspace) {
-    return null;
-  }
-
-  for (let i = 0; i < workspace.extractionSources.length; i += 1) {
-    const source = workspace.extractionSources[i];
-    if (!source?.text?.trim()) {
-      continue;
-    }
-    void service
-      .processDocumentSource(workspace.id, workspace.extractionSources, i)
-      .catch(error => {
-        console.warn(
-          '[EnterpriseLeadWorkspace] Failed to queue uploaded material processing:',
-          error,
-        );
-      });
-  }
-
-  onCreated(workspace.id);
-  return workspace;
 };
 
 const toKnowledgeItems = (

@@ -36,6 +36,59 @@ describe('KnowledgeSelectionTokenStore', () => {
     );
   });
 
+  test('consumes only a validated item subset in picker order', () => {
+    const store = new KnowledgeSelectionTokenStore({ now: () => 1_000 });
+    const issued = store.issue(7, [selected('a.pdf'), selected('b.pdf'), selected('c.pdf')]);
+    const firstItemId = issued.files[0]?.itemId;
+    const thirdItemId = issued.files[2]?.itemId;
+
+    expect(firstItemId).toBeTruthy();
+    expect(thirdItemId).toBeTruthy();
+
+    const consumed = store.consume(issued.selectionToken, 7, [thirdItemId!, firstItemId!]);
+
+    expect(consumed.map(file => file.itemId)).toEqual([firstItemId, thirdItemId]);
+    expect(() => store.consume(issued.selectionToken, 7)).toThrowError(
+      expect.objectContaining({ code: KnowledgeBaseErrorCode.InvalidSelectionToken }),
+    );
+  });
+
+  test.each([
+    { name: 'empty', itemIds: [] },
+    { name: 'unknown', itemIds: ['unknown-item'] },
+  ])('rejects an $name item subset without consuming the token', ({ itemIds }) => {
+    const store = new KnowledgeSelectionTokenStore({ now: () => 1_000 });
+    const issued = store.issue(7, [selected('a.pdf')]);
+
+    expect(() => store.consume(issued.selectionToken, 7, itemIds)).toThrowError(
+      expect.objectContaining({ code: KnowledgeBaseErrorCode.InvalidRequest }),
+    );
+    expect(store.consume(issued.selectionToken, 7)).toHaveLength(1);
+  });
+
+  test('rejects duplicate item ids without consuming the token', () => {
+    const store = new KnowledgeSelectionTokenStore({ now: () => 1_000 });
+    const issued = store.issue(7, [selected('a.pdf')]);
+    const itemId = issued.files[0]?.itemId;
+
+    expect(itemId).toBeTruthy();
+    expect(() => store.consume(issued.selectionToken, 7, [itemId!, itemId!])).toThrowError(
+      expect.objectContaining({ code: KnowledgeBaseErrorCode.InvalidRequest }),
+    );
+    expect(store.consume(issued.selectionToken, 7)).toHaveLength(1);
+  });
+
+  test('rejects sparse item id arrays without consuming the token', () => {
+    const store = new KnowledgeSelectionTokenStore({ now: () => 1_000 });
+    const issued = store.issue(7, [selected('a.pdf')]);
+    const sparseItemIds = Array<string>(1);
+
+    expect(() => store.consume(issued.selectionToken, 7, sparseItemIds)).toThrowError(
+      expect.objectContaining({ code: KnowledgeBaseErrorCode.InvalidRequest }),
+    );
+    expect(store.consume(issued.selectionToken, 7)).toHaveLength(1);
+  });
+
   test('rejects foreign use without consuming the rightful owner token', () => {
     const store = new KnowledgeSelectionTokenStore({ now: () => 1_000 });
     const issued = store.issue(7, [selected('a.pdf')]);
@@ -96,8 +149,6 @@ describe('KnowledgeSelectionTokenStore', () => {
     const issued = store.issue(7, [selected('a.pdf')]);
 
     expect(JSON.stringify(issued)).not.toContain('/private/');
-    expect(issued.files).toEqual([
-      expect.objectContaining({ displayName: 'a.pdf', fileSize: 10 }),
-    ]);
+    expect(issued.files).toEqual([expect.objectContaining({ displayName: 'a.pdf', fileSize: 10 })]);
   });
 });

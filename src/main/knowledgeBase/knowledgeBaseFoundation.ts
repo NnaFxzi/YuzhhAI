@@ -19,7 +19,10 @@ import {
 } from './knowledgeMigrationService';
 import { KnowledgeMigrationStore } from './knowledgeMigrationStore';
 import { KnowledgeSelectionTokenStore } from './knowledgeSelectionTokenStore';
-import { buildLegacyKnowledgeSourceId } from './legacyKnowledgeSourceIdentity';
+import {
+  buildLegacyKnowledgeSourceId,
+  isNormalizedKnowledgeProjectionSourceId,
+} from './legacyKnowledgeSourceIdentity';
 
 export interface KnowledgeBaseFoundation {
   documentService: KnowledgeDocumentService;
@@ -30,10 +33,7 @@ export interface KnowledgeBaseFoundation {
   migrationStore: KnowledgeMigrationStore;
   migrationService: KnowledgeMigrationService;
   selectionTokenStore: KnowledgeSelectionTokenStore;
-  recoverMigrateAndStart: (
-    workspaces: LegacyKnowledgeWorkspace[],
-    now?: string,
-  ) => Promise<void>;
+  recoverMigrateAndStart: (workspaces: LegacyKnowledgeWorkspace[], now?: string) => Promise<void>;
   deleteWorkspaceData: (workspaceId: string) => void;
 }
 
@@ -152,6 +152,9 @@ export const createKnowledgeBaseFoundation = (options: {
       const workspacesWithStableSourceIds = workspaces.map(workspace => {
         let changed = false;
         const extractionSources = workspace.extractionSources.map((source, sourceIndex) => {
+          if (isNormalizedKnowledgeProjectionSourceId(source.id)) {
+            return source;
+          }
           const sourceId = buildLegacyKnowledgeSourceId(workspace.id, source, sourceIndex);
           if (source.id?.trim() === sourceId) {
             return source;
@@ -177,9 +180,7 @@ export const createKnowledgeBaseFoundation = (options: {
         });
       // Startup runs before this process wakes workers, so every running job belongs to a
       // previous process and must be requeued even when its last heartbeat was recent.
-      const staleBefore = new Date(
-        (Number.isFinite(nowMs) ? nowMs : Date.now()) + 1,
-      ).toISOString();
+      const staleBefore = new Date((Number.isFinite(nowMs) ? nowMs : Date.now()) + 1).toISOString();
       await recoverAndMigrateKnowledgeBase({
         jobStore,
         migrationService,

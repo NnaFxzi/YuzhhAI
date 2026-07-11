@@ -10,11 +10,13 @@ import {
   KnowledgeIngestionJobStatus,
   KnowledgeIngestionStage,
 } from '../../../shared/knowledgeBase/constants';
-import type { KnowledgeDocumentListItem } from '../../../shared/knowledgeBase/types';
+import type { KnowledgeDocumentListItem, KnowledgeImportBatchResult, } from '../../../shared/knowledgeBase/types';
 import { i18nService } from '../../services/i18n';
+import { KnowledgeBaseServiceError } from '../../services/knowledgeBase';
 import type { WorkspaceKnowledgeDocumentsState } from './useWorkspaceKnowledgeDocuments';
 import {
   createWorkspaceKnowledgeDocumentsPanelActions,
+  getWorkspaceKnowledgeDocumentCount,
   WorkspaceKnowledgeDocumentsPanelView,
 } from './WorkspaceKnowledgeDocumentsPanel';
 
@@ -86,6 +88,31 @@ const renderView = (
   );
 
 describe('WorkspaceKnowledgeDocumentsPanel', () => {
+  test('reports the normalized active-document count after loading', () => {
+    expect(
+      getWorkspaceKnowledgeDocumentCount(
+        createState({ documents: [createDocument()], isLoading: true }),
+      ),
+    ).toBeNull();
+    expect(
+      getWorkspaceKnowledgeDocumentCount(
+        createState({
+          error: new KnowledgeBaseServiceError(KnowledgeBaseErrorCode.PersistenceFailed),
+        }),
+      ),
+    ).toBeNull();
+    expect(
+      getWorkspaceKnowledgeDocumentCount(
+        createState({
+          documents: [createDocument(), createDocument({ id: 'document-b' })],
+          deletedDocuments: [
+            createDocument({ id: 'document-deleted', deletedAt: '2026-07-11T03:00:00.000Z' }),
+          ],
+        }),
+      ),
+    ).toBe(2);
+  });
+
   test('routes all document mutations through normalized panel actions', async () => {
     const active = createDocument();
     const deleted = createDocument({
@@ -106,6 +133,75 @@ describe('WorkspaceKnowledgeDocumentsPanel', () => {
     expect(state.deleteDocument).toHaveBeenCalledWith(active);
     expect(state.restoreDocument).toHaveBeenCalledWith(deleted);
     expect(state.retryDocument).toHaveBeenCalledWith(active);
+  });
+
+  test('requests a workspace projection refresh after a successful normalized import', async () => {
+    const document = createDocument();
+    const onWorkspaceProjectionChange = vi.fn(async () => undefined);
+    const state = createState({
+      selectAndImport: vi.fn(async (): Promise<KnowledgeImportBatchResult> => ({
+        importedCount: 1,
+        failedCount: 0,
+        items: [{ success: true, itemId: 'item-a', document }],
+      })),
+    });
+    const actions = createWorkspaceKnowledgeDocumentsPanelActions(
+      state,
+      onWorkspaceProjectionChange,
+    );
+
+    await actions.importFiles();
+
+    expect(onWorkspaceProjectionChange).toHaveBeenCalledTimes(1);
+  });
+
+  test('skips the workspace projection refresh when no document was imported', async () => {
+    const onWorkspaceProjectionChange = vi.fn(async () => undefined);
+    const cancelledActions = createWorkspaceKnowledgeDocumentsPanelActions(
+      createState({ selectAndImport: vi.fn(async () => null) }),
+      onWorkspaceProjectionChange,
+    );
+    const failedActions = createWorkspaceKnowledgeDocumentsPanelActions(
+      createState({
+        selectAndImport: vi.fn(async (): Promise<KnowledgeImportBatchResult> => ({
+          importedCount: 0,
+          failedCount: 1,
+          items: [
+            {
+              success: false,
+              itemId: 'item-failed',
+              fileName: 'failed.pdf',
+              errorCode: KnowledgeBaseErrorCode.PersistenceFailed,
+            },
+          ],
+        })),
+      }),
+      onWorkspaceProjectionChange,
+    );
+
+    await cancelledActions.importFiles();
+    await failedActions.importFiles();
+
+    expect(onWorkspaceProjectionChange).not.toHaveBeenCalled();
+  });
+
+  test('refreshes the workspace projection after document lifecycle mutations', async () => {
+    const active = createDocument();
+    const deleted = createDocument({
+      id: 'document-deleted',
+      deletedAt: '2026-07-11T03:00:00.000Z',
+    });
+    const onWorkspaceProjectionChange = vi.fn(async () => undefined);
+    const actions = createWorkspaceKnowledgeDocumentsPanelActions(
+      createState(),
+      onWorkspaceProjectionChange,
+    );
+
+    await actions.delete(active);
+    await actions.restore(deleted);
+    await actions.retry(active);
+
+    expect(onWorkspaceProjectionChange).toHaveBeenCalledTimes(3);
   });
 
   test('reports partial imports and distinguishes saved-without-text documents', () => {
@@ -146,9 +242,7 @@ describe('WorkspaceKnowledgeDocumentsPanel', () => {
         .replace('{imported}', '8')
         .replace('{failed}', '2'),
     );
-    expect(html).toContain(
-      i18nService.t('enterpriseKnowledgeDocumentStatusSavedNotSearchable'),
-    );
+    expect(html).toContain(i18nService.t('enterpriseKnowledgeDocumentStatusSavedNotSearchable'));
     expect(html).toContain('data-testid="knowledge-import-failures"');
     expect(html).toContain('超大手册.pdf');
     expect(html).toContain('已变更资料.txt');
@@ -187,9 +281,7 @@ describe('WorkspaceKnowledgeDocumentsPanel', () => {
         updatedAt: '2026-07-11T02:00:00.000Z',
       },
     });
-    const activeHtml = renderView(
-      createState({ documents: [failed, noFailedJob, cancelled] }),
-    );
+    const activeHtml = renderView(createState({ documents: [failed, noFailedJob, cancelled] }));
 
     expect(activeHtml).toContain('data-retry-document-id="document-failed"');
     expect(activeHtml).toContain('data-retry-document-id="document-cancelled"');

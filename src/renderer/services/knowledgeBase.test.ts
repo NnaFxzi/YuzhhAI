@@ -7,10 +7,7 @@ import {
   KnowledgeDocumentVisibility,
 } from '../../shared/knowledgeBase/constants';
 import type { KnowledgeDocumentListItem } from '../../shared/knowledgeBase/types';
-import {
-  knowledgeBaseService,
-  KnowledgeBaseServiceError,
-} from './knowledgeBase';
+import { knowledgeBaseService, KnowledgeBaseServiceError } from './knowledgeBase';
 
 const documentItem = (): KnowledgeDocumentListItem => ({
   id: 'document-1',
@@ -81,7 +78,7 @@ describe('knowledgeBaseService', () => {
     installApi(api);
 
     await expect(knowledgeBaseService.selectFiles()).resolves.toEqual(selection);
-    await knowledgeBaseService.importSelection('workspace-a', 'token-1');
+    await knowledgeBaseService.importSelection('workspace-a', 'token-1', ['item-2']);
     await knowledgeBaseService.getDocumentDetails('document-1');
     await knowledgeBaseService.deleteDocument('document-1', 1);
     await knowledgeBaseService.restoreDocument('document-1', 2);
@@ -90,6 +87,7 @@ describe('knowledgeBaseService', () => {
     expect(api.importSelection).toHaveBeenCalledWith({
       workspaceId: 'workspace-a',
       selectionToken: 'token-1',
+      itemIds: ['item-2'],
     });
     expect(api.deleteDocument).toHaveBeenCalledWith({
       documentId: 'document-1',
@@ -123,6 +121,21 @@ describe('knowledgeBaseService', () => {
     expect(caught).toMatchObject({
       code: KnowledgeBaseErrorCode.RevisionConflict,
       latestDocument: documentItem(),
+    });
+  });
+
+  test('omits item ids for backward-compatible full-selection imports', async () => {
+    const importSelection = vi.fn(async () => ({
+      success: true as const,
+      data: { importedCount: 0, failedCount: 0, items: [] },
+    }));
+    installApi({ importSelection });
+
+    await knowledgeBaseService.importSelection('workspace-a', 'token-1');
+
+    expect(importSelection).toHaveBeenCalledWith({
+      workspaceId: 'workspace-a',
+      selectionToken: 'token-1',
     });
   });
 

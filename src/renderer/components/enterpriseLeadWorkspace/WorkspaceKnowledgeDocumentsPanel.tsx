@@ -20,6 +20,7 @@ import {
 } from '../../../shared/knowledgeBase/constants';
 import type {
   KnowledgeDocumentListItem,
+  KnowledgeImportBatchResult,
   KnowledgeImportItemResult,
 } from '../../../shared/knowledgeBase/types';
 import { i18nService } from '../../services/i18n';
@@ -35,8 +36,13 @@ import {
   type WorkspaceKnowledgeDocumentsState,
 } from './useWorkspaceKnowledgeDocuments';
 
+export type WorkspaceProjectionChangeHandler = () => Promise<void> | void;
+
 export interface WorkspaceKnowledgeDocumentsPanelProps {
   workspaceId: string;
+  initialImportResult?: KnowledgeImportBatchResult;
+  onDocumentCountChange?: (count: number) => void;
+  onWorkspaceProjectionChange?: WorkspaceProjectionChangeHandler;
 }
 
 export interface WorkspaceKnowledgeDocumentsPanelActions {
@@ -49,28 +55,36 @@ export interface WorkspaceKnowledgeDocumentsPanelActions {
 
 export const createWorkspaceKnowledgeDocumentsPanelActions = (
   state: WorkspaceKnowledgeDocumentsState,
+  onWorkspaceProjectionChange?: WorkspaceProjectionChangeHandler,
 ): WorkspaceKnowledgeDocumentsPanelActions => ({
   importFiles: async () => {
-    await state.selectAndImport();
+    const result = await state.selectAndImport();
+    if (result && result.importedCount > 0) {
+      await onWorkspaceProjectionChange?.();
+    }
   },
   open: async documentId => {
     await state.loadDetails(documentId);
   },
   delete: async document => {
     await state.deleteDocument(document);
+    await onWorkspaceProjectionChange?.();
   },
   restore: async document => {
     await state.restoreDocument(document);
+    await onWorkspaceProjectionChange?.();
   },
   retry: async document => {
     await state.retryDocument(document);
+    await onWorkspaceProjectionChange?.();
   },
 });
 
-const formatTranslation = (
-  key: string,
-  values?: Record<string, string | number>,
-): string => {
+export const getWorkspaceKnowledgeDocumentCount = (
+  state: Pick<WorkspaceKnowledgeDocumentsState, 'documents' | 'error' | 'isLoading'>,
+): number | null => (state.isLoading || state.error ? null : state.documents.length);
+
+const formatTranslation = (key: string, values?: Record<string, string | number>): string => {
   const translation = i18nService.t(key);
   if (!values) {
     return translation;
@@ -111,8 +125,7 @@ const formatUpdatedAt = (updatedAt: string): string => {
 const statusClassNames: Record<KnowledgeDocumentStatus, string> = {
   [KnowledgeDocumentStatuses.Pending]: 'bg-slate-500/10 text-slate-700 dark:text-slate-300',
   [KnowledgeDocumentStatuses.Processing]: 'bg-blue-500/10 text-blue-700 dark:text-blue-300',
-  [KnowledgeDocumentStatuses.Ready]:
-    'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
+  [KnowledgeDocumentStatuses.Ready]: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
   [KnowledgeDocumentStatuses.CompletedWithoutText]:
     'bg-amber-500/10 text-amber-700 dark:text-amber-300',
   [KnowledgeDocumentStatuses.Failed]: 'bg-red-500/10 text-red-700 dark:text-red-300',
@@ -158,9 +171,7 @@ const KnowledgeDocumentRow = ({
   const jobIsActive =
     currentJob?.status === KnowledgeIngestionJobStatus.Queued ||
     currentJob?.status === KnowledgeIngestionJobStatus.Running;
-  const progress = Math.round(
-    Math.min(100, Math.max(0, (currentJob?.progress ?? 0) * 100)),
-  );
+  const progress = Math.round(Math.min(100, Math.max(0, (currentJob?.progress ?? 0) * 100)));
   const isDeleted = visibility === KnowledgeDocumentVisibilities.Deleted;
 
   return (
@@ -306,13 +317,9 @@ export const WorkspaceKnowledgeDocumentsPanelView = ({
   onCloseDetails,
 }: WorkspaceKnowledgeDocumentsPanelViewProps): React.ReactElement => {
   const sourceRows =
-    visibility === KnowledgeDocumentVisibilities.Active
-      ? state.documents
-      : state.deletedDocuments;
+    visibility === KnowledgeDocumentVisibilities.Active ? state.documents : state.deletedDocuments;
   const rows = filterKnowledgeDocuments(sourceRows, query, statusFilter);
-  const pendingDeleteDocument = state.documents.find(
-    document => document.id === pendingDeleteId,
-  );
+  const pendingDeleteDocument = state.documents.find(document => document.id === pendingDeleteId);
   const batchSummary = state.lastImportResult
     ? summarizeKnowledgeImportBatch(state.lastImportResult)
     : null;
@@ -371,9 +378,8 @@ export const WorkspaceKnowledgeDocumentsPanelView = ({
               }`}
               onClick={() => onVisibilityChange(KnowledgeDocumentVisibilities.Deleted)}
             >
-              {i18nService.t('enterpriseKnowledgeDeletedDocuments')} ({
-                state.deletedDocuments.length
-              })
+              {i18nService.t('enterpriseKnowledgeDeletedDocuments')} (
+              {state.deletedDocuments.length})
             </button>
           </div>
           <div className="flex min-w-[280px] flex-1 flex-wrap justify-end gap-2 sm:flex-nowrap">
@@ -583,8 +589,11 @@ const ignoreRejectedAction = (action: Promise<void>): void => {
 
 export default function WorkspaceKnowledgeDocumentsPanel({
   workspaceId,
+  initialImportResult,
+  onDocumentCountChange,
+  onWorkspaceProjectionChange,
 }: WorkspaceKnowledgeDocumentsPanelProps): React.ReactElement {
-  const state = useWorkspaceKnowledgeDocuments(workspaceId);
+  const state = useWorkspaceKnowledgeDocuments(workspaceId, initialImportResult);
   const [visibility, setVisibility] = useState<KnowledgeDocumentVisibility>(
     KnowledgeDocumentVisibilities.Active,
   );
@@ -592,7 +601,17 @@ export default function WorkspaceKnowledgeDocumentsPanel({
   const [statusFilter, setStatusFilter] = useState<KnowledgeDocumentStatusFilter>('all');
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
-  const actions = useMemo(() => createWorkspaceKnowledgeDocumentsPanelActions(state), [state]);
+  const actions = useMemo(
+    () => createWorkspaceKnowledgeDocumentsPanelActions(state, onWorkspaceProjectionChange),
+    [onWorkspaceProjectionChange, state],
+  );
+  const activeDocumentCount = getWorkspaceKnowledgeDocumentCount(state);
+
+  useEffect(() => {
+    if (activeDocumentCount !== null) {
+      onDocumentCountChange?.(activeDocumentCount);
+    }
+  }, [activeDocumentCount, onDocumentCountChange]);
 
   useEffect(() => {
     setVisibility(KnowledgeDocumentVisibilities.Active);

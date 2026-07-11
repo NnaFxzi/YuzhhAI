@@ -67,7 +67,11 @@ export class KnowledgeSelectionTokenStore {
     };
   }
 
-  consume(selectionToken: string, ownerId: number): SelectedKnowledgeFileEntry[] {
+  consume(
+    selectionToken: string,
+    ownerId: number,
+    itemIds?: readonly string[],
+  ): SelectedKnowledgeFileEntry[] {
     const normalizedToken = selectionToken.trim();
     const entry = normalizedToken ? this.entries.get(normalizedToken) : undefined;
     if (!entry || entry.ownerId !== ownerId) {
@@ -78,8 +82,29 @@ export class KnowledgeSelectionTokenStore {
       throw new KnowledgeSelectionTokenError(KnowledgeBaseErrorCodes.InvalidSelectionToken);
     }
 
+    let selectedFiles = entry.files;
+    if (itemIds !== undefined) {
+      const normalizedItemIds = Array.from(itemIds, itemId =>
+        typeof itemId === 'string' ? itemId.trim() : '',
+      );
+      const requestedItemIds = new Set(normalizedItemIds);
+      if (
+        normalizedItemIds.length === 0 ||
+        normalizedItemIds.length > KNOWLEDGE_MAX_SELECTION_FILES ||
+        requestedItemIds.size !== normalizedItemIds.length ||
+        normalizedItemIds.some(itemId => !itemId)
+      ) {
+        throw new KnowledgeSelectionTokenError(KnowledgeBaseErrorCodes.InvalidRequest);
+      }
+      const availableItemIds = new Set(entry.files.map(file => file.itemId));
+      if (normalizedItemIds.some(itemId => !availableItemIds.has(itemId))) {
+        throw new KnowledgeSelectionTokenError(KnowledgeBaseErrorCodes.InvalidRequest);
+      }
+      selectedFiles = entry.files.filter(file => requestedItemIds.has(file.itemId));
+    }
+
     this.entries.delete(normalizedToken);
-    return entry.files.map(file => ({ ...file }));
+    return selectedFiles.map(file => ({ ...file }));
   }
 
   clearOwner(ownerId: number): void {
