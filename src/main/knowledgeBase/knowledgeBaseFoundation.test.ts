@@ -36,9 +36,9 @@ describe('knowledge base foundation', () => {
   afterEach(async () => {
     databases.splice(0).forEach(database => database.close());
     await Promise.all(
-      temporaryDirectories.splice(0).map(directory =>
-        fs.rm(directory, { recursive: true, force: true }),
-      ),
+      temporaryDirectories
+        .splice(0)
+        .map(directory => fs.rm(directory, { recursive: true, force: true })),
     );
   });
 
@@ -101,9 +101,10 @@ describe('knowledge base foundation', () => {
     temporaryDirectories.push(userDataPath);
     const foundation = createKnowledgeBaseFoundation({ db, userDataPath });
 
-    await foundation.recoverMigrateAndStart([
-      { id: 'workspace-a', extractionSources: [] },
-    ], '2026-07-11T01:00:00.000Z');
+    await foundation.recoverMigrateAndStart(
+      [{ id: 'workspace-a', extractionSources: [] }],
+      '2026-07-11T01:00:00.000Z',
+    );
 
     expect(foundation.migrationStore.getState('workspace-a')?.status).toBe(
       KnowledgeMigrationStatus.Completed,
@@ -148,6 +149,55 @@ describe('knowledge base foundation', () => {
     const persistedSource = workspaceStore.getWorkspace(workspace.id)?.extractionSources[0];
     expect(migrated?.legacySourceId).toBeTruthy();
     expect(persistedSource?.id).toBe(migrated?.legacySourceId);
+  });
+
+  test('reconciles sources added after a completed startup pass', async () => {
+    const db = new Database(':memory:');
+    databases.push(db);
+    const userDataPath = await fs.mkdtemp(path.join(os.tmpdir(), 'lobsterai-foundation-'));
+    temporaryDirectories.push(userDataPath);
+    const workspaceStore = new EnterpriseLeadWorkspaceStore(db);
+    const workspace = workspaceStore.createWorkspace({
+      name: '持续迁移知识库',
+      type: 'enterprise_lead',
+      profile: {
+        companySummary: '',
+        productList: [],
+        productCapabilities: [],
+        targetCustomers: [],
+        applicationScenarios: [],
+        sellingPoints: [],
+        channelPreferences: [],
+        prohibitedClaims: [],
+        contactRules: [],
+        missingInfo: [],
+      },
+      extractionSources: [
+        {
+          id: 'legacy-first',
+          kind: 'manual',
+          label: '首批资料',
+          text: '首批正文',
+        },
+      ],
+      enabledAgentRoles: [],
+    });
+    const foundation = createKnowledgeBaseFoundation({ db, userDataPath, workspaceStore });
+
+    await foundation.recoverMigrateAndStart([workspace]);
+    const updatedWorkspace = workspaceStore.updateWorkspaceSources(workspace.id, [
+      ...workspaceStore.getWorkspace(workspace.id)!.extractionSources,
+      {
+        kind: 'manual',
+        label: '后续资料',
+        text: '后续正文',
+      },
+    ]);
+    await foundation.recoverMigrateAndStart([updatedWorkspace]);
+
+    expect(foundation.documentStore.listDocuments(workspace.id)).toHaveLength(2);
+    expect(workspaceStore.getWorkspace(workspace.id)?.extractionSources[1]?.id).toBeTruthy();
+    expect(foundation.migrationStore.getState(workspace.id)?.version).toBe(2);
   });
 
   test('migrates an unprocessed legacy file through the real worker boundary', async () => {
@@ -281,9 +331,9 @@ describe('knowledge base foundation', () => {
     );
     expect(foundation.jobStore.getJob(job.id)).toBeNull();
     expect(foundation.migrationStore.getState('workspace-a')).toBeNull();
-    expect(
-      db.prepare('SELECT COUNT(*) AS count FROM knowledge_document_versions').get(),
-    ).toEqual({ count: 0 });
+    expect(db.prepare('SELECT COUNT(*) AS count FROM knowledge_document_versions').get()).toEqual({
+      count: 0,
+    });
     expect(
       db.prepare('SELECT COUNT(*) AS count FROM knowledge_ingestion_job_attempts').get(),
     ).toEqual({ count: 0 });

@@ -30,6 +30,7 @@ import type {
   EnterpriseLeadWorkspaceSnapshot,
 } from '../../../shared/enterpriseLeadWorkspace/types';
 import { buildDefaultEnterpriseLeadWorkspaceSettings } from '../../../shared/enterpriseLeadWorkspace/validation';
+import type { KnowledgeImportBatchResult } from '../../../shared/knowledgeBase/types';
 import { enterpriseLeadWorkspaceService } from '../../services/enterpriseLeadWorkspace';
 import { i18nService } from '../../services/i18n';
 import agentReducer from '../../store/slices/agentSlice';
@@ -37,11 +38,9 @@ import authReducer from '../../store/slices/authSlice';
 import modelReducer from '../../store/slices/modelSlice';
 import skillReducer from '../../store/slices/skillSlice';
 import type { Skill } from '../../types/skill';
-import type { MaterialUploadItem } from './enterpriseLeadWorkspaceUi';
 import {
   buildCreationRecordConversationMessages,
   buildManualEnterpriseLeadWorkspaceDraft,
-  createWorkspaceFromUploadedMaterials,
   EnterpriseLeadEntryAction,
   EnterpriseLeadKnowledgeItemKind,
   EnterpriseLeadKnowledgeSection,
@@ -93,7 +92,7 @@ import {
   hasEnterpriseLeadWorkspaceProcessingSources,
 } from './EnterpriseLeadWorkspaceView';
 import type { WorkspaceConversationRecord } from './workspaceCoworkSessionRecords';
-import WorkspaceCreate, { createWorkspaceFromUploadedMaterial } from './WorkspaceCreate';
+import WorkspaceCreate from './WorkspaceCreate';
 import { getInitialCreationRecordId } from './WorkspaceCreationRecords';
 import WorkspaceEntryHome, {
   WorkspaceDeleteConfirmDialog,
@@ -750,6 +749,152 @@ describe('enterprise lead workspace UI helpers', () => {
     }
   });
 
+  test('does not let a pending creation refresh override later internal navigation', async () => {
+    await vi.resetModules();
+    const restoreDom = installFakeDom();
+
+    const ReactInner = await import('react');
+    const { configureStore } = await import('@reduxjs/toolkit');
+    const { Provider } = await import('react-redux');
+    const { createRoot } = await import('react-dom/client');
+    const { act } = ReactInner;
+    const coworkModule = await import('../../services/cowork');
+    const enterpriseLeadWorkspaceModule = await import('../../services/enterpriseLeadWorkspace');
+    const { default: coworkReducer } = await import('../../store/slices/coworkSlice');
+
+    let entryHomeProps: { onCreate: () => void } | null = null;
+    let createProps: {
+      onCreated: (workspaceId: string, result?: KnowledgeImportBatchResult) => void;
+    } | null = null;
+    type CapturedShellProps = {
+      activePage: EnterpriseLeadWorkspaceInternalPage;
+      onPageChange: (page: EnterpriseLeadWorkspaceInternalPage) => void;
+    };
+    let shellProps: CapturedShellProps | null = null;
+    const requireShellProps = (): CapturedShellProps => {
+      const captured = shellProps as CapturedShellProps | null;
+      if (!captured) {
+        throw new Error('Workspace shell was not rendered');
+      }
+      return captured;
+    };
+
+    vi.doMock('./WorkspaceEntryHome', () => ({
+      default: (props: { onCreate: () => void }) => {
+        entryHomeProps = props;
+        return ReactInner.createElement('div', { 'data-testid': 'workspace-entry-home' });
+      },
+    }));
+    vi.doMock('./WorkspaceCreate', () => ({
+      default: (props: {
+        onCreated: (workspaceId: string, result?: KnowledgeImportBatchResult) => void;
+      }) => {
+        createProps = props;
+        return ReactInner.createElement('div', { 'data-testid': 'workspace-create' });
+      },
+    }));
+    vi.doMock('./WorkspaceShell', () => ({
+      default: (props: {
+        activePage: EnterpriseLeadWorkspaceInternalPage;
+        onPageChange: (page: EnterpriseLeadWorkspaceInternalPage) => void;
+        children?: React.ReactNode;
+      }) => {
+        shellProps = props;
+        return ReactInner.createElement(
+          'div',
+          { 'data-testid': 'workspace-shell' },
+          props.children,
+        );
+      },
+    }));
+    vi.doMock('./WorkspaceStart', () => ({
+      default: () => ReactInner.createElement('div', { 'data-testid': 'workspace-start' }),
+    }));
+    vi.doMock('./WorkspaceKnowledgeBase', () => ({
+      default: () => ReactInner.createElement('div', { 'data-testid': 'workspace-knowledge-base' }),
+    }));
+    vi.doMock('./WorkspaceWorkbench', () => ({
+      default: () => ReactInner.createElement('div', { 'data-testid': 'workspace-workbench' }),
+    }));
+    vi.doMock('../cowork/CoworkSearchModal', () => ({
+      default: () => ReactInner.createElement('div', { 'data-testid': 'cowork-search-modal' }),
+    }));
+    vi.doMock('../cowork', () => ({
+      CoworkView: () => ReactInner.createElement('div', { 'data-testid': 'cowork-view' }),
+    }));
+
+    const { coworkService } = coworkModule;
+    const { enterpriseLeadWorkspaceService } = enterpriseLeadWorkspaceModule;
+    const { EnterpriseLeadWorkspaceView: IsolatedEnterpriseLeadWorkspaceView } =
+      await import('./EnterpriseLeadWorkspaceView');
+    const workspace = createWorkspace('workspace-creation-race');
+    const pendingRefresh = createDeferred<EnterpriseLeadWorkspace[]>();
+    const testStore = configureStore({
+      reducer: {
+        cowork: coworkReducer,
+      },
+    });
+
+    vi.spyOn(enterpriseLeadWorkspaceService, 'listWorkspaces')
+      .mockResolvedValueOnce([])
+      .mockImplementationOnce(() => pendingRefresh.promise)
+      .mockResolvedValue([workspace]);
+    vi.spyOn(enterpriseLeadWorkspaceService, 'getWorkspace').mockResolvedValue(workspace);
+    vi.spyOn(coworkService, 'loadSessions').mockResolvedValue(undefined);
+
+    const container = document.createElement('div');
+    const root = createRoot(container);
+
+    try {
+      await act(async () => {
+        root.render(
+          ReactInner.createElement(Provider, {
+            store: testStore,
+            children: ReactInner.createElement(IsolatedEnterpriseLeadWorkspaceView, {
+              onPrepareCoworkChat: vi.fn(),
+            }),
+          }),
+        );
+      });
+
+      await act(async () => {
+        entryHomeProps?.onCreate();
+      });
+      expect(createProps).not.toBeNull();
+
+      await act(async () => {
+        createProps?.onCreated(workspace.id, {
+          importedCount: 1,
+          failedCount: 1,
+          items: [],
+        });
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(requireShellProps().activePage).toBe(
+        EnterpriseLeadWorkspaceInternalPage.KnowledgeBase,
+      );
+
+      await act(async () => {
+        requireShellProps().onPageChange(EnterpriseLeadWorkspaceInternalPage.Workbench);
+      });
+      expect(requireShellProps().activePage).toBe(EnterpriseLeadWorkspaceInternalPage.Workbench);
+
+      await act(async () => {
+        pendingRefresh.resolve([workspace]);
+        await pendingRefresh.promise;
+        await Promise.resolve();
+      });
+
+      expect(requireShellProps().activePage).toBe(EnterpriseLeadWorkspaceInternalPage.Workbench);
+    } finally {
+      await act(async () => {
+        root.unmount();
+      });
+      restoreDom();
+    }
+  });
+
   test('does not render the workspace exit action in the top title bar', async () => {
     await vi.resetModules();
     const restoreDom = installFakeDom();
@@ -1308,73 +1453,6 @@ describe('enterprise lead workspace UI helpers', () => {
       label: '粘贴内容',
       text: '目标客户是汽车零部件企业。',
     });
-  });
-
-  test('creates uploaded material workspace before background document processing finishes', async () => {
-    const createdWorkspace = {
-      ...createWorkspace('workspace-1'),
-      extractionSources: [
-        {
-          kind: EnterpriseLeadExtractionSourceKind.File,
-          label: 'factory.md',
-          fileName: 'factory.md',
-          fileSize: 128,
-          text: '主营精密五金加工。',
-          extractionStatus: EnterpriseLeadDocumentExtractionStatus.Pending,
-          vectorIndexStatus: EnterpriseLeadKnowledgeIndexStatus.Pending,
-        },
-      ],
-    };
-    const createWorkspaceSpy = vi
-      .spyOn(enterpriseLeadWorkspaceService, 'createWorkspace')
-      .mockResolvedValue(createdWorkspace);
-    const extractDraftSpy = vi
-      .spyOn(enterpriseLeadWorkspaceService, 'extractDraft')
-      .mockReturnValue(new Promise(() => undefined));
-    const processDocumentSourceSpy = vi
-      .spyOn(enterpriseLeadWorkspaceService, 'processDocumentSource')
-      .mockReturnValue(new Promise(() => undefined));
-    const onCreated = vi.fn();
-
-    const creationResult = createWorkspaceFromUploadedMaterial({
-      workspaceName: '  五金工厂拓客  ',
-      sourceText: '  主营精密五金加工。  ',
-      sourceLabel: 'factory.md',
-      fileName: 'factory.md',
-      fileSize: 128,
-      settings: buildDefaultEnterpriseLeadWorkspaceSettings(),
-      onCreated,
-    });
-    const racedResult = await Promise.race([
-      creationResult.then(result => result?.id ?? ''),
-      new Promise<string>(resolve => {
-        setTimeout(() => resolve('blocked-by-processing'), 0);
-      }),
-    ]);
-
-    expect(racedResult).toBe('workspace-1');
-    expect(extractDraftSpy).not.toHaveBeenCalled();
-    expect(createWorkspaceSpy).toHaveBeenCalledWith(
-      expect.objectContaining({
-        name: '五金工厂拓客',
-        profile: emptyProfile(),
-        source: expect.objectContaining({
-          kind: EnterpriseLeadExtractionSourceKind.File,
-          label: 'factory.md',
-          fileName: 'factory.md',
-          fileSize: 128,
-          text: '主营精密五金加工。',
-          extractionStatus: EnterpriseLeadDocumentExtractionStatus.Pending,
-          vectorIndexStatus: EnterpriseLeadKnowledgeIndexStatus.Pending,
-        }),
-      }),
-    );
-    expect(processDocumentSourceSpy).toHaveBeenCalledWith(
-      'workspace-1',
-      createdWorkspace.extractionSources,
-      0,
-    );
-    expect(onCreated).toHaveBeenCalledWith('workspace-1');
   });
 
   test('computes profile completion from six populated profile groups', () => {
@@ -3814,337 +3892,5 @@ describe('enterprise lead workspace UI helpers', () => {
 
     expect(onSaved).not.toHaveBeenCalled();
     expect(onError).not.toHaveBeenCalled();
-  });
-});
-
-const stubWindow = (api: Record<string, unknown>): void => {
-  vi.stubGlobal('window', { electron: { enterpriseLeadWorkspace: api } });
-};
-
-const buildWorkspace = (
-  sources: Array<{ kind: string; label: string; text?: string }>,
-): unknown => ({
-  id: 'ws-1',
-  name: '华东线索',
-  type: 'enterprise_lead',
-  profile: {
-    companySummary: '',
-    productList: [],
-    productCapabilities: [],
-    targetCustomers: [],
-    applicationScenarios: [],
-    sellingPoints: [],
-    channelPreferences: [],
-    prohibitedClaims: [],
-    contactRules: [],
-    missingInfo: [],
-  },
-  extractionSources: sources.map((s, i) => ({ id: `s-${i}`, ...s })),
-  riskRules: [],
-  enabledAgentRoles: [],
-  workspaceAgents: [],
-  settings: {},
-  recentRunId: null,
-  createdAt: '2026-07-10T00:00:00.000Z',
-  updatedAt: '2026-07-10T00:00:00.000Z',
-});
-
-describe('createWorkspaceFromUploadedMaterials', () => {
-  afterEach(() => {
-    vi.unstubAllGlobals();
-    vi.restoreAllMocks();
-  });
-
-  test('creates a workspace with all materials as separate extractionSources', async () => {
-    const createWorkspace = vi.fn(async () => ({ success: true, data: buildWorkspace([]) }));
-    stubWindow({ createWorkspace });
-
-    const items: MaterialUploadItem[] = [
-      { id: 'a', filePath: '/p/a.pdf', fileName: 'a.pdf', fileSize: 100, kind: 'file', text: '主营' },
-      { id: 'b', filePath: '/p/b.png', fileName: 'b.png', fileSize: 50, kind: 'image' },
-    ];
-
-    const onCreated = vi.fn();
-    await createWorkspaceFromUploadedMaterials({
-      workspaceName: 'ws',
-      items,
-      onCreated,
-      service: enterpriseLeadWorkspaceService,
-    });
-
-    expect(createWorkspace).toHaveBeenCalledTimes(1);
-    const arg = createWorkspace.mock.calls[0]?.[0] as { extractionSources?: unknown[] };
-    expect(Array.isArray(arg.extractionSources)).toBe(true);
-    expect(arg.extractionSources).toHaveLength(2);
-    expect(onCreated).toHaveBeenCalledWith('ws-1');
-  });
-
-  test('processes each source that has text; swallows per-source failures', async () => {
-    const created = buildWorkspace([
-      { kind: 'file', label: 'a', text: 'foo' },
-      { kind: 'image', label: 'b' },
-    ]);
-    const createWorkspace = vi.fn(async () => ({ success: true, data: created }));
-    const processDocumentSource = vi.fn(async () => ({ success: true, data: created }));
-    stubWindow({ createWorkspace, processDocumentSource });
-
-    const consoleWarn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
-
-    await createWorkspaceFromUploadedMaterials({
-      workspaceName: 'ws',
-      items: [
-        { id: 'a', filePath: '/p/a', fileName: 'a', fileSize: 1, kind: 'file', text: 'foo' },
-        { id: 'b', filePath: '/p/b', fileName: 'b', fileSize: 1, kind: 'image' },
-      ],
-      onCreated: vi.fn(),
-      service: enterpriseLeadWorkspaceService,
-    });
-
-    // Only the source with text triggers processing
-    expect(processDocumentSource).toHaveBeenCalledTimes(1);
-    expect(processDocumentSource).toHaveBeenCalledWith('ws-1', expect.any(Array), 0);
-
-    // Now confirm the swallowed-failure path
-    processDocumentSource.mockRejectedValueOnce(new Error('boom'));
-    await createWorkspaceFromUploadedMaterials({
-      workspaceName: 'ws',
-      items: [
-        { id: 'c', filePath: '/p/c', fileName: 'c', fileSize: 1, kind: 'file', text: 'bar' },
-      ],
-      onCreated: vi.fn(),
-      service: enterpriseLeadWorkspaceService,
-    });
-    await new Promise<void>(resolve => queueMicrotask(() => resolve()));
-    expect(consoleWarn).toHaveBeenCalledWith(
-      expect.stringContaining('Failed to queue uploaded material processing'),
-      expect.any(Error),
-    );
-  });
-
-  test('returns null and skips onCreated when createWorkspace reports failure', async () => {
-    const createWorkspace = vi.fn(async () => ({ success: false, error: 'db down' }));
-    stubWindow({ createWorkspace });
-    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
-
-    const onCreated = vi.fn();
-    const result = await createWorkspaceFromUploadedMaterials({
-      workspaceName: 'ws',
-      items: [
-        { id: 'a', filePath: '/p/a', fileName: 'a', fileSize: 1, kind: 'file', text: 'x' },
-      ],
-      onCreated,
-      service: enterpriseLeadWorkspaceService,
-    });
-
-    expect(result).toBeNull();
-    expect(onCreated).not.toHaveBeenCalled();
-    expect(consoleError).toHaveBeenCalledWith(
-      expect.stringContaining('createWorkspace failed'),
-      'db down',
-    );
-  });
-
-  test('first item label is used as the seed sourceLabel fallback', async () => {
-    const createWorkspace = vi.fn(async () => ({ success: true, data: buildWorkspace([]) }));
-    stubWindow({ createWorkspace });
-
-    await createWorkspaceFromUploadedMaterials({
-      workspaceName: 'ws',
-      items: [
-        { id: 'first', filePath: '/p/first', fileName: 'first.pdf', fileSize: 1, kind: 'file', text: 'x' },
-      ],
-      onCreated: vi.fn(),
-      service: enterpriseLeadWorkspaceService,
-    });
-
-    const arg = createWorkspace.mock.calls[0]?.[0] as {
-      source?: { label?: string };
-      extractionSources?: Array<{ label?: string }>;
-    };
-    expect(arg.extractionSources?.[0]?.label).toBe('first.pdf');
-  });
-
-  test('marks image-only sources as extracted and indexed so the UI does not show pending forever', async () => {
-    const createWorkspace = vi.fn(async () => ({ success: true, data: buildWorkspace([]) }));
-    stubWindow({ createWorkspace });
-
-    await createWorkspaceFromUploadedMaterials({
-      workspaceName: 'ws',
-      items: [
-        { id: 'img', filePath: '/p/photo.png', fileName: 'photo.png', fileSize: 50, kind: 'image' },
-      ],
-      onCreated: vi.fn(),
-      service: enterpriseLeadWorkspaceService,
-    });
-
-    const arg = createWorkspace.mock.calls[0]?.[0] as {
-      source?: {
-        extractionStatus?: string;
-        vectorIndexStatus?: string;
-      };
-      extractionSources?: Array<{
-        extractionStatus?: string;
-        vectorIndexStatus?: string;
-      }>;
-    };
-
-    expect(arg.source?.extractionStatus).toBe('extracted');
-    expect(arg.source?.vectorIndexStatus).toBe('indexed');
-    expect(arg.extractionSources?.[0]?.extractionStatus).toBe('extracted');
-    expect(arg.extractionSources?.[0]?.vectorIndexStatus).toBe('indexed');
-  });
-
-  test('keeps pending status only for sources that have text in a mixed upload list', async () => {
-    const createWorkspace = vi.fn(async () => ({ success: true, data: buildWorkspace([]) }));
-    stubWindow({ createWorkspace });
-
-    await createWorkspaceFromUploadedMaterials({
-      workspaceName: 'ws',
-      items: [
-        { id: 'a', filePath: '/p/a.pdf', fileName: 'a.pdf', fileSize: 100, kind: 'file', text: '主营' },
-        { id: 'b', filePath: '/p/b.png', fileName: 'b.png', fileSize: 50, kind: 'image' },
-      ],
-      onCreated: vi.fn(),
-      service: enterpriseLeadWorkspaceService,
-    });
-
-    const arg = createWorkspace.mock.calls[0]?.[0] as {
-      source?: {
-        extractionStatus?: string;
-        vectorIndexStatus?: string;
-      };
-      extractionSources?: Array<{
-        kind?: string;
-        extractionStatus?: string;
-        vectorIndexStatus?: string;
-      }>;
-    };
-
-    expect(arg.source?.extractionStatus).toBe('pending');
-    expect(arg.source?.vectorIndexStatus).toBe('pending');
-    expect(arg.extractionSources?.[0]?.extractionStatus).toBe('pending');
-    expect(arg.extractionSources?.[0]?.vectorIndexStatus).toBe('pending');
-    expect(arg.extractionSources?.[1]?.extractionStatus).toBe('extracted');
-    expect(arg.extractionSources?.[1]?.vectorIndexStatus).toBe('indexed');
-  });
-
-  test('runs OCR on image items without pre-existing text and uses the result as source text', async () => {
-    const createWorkspace = vi.fn(async () => ({ success: true, data: buildWorkspace([]) }));
-    stubWindow({ createWorkspace });
-
-    const extractImageText = vi.fn(async (filePath: string) => ({
-      success: true,
-      content: filePath.includes('photo') ? 'ocr transcription for photo' : 'ocr transcription',
-    }));
-    const ocrService = { extractImageText };
-    const onOcrProgress = vi.fn();
-
-    const items: MaterialUploadItem[] = [
-      {
-        id: 'img-1',
-        filePath: '/p/photo.png',
-        fileName: 'photo.png',
-        fileSize: 1024,
-        kind: 'image',
-      },
-    ];
-
-    await createWorkspaceFromUploadedMaterials({
-      workspaceName: 'ws',
-      items,
-      onCreated: vi.fn(),
-      service: enterpriseLeadWorkspaceService,
-      ocrService,
-      onOcrProgress,
-    });
-
-    expect(extractImageText).toHaveBeenCalledTimes(1);
-    expect(extractImageText).toHaveBeenCalledWith('/p/photo.png');
-
-    const arg = createWorkspace.mock.calls[0]?.[0] as {
-      extractionSources?: Array<{ text?: string }>;
-    };
-    expect(arg.extractionSources?.[0]?.text).toBe('ocr transcription for photo');
-  });
-
-  test('skips OCR when the image item already has text', async () => {
-    const createWorkspace = vi.fn(async () => ({ success: true, data: buildWorkspace([]) }));
-    stubWindow({ createWorkspace });
-
-    const extractImageText = vi.fn(async () => ({ success: true, content: 'ignored' }));
-    const ocrService = { extractImageText };
-
-    await createWorkspaceFromUploadedMaterials({
-      workspaceName: 'ws',
-      items: [
-        {
-          id: 'img-existing',
-          filePath: '/p/existing.png',
-          fileName: 'existing.png',
-          fileSize: 1024,
-          kind: 'image',
-          text: 'already extracted text',
-        },
-      ],
-      onCreated: vi.fn(),
-      service: enterpriseLeadWorkspaceService,
-      ocrService,
-    });
-
-    expect(extractImageText).not.toHaveBeenCalled();
-  });
-
-  test('falls back to attachment-only when OCR fails', async () => {
-    const createWorkspace = vi.fn(async () => ({ success: true, data: buildWorkspace([]) }));
-    stubWindow({ createWorkspace });
-
-    const extractImageText = vi.fn(async () => ({
-      success: false,
-      error: 'OCR unavailable',
-    }));
-    const ocrService = { extractImageText };
-
-    await createWorkspaceFromUploadedMaterials({
-      workspaceName: 'ws',
-      items: [
-        {
-          id: 'img-fail',
-          filePath: '/p/fail.png',
-          fileName: 'fail.png',
-          fileSize: 2048,
-          kind: 'image',
-        },
-      ],
-      onCreated: vi.fn(),
-      service: enterpriseLeadWorkspaceService,
-      ocrService,
-    });
-
-    expect(extractImageText).toHaveBeenCalledTimes(1);
-    const arg = createWorkspace.mock.calls[0]?.[0] as {
-      extractionSources?: Array<{ text?: string; extractionStatus?: string }>;
-    };
-    expect(arg.extractionSources?.[0]?.text).toBeUndefined();
-    expect(arg.extractionSources?.[0]?.extractionStatus).toBe('extracted');
-  });
-
-  test('does not call OCR for non-image items', async () => {
-    const createWorkspace = vi.fn(async () => ({ success: true, data: buildWorkspace([]) }));
-    stubWindow({ createWorkspace });
-
-    const extractImageText = vi.fn(async () => ({ success: true, content: 'should not run' }));
-    const ocrService = { extractImageText };
-
-    await createWorkspaceFromUploadedMaterials({
-      workspaceName: 'ws',
-      items: [
-        { id: 'txt', filePath: '/p/a.txt', fileName: 'a.txt', fileSize: 10, kind: 'file', text: 'plain text content' },
-      ],
-      onCreated: vi.fn(),
-      service: enterpriseLeadWorkspaceService,
-      ocrService,
-    });
-
-    expect(extractImageText).not.toHaveBeenCalled();
   });
 });

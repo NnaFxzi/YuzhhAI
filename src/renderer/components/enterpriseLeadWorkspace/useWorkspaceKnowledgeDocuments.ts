@@ -9,10 +9,7 @@ import type {
   KnowledgeDocumentListItem,
   KnowledgeImportBatchResult,
 } from '../../../shared/knowledgeBase/types';
-import {
-  knowledgeBaseService,
-  KnowledgeBaseServiceError,
-} from '../../services/knowledgeBase';
+import { knowledgeBaseService, KnowledgeBaseServiceError } from '../../services/knowledgeBase';
 import { shouldPollKnowledgeDocuments } from './knowledgeDocumentPresentation';
 
 const KNOWLEDGE_DOCUMENT_POLL_INTERVAL_MS = 2_000;
@@ -128,20 +125,19 @@ export interface KnowledgeDocumentRequestSequencer {
   invalidate: () => void;
 }
 
-export const createKnowledgeDocumentRequestSequencer =
-  (): KnowledgeDocumentRequestSequencer => {
-    let currentRequestId = 0;
-    return {
-      next: () => {
-        currentRequestId += 1;
-        return currentRequestId;
-      },
-      isCurrent: requestId => requestId === currentRequestId,
-      invalidate: () => {
-        currentRequestId += 1;
-      },
-    };
+export const createKnowledgeDocumentRequestSequencer = (): KnowledgeDocumentRequestSequencer => {
+  let currentRequestId = 0;
+  return {
+    next: () => {
+      currentRequestId += 1;
+      return currentRequestId;
+    },
+    isCurrent: requestId => requestId === currentRequestId,
+    invalidate: () => {
+      currentRequestId += 1;
+    },
   };
+};
 
 type KnowledgeBaseServiceApi = typeof knowledgeBaseService;
 
@@ -166,6 +162,7 @@ export interface WorkspaceKnowledgeDocumentsState {
 
 export const useWorkspaceKnowledgeDocuments = (
   workspaceId: string,
+  initialImportResult?: KnowledgeImportBatchResult,
   service: KnowledgeBaseServiceApi = knowledgeBaseService,
 ): WorkspaceKnowledgeDocumentsState => {
   const [documents, setDocuments] = useState<KnowledgeDocumentListItem[]>([]);
@@ -192,16 +189,13 @@ export const useWorkspaceKnowledgeDocuments = (
       : new KnowledgeBaseServiceError(KnowledgeBaseErrorCode.PersistenceFailed);
   }, []);
 
-  const loadVisibleDocuments = useCallback(
-    async (): Promise<KnowledgeDocumentListItem[]> => {
-      const [active, deleted] = await Promise.all([
-        service.listDocuments(workspaceId, KnowledgeDocumentVisibilities.Active),
-        service.listDocuments(workspaceId, KnowledgeDocumentVisibilities.Deleted),
-      ]);
-      return [...active, ...deleted];
-    },
-    [service, workspaceId],
-  );
+  const loadVisibleDocuments = useCallback(async (): Promise<KnowledgeDocumentListItem[]> => {
+    const [active, deleted] = await Promise.all([
+      service.listDocuments(workspaceId, KnowledgeDocumentVisibilities.Active),
+      service.listDocuments(workspaceId, KnowledgeDocumentVisibilities.Deleted),
+    ]);
+    return [...active, ...deleted];
+  }, [service, workspaceId]);
 
   const refresh = useCallback(async (): Promise<void> => {
     const generation = generationRef.current;
@@ -210,17 +204,11 @@ export const useWorkspaceKnowledgeDocuments = (
     try {
       await pollerRef.current?.refresh();
     } catch (caught) {
-      if (
-        generationRef.current === generation &&
-        workspaceIdRef.current === requestWorkspaceId
-      ) {
+      if (generationRef.current === generation && workspaceIdRef.current === requestWorkspaceId) {
         setError(toServiceError(caught));
       }
     } finally {
-      if (
-        generationRef.current === generation &&
-        workspaceIdRef.current === requestWorkspaceId
-      ) {
+      if (generationRef.current === generation && workspaceIdRef.current === requestWorkspaceId) {
         setIsLoading(false);
       }
     }
@@ -235,7 +223,7 @@ export const useWorkspaceKnowledgeDocuments = (
     setSelectedDetails(null);
     setSelectedDocumentId(null);
     setIsDetailsLoading(false);
-    setLastImportResult(null);
+    setLastImportResult(initialImportResult ?? null);
     setError(null);
     setIsLoading(true);
     setIsMutating(false);
@@ -265,7 +253,7 @@ export const useWorkspaceKnowledgeDocuments = (
         pollerRef.current = null;
       }
     };
-  }, [loadVisibleDocuments, toServiceError, workspaceId]);
+  }, [initialImportResult, loadVisibleDocuments, toServiceError, workspaceId]);
 
   useEffect(() => {
     pollerRef.current?.update([...documents, ...deletedDocuments]);
@@ -306,8 +294,7 @@ export const useWorkspaceKnowledgeDocuments = (
         return await runKnowledgeDocumentGenerationTask({
           operation,
           isCurrent: () =>
-            generationRef.current === generation &&
-            workspaceIdRef.current === operationWorkspaceId,
+            generationRef.current === generation && workspaceIdRef.current === operationWorkspaceId,
           onCurrentSuccess,
           onCurrentError: caught => {
             const serviceError = toServiceError(caught);
@@ -373,10 +360,7 @@ export const useWorkspaceKnowledgeDocuments = (
       ),
     retryDocument: document =>
       runMutation(
-        () =>
-          service
-            .retryDocument(document.id, document.currentVersionId)
-            .then(() => undefined),
+        () => service.retryDocument(document.id, document.currentVersionId).then(() => undefined),
         refresh,
       ),
     loadDetails: async documentId => {

@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 
 import {
   EnterpriseLeadDocumentExtractionStatus,
@@ -9,11 +9,12 @@ import {
   EnterpriseLeadKnowledgeIndexStatus,
   EnterpriseLeadSourceDocumentFileFilterExtensions,
 } from '../../../shared/enterpriseLeadWorkspace/constants';
-import type { EnterpriseLeadExtractionSource } from '../../../shared/enterpriseLeadWorkspace/types';
-import {
-  EnterpriseLeadKnowledgeItemKind,
-  EnterpriseLeadKnowledgeSection,
-} from './enterpriseLeadWorkspaceUi';
+import type {
+  EnterpriseLeadExtractionSource,
+  EnterpriseLeadWorkspace,
+} from '../../../shared/enterpriseLeadWorkspace/types';
+import { buildDefaultEnterpriseLeadWorkspaceSettings } from '../../../shared/enterpriseLeadWorkspace/validation';
+import { EnterpriseLeadKnowledgeItemKind, EnterpriseLeadKnowledgeSection, } from './enterpriseLeadWorkspaceUi';
 import {
   canPreviewEnterpriseLeadOriginalDocument,
   canRetryEnterpriseLeadDocumentProcessing,
@@ -32,6 +33,7 @@ import {
   enterpriseLeadKnowledgeMessageAutoDismissMs,
   enterpriseLeadKnowledgeMessageSuccessAccentClassName,
   enterpriseLeadKnowledgeMessageToneClassNames,
+  EnterpriseLeadKnowledgeMetric,
   enterpriseLeadKnowledgeRowArchiveActionClassName,
   enterpriseLeadKnowledgeTableColumnClassNames,
   enterpriseLeadKnowledgeVectorIndexStatusClassNames,
@@ -70,11 +72,117 @@ describe('WorkspaceKnowledgeBase layout', () => {
     );
 
     expect(source).toContain('WorkspaceKnowledgeDocumentsPanel');
-    expect(source).toContain(
-      '<WorkspaceKnowledgeDocumentsPanel workspaceId={currentWorkspace.id}',
-    );
+    expect(source).toContain('workspaceId={currentWorkspace.id}');
+    expect(source).toContain('initialImportResult={pendingInitialImportResult}');
+    expect(source).toContain('onInitialImportResultConsumed');
+    expect(source).toContain('setPendingInitialImportResult(undefined)');
+    expect(source).toContain('normalizedDocumentCount ?? documentRows.length');
+    expect(source).toContain('onDocumentCountChange={setNormalizedDocumentCount}');
+    expect(source).toContain('onWorkspaceProjectionChange={handleWorkspaceProjectionChange}');
+    expect(source).toContain('workspaceProjectionMountedRef.current');
+    expect(source).toContain('workspacePropRef.current === workspacePropAtRequest');
     expect(source).not.toContain('resolveEnterpriseLeadKnowledgeDocumentUpload');
     expect(source).not.toContain('window.electron.dialog');
+    expect(source).not.toContain('knowledge_readonly');
+    expect(source).not.toContain('enterpriseLeadKnowledgeFilterReadonly');
+  });
+
+  test('publishes only the current workspace projection after a document mutation', async () => {
+    type RefreshWorkspaceProjection = (input: {
+      workspaceId: string;
+      loadWorkspace: (workspaceId: string) => Promise<EnterpriseLeadWorkspace | null>;
+      isCurrent: () => boolean;
+      onWorkspaceUpdated: (workspace: EnterpriseLeadWorkspace) => void;
+    }) => Promise<EnterpriseLeadWorkspace | null>;
+    const module = await import('./WorkspaceKnowledgeBase');
+    const refreshWorkspaceProjection = (
+      module as unknown as {
+        refreshWorkspaceAfterKnowledgeDocumentMutation?: RefreshWorkspaceProjection;
+      }
+    ).refreshWorkspaceAfterKnowledgeDocumentMutation;
+
+    expect(refreshWorkspaceProjection).toEqual(expect.any(Function));
+    if (!refreshWorkspaceProjection) {
+      return;
+    }
+
+    const updatedWorkspace: EnterpriseLeadWorkspace = {
+      id: 'workspace-a',
+      name: '统一知识库',
+      type: 'enterprise_lead',
+      profile: {
+        companySummary: '',
+        productList: [],
+        productCapabilities: [],
+        targetCustomers: [],
+        applicationScenarios: [],
+        sellingPoints: [],
+        channelPreferences: [],
+        prohibitedClaims: [],
+        contactRules: [],
+        missingInfo: [],
+      },
+      extractionSources: [
+        {
+          id: 'knowledge-document:document-a',
+          kind: EnterpriseLeadExtractionSourceKind.File,
+          label: '追加资料.pdf',
+          fileName: '追加资料.pdf',
+        },
+      ],
+      riskRules: [],
+      enabledAgentRoles: [],
+      settings: buildDefaultEnterpriseLeadWorkspaceSettings(),
+      workspaceAgents: [],
+      recentRunId: null,
+      createdAt: '2026-07-11T00:00:00.000Z',
+      updatedAt: '2026-07-11T01:00:00.000Z',
+    };
+    const loadWorkspace = vi.fn(async () => updatedWorkspace);
+    const onWorkspaceUpdated = vi.fn();
+
+    await expect(
+      refreshWorkspaceProjection({
+        workspaceId: updatedWorkspace.id,
+        loadWorkspace,
+        isCurrent: () => true,
+        onWorkspaceUpdated,
+      }),
+    ).resolves.toBe(updatedWorkspace);
+    expect(loadWorkspace).toHaveBeenCalledWith(updatedWorkspace.id);
+    expect(onWorkspaceUpdated).toHaveBeenCalledWith(updatedWorkspace);
+
+    loadWorkspace.mockClear();
+    onWorkspaceUpdated.mockClear();
+    await expect(
+      refreshWorkspaceProjection({
+        workspaceId: updatedWorkspace.id,
+        loadWorkspace,
+        isCurrent: () => false,
+        onWorkspaceUpdated,
+      }),
+    ).resolves.toBeNull();
+    expect(loadWorkspace).not.toHaveBeenCalled();
+    expect(onWorkspaceUpdated).not.toHaveBeenCalled();
+
+    let resolveWorkspace!: (workspace: EnterpriseLeadWorkspace | null) => void;
+    const deferredWorkspace = new Promise<EnterpriseLeadWorkspace | null>(resolve => {
+      resolveWorkspace = resolve;
+    });
+    let isCurrent = true;
+    const deferredUpdate = vi.fn();
+    const pendingRefresh = refreshWorkspaceProjection({
+      workspaceId: updatedWorkspace.id,
+      loadWorkspace: async () => deferredWorkspace,
+      isCurrent: () => isCurrent,
+      onWorkspaceUpdated: deferredUpdate,
+    });
+
+    isCurrent = false;
+    resolveWorkspace(updatedWorkspace);
+
+    await expect(pendingRefresh).resolves.toBeNull();
+    expect(deferredUpdate).not.toHaveBeenCalled();
   });
 
   const getPercent = (className: string): number => {
@@ -384,22 +492,27 @@ describe('WorkspaceKnowledgeBase layout', () => {
   });
 
   test('maps top metrics to knowledge table filters', () => {
-    expect(getEnterpriseLeadKnowledgeMetricFilter('documents')).toMatchObject({
+    expect(
+      getEnterpriseLeadKnowledgeMetricFilter(EnterpriseLeadKnowledgeMetric.Documents),
+    ).toMatchObject({
       activeView: 'documents',
       documentStatusFilter: 'all',
     });
-    expect(getEnterpriseLeadKnowledgeMetricFilter('knowledge_all')).toMatchObject({
-      activeView: 'knowledge',
-      statusFilter: 'all',
-    });
-    expect(getEnterpriseLeadKnowledgeMetricFilter('knowledge_pending')).toMatchObject({
+    expect(getEnterpriseLeadKnowledgeMetricFilter(EnterpriseLeadKnowledgeMetric.All)).toMatchObject(
+      {
+        activeView: 'knowledge',
+        statusFilter: 'all',
+      },
+    );
+    expect(
+      getEnterpriseLeadKnowledgeMetricFilter(EnterpriseLeadKnowledgeMetric.Pending),
+    ).toMatchObject({
       activeView: 'knowledge',
       statusFilter: 'pending',
     });
-    expect(getEnterpriseLeadKnowledgeMetricFilter('knowledge_readonly')).toMatchObject({
-      activeView: 'knowledge',
-      statusFilter: 'readonly',
-    });
+    expect(
+      getEnterpriseLeadKnowledgeMetricFilter(EnterpriseLeadKnowledgeMetric.Confirmed),
+    ).toMatchObject({ activeView: 'knowledge', statusFilter: 'confirmed' });
   });
 
   test('does not open a detail panel from AI knowledge table selection', () => {
@@ -408,7 +521,12 @@ describe('WorkspaceKnowledgeBase layout', () => {
     expect(shouldShowEnterpriseLeadKnowledgeDetailPanel('knowledge', 'product-0')).toBe(false);
   });
 
-  test('hides recent deliverables and archives from the AI knowledge table', () => {
+  test('shows only derived knowledge sections in the AI knowledge table', () => {
+    expect(
+      isEnterpriseLeadKnowledgeSectionShownInAiKnowledgeTable(
+        EnterpriseLeadKnowledgeSection.Sources,
+      ),
+    ).toBe(false);
     expect(
       isEnterpriseLeadKnowledgeSectionShownInAiKnowledgeTable(
         EnterpriseLeadKnowledgeSection.Deliverables,

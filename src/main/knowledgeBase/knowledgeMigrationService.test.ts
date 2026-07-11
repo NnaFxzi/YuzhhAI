@@ -11,6 +11,7 @@ import {
 } from '../../shared/enterpriseLeadWorkspace/constants';
 import type { EnterpriseLeadExtractionSource } from '../../shared/enterpriseLeadWorkspace/types';
 import {
+  KnowledgeDocumentSourceMode,
   KnowledgeDocumentStatus,
   KnowledgeMigrationStatus,
 } from '../../shared/knowledgeBase/constants';
@@ -83,15 +84,15 @@ describe('KnowledgeMigrationService', () => {
     const originalSources = structuredClone(sources);
     const service = createService();
 
-    const result = await service.migrateWorkspace({ id: 'workspace-a', extractionSources: sources });
+    const result = await service.migrateWorkspace({
+      id: 'workspace-a',
+      extractionSources: sources,
+    });
 
     expect(result.status).toBe(KnowledgeMigrationStatus.Completed);
     expect(documentStore.listDocuments('workspace-a')).toHaveLength(3);
     expect(documentStore.findByLegacySourceId('workspace-a', 'legacy-file')).not.toBeNull();
-    const migratedLegacyFile = documentStore.findByLegacySourceId(
-      'workspace-a',
-      'legacy-file',
-    );
+    const migratedLegacyFile = documentStore.findByLegacySourceId('workspace-a', 'legacy-file');
     expect(
       JSON.parse(documentStore.getLegacySourceSnapshotJson(migratedLegacyFile!.id) ?? '{}'),
     ).toMatchObject({
@@ -100,16 +101,159 @@ describe('KnowledgeMigrationService', () => {
       filePath: sourcePath,
       text: '已经解析的产品手册',
     });
-    expect(
-      documentStore.findByLegacySourceId('workspace-a', 'legacy-metadata')?.status,
-    ).toBe(KnowledgeDocumentStatus.CompletedWithoutText);
+    expect(documentStore.findByLegacySourceId('workspace-a', 'legacy-metadata')?.status).toBe(
+      KnowledgeDocumentStatus.CompletedWithoutText,
+    );
     expect(sources).toEqual(originalSources);
 
     await service.migrateWorkspace({ id: 'workspace-a', extractionSources: sources });
     expect(documentStore.listDocuments('workspace-a')).toHaveLength(3);
+    expect(db.prepare('SELECT COUNT(*) AS count FROM knowledge_ingestion_jobs').get()).toEqual({
+      count: 0,
+    });
+  });
+
+  test('reconciles a legacy source appended after a completed pass', async () => {
+    const firstSource: EnterpriseLeadExtractionSource = {
+      id: 'legacy-first',
+      kind: EnterpriseLeadExtractionSourceKind.Manual,
+      label: '首批资料',
+      text: '首批正文',
+    };
+    const secondSource: EnterpriseLeadExtractionSource = {
+      id: 'legacy-second',
+      kind: EnterpriseLeadExtractionSourceKind.Manual,
+      label: '后续资料',
+      text: '后续正文',
+    };
+    const service = createService();
+
+    await service.migrateWorkspace({
+      id: 'workspace-a',
+      extractionSources: [firstSource],
+    });
+    const reconciled = await service.migrateWorkspace({
+      id: 'workspace-a',
+      extractionSources: [firstSource, secondSource],
+    });
+
+    expect(reconciled).toMatchObject({
+      status: KnowledgeMigrationStatus.Completed,
+      sourceCount: 2,
+      migratedCount: 2,
+      skippedCount: 1,
+    });
+    expect(documentStore.listDocuments('workspace-a')).toHaveLength(2);
+    expect(documentStore.findByLegacySourceId('workspace-a', 'legacy-second')).not.toBeNull();
+    expect(migrationStore.getState('workspace-a')?.version).toBe(2);
+  });
+
+  test('ignores normalized knowledge-document compatibility projections', async () => {
+    const result = await createService().migrateWorkspace({
+      id: 'workspace-a',
+      extractionSources: [
+        {
+          id: 'knowledge-document:normalized-doc',
+          kind: EnterpriseLeadExtractionSourceKind.File,
+          label: '标准化文档投影',
+          text: '不应被反向迁移',
+        },
+        {
+          id: 'legacy-manual',
+          kind: EnterpriseLeadExtractionSourceKind.Manual,
+          label: '旧资料',
+          text: '应正常迁移',
+        },
+      ],
+    });
+
+    expect(result).toMatchObject({
+      status: KnowledgeMigrationStatus.Completed,
+      sourceCount: 2,
+      migratedCount: 1,
+      skippedCount: 1,
+    });
     expect(
-      db.prepare('SELECT COUNT(*) AS count FROM knowledge_ingestion_jobs').get(),
-    ).toEqual({ count: 0 });
+      documentStore.findByLegacySourceId('workspace-a', 'knowledge-document:normalized-doc'),
+    ).toBeNull();
+    expect(documentStore.findByLegacySourceId('workspace-a', 'legacy-manual')).not.toBeNull();
+  });
+
+  test('does not duplicate or resurrect a soft-deleted migrated document', async () => {
+    const workspace = {
+      id: 'workspace-a',
+      extractionSources: [
+        {
+          id: 'legacy-deleted',
+          kind: EnterpriseLeadExtractionSourceKind.Manual,
+          label: '已删除旧资料',
+          text: '不应复活',
+        },
+      ],
+    };
+    const service = createService();
+
+    await service.migrateWorkspace(workspace);
+    const migrated = documentStore.findByLegacySourceId('workspace-a', 'legacy-deleted');
+    expect(migrated).not.toBeNull();
+    const deleted = documentStore.softDeleteDocument(migrated!.id, migrated!.revision);
+
+    await service.migrateWorkspace(workspace);
+
+    expect(documentStore.listDocuments('workspace-a')).toEqual([]);
+    expect(documentStore.listDocuments('workspace-a', { includeDeleted: true })).toHaveLength(1);
+    expect(documentStore.getDocument(deleted.id)).toMatchObject({
+      id: deleted.id,
+      deletedAt: deleted.deletedAt,
+    });
+  });
+
+  test('rechecks legacy identity inside the publication transaction', async () => {
+    const existing = documentStore.createDocumentWithVersion({
+      workspaceId: 'workspace-a',
+      legacySourceId: 'legacy-race',
+      displayName: '并发迁移资料',
+      sourceMode: KnowledgeDocumentSourceMode.Managed,
+      status: KnowledgeDocumentStatus.Ready,
+      version: {
+        contentHash: null,
+        managedPath: null,
+        mimeType: null,
+        fileSize: null,
+        sourceMtime: null,
+        parser: 'legacy:manual',
+        extractedText: '已经发布',
+        extractionPartial: false,
+      },
+    });
+    const realFindByLegacySourceId = documentStore.findByLegacySourceId.bind(documentStore);
+    let lookupCount = 0;
+    vi.spyOn(documentStore, 'findByLegacySourceId').mockImplementation(
+      (workspaceId, legacySourceId) => {
+        lookupCount += 1;
+        return lookupCount === 1 ? null : realFindByLegacySourceId(workspaceId, legacySourceId);
+      },
+    );
+
+    const result = await createService().migrateWorkspace({
+      id: 'workspace-a',
+      extractionSources: [
+        {
+          id: 'legacy-race',
+          kind: EnterpriseLeadExtractionSourceKind.Manual,
+          label: '并发迁移资料',
+          text: '重复发布候选',
+        },
+      ],
+    });
+
+    expect(result).toMatchObject({
+      status: KnowledgeMigrationStatus.Completed,
+      migratedCount: 1,
+      skippedCount: 1,
+    });
+    expect(documentStore.listDocuments('workspace-a', { includeDeleted: true })).toHaveLength(1);
+    expect(documentStore.getDocument(existing.document.id)?.id).toBe(existing.document.id);
   });
 
   test('keeps a parseable extension when an unprocessed file label has none', async () => {
@@ -128,10 +272,7 @@ describe('KnowledgeMigrationService', () => {
       ],
     });
 
-    const document = documentStore.findByLegacySourceId(
-      'workspace-a',
-      'legacy-unprocessed-file',
-    );
+    const document = documentStore.findByLegacySourceId('workspace-a', 'legacy-unprocessed-file');
     expect(document?.displayName).toBe('catalog.txt');
     expect(document?.status).toBe(KnowledgeDocumentStatus.Pending);
     expect(jobStore.listCurrentJobs('workspace-a')).toHaveLength(1);
@@ -208,9 +349,44 @@ describe('KnowledgeMigrationService', () => {
     expect(result.status).toBe(KnowledgeMigrationStatus.Failed);
     expect(documentStore.listDocuments('workspace-a')).toEqual([]);
     expect(source).toEqual(original);
-    expect(migrationStore.getState('workspace-a')?.status).toBe(
-      KnowledgeMigrationStatus.Failed,
-    );
+    expect(migrationStore.getState('workspace-a')?.status).toBe(KnowledgeMigrationStatus.Failed);
+  });
+
+  test('continues reconciling later sources after one item fails', async () => {
+    const importFile = vi.fn(async () => {
+      throw new Error('read denied');
+    });
+    const service = createService({
+      managedFileStore: {
+        importFile,
+        importTextSnapshot: managedFileStore.importTextSnapshot.bind(managedFileStore),
+      },
+      fileExists: async () => true,
+    });
+
+    const result = await service.migrateWorkspace({
+      id: 'workspace-a',
+      extractionSources: [
+        {
+          id: 'legacy-broken',
+          kind: EnterpriseLeadExtractionSourceKind.File,
+          label: '损坏资料',
+          filePath: path.join(tempDir, 'broken.pdf'),
+        },
+        {
+          id: 'legacy-later',
+          kind: EnterpriseLeadExtractionSourceKind.Manual,
+          label: '后续资料',
+          text: '后续资料仍应成功迁移',
+        },
+      ],
+    });
+
+    expect(result.status).toBe(KnowledgeMigrationStatus.Failed);
+    expect(result.migratedCount).toBe(1);
+    expect(result.diagnostics).toEqual([expect.stringContaining('损坏资料: read denied')]);
+    expect(documentStore.findByLegacySourceId('workspace-a', 'legacy-broken')).toBeNull();
+    expect(documentStore.findByLegacySourceId('workspace-a', 'legacy-later')).not.toBeNull();
   });
 
   test('rolls back document creation when job creation fails', async () => {

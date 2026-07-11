@@ -1,4 +1,15 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest';
+import {
+  KnowledgeBaseErrorCode,
+  KnowledgeBaseIpc,
+  KnowledgeDocumentSourceMode,
+  KnowledgeDocumentStatus,
+  KnowledgeDocumentVisibility,
+} from '../../shared/knowledgeBase/constants';
+import type { KnowledgeDocumentListItem } from '../../shared/knowledgeBase/types';
+import { type KnowledgeBaseHandlerDeps, registerKnowledgeBaseHandlers } from './ipcHandlers';
+import { KnowledgeDocumentServiceError } from './knowledgeDocumentService';
+import { KnowledgeSelectionTokenStore } from './knowledgeSelectionTokenStore';
 
 const { registeredHandlers } = vi.hoisted(() => ({
   registeredHandlers: new Map<string, (...args: any[]) => unknown>(),
@@ -11,21 +22,6 @@ vi.mock('electron', () => ({
     }),
   },
 }));
-
-import {
-  KnowledgeBaseErrorCode,
-  KnowledgeBaseIpc,
-  KnowledgeDocumentSourceMode,
-  KnowledgeDocumentStatus,
-  KnowledgeDocumentVisibility,
-} from '../../shared/knowledgeBase/constants';
-import type { KnowledgeDocumentListItem } from '../../shared/knowledgeBase/types';
-import {
-  type KnowledgeBaseHandlerDeps,
-  registerKnowledgeBaseHandlers,
-} from './ipcHandlers';
-import { KnowledgeDocumentServiceError } from './knowledgeDocumentService';
-import { KnowledgeSelectionTokenStore } from './knowledgeSelectionTokenStore';
 
 const documentItem = (): KnowledgeDocumentListItem => ({
   id: 'document-1',
@@ -154,9 +150,7 @@ describe('registerKnowledgeBaseHandlers', () => {
     registerKnowledgeBaseHandlers(deps);
     const sender = createEvent(7);
 
-    const resultPromise = registeredHandlers
-      .get(KnowledgeBaseIpc.SelectFiles)
-      ?.(sender.event);
+    const resultPromise = registeredHandlers.get(KnowledgeBaseIpc.SelectFiles)?.(sender.event);
     await vi.waitFor(() => expect(deps.statSelectedFile).toHaveBeenCalledTimes(1));
     sender.destroy();
     resolveStat({
@@ -174,9 +168,9 @@ describe('registerKnowledgeBaseHandlers', () => {
     deps.showOpenDialog = vi.fn(async () => ({ canceled: true, filePaths: [] }));
     registerKnowledgeBaseHandlers(deps);
 
-    const result = await registeredHandlers
-      .get(KnowledgeBaseIpc.SelectFiles)
-      ?.(createEvent().event);
+    const result = await registeredHandlers.get(KnowledgeBaseIpc.SelectFiles)?.(
+      createEvent().event,
+    );
 
     expect(result).toEqual({ success: true, data: null });
   });
@@ -189,9 +183,9 @@ describe('registerKnowledgeBaseHandlers', () => {
     }));
     registerKnowledgeBaseHandlers(deps);
 
-    const result = await registeredHandlers
-      .get(KnowledgeBaseIpc.SelectFiles)
-      ?.(createEvent().event);
+    const result = await registeredHandlers.get(KnowledgeBaseIpc.SelectFiles)?.(
+      createEvent().event,
+    );
 
     expect(result).toEqual({
       success: false,
@@ -200,7 +194,7 @@ describe('registerKnowledgeBaseHandlers', () => {
     expect(deps.statSelectedFile).not.toHaveBeenCalled();
   });
 
-  test('passes sender ownership into import and validates list visibility', async () => {
+  test('passes sender ownership and selected item ids into import', async () => {
     const { deps, documentService } = makeDeps();
     registerKnowledgeBaseHandlers(deps);
     const sender = createEvent(9);
@@ -208,6 +202,7 @@ describe('registerKnowledgeBaseHandlers', () => {
     await registeredHandlers.get(KnowledgeBaseIpc.ImportSelection)?.(sender.event, {
       workspaceId: 'workspace-a',
       selectionToken: 'selection-a',
+      itemIds: ['item-b'],
     });
     await registeredHandlers.get(KnowledgeBaseIpc.ListDocuments)?.(sender.event, {
       workspaceId: 'workspace-a',
@@ -218,10 +213,56 @@ describe('registerKnowledgeBaseHandlers', () => {
       ownerId: 9,
       workspaceId: 'workspace-a',
       selectionToken: 'selection-a',
+      itemIds: ['item-b'],
     });
     expect(documentService.listDocuments).toHaveBeenCalledWith({
       workspaceId: 'workspace-a',
       visibility: KnowledgeDocumentVisibility.Deleted,
+    });
+  });
+
+  test.each([
+    { name: 'empty', itemIds: [] },
+    { name: 'blank', itemIds: [''] },
+    { name: 'duplicate', itemIds: ['item-a', 'item-a'] },
+    { name: 'non-string', itemIds: [7] },
+  ])('rejects $name import item ids with a stable code', async ({ itemIds }) => {
+    const { deps, documentService } = makeDeps();
+    registerKnowledgeBaseHandlers(deps);
+
+    const result = await registeredHandlers.get(KnowledgeBaseIpc.ImportSelection)?.(
+      createEvent().event,
+      {
+        workspaceId: 'workspace-a',
+        selectionToken: 'selection-a',
+        itemIds,
+      },
+    );
+
+    expect(documentService.importSelection).not.toHaveBeenCalled();
+    expect(result).toEqual({
+      success: false,
+      error: { code: KnowledgeBaseErrorCode.InvalidRequest },
+    });
+  });
+
+  test('rejects sparse import item ids with a stable code', async () => {
+    const { deps, documentService } = makeDeps();
+    registerKnowledgeBaseHandlers(deps);
+
+    const result = await registeredHandlers.get(KnowledgeBaseIpc.ImportSelection)?.(
+      createEvent().event,
+      {
+        workspaceId: 'workspace-a',
+        selectionToken: 'selection-a',
+        itemIds: Array<string>(1),
+      },
+    );
+
+    expect(documentService.importSelection).not.toHaveBeenCalled();
+    expect(result).toEqual({
+      success: false,
+      error: { code: KnowledgeBaseErrorCode.InvalidRequest },
     });
   });
 

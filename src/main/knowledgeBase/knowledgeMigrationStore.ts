@@ -87,13 +87,6 @@ export class KnowledgeMigrationStore {
       throw new Error('Workspace id is required');
     }
     const current = this.getState(normalizedWorkspaceId);
-    if (
-      current?.version === version &&
-      current.status === KnowledgeMigrationStatus.Completed
-    ) {
-      return current;
-    }
-
     if (current?.version === version) {
       this.db
         .prepare(
@@ -180,13 +173,7 @@ export class KnowledgeMigrationStore {
     diagnostics: string[],
     now = new Date().toISOString(),
   ): KnowledgeMigrationState {
-    return this.finish(
-      workspaceId,
-      KnowledgeMigrationStatus.Completed,
-      diagnostics,
-      now,
-      now,
-    );
+    return this.finish(workspaceId, KnowledgeMigrationStatus.Completed, diagnostics, now, now);
   }
 
   fail(

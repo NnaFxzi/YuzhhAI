@@ -38,7 +38,7 @@ describe('KnowledgeMigrationStore', () => {
     expect(upgraded.lastSourceId).toBeNull();
   });
 
-  test('keeps a completed migration idempotent', () => {
+  test('reopens a completed same-version migration for reconciliation', () => {
     store.begin('workspace-a', 1, 1, '2026-07-11T01:00:00.000Z');
     const completed = store.complete(
       'workspace-a',
@@ -47,7 +47,13 @@ describe('KnowledgeMigrationStore', () => {
     );
 
     const repeated = store.begin('workspace-a', 1, 1, '2026-07-11T03:00:00.000Z');
-    expect(repeated).toEqual(completed);
+    expect(repeated).toMatchObject({
+      status: KnowledgeMigrationStatus.Running,
+      version: completed.version,
+      migratedCount: completed.migratedCount,
+      lastSourceId: completed.lastSourceId,
+      completedAt: null,
+    });
   });
 
   test('bounds and sanitizes migration diagnostics', () => {

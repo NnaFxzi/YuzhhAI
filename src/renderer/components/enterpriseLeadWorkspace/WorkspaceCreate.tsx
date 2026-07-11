@@ -11,27 +11,27 @@ import {
 import React, { useState } from 'react';
 
 import { EnterpriseLeadExtractionSourceKind } from '../../../shared/enterpriseLeadWorkspace/constants';
-import type {
-  EnterpriseLeadWorkspace,
-  EnterpriseLeadWorkspaceDraft,
-  EnterpriseLeadWorkspaceSettings,
-} from '../../../shared/enterpriseLeadWorkspace/types';
+import type { EnterpriseLeadWorkspaceDraft } from '../../../shared/enterpriseLeadWorkspace/types';
+import type { KnowledgeImportBatchResult } from '../../../shared/knowledgeBase/types';
 import { enterpriseLeadWorkspaceService } from '../../services/enterpriseLeadWorkspace';
 import { i18nService } from '../../services/i18n';
+import { knowledgeBaseService } from '../../services/knowledgeBase';
 import {
   buildManualEnterpriseLeadWorkspaceDraft,
-  createWorkspaceFromUploadedMaterials,
   getWorkspaceCreateBranchScreen,
-  type MaterialUploadItem,
   WorkspaceCreateBranchScreen,
   WorkspaceCreateStartMode,
   type WorkspaceCreateStartMode as WorkspaceCreateStartModeType,
 } from './enterpriseLeadWorkspaceUi';
+import {
+  createWorkspaceWithKnowledgeImports,
+  type WorkspaceMaterialSelectionItem,
+} from './workspaceCreationKnowledgeImport';
 import { WorkspaceMaterialUpload } from './WorkspaceMaterialUpload';
 import { buildEnterpriseLeadWorkspaceSettingsFromCurrentConfig } from './WorkspaceWorkbench';
 
 interface WorkspaceCreateProps {
-  onCreated: (workspaceId: string) => void;
+  onCreated: (workspaceId: string, initialImportResult?: KnowledgeImportBatchResult) => void;
   onCancel: () => void;
 }
 
@@ -45,51 +45,6 @@ interface StartModeOption {
 
 const formatWorkspaceNameText = (key: string, name: string): string =>
   i18nService.t(key).replace('{name}', name);
-
-const normalizeOptionalFileSize = (fileSize?: number | null): number | undefined =>
-  typeof fileSize === 'number' && Number.isFinite(fileSize) && fileSize > 0 ? fileSize : undefined;
-
-export const createWorkspaceFromUploadedMaterial = async ({
-  workspaceName,
-  sourceText,
-  sourceLabel,
-  fileName,
-  fileSize,
-  settings,
-  onCreated,
-  service = enterpriseLeadWorkspaceService,
-}: {
-  workspaceName: string;
-  sourceText: string;
-  sourceLabel: string;
-  fileName?: string;
-  fileSize?: number | null;
-  settings?: EnterpriseLeadWorkspaceSettings;
-  onCreated: (workspaceId: string) => void;
-  service?: Pick<typeof enterpriseLeadWorkspaceService, 'createWorkspace' | 'processDocumentSource'>;
-}): Promise<EnterpriseLeadWorkspace | null> => {
-  const cleanSourceText = sourceText.trim();
-  if (!cleanSourceText) {
-    throw new Error('Uploaded material text is required');
-  }
-
-  return createWorkspaceFromUploadedMaterials({
-    workspaceName,
-    items: [
-      {
-        id: 'singular-legacy',
-        filePath: '',
-        fileName: fileName?.trim() || sourceLabel.trim(),
-        fileSize: normalizeOptionalFileSize(fileSize),
-        kind: EnterpriseLeadExtractionSourceKind.File,
-        text: cleanSourceText,
-      },
-    ],
-    settings,
-    onCreated,
-    service,
-  });
-};
 
 const startModeOptions: StartModeOption[] = [
   {
@@ -121,7 +76,7 @@ export const WorkspaceCreate: React.FC<WorkspaceCreateProps> = ({ onCreated, onC
     WorkspaceCreateStartMode.Material,
   );
   const [branchScreen, setBranchScreen] = useState<WorkspaceCreateBranchScreen | null>(null);
-  const [materials, setMaterials] = useState<MaterialUploadItem[]>([]);
+  const [materials, setMaterials] = useState<WorkspaceMaterialSelectionItem[]>([]);
   const [pasteText, setPasteText] = useState('');
   const [error, setError] = useState<string[]>([]);
   const [isCreating, setIsCreating] = useState(false);
@@ -219,45 +174,29 @@ export const WorkspaceCreate: React.FC<WorkspaceCreateProps> = ({ onCreated, onC
 
     setIsCreating(true);
     setError([]);
-    const dialogApi = window.electron?.dialog;
-    const ocrService = dialogApi?.extractImageText
-      ? {
-          extractImageText: (filePath: string) => dialogApi.extractImageText(filePath),
-        }
-      : undefined;
-    void createWorkspaceFromUploadedMaterials({
-      workspaceName: workspaceDisplayName,
+    void createWorkspaceWithKnowledgeImports({
+      draft: buildManualEnterpriseLeadWorkspaceDraft({
+        name: workspaceDisplayName,
+        mode: WorkspaceCreateStartMode.Blank,
+        sourceLabel: i18nService.t('enterpriseLeadCreateBlankSourceLabel'),
+        settings: buildEnterpriseLeadWorkspaceSettingsFromCurrentConfig(),
+      }),
       items: materials,
-      settings: buildEnterpriseLeadWorkspaceSettingsFromCurrentConfig(),
-      onCreated,
-      ocrService,
-      onOcrProgress: ({ itemId, progress }) => {
-        setMaterials(current =>
-          current.map(item =>
-            item.id === itemId
-              ? { ...item, ocrProgress: Math.max(0, Math.min(1, progress)) }
-              : item,
-          ),
-        );
-      },
+      createWorkspace: enterpriseLeadWorkspaceService.createWorkspace,
+      importSelection: knowledgeBaseService.importSelection,
     })
-      .then(workspace => {
-        if (!workspace) {
+      .then(result => {
+        if (!result) {
           setError([i18nService.t('enterpriseLeadCreateFailed')]);
+          return;
         }
+        onCreated(result.workspace.id, result.importResult);
       })
       .catch(() => {
         setError([i18nService.t('enterpriseLeadCreateFailed')]);
       })
       .finally(() => {
         setIsCreating(false);
-        setMaterials(current =>
-          current.map(item =>
-            item.kind === 'image' && item.ocrProgress !== undefined
-              ? { ...item, ocrProgress: item.text ? 1 : 0 }
-              : item,
-          ),
-        );
       });
   };
 

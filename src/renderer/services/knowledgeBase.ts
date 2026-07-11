@@ -84,8 +84,15 @@ export const knowledgeBaseService = {
   importSelection: (
     workspaceId: string,
     selectionToken: string,
+    itemIds?: string[],
   ): Promise<KnowledgeImportBatchResult> =>
-    request(api => api.importSelection({ workspaceId, selectionToken })),
+    request(api =>
+      api.importSelection({
+        workspaceId,
+        selectionToken,
+        ...(itemIds === undefined ? {} : { itemIds }),
+      }),
+    ),
   listDocuments: (
     workspaceId: string,
     visibility: KnowledgeDocumentVisibility,

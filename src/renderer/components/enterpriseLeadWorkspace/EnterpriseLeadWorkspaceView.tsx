@@ -6,6 +6,7 @@ import {
   EnterpriseLeadKnowledgeIndexStatus,
 } from '../../../shared/enterpriseLeadWorkspace/constants';
 import type { EnterpriseLeadWorkspace } from '../../../shared/enterpriseLeadWorkspace/types';
+import type { KnowledgeImportBatchResult } from '../../../shared/knowledgeBase/types';
 import { coworkService } from '../../services/cowork';
 import { enterpriseLeadWorkspaceService } from '../../services/enterpriseLeadWorkspace';
 import { i18nService } from '../../services/i18n';
@@ -89,6 +90,13 @@ export const hasEnterpriseLeadWorkspaceProcessingSources = (
       source.vectorIndexStatus === EnterpriseLeadKnowledgeIndexStatus.Indexing,
   );
 
+export const getWorkspacePageAfterCreationImport = (
+  importResult?: KnowledgeImportBatchResult,
+): EnterpriseLeadWorkspaceInternalPageType =>
+  importResult && importResult.failedCount > 0
+    ? EnterpriseLeadWorkspaceInternalPage.KnowledgeBase
+    : getDefaultWorkspaceInternalPage();
+
 export const EnterpriseLeadWorkspaceView: React.FC<EnterpriseLeadWorkspaceViewProps> = ({
   isSidebarCollapsed,
   hideSidebarToggle = false,
@@ -116,6 +124,10 @@ export const EnterpriseLeadWorkspaceView: React.FC<EnterpriseLeadWorkspaceViewPr
   const [isLoadingWorkspace, setIsLoadingWorkspace] = useState(false);
   const [workspaceError, setWorkspaceError] = useState('');
   const [workspaceListError, setWorkspaceListError] = useState('');
+  const [initialKnowledgeImportResult, setInitialKnowledgeImportResult] = useState<{
+    workspaceId: string;
+    result: KnowledgeImportBatchResult;
+  } | null>(null);
   const navigationRevisionRef = useRef(0);
   const refreshRequestRef = useRef(0);
   const isMac = window.electron.platform === 'darwin';
@@ -127,55 +139,61 @@ export const EnterpriseLeadWorkspaceView: React.FC<EnterpriseLeadWorkspaceViewPr
     onShellModeChange?.(shellMode);
   }, [onShellModeChange, shellMode]);
 
-  const refreshWorkspaces = useCallback(async (preferredWorkspaceId?: string): Promise<void> => {
-    const refreshRequest = refreshRequestRef.current + 1;
-    refreshRequestRef.current = refreshRequest;
-    const navigationRevision = navigationRevisionRef.current;
+  const refreshWorkspaces = useCallback(
+    async (
+      preferredWorkspaceId?: string,
+      preferredPage: EnterpriseLeadWorkspaceInternalPageType = getDefaultWorkspaceInternalPage(),
+    ): Promise<void> => {
+      const refreshRequest = refreshRequestRef.current + 1;
+      refreshRequestRef.current = refreshRequest;
+      const navigationRevision = navigationRevisionRef.current;
 
-    setIsLoadingWorkspaces(true);
-    setWorkspaceListError('');
+      setIsLoadingWorkspaces(true);
+      setWorkspaceListError('');
 
-    try {
-      const nextWorkspaces = await enterpriseLeadWorkspaceService.listWorkspaces();
-      const sortedWorkspaces = sortWorkspacesByRecentUpdate(nextWorkspaces);
-      const isCurrentRefresh = refreshRequestRef.current === refreshRequest;
-      const isSameNavigation = navigationRevisionRef.current === navigationRevision;
+      try {
+        const nextWorkspaces = await enterpriseLeadWorkspaceService.listWorkspaces();
+        const sortedWorkspaces = sortWorkspacesByRecentUpdate(nextWorkspaces);
+        const isCurrentRefresh = refreshRequestRef.current === refreshRequest;
+        const isSameNavigation = navigationRevisionRef.current === navigationRevision;
 
-      if (isCurrentRefresh) {
-        setWorkspaces(sortedWorkspaces);
+        if (isCurrentRefresh) {
+          setWorkspaces(sortedWorkspaces);
+        }
+
+        if (preferredWorkspaceId && isSameNavigation) {
+          setActiveWorkspace(null);
+          setActiveWorkspaceId(preferredWorkspaceId);
+          setActiveInternalPage(preferredPage);
+          setScreen(EnterpriseLeadWorkspaceScreen.Workspace);
+        } else if (!preferredWorkspaceId && isSameNavigation) {
+          setActiveWorkspace(null);
+          setActiveWorkspaceId(null);
+          setActiveInternalPage(getDefaultWorkspaceInternalPage());
+          setScreen(EnterpriseLeadWorkspaceScreen.Entry);
+        }
+      } catch {
+        const isCurrentRefresh = refreshRequestRef.current === refreshRequest;
+        const isSameNavigation = navigationRevisionRef.current === navigationRevision;
+
+        if (isCurrentRefresh) {
+          setWorkspaces([]);
+          setWorkspaceListError(i18nService.t('enterpriseLeadHistoryLoadFailed'));
+        }
+
+        if (!preferredWorkspaceId && isSameNavigation) {
+          setActiveWorkspace(null);
+          setActiveWorkspaceId(null);
+          setScreen(EnterpriseLeadWorkspaceScreen.Entry);
+        }
+      } finally {
+        if (refreshRequestRef.current === refreshRequest) {
+          setIsLoadingWorkspaces(false);
+        }
       }
-
-      if (preferredWorkspaceId && isSameNavigation) {
-        setActiveWorkspace(null);
-        setActiveWorkspaceId(preferredWorkspaceId);
-        setActiveInternalPage(getDefaultWorkspaceInternalPage());
-        setScreen(EnterpriseLeadWorkspaceScreen.Workspace);
-      } else if (!preferredWorkspaceId && isSameNavigation) {
-        setActiveWorkspace(null);
-        setActiveWorkspaceId(null);
-        setActiveInternalPage(getDefaultWorkspaceInternalPage());
-        setScreen(EnterpriseLeadWorkspaceScreen.Entry);
-      }
-    } catch {
-      const isCurrentRefresh = refreshRequestRef.current === refreshRequest;
-      const isSameNavigation = navigationRevisionRef.current === navigationRevision;
-
-      if (isCurrentRefresh) {
-        setWorkspaces([]);
-        setWorkspaceListError(i18nService.t('enterpriseLeadHistoryLoadFailed'));
-      }
-
-      if (!preferredWorkspaceId && isSameNavigation) {
-        setActiveWorkspace(null);
-        setActiveWorkspaceId(null);
-        setScreen(EnterpriseLeadWorkspaceScreen.Entry);
-      }
-    } finally {
-      if (refreshRequestRef.current === refreshRequest) {
-        setIsLoadingWorkspaces(false);
-      }
-    }
-  }, []);
+    },
+    [],
+  );
 
   useEffect(() => {
     void refreshWorkspaces();
@@ -294,6 +312,7 @@ export const EnterpriseLeadWorkspaceView: React.FC<EnterpriseLeadWorkspaceViewPr
 
   const handleCreate = (): void => {
     navigationRevisionRef.current += 1;
+    setInitialKnowledgeImportResult(null);
     setScreen(EnterpriseLeadWorkspaceScreen.Create);
   };
 
@@ -301,6 +320,7 @@ export const EnterpriseLeadWorkspaceView: React.FC<EnterpriseLeadWorkspaceViewPr
     navigationRevisionRef.current += 1;
     setActiveWorkspace(null);
     setActiveWorkspaceId(null);
+    setInitialKnowledgeImportResult(null);
     setActiveChatSessionId(null);
     setWorkspaceError('');
     setActiveInternalPage(getDefaultWorkspaceInternalPage());
@@ -310,6 +330,7 @@ export const EnterpriseLeadWorkspaceView: React.FC<EnterpriseLeadWorkspaceViewPr
   const handleOpen = (workspaceId: string): void => {
     navigationRevisionRef.current += 1;
     setActiveWorkspace(null);
+    setInitialKnowledgeImportResult(null);
     setWorkspaceError('');
     setActiveChatSessionId(null);
     setActiveWorkspaceId(workspaceId);
@@ -317,18 +338,27 @@ export const EnterpriseLeadWorkspaceView: React.FC<EnterpriseLeadWorkspaceViewPr
     setScreen(EnterpriseLeadWorkspaceScreen.Workspace);
   };
 
-  const handleCreated = (workspaceId: string): void => {
+  const handleCreated = (workspaceId: string, importResult?: KnowledgeImportBatchResult): void => {
+    const nextPage = getWorkspacePageAfterCreationImport(importResult);
     navigationRevisionRef.current += 1;
     setActiveWorkspace(null);
     setWorkspaceError('');
     setActiveChatSessionId(null);
     setActiveWorkspaceId(workspaceId);
-    setActiveInternalPage(getDefaultWorkspaceInternalPage());
+    setInitialKnowledgeImportResult(importResult ? { workspaceId, result: importResult } : null);
+    setActiveInternalPage(nextPage);
     setScreen(EnterpriseLeadWorkspaceScreen.Workspace);
-    void refreshWorkspaces(workspaceId);
+    void refreshWorkspaces(workspaceId, nextPage);
   };
 
+  const handleInitialKnowledgeImportConsumed = useCallback((workspaceId: string): void => {
+    setInitialKnowledgeImportResult(current =>
+      current?.workspaceId === workspaceId ? null : current,
+    );
+  }, []);
+
   const handleHistoryOpen = (): void => {
+    setInitialKnowledgeImportResult(null);
     void refreshWorkspaces();
   };
 
@@ -346,6 +376,7 @@ export const EnterpriseLeadWorkspaceView: React.FC<EnterpriseLeadWorkspaceViewPr
         navigationRevisionRef.current += 1;
         setActiveWorkspaceId(null);
         setActiveWorkspace(null);
+        setInitialKnowledgeImportResult(null);
         setActiveChatSessionId(null);
         setActiveInternalPage(getDefaultWorkspaceInternalPage());
         setScreen(EnterpriseLeadWorkspaceScreen.Entry);
@@ -360,6 +391,7 @@ export const EnterpriseLeadWorkspaceView: React.FC<EnterpriseLeadWorkspaceViewPr
     navigationRevisionRef.current += 1;
     setActiveWorkspace(null);
     setActiveWorkspaceId(null);
+    setInitialKnowledgeImportResult(null);
     setActiveChatSessionId(null);
     setWorkspaceError('');
     setActiveInternalPage(getDefaultWorkspaceInternalPage());
@@ -370,6 +402,7 @@ export const EnterpriseLeadWorkspaceView: React.FC<EnterpriseLeadWorkspaceViewPr
     (workspace: EnterpriseLeadWorkspace): void => {
       const request = buildEnterpriseLeadCoworkHandoffRequest(workspace);
 
+      navigationRevisionRef.current += 1;
       setActiveChatSessionId(null);
       setActiveInternalPage(request.nextInternalPage);
       onPrepareCoworkChat(request.draft);
@@ -388,10 +421,12 @@ export const EnterpriseLeadWorkspaceView: React.FC<EnterpriseLeadWorkspaceViewPr
       return;
     }
 
+    navigationRevisionRef.current += 1;
     setActiveInternalPage(page);
   };
 
   const handleChatSessionSelect = useCallback((sessionId: string): void => {
+    navigationRevisionRef.current += 1;
     void openEmbeddedCoworkConversationRecord({
       sessionId,
       setActiveSessionId: setActiveChatSessionId,
@@ -498,6 +533,12 @@ export const EnterpriseLeadWorkspaceView: React.FC<EnterpriseLeadWorkspaceViewPr
         <WorkspaceKnowledgeBase
           key={workspace.id}
           workspace={workspace}
+          initialImportResult={
+            initialKnowledgeImportResult?.workspaceId === workspace.id
+              ? initialKnowledgeImportResult.result
+              : undefined
+          }
+          onInitialImportResultConsumed={handleInitialKnowledgeImportConsumed}
           onWorkspaceUpdated={handleWorkspaceUpdated}
         />
       );

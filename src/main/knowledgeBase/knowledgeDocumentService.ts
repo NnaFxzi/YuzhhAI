@@ -36,10 +36,7 @@ import {
   KnowledgeIngestionJobStateError,
   KnowledgeIngestionJobStore,
 } from './knowledgeIngestionJobStore';
-import {
-  KnowledgeManagedFileError,
-  KnowledgeManagedFileStore,
-} from './knowledgeManagedFileStore';
+import { KnowledgeManagedFileError, KnowledgeManagedFileStore } from './knowledgeManagedFileStore';
 import {
   KnowledgeSelectionTokenError,
   KnowledgeSelectionTokenStore,
@@ -93,6 +90,7 @@ export class KnowledgeDocumentService {
     ownerId: number;
     workspaceId: string;
     selectionToken: string;
+    itemIds?: string[];
   }): Promise<KnowledgeImportBatchResult> {
     const workspaceId = input.workspaceId.trim();
     this.requireWorkspace(workspaceId);
@@ -101,6 +99,7 @@ export class KnowledgeDocumentService {
       selectedFiles = this.options.selectionTokenStore.consume(
         input.selectionToken,
         input.ownerId,
+        input.itemIds,
       );
     } catch (error) {
       throw this.toServiceError(error);
@@ -210,9 +209,7 @@ export class KnowledgeDocumentService {
               (version.fileSize ?? 0) >
             KNOWLEDGE_MAX_WORKSPACE_LOGICAL_BYTES
           ) {
-            throw new KnowledgeDocumentServiceError(
-              KnowledgeBaseErrorCodes.WorkspaceQuotaExceeded,
-            );
+            throw new KnowledgeDocumentServiceError(KnowledgeBaseErrorCodes.WorkspaceQuotaExceeded);
           }
         }
         const restored = this.options.documentStore.restoreDocument(
@@ -305,9 +302,7 @@ export class KnowledgeDocumentService {
         this.options.documentStore.getActiveManagedBytes(workspaceId) + blob.fileSize >
         KNOWLEDGE_MAX_WORKSPACE_LOGICAL_BYTES
       ) {
-        throw new KnowledgeDocumentServiceError(
-          KnowledgeBaseErrorCodes.WorkspaceQuotaExceeded,
-        );
+        throw new KnowledgeDocumentServiceError(KnowledgeBaseErrorCodes.WorkspaceQuotaExceeded);
       }
       const created = this.options.documentStore.createDocumentWithVersion({
         workspaceId,
@@ -358,9 +353,7 @@ export class KnowledgeDocumentService {
   } {
     return {
       legacySourceId: document.legacySourceId,
-      legacySourceSnapshotJson: this.options.documentStore.getLegacySourceSnapshotJson(
-        document.id,
-      ),
+      legacySourceSnapshotJson: this.options.documentStore.getLegacySourceSnapshotJson(document.id),
     };
   }
 

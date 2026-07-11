@@ -132,9 +132,7 @@ describe('KnowledgeDocumentService', () => {
   });
 
   const createStoredDocument = (
-    overrides: Partial<
-      CreateKnowledgeDocumentInput & { legacySourceSnapshotJson: string }
-    > = {},
+    overrides: Partial<CreateKnowledgeDocumentInput & { legacySourceSnapshotJson: string }> = {},
   ) =>
     documentStore.createDocumentWithVersion({
       workspaceId,
@@ -170,9 +168,37 @@ describe('KnowledgeDocumentService', () => {
     expect(documentStore.listDocuments(workspaceId)).toHaveLength(1);
     expect(jobStore.listCurrentJobs(workspaceId)).toHaveLength(1);
     expect(onJobsQueued).toHaveBeenCalledTimes(1);
-    expect(
-      workspaceStore.getWorkspace(workspaceId)?.extractionSources[0],
-    ).not.toHaveProperty('text');
+    expect(workspaceStore.getWorkspace(workspaceId)?.extractionSources[0]).not.toHaveProperty(
+      'text',
+    );
+  });
+
+  test('imports only selected item ids from an authorized token', async () => {
+    const firstPath = await writeFile('first.pdf', '%PDF-1.7\nfirst');
+    const secondPath = await writeFile('second.pdf', '%PDF-1.7\nsecond');
+    const selection = await issueSelection([firstPath, secondPath]);
+    const secondItemId = selection.files[1]?.itemId;
+
+    expect(secondItemId).toBeTruthy();
+
+    const result = await service.importSelection({
+      ownerId: 7,
+      workspaceId,
+      selectionToken: selection.selectionToken,
+      itemIds: [secondItemId!],
+    });
+
+    expect(result).toMatchObject({ importedCount: 1, failedCount: 0 });
+    expect(result.items).toEqual([
+      expect.objectContaining({ success: true, itemId: secondItemId }),
+    ]);
+    expect(documentStore.listDocuments(workspaceId)).toEqual([
+      expect.objectContaining({ displayName: 'second.pdf' }),
+    ]);
+    expect(jobStore.listCurrentJobs(workspaceId)).toHaveLength(1);
+    expect(workspaceStore.getWorkspace(workspaceId)?.extractionSources).toEqual([
+      expect.objectContaining({ fileName: 'second.pdf' }),
+    ]);
   });
 
   test('rejects a changed selected file and consumed-token replay', async () => {
@@ -338,9 +364,7 @@ describe('KnowledgeDocumentService', () => {
     });
     expect(deleted.deletedAt).not.toBeNull();
     expect(deleted.currentJob?.status).toBe(KnowledgeIngestionJobStatus.Cancelled);
-    expect(
-      workspaceStore.getWorkspace(workspaceId)?.extractionSources,
-    ).toEqual([]);
+    expect(workspaceStore.getWorkspace(workspaceId)?.extractionSources).toEqual([]);
 
     const restored = service.restoreDocument({
       documentId: created.document.id,
@@ -366,10 +390,7 @@ describe('KnowledgeDocumentService', () => {
         fileSize: KNOWLEDGE_MAX_WORKSPACE_LOGICAL_BYTES - 5,
       },
     });
-    const deleted = documentStore.softDeleteDocument(
-      large.document.id,
-      large.document.revision,
-    );
+    const deleted = documentStore.softDeleteDocument(large.document.id, large.document.revision);
     createStoredDocument({
       legacySourceId: 'restore-active',
       version: { ...createStoredDocumentInputVersion(), fileSize: 10 },

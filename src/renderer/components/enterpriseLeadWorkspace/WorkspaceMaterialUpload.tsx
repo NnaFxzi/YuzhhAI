@@ -1,39 +1,28 @@
-import {
-  ArrowUpTrayIcon,
-  DocumentIcon,
-  PhotoIcon,
-  TableCellsIcon,
-  XMarkIcon,
-} from '@heroicons/react/24/outline';
-import React, { useCallback, useId, useMemo, useRef } from 'react';
+import { ArrowUpTrayIcon, DocumentIcon, PhotoIcon, TableCellsIcon, XMarkIcon, } from '@heroicons/react/24/outline';
+import React, { useCallback, useRef } from 'react';
 
 import {
-  EnterpriseLeadAttachmentOnlyDocumentExtensions,
   EnterpriseLeadImageAttachmentExtensions,
   EnterpriseLeadReadableDocumentExtensions,
 } from '../../../shared/enterpriseLeadWorkspace/constants';
+import { KNOWLEDGE_MAX_SELECTION_FILES, KnowledgeBaseErrorCode, } from '../../../shared/knowledgeBase/constants';
+import type { KnowledgeFileSelection } from '../../../shared/knowledgeBase/types';
 import { i18nService } from '../../services/i18n';
-import {
-  ENTERPRISE_LEAD_MATERIAL_ACCEPT_EXTENSIONS,
-  ENTERPRISE_LEAD_MATERIAL_DIALOG_FILTERS,
-  type MaterialUploadItem,
-  MAX_MATERIAL_UPLOAD_BYTES,
-} from './enterpriseLeadWorkspaceUi';
+import { knowledgeBaseService, KnowledgeBaseServiceError } from '../../services/knowledgeBase';
+import { getKnowledgeDocumentErrorKey } from './knowledgeDocumentPresentation';
+import type { WorkspaceMaterialSelectionItem } from './workspaceCreationKnowledgeImport';
 
-interface WorkspaceMaterialUploadProps {
-  items: MaterialUploadItem[];
-  onItemsChange: (items: MaterialUploadItem[]) => void;
+export interface WorkspaceMaterialUploadProps {
+  items: WorkspaceMaterialSelectionItem[];
+  onItemsChange: (items: WorkspaceMaterialSelectionItem[]) => void;
   onError: (messages: string[]) => void;
   disabled?: boolean;
 }
 
-type DialogFileFilter = { name: string; extensions: string[] };
-
-type RejectReason = 'oversize' | 'unsupported' | 'read';
-
-type BuildResult =
-  | { kind: 'ok'; item: MaterialUploadItem }
-  | { kind: 'rejected'; reason: RejectReason; name: string; ext?: string; detail?: string };
+export interface WorkspaceMaterialSelectionMergeResult {
+  items: WorkspaceMaterialSelectionItem[];
+  limitExceeded: boolean;
+}
 
 const t = (key: string, params?: Record<string, string>): string => {
   const raw = i18nService.t(key);
@@ -41,41 +30,25 @@ const t = (key: string, params?: Record<string, string>): string => {
     return raw;
   }
   return Object.entries(params).reduce(
-    (acc, [paramKey, value]) => acc.replace(`{${paramKey}}`, value),
+    (result, [name, value]) => result.replace(`{${name}}`, value),
     raw,
   );
 };
 
-const ACCEPT_ATTRIBUTE = ENTERPRISE_LEAD_MATERIAL_ACCEPT_EXTENSIONS.map(ext => `.${ext}`).join(',');
-
-const DIALOG_FILTERS: DialogFileFilter[] = [
-  ...ENTERPRISE_LEAD_MATERIAL_DIALOG_FILTERS.map(filter => ({
-    name: filter.name,
-    extensions: [...filter.extensions],
-  })),
-];
-
 const READABLE_EXTENSIONS = new Set<string>(EnterpriseLeadReadableDocumentExtensions);
 const IMAGE_EXTENSIONS = new Set<string>(EnterpriseLeadImageAttachmentExtensions);
-const ATTACHMENT_ONLY_EXTENSIONS = new Set<string>(EnterpriseLeadAttachmentOnlyDocumentExtensions);
 
-const ALL_SUPPORTED_EXTENSIONS = new Set<string>([
-  ...READABLE_EXTENSIONS,
-  ...IMAGE_EXTENSIONS,
-  ...ATTACHMENT_ONLY_EXTENSIONS,
-]);
-
-const formatBytes = (bytes: number | null): string => {
-  if (bytes === null || bytes <= 0) {
+const formatBytes = (bytes: number): string => {
+  if (!Number.isFinite(bytes) || bytes <= 0) {
     return '';
   }
-  if (bytes < 1024) {
+  if (bytes < 1_024) {
     return `${bytes} B`;
   }
-  if (bytes < 1024 * 1024) {
-    return `${(bytes / 1024).toFixed(0)} KB`;
+  if (bytes < 1_024 * 1_024) {
+    return `${(bytes / 1_024).toFixed(1)} KB`;
   }
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(bytes / (1_024 * 1_024)).toFixed(1)} MB`;
 };
 
 const getExtension = (fileName: string): string => {
@@ -83,102 +56,45 @@ const getExtension = (fileName: string): string => {
   return dotIndex >= 0 ? fileName.slice(dotIndex + 1).toLowerCase() : '';
 };
 
-const getBaseName = (fileName: string): string => {
-  const dotIndex = fileName.lastIndexOf('.');
-  return dotIndex >= 0 ? fileName.slice(0, dotIndex) : fileName;
-};
-
-const buildItemFromPath = async (
-  dialogApi: Window['electron']['dialog'],
-  filePath: string,
-): Promise<BuildResult> => {
-  const segments = filePath.split(/[\\/]/).filter(Boolean);
-  const fileName = segments[segments.length - 1] || filePath;
-  const extension = getExtension(fileName);
-  const id = `${fileName}-${crypto.randomUUID()}`;
-
-  let fileSize: number | null = null;
-  if (typeof dialogApi.statFile === 'function') {
-    const stat = await dialogApi.statFile(filePath).catch(() => null);
-    if (stat?.success && typeof stat.size === 'number') {
-      fileSize = stat.size;
-    }
-  }
-
-  if (fileSize !== null && fileSize > MAX_MATERIAL_UPLOAD_BYTES) {
-    return { kind: 'rejected', reason: 'oversize', name: filePath };
-  }
-
-  if (!ALL_SUPPORTED_EXTENSIONS.has(extension)) {
-    return { kind: 'rejected', reason: 'unsupported', name: filePath, ext: extension };
-  }
-
-  if (IMAGE_EXTENSIONS.has(extension)) {
-    return {
-      kind: 'ok',
-      item: {
-        id,
-        filePath,
-        fileName,
-        fileSize,
-        kind: 'image',
-      },
-    };
-  }
-
-  if (READABLE_EXTENSIONS.has(extension) && typeof dialogApi.readTextFile === 'function') {
-    const readResult = await dialogApi.readTextFile(filePath);
-    if (!readResult.success) {
-      return { kind: 'rejected', reason: 'read', name: filePath, detail: readResult.error };
-    }
-    return {
-      kind: 'ok',
-      item: {
-        id,
-        filePath,
-        fileName,
-        fileSize,
-        kind: 'file',
-        text: readResult.content ?? '',
-        truncated: Boolean(readResult.truncated),
-      },
-    };
-  }
-
-  // ATTACHMENT_ONLY_EXTENSIONS (doc/ppt) or readable extension without readTextFile
-  return {
-    kind: 'ok',
-    item: {
-      id,
-      filePath,
-      fileName,
-      fileSize,
-      kind: 'file',
-    },
-  };
-};
-
-const getFileIcon = (item: MaterialUploadItem): React.ReactNode => {
-  const extension = getExtension(item.fileName);
+const getFileIcon = (item: WorkspaceMaterialSelectionItem): React.ReactNode => {
+  const extension = getExtension(item.displayName);
   if (IMAGE_EXTENSIONS.has(extension)) {
     return <PhotoIcon className="h-4 w-4" />;
   }
-  if (READABLE_EXTENSIONS.has(extension) && /\.(xlsx?|csv|tsv)$/.test(extension)) {
+  if (READABLE_EXTENSIONS.has(extension) && /^(xlsx?|csv|tsv)$/.test(extension)) {
     return <TableCellsIcon className="h-4 w-4" />;
   }
   return <DocumentIcon className="h-4 w-4" />;
 };
 
-const rejectionToMessage = (rejection: Extract<BuildResult, { kind: 'rejected' }>): string => {
-  if (rejection.reason === 'oversize') {
-    return t('enterpriseLeadMaterialFileSizeExceeded', { name: rejection.name });
+export const mergeWorkspaceMaterialSelection = (
+  currentItems: WorkspaceMaterialSelectionItem[],
+  selection: KnowledgeFileSelection | null,
+): WorkspaceMaterialSelectionMergeResult => {
+  if (!selection) {
+    return { items: currentItems, limitExceeded: false };
   }
-  if (rejection.reason === 'unsupported') {
-    return t('enterpriseLeadMaterialUnsupportedType', { ext: rejection.ext ?? '' });
+  if (currentItems.length + selection.files.length > KNOWLEDGE_MAX_SELECTION_FILES) {
+    return { items: currentItems, limitExceeded: true };
   }
-  const base = t('enterpriseLeadMaterialReadFailed', { name: rejection.name });
-  return rejection.detail ? `${base}: ${rejection.detail}` : base;
+  return {
+    items: [
+      ...currentItems,
+      ...selection.files.map(file => ({
+        itemId: file.itemId,
+        displayName: file.displayName,
+        fileSize: file.fileSize,
+        selectionToken: selection.selectionToken,
+      })),
+    ],
+    limitExceeded: false,
+  };
 };
+
+const getSelectionErrorCode = (error: unknown): KnowledgeBaseErrorCode =>
+  error instanceof KnowledgeBaseServiceError
+    ? error.code
+    : KnowledgeBaseErrorCode.PersistenceFailed;
 
 export const WorkspaceMaterialUpload: React.FC<WorkspaceMaterialUploadProps> = ({
   items,
@@ -186,92 +102,39 @@ export const WorkspaceMaterialUpload: React.FC<WorkspaceMaterialUploadProps> = (
   onError,
   disabled = false,
 }) => {
-  const inputId = useId();
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const requestIdRef = useRef(0);
 
-  const acceptAttr = useMemo(() => ACCEPT_ATTRIBUTE, []);
-
-  const appendItems = useCallback(
-    async (paths: string[]) => {
-      const dialogApi = window.electron?.dialog;
-      if (!dialogApi) {
-        return;
-      }
-      const requestId = requestIdRef.current + 1;
-      requestIdRef.current = requestId;
-
-      const additions: MaterialUploadItem[] = [];
-      const rejections: string[] = [];
-
-      for (const filePath of paths) {
-        const result = await buildItemFromPath(dialogApi, filePath);
-        if (result.kind === 'rejected') {
-          rejections.push(rejectionToMessage(result));
-          continue;
-        }
-        additions.push(result.item);
-      }
-
-      if (requestId !== requestIdRef.current) {
-        return;
-      }
-
-      if (additions.length > 0) {
-        onItemsChange([...items, ...additions]);
-      }
-      if (rejections.length > 0) {
-        onError(rejections);
-      }
-    },
-    [items, onItemsChange, onError],
-  );
-
   const handleChooseClick = useCallback((): void => {
-    const dialogApi = window.electron?.dialog;
-    if (dialogApi?.selectFiles) {
-      void dialogApi
-        .selectFiles({
-          title: t('enterpriseLeadCreateMaterialTitle'),
-          filters: DIALOG_FILTERS,
-        })
-        .then(result => {
-          if (!result.success || !Array.isArray(result.paths) || result.paths.length === 0) {
-            return;
-          }
-          void appendItems(result.paths);
-        });
-      return;
-    }
-    fileInputRef.current?.click();
-  }, [appendItems]);
+    const requestId = requestIdRef.current + 1;
+    requestIdRef.current = requestId;
 
-  const handleFileInputChange = useCallback(
-    (event: React.ChangeEvent<HTMLInputElement>): void => {
-      const files = event.currentTarget.files;
-      event.currentTarget.value = '';
-      if (!files || files.length === 0) {
-        return;
-      }
-      const paths: string[] = [];
-      for (let i = 0; i < files.length; i += 1) {
-        const file = files[i];
-        if (!file) continue;
-        const maybePath = (file as File & { path?: unknown }).path;
-        if (typeof maybePath === 'string' && maybePath.length > 0) {
-          paths.push(maybePath);
+    void knowledgeBaseService
+      .selectFiles()
+      .then(selection => {
+        if (requestId !== requestIdRef.current || !selection) {
+          return;
         }
-      }
-      if (paths.length > 0) {
-        void appendItems(paths);
-      }
-    },
-    [appendItems],
-  );
+        const merged = mergeWorkspaceMaterialSelection(items, selection);
+        if (merged.limitExceeded) {
+          onError([
+            i18nService.t(getKnowledgeDocumentErrorKey(KnowledgeBaseErrorCode.TooManyFiles)),
+          ]);
+          return;
+        }
+        onError([]);
+        onItemsChange(merged.items);
+      })
+      .catch(error => {
+        if (requestId !== requestIdRef.current) {
+          return;
+        }
+        onError([i18nService.t(getKnowledgeDocumentErrorKey(getSelectionErrorCode(error)))]);
+      });
+  }, [items, onError, onItemsChange]);
 
   const handleRemove = useCallback(
-    (id: string): void => {
-      onItemsChange(items.filter(item => item.id !== id));
+    (itemId: string): void => {
+      onItemsChange(items.filter(item => item.itemId !== itemId));
     },
     [items, onItemsChange],
   );
@@ -303,79 +166,33 @@ export const WorkspaceMaterialUpload: React.FC<WorkspaceMaterialUploadProps> = (
         </span>
       </button>
 
-      <input
-        id={inputId}
-        ref={fileInputRef}
-        type="file"
-        accept={acceptAttr}
-        multiple
-        className="sr-only"
-        onChange={handleFileInputChange}
-      />
-
-      {items.length > 0 && (
+      {items.length > 0 ? (
         <ul className="grid gap-1.5 rounded-lg border border-border bg-surface px-3 py-2">
-          {items.map(item => {
-            const showOcrProgress =
-              item.kind === 'image' &&
-              typeof item.ocrProgress === 'number' &&
-              item.ocrProgress >= 0 &&
-              item.ocrProgress < 1 &&
-              !item.text;
-            const percentText = showOcrProgress
-              ? t('enterpriseLeadMaterialOcrProgressLabel', {
-                  percent: String(Math.round((item.ocrProgress ?? 0) * 100)),
-                })
-              : '';
-            return (
-              <li
-                key={item.id}
-                className="grid grid-cols-[20px_minmax(0,1fr)_auto_auto] items-center gap-2 text-xs"
+          {items.map(item => (
+            <li
+              key={item.itemId}
+              className="grid grid-cols-[20px_minmax(0,1fr)_auto_auto] items-center gap-2 text-xs"
+            >
+              <span className="text-secondary">{getFileIcon(item)}</span>
+              <span className="truncate text-foreground" title={item.displayName}>
+                {item.displayName}
+              </span>
+              <span className="text-secondary">{formatBytes(item.fileSize)}</span>
+              <button
+                type="button"
+                onClick={() => handleRemove(item.itemId)}
+                disabled={disabled}
+                aria-label={t('enterpriseLeadMaterialRemoveFile', { name: item.displayName })}
+                className="grid h-6 w-6 place-items-center rounded text-secondary hover:bg-surface-raised hover:text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                <span className="text-secondary">{getFileIcon(item)}</span>
-                <span className="truncate text-foreground" title={item.fileName}>
-                  {getBaseName(item.fileName)}
-                  <span className="text-secondary">.{getExtension(item.fileName)}</span>
-                  {item.truncated && (
-                    <span className="ml-2 rounded bg-amber-500/15 px-1 text-amber-700 dark:text-amber-300">
-                      {t('enterpriseLeadMaterialListTruncated')}
-                    </span>
-                  )}
-                  {item.kind === 'image' && item.text && (
-                    <span className="ml-2 rounded bg-emerald-500/15 px-1 text-emerald-700 dark:text-emerald-300">
-                      {t('enterpriseLeadMaterialOcrComplete')}
-                    </span>
-                  )}
-                </span>
-                {showOcrProgress ? (
-                  <span className="flex items-center gap-2 text-secondary" aria-live="polite">
-                    <span className="h-1 w-16 overflow-hidden rounded-full bg-surface-raised">
-                      <span
-                        className="block h-full bg-primary transition-all"
-                        style={{ width: `${Math.round((item.ocrProgress ?? 0) * 100)}%` }}
-                      />
-                    </span>
-                    <span className="tabular-nums">{percentText}</span>
-                  </span>
-                ) : (
-                  <span className="text-secondary">{formatBytes(item.fileSize)}</span>
-                )}
-                <button
-                  type="button"
-                  onClick={() => handleRemove(item.id)}
-                  disabled={disabled}
-                  aria-label={`Remove ${item.fileName}`}
-                  className="grid h-6 w-6 place-items-center rounded text-secondary hover:bg-surface-raised hover:text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  <XMarkIcon className="h-3.5 w-3.5" />
-                </button>
-              </li>
-            );
-          })}
+                <XMarkIcon className="h-3.5 w-3.5" />
+              </button>
+            </li>
+          ))}
         </ul>
-      )}
+      ) : null}
 
-      {items.length > 0 && (
+      {items.length > 0 ? (
         <button
           type="button"
           onClick={handleChooseClick}
@@ -384,7 +201,7 @@ export const WorkspaceMaterialUpload: React.FC<WorkspaceMaterialUploadProps> = (
         >
           {t('enterpriseLeadMaterialAddMore')}
         </button>
-      )}
+      ) : null}
     </div>
   );
 };

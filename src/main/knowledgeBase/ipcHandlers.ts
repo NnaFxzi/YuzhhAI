@@ -62,6 +62,20 @@ const requireRevision = (value: unknown): number => {
   return value;
 };
 
+const readOptionalItemIds = (value: unknown): string[] | undefined => {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (!Array.isArray(value) || value.length === 0 || value.length > KNOWLEDGE_MAX_SELECTION_FILES) {
+    throw new KnowledgeDocumentServiceError(KnowledgeBaseErrorCodes.InvalidRequest);
+  }
+  const itemIds = Array.from(value, itemId => requireString(itemId));
+  if (new Set(itemIds).size !== itemIds.length) {
+    throw new KnowledgeDocumentServiceError(KnowledgeBaseErrorCodes.InvalidRequest);
+  }
+  return itemIds;
+};
+
 const readImportInput = (
   event: IpcMainInvokeEvent,
   value: unknown,
@@ -73,6 +87,7 @@ const readImportInput = (
     ownerId: event.sender.id,
     workspaceId: requireString(value.workspaceId),
     selectionToken: requireString(value.selectionToken),
+    ...(value.itemIds === undefined ? {} : { itemIds: readOptionalItemIds(value.itemIds) }),
   };
 };
 
@@ -133,7 +148,9 @@ const toIpcError = (error: unknown): KnowledgeBaseIpcError => {
   return { code: KnowledgeBaseErrorCodes.PersistenceFailed };
 };
 
-const invokeSafely = async <T>(operation: () => T | Promise<T>): Promise<KnowledgeBaseIpcResult<T>> => {
+const invokeSafely = async <T>(
+  operation: () => T | Promise<T>,
+): Promise<KnowledgeBaseIpcResult<T>> => {
   try {
     return { success: true, data: await operation() };
   } catch (error) {
