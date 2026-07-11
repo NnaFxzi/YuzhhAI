@@ -308,6 +308,7 @@ import {
   persistGeneratedVideoAssets,
   type RemoteGeneratedMediaAsset,
 } from './libs/mediaAssetPersistence';
+import { resolveOcrAssetPaths } from './libs/ocrAssets';
 import {
   migrateAgentModelRefs,
   parsePrimaryModelRef,
@@ -474,6 +475,12 @@ const MIME_EXTENSION_MAP: Record<string, string> = {
   'application/json': '.json',
   'text/csv': '.csv',
 };
+
+const workspaceOcrAssetPaths = resolveOcrAssetPaths({
+  isPackaged: app.isPackaged,
+  projectRoot: path.resolve(__dirname, '..'),
+  resourcesPath: process.resourcesPath,
+});
 
 interface HtmlShareCreateFromHtmlFileInput {
   sessionId: string;
@@ -10197,7 +10204,9 @@ if (!gotTheLock) {
         if (typeof filePath !== 'string' || !filePath.trim()) {
           return { success: false, error: 'Missing file path' };
         }
-        const result = await extractDocumentTextFromFile(filePath);
+        const result = await extractDocumentTextFromFile(filePath, {
+          image: { assetPaths: workspaceOcrAssetPaths },
+        });
         return {
           success: true,
           content: result.content,
@@ -10230,8 +10239,14 @@ if (!gotTheLock) {
         if (typeof filePath !== 'string' || !filePath.trim()) {
           return { success: false, error: 'Missing file path' };
         }
+        const fileName = path.basename(filePath);
+        console.log('[OCR] Image extraction started', {
+          assetRoot: workspaceOcrAssetPaths.root,
+          fileName,
+        });
         const webContents = event.sender;
         const result = await extractImageText(filePath, {
+          assetPaths: workspaceOcrAssetPaths,
           onProgress: progress => {
             try {
               void webContents.send('dialog:extractImageText:progress', { filePath, progress });
@@ -10240,12 +10255,17 @@ if (!gotTheLock) {
             }
           },
         });
+        console.log('[OCR] Image extraction completed', {
+          characters: result.content.length,
+          fileName,
+        });
         return {
           success: true,
           content: result.content,
           parser: result.parser,
         };
       } catch (error) {
+        console.error('[OCR] Image extraction failed', error);
         return {
           success: false,
           error: error instanceof Error ? error.message : 'Failed to OCR image',

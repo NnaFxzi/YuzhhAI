@@ -47,23 +47,22 @@
     {
       "from": ".keyfrom-build",
       "to": "keyfrom",
-      "filter": [
-        "**/*"
-      ]
+      "filter": ["**/*"]
     },
     {
       "from": "resources/tray",
       "to": "tray",
-      "filter": [
-        "**/*"
-      ]
+      "filter": ["**/*"]
     },
     {
       "from": "resources/industry-packs",
       "to": "resources/industry-packs",
-      "filter": [
-        "**/*"
-      ]
+      "filter": ["**/*"]
+    },
+    {
+      "from": "resources/ocr",
+      "to": "ocr",
+      "filter": ["**/*"]
     },
     {
       "from": "build/icons/png/512x512.png",

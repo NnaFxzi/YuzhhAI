@@ -10,6 +10,7 @@ import {
   EnterpriseLeadReadableDocumentExtension,
   EnterpriseLeadReadableDocumentExtensions,
 } from '../../shared/enterpriseLeadWorkspace/constants';
+import { getMissingOcrAssetPaths, type OcrAssetPaths, resolveOcrAssetPaths } from './ocrAssets';
 
 export const MAX_DOCUMENT_TEXT_READ_BYTES = 2 * 1024 * 1024;
 export const MAX_EXTRACTED_DOCUMENT_TEXT_CHARS = 2 * 1024 * 1024;
@@ -183,7 +184,8 @@ const extractSpreadsheetText = async (
   size: number,
 ): Promise<ExtractedDocumentText> => {
   ensureRichDocumentSize(filePath, size);
-  const workbook = XLSX.readFile(filePath, {
+  const workbook = XLSX.read(await fs.readFile(filePath), {
+    type: 'buffer',
     cellDates: true,
     cellHTML: false,
   });
@@ -270,12 +272,10 @@ const hasTextItemString = (item: unknown): item is { str: string } =>
 const extractPdfText = async (filePath: string, size: number): Promise<ExtractedDocumentText> => {
   ensureRichDocumentSize(filePath, size);
   const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
-  if (!pdfjs.GlobalWorkerOptions.workerSrc) {
-    const requireForWorker = createRequire(__filename);
-    pdfjs.GlobalWorkerOptions.workerSrc = requireForWorker.resolve(
-      'pdfjs-dist/build/pdf.worker.min.mjs',
-    );
-  }
+  const requireForWorker = createRequire(__filename);
+  pdfjs.GlobalWorkerOptions.workerSrc = requireForWorker.resolve(
+    'pdfjs-dist/build/pdf.worker.min.mjs',
+  );
   const buffer = await fs.readFile(filePath);
   const loadingTask = pdfjs.getDocument({
     data: new Uint8Array(buffer),
@@ -313,9 +313,10 @@ const extractPdfText = async (filePath: string, size: number): Promise<Extracted
 
 const convertHeicToPng = async (filePath: string): Promise<Buffer> => {
   const heic2anyModule = await import('heic2any');
-  const heic2any = (heic2anyModule.default ?? heic2anyModule) as unknown as (
-    options: { blob: Blob; toType?: string },
-  ) => Promise<Blob | Blob[]>;
+  const heic2any = (heic2anyModule.default ?? heic2anyModule) as unknown as (options: {
+    blob: Blob;
+    toType?: string;
+  }) => Promise<Blob | Blob[]>;
   const buffer = await fs.readFile(filePath);
   const sourceBlob = new Blob([new Uint8Array(buffer)]);
   const converted = await heic2any({
@@ -330,7 +331,12 @@ const convertHeicToPng = async (filePath: string): Promise<Buffer> => {
 };
 
 export interface ExtractImageTextOptions {
+  assetPaths?: OcrAssetPaths;
   onProgress?: (progress: number) => void;
+}
+
+export interface ExtractDocumentTextOptions {
+  image?: ExtractImageTextOptions;
 }
 
 export const extractImageText = async (
@@ -349,26 +355,44 @@ export const extractImageText = async (
     ? await convertHeicToPng(normalizedPath)
     : await fs.readFile(normalizedPath);
 
-  const requireForWorker = createRequire(__filename);
+  const assetPaths =
+    options.assetPaths ??
+    resolveOcrAssetPaths({
+      isPackaged: false,
+      projectRoot: path.resolve(__dirname, '../../..'),
+      resourcesPath: path.resolve(__dirname, '../../..'),
+    });
+  const missingAssets = getMissingOcrAssetPaths(assetPaths);
+  if (missingAssets.length > 0) {
+    throw new Error('OCR asset(s) missing: ' + missingAssets.join(', '));
+  }
+
   const tesseractModule = await import('tesseract.js');
-  const tesseract = (
-    tesseractModule as unknown as { default?: typeof tesseractModule } & typeof tesseractModule
-  ).default ?? tesseractModule;
-  const worker = await tesseract.createWorker(
-    [...SUPPORTED_OCR_LANGUAGES],
-    1,
-    {
-      workerPath: requireForWorker.resolve('tesseract.js/dist/worker.min.js'),
-      corePath: requireForWorker.resolve('tesseract.js-core/tesseract-core.wasm.js'),
-      logger: options.onProgress
-        ? (message: { status?: string; progress?: number }) => {
-            if (message.status === 'recognizing text' && typeof message.progress === 'number') {
-              options.onProgress(message.progress);
-            }
-          }
-        : undefined,
-    },
-  );
+  const tesseract =
+    (tesseractModule as unknown as { default?: typeof tesseractModule } & typeof tesseractModule)
+      .default ?? tesseractModule;
+  const workerOptions: {
+    workerPath: string;
+    corePath: string;
+    langPath: string;
+    gzip: boolean;
+    cacheMethod: 'none';
+    logger?: (message: { status?: string; progress?: number }) => void;
+  } = {
+    workerPath: assetPaths.workerPath,
+    corePath: assetPaths.corePath,
+    langPath: assetPaths.langPath,
+    gzip: true,
+    cacheMethod: 'none',
+  };
+  if (options.onProgress) {
+    workerOptions.logger = (message: { status?: string; progress?: number }): void => {
+      if (message.status === 'recognizing text' && typeof message.progress === 'number') {
+        options.onProgress?.(Math.max(0, Math.min(1, message.progress)));
+      }
+    };
+  }
+  const worker = await tesseract.createWorker([...SUPPORTED_OCR_LANGUAGES], 1, workerOptions);
 
   try {
     const result = await worker.recognize(imageBuffer);
@@ -388,6 +412,7 @@ export const extractImageText = async (
 
 export const extractDocumentTextFromFile = async (
   filePath: string,
+  options: ExtractDocumentTextOptions = {},
 ): Promise<ExtractedDocumentText> => {
   const normalizedPath = path.resolve(filePath.trim());
   const stat = await fs.stat(normalizedPath);
@@ -415,7 +440,7 @@ export const extractDocumentTextFromFile = async (
     return extractPptxText(normalizedPath, stat.size);
   }
   if (OCR_IMAGE_EXTENSIONS.has(extension)) {
-    return extractImageText(normalizedPath);
+    return extractImageText(normalizedPath, options.image);
   }
 
   throw new Error(`Unsupported readable document type: ${extension || 'unknown'}`);

@@ -104,6 +104,7 @@ export default defineConfig({
                   'zlib-sync',
                   '@discordjs/opus',
                   'bufferutil',
+                  'heic2any',
                   'utf-8-validate',
                   'node-nim',
                   'nim-web-sdk-ng',

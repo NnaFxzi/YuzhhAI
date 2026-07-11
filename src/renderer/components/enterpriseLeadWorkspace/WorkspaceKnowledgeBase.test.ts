@@ -2,10 +2,12 @@ import { describe, expect, test } from 'vitest';
 
 import {
   EnterpriseLeadDocumentExtractionStatus,
+  EnterpriseLeadExtractionSourceKind,
   EnterpriseLeadImageAttachmentExtensions,
   EnterpriseLeadKnowledgeIndexStatus,
   EnterpriseLeadSourceDocumentFileFilterExtensions,
 } from '../../../shared/enterpriseLeadWorkspace/constants';
+import type { EnterpriseLeadExtractionSource } from '../../../shared/enterpriseLeadWorkspace/types';
 import {
   EnterpriseLeadKnowledgeItemKind,
   EnterpriseLeadKnowledgeSection,
@@ -631,6 +633,14 @@ describe('WorkspaceKnowledgeBase layout', () => {
         vectorIndexStatus: EnterpriseLeadKnowledgeIndexStatus.Failed,
       }),
     ).toBe(false);
+    const pendingImageWithoutText: EnterpriseLeadExtractionSource = {
+      kind: EnterpriseLeadExtractionSourceKind.Image,
+      label: '旧图片资料',
+      filePath: '/tmp/legacy-image.png',
+      extractionStatus: EnterpriseLeadDocumentExtractionStatus.Pending,
+      vectorIndexStatus: EnterpriseLeadKnowledgeIndexStatus.Pending,
+    };
+    expect(canRetryEnterpriseLeadDocumentProcessing(pendingImageWithoutText)).toBe(true);
     expect(
       isEnterpriseLeadDocumentProcessing({
         extractionStatus: EnterpriseLeadDocumentExtractionStatus.Extracting,

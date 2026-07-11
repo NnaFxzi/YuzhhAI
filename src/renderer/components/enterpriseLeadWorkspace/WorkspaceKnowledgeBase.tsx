@@ -44,6 +44,10 @@ import {
   getWorkspaceKnowledgeSections,
   type WorkspaceKnowledgeItem,
 } from './enterpriseLeadWorkspaceUi';
+import {
+  EnterpriseLeadKnowledgeDocumentUploadOutcome,
+  resolveEnterpriseLeadKnowledgeDocumentUpload,
+} from './knowledgeDocumentUpload';
 
 interface WorkspaceKnowledgeBaseProps {
   workspace: EnterpriseLeadWorkspace;
@@ -226,9 +230,6 @@ const documentFileFilters = [
 
 export const enterpriseLeadReadableDocumentExtensions = new Set<string>(
   EnterpriseLeadReadableDocumentExtensions,
-);
-const enterpriseLeadImageAttachmentExtensions = new Set<string>(
-  EnterpriseLeadImageAttachmentExtensions,
 );
 const enterpriseLeadOriginalDocumentPreviewExtensions = new Set<string>([
   ...EnterpriseLeadImageAttachmentExtensions,
@@ -667,13 +668,25 @@ export const isEnterpriseLeadDocumentProcessing = (
   source?.vectorIndexStatus === EnterpriseLeadKnowledgeIndexStatus.Indexing;
 
 export const canRetryEnterpriseLeadDocumentProcessing = (
-  source?: Pick<EnterpriseLeadExtractionSource, 'extractionStatus' | 'text' | 'vectorIndexStatus'>,
+  source?: Pick<
+    EnterpriseLeadExtractionSource,
+    'extractionStatus' | 'filePath' | 'kind' | 'text' | 'vectorIndexStatus'
+  >,
 ): boolean => {
-  if (!source?.text?.trim() || isEnterpriseLeadDocumentProcessing(source)) {
+  if (isEnterpriseLeadDocumentProcessing(source)) {
     return false;
   }
   const extractionStatus = getDocumentExtractionStatus(source);
   const vectorIndexStatus = getEnterpriseLeadKnowledgeVectorIndexStatus(source);
+  if (!source?.text?.trim()) {
+    return (
+      source?.kind === EnterpriseLeadExtractionSourceKind.Image &&
+      Boolean(source.filePath?.trim()) &&
+      (extractionStatus === EnterpriseLeadDocumentExtractionStatus.Pending ||
+        extractionStatus === EnterpriseLeadDocumentExtractionStatus.Failed ||
+        vectorIndexStatus === EnterpriseLeadKnowledgeIndexStatus.Failed)
+    );
+  }
   return (
     extractionStatus !== EnterpriseLeadDocumentExtractionStatus.Extracted ||
     vectorIndexStatus !== EnterpriseLeadKnowledgeIndexStatus.Indexed
@@ -1608,43 +1621,43 @@ export const WorkspaceKnowledgeBase: React.FC<WorkspaceKnowledgeBaseProps> = ({
       return;
     }
 
-    const selectedPath = result.path;
-    const fileName = getFileNameFromPath(selectedPath);
-    const extension = getFileExtension(selectedPath);
-    const statResult = dialogApi.statFile ? await dialogApi.statFile(selectedPath) : null;
-    let nextNote = documentDraft.note;
-    let nextExtractImmediately = documentDraft.extractImmediately;
-    let nextSourceType: EnterpriseLeadExtractionSourceKind =
-      EnterpriseLeadExtractionSourceKind.File;
+    const upload = await resolveEnterpriseLeadKnowledgeDocumentUpload(dialogApi, result.path);
+    if (!upload.document) {
+      showFeedbackMessage('failure', 'enterpriseLeadKnowledgeFileUnsupported');
+      return;
+    }
 
-    if (enterpriseLeadReadableDocumentExtensions.has(extension) && dialogApi.readTextFile) {
-      const readResult = await dialogApi.readTextFile(selectedPath);
-      if (readResult.success) {
-        nextNote = readResult.content ?? '';
-        if (readResult.truncated) {
+    switch (upload.outcome) {
+      case EnterpriseLeadKnowledgeDocumentUploadOutcome.Ready:
+        if (upload.document.truncated) {
           showFeedbackMessage('exception', 'enterpriseLeadKnowledgeFileTextTruncated');
         }
-      } else {
+        break;
+      case EnterpriseLeadKnowledgeDocumentUploadOutcome.ReadFailed:
         showFeedbackMessage('failure', 'enterpriseLeadKnowledgeFileReadFailed');
-      }
-    } else if (enterpriseLeadImageAttachmentExtensions.has(extension)) {
-      nextNote = '';
-      nextExtractImmediately = false;
-      nextSourceType = EnterpriseLeadExtractionSourceKind.Image;
-      showFeedbackMessage('exception', 'enterpriseLeadKnowledgeImageFileSelected');
-    } else {
-      showFeedbackMessage('exception', 'enterpriseLeadKnowledgeFileReadUnsupported');
+        break;
+      case EnterpriseLeadKnowledgeDocumentUploadOutcome.ImageNeedsSummary:
+        showFeedbackMessage('exception', 'enterpriseLeadKnowledgeImageFileSelected');
+        break;
+      case EnterpriseLeadKnowledgeDocumentUploadOutcome.AttachmentOnly:
+        showFeedbackMessage('exception', 'enterpriseLeadKnowledgeFileReadUnsupported');
+        break;
+      case EnterpriseLeadKnowledgeDocumentUploadOutcome.Unsupported:
+        showFeedbackMessage('failure', 'enterpriseLeadKnowledgeFileUnsupported');
+        return;
     }
 
     setDocumentDraft({
       ...documentDraft,
-      category: selectedPath,
-      fileName,
-      fileSize: statResult?.success ? (statResult.size ?? null) : null,
-      name: documentDraft.name.trim() ? documentDraft.name : getFileNameWithoutExtension(fileName),
-      note: nextNote,
-      extractImmediately: nextExtractImmediately,
-      sourceType: nextSourceType,
+      category: upload.document.filePath,
+      fileName: upload.document.fileName,
+      fileSize: upload.document.fileSize,
+      name: documentDraft.name.trim()
+        ? documentDraft.name
+        : getFileNameWithoutExtension(upload.document.fileName),
+      note: upload.document.text,
+      extractImmediately: upload.document.extractImmediately,
+      sourceType: upload.document.sourceType,
     });
   };
 
@@ -1694,9 +1707,49 @@ export const WorkspaceKnowledgeBase: React.FC<WorkspaceKnowledgeBaseProps> = ({
     setIsSaving(true);
     clearFeedbackMessage();
     try {
+      let sources = currentWorkspace.extractionSources;
+      if (!source.text?.trim()) {
+        const dialogApi = window.electron?.dialog;
+        if (!dialogApi?.extractImageText || !source.filePath?.trim()) {
+          showFeedbackMessage('exception', 'enterpriseLeadKnowledgeFileSelectionUnavailable');
+          return;
+        }
+        const upload = await resolveEnterpriseLeadKnowledgeDocumentUpload(dialogApi, source.filePath);
+        if (
+          upload.outcome !== EnterpriseLeadKnowledgeDocumentUploadOutcome.Ready ||
+          !upload.document?.text.trim()
+        ) {
+          switch (upload.outcome) {
+            case EnterpriseLeadKnowledgeDocumentUploadOutcome.ImageNeedsSummary:
+              showFeedbackMessage('exception', 'enterpriseLeadKnowledgeImageFileSelected');
+              break;
+            case EnterpriseLeadKnowledgeDocumentUploadOutcome.ReadFailed:
+              showFeedbackMessage('failure', 'enterpriseLeadKnowledgeFileReadFailed');
+              break;
+            default:
+              showFeedbackMessage('failure', 'enterpriseLeadKnowledgeFileUnsupported');
+          }
+          return;
+        }
+        const now = new Date().toISOString();
+        sources = [...sources];
+        sources[sourceIndex] = {
+          ...source,
+          fileName: upload.document.fileName,
+          filePath: upload.document.filePath,
+          fileSize: upload.document.fileSize ?? undefined,
+          kind: upload.document.sourceType,
+          text: upload.document.text,
+          extractionError: undefined,
+          extractionStatus: EnterpriseLeadDocumentExtractionStatus.Pending,
+          vectorIndexError: undefined,
+          vectorIndexStatus: EnterpriseLeadKnowledgeIndexStatus.Pending,
+          updatedAt: now,
+        };
+      }
       const queuedWorkspace = await enterpriseLeadWorkspaceService.processDocumentSource(
         currentWorkspace.id,
-        currentWorkspace.extractionSources,
+        sources,
         sourceIndex,
       );
       if (!queuedWorkspace) {

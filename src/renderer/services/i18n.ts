@@ -3513,6 +3513,7 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadKnowledgeFileReadFailed: '文件内容读取失败，已保留文件来源。',
     enterpriseLeadKnowledgeFileReadUnsupported:
       '该文件类型暂不能直接读取内容，可保存后稍后处理或补充摘要。',
+    enterpriseLeadKnowledgeFileUnsupported: '该文件类型暂不支持添加到知识库。',
     enterpriseLeadKnowledgeImageFileSelected:
       '图片已作为资料来源添加。请在摘要中补充图片文字或识别结果，保存后即可进入知识库检索。',
     enterpriseLeadKnowledgeItemAdded: '知识已添加到当前空间。',
@@ -7867,6 +7868,8 @@ const translations: Record<LanguageType, Record<string, string>> = {
     enterpriseLeadKnowledgeFileReadFailed: 'Failed to read file content. The file source was kept.',
     enterpriseLeadKnowledgeFileReadUnsupported:
       'This file type cannot be read directly yet. Save it for later or add a summary.',
+    enterpriseLeadKnowledgeFileUnsupported:
+      'This file type is not supported in the knowledge base.',
     enterpriseLeadKnowledgeImageFileSelected:
       'Image added as source material. Add visible text or recognition notes in the summary, then save it for knowledge search.',
     enterpriseLeadKnowledgeItemAdded: 'Knowledge added to this workspace.',

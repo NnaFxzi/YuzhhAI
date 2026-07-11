@@ -1,12 +1,28 @@
+import fsSync from 'node:fs';
 import fs from 'node:fs/promises';
+import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
 
 import JSZip from 'jszip';
-import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import * as XLSX from 'xlsx';
 
-import { extractDocumentTextFromFile, isSupportedDocumentTextFile } from './documentTextExtractor';
+import {
+  extractDocumentTextFromFile,
+  extractImageText,
+  isSupportedDocumentTextFile,
+} from './documentTextExtractor';
+import type { OcrAssetPaths } from './ocrAssets';
+
+const tesseractMock = vi.hoisted(() => ({
+  createWorker: vi.fn(),
+}));
+
+vi.mock('tesseract.js', () => ({
+  createWorker: tesseractMock.createWorker,
+  default: { createWorker: tesseractMock.createWorker },
+}));
 
 const buildMinimalPdf = (text: string): string => {
   const stream = `BT /F1 24 Tf 100 700 Td (${text}) Tj ET`;
@@ -33,8 +49,29 @@ const buildMinimalPdf = (text: string): string => {
 describe('documentTextExtractor', () => {
   let tmpDir = '';
 
+  const createOcrAssetPaths = async (): Promise<OcrAssetPaths> => {
+    const root = path.join(tmpDir, 'ocr');
+    await fs.mkdir(root, { recursive: true });
+    const workerPath = path.join(root, 'worker.node.cjs');
+    const corePath = path.join(root, 'tesseract-core.wasm.js');
+    const engPath = path.join(root, 'eng.traineddata.gz');
+    const chiSimPath = path.join(root, 'chi_sim.traineddata.gz');
+    await Promise.all(
+      [workerPath, corePath, engPath, chiSimPath].map(filePath => fs.writeFile(filePath, '')),
+    );
+    return {
+      root,
+      workerPath,
+      corePath,
+      langPath: root,
+      languageDataPaths: [engPath, chiSimPath],
+      coreWasmPaths: [],
+    };
+  };
+
   beforeEach(async () => {
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'document-text-extractor-'));
+    tesseractMock.createWorker.mockReset();
   });
 
   afterEach(async () => {
@@ -88,6 +125,33 @@ describe('documentTextExtractor', () => {
     expect(result.content).toContain('私域话术优化');
   });
 
+  test('reads xlsx data through the main-process file reader when the SheetJS file adapter is unavailable', async () => {
+    const workbook = XLSX.utils.book_new();
+    const sheet = XLSX.utils.aoa_to_sheet([
+      ['产品', '库存'],
+      ['精密零件', 128],
+    ]);
+    XLSX.utils.book_append_sheet(workbook, sheet, '库存资料');
+    const filePath = path.join(tmpDir, 'inventory.xlsx');
+    XLSX.writeFile(workbook, filePath);
+    const originalReadFileSync = fsSync.readFileSync;
+    fsSync.readFileSync = ((targetPath: string | Buffer | URL | number, ...args: unknown[]) => {
+      if (targetPath === filePath) {
+        throw new Error(`Cannot access file ${filePath}`);
+      }
+      return (originalReadFileSync as (...readArgs: unknown[]) => Buffer)(targetPath, ...args);
+    }) as typeof fsSync.readFileSync;
+
+    try {
+      const result = await extractDocumentTextFromFile(filePath);
+
+      expect(result.content).toContain('# 库存资料');
+      expect(result.content).toContain('精密零件');
+    } finally {
+      fsSync.readFileSync = originalReadFileSync;
+    }
+  });
+
   test('extracts readable text from pdf files', async () => {
     const filePath = path.join(tmpDir, 'knowledge.pdf');
     await fs.writeFile(filePath, buildMinimalPdf('Hello PDF Knowledge'), 'binary');
@@ -96,6 +160,63 @@ describe('documentTextExtractor', () => {
 
     expect(result.parser).toBe('pdf');
     expect(result.content).toContain('Hello PDF Knowledge');
+  });
+
+  test('uses local Node OCR assets for image text extraction', async () => {
+    const assetPaths = await createOcrAssetPaths();
+    const filePath = path.join(tmpDir, 'factory.png');
+    await fs.writeFile(filePath, 'image');
+    const progress = vi.fn();
+    const worker = {
+      recognize: vi.fn().mockResolvedValue({ data: { text: '工厂资料' } }),
+      terminate: vi.fn().mockResolvedValue(undefined),
+    };
+    tesseractMock.createWorker.mockResolvedValueOnce(worker);
+
+    const result = await extractImageText(filePath, { assetPaths, onProgress: progress });
+
+    expect(result).toMatchObject({ content: '工厂资料', parser: 'image' });
+    expect(tesseractMock.createWorker).toHaveBeenCalledWith(
+      ['eng', 'chi_sim'],
+      1,
+      expect.objectContaining({
+        workerPath: assetPaths.workerPath,
+        corePath: assetPaths.corePath,
+        langPath: assetPaths.langPath,
+        gzip: true,
+        cacheMethod: 'none',
+        logger: expect.any(Function),
+      }),
+    );
+    expect(worker.terminate).toHaveBeenCalledOnce();
+  });
+
+  test('does not pass an undefined logger to the Tesseract worker', async () => {
+    const assetPaths = await createOcrAssetPaths();
+    const filePath = path.join(tmpDir, 'factory.png');
+    await fs.writeFile(filePath, 'image');
+    tesseractMock.createWorker.mockResolvedValueOnce({
+      recognize: vi.fn().mockResolvedValue({ data: { text: '' } }),
+      terminate: vi.fn().mockResolvedValue(undefined),
+    });
+
+    await extractImageText(filePath, { assetPaths });
+
+    const workerOptions = tesseractMock.createWorker.mock.calls[0]?.[2] as Record<string, unknown>;
+    expect(workerOptions).not.toHaveProperty('logger');
+  });
+
+  test('overrides the PDF.js Node worker default with the installed worker module', async () => {
+    const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+    const requireForWorker = createRequire(import.meta.url);
+    const expectedWorkerPath = requireForWorker.resolve('pdfjs-dist/build/pdf.worker.min.mjs');
+    const filePath = path.join(tmpDir, 'worker-path.pdf');
+    await fs.writeFile(filePath, buildMinimalPdf('PDF Worker Path'), 'binary');
+
+    pdfjs.GlobalWorkerOptions.workerSrc = './pdf.worker.mjs';
+    await extractDocumentTextFromFile(filePath);
+
+    expect(pdfjs.GlobalWorkerOptions.workerSrc).toBe(expectedWorkerPath);
   });
 
   test('extracts readable text from pptx files', async () => {
