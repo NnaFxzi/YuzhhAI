@@ -1,6 +1,9 @@
 import { describe, expect, test, vi } from 'vitest';
 
-import { KnowledgeBaseIpc, KnowledgeDocumentVisibility, } from '../../shared/knowledgeBase/constants';
+import {
+  KnowledgeBaseIpc,
+  KnowledgeDocumentVisibility,
+} from '../../shared/knowledgeBase/constants';
 import { createKnowledgeBasePreloadBridge } from './preloadBridge';
 
 describe('createKnowledgeBasePreloadBridge', () => {

@@ -1,11 +1,20 @@
-import { ArrowUpTrayIcon, DocumentIcon, PhotoIcon, TableCellsIcon, XMarkIcon, } from '@heroicons/react/24/outline';
+import {
+  ArrowUpTrayIcon,
+  DocumentIcon,
+  PhotoIcon,
+  TableCellsIcon,
+  XMarkIcon,
+} from '@heroicons/react/24/outline';
 import React, { useCallback, useRef } from 'react';
 
 import {
   EnterpriseLeadImageAttachmentExtensions,
   EnterpriseLeadReadableDocumentExtensions,
 } from '../../../shared/enterpriseLeadWorkspace/constants';
-import { KNOWLEDGE_MAX_SELECTION_FILES, KnowledgeBaseErrorCode, } from '../../../shared/knowledgeBase/constants';
+import {
+  KNOWLEDGE_MAX_SELECTION_FILES,
+  KnowledgeBaseErrorCode,
+} from '../../../shared/knowledgeBase/constants';
 import type { KnowledgeFileSelection } from '../../../shared/knowledgeBase/types';
 import { i18nService } from '../../services/i18n';
 import { knowledgeBaseService, KnowledgeBaseServiceError } from '../../services/knowledgeBase';

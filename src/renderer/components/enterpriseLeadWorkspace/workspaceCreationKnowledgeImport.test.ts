@@ -15,7 +15,10 @@ import {
   KnowledgeDocumentSourceMode,
   KnowledgeDocumentStatus,
 } from '../../../shared/knowledgeBase/constants';
-import type { KnowledgeDocumentListItem, KnowledgeImportBatchResult, } from '../../../shared/knowledgeBase/types';
+import type {
+  KnowledgeDocumentListItem,
+  KnowledgeImportBatchResult,
+} from '../../../shared/knowledgeBase/types';
 import { KnowledgeBaseServiceError } from '../../services/knowledgeBase';
 import {
   createWorkspaceWithKnowledgeImports,

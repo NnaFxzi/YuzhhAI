@@ -10,7 +10,10 @@ import {
   KnowledgeIngestionJobStatus,
   KnowledgeIngestionStage,
 } from '../../../shared/knowledgeBase/constants';
-import type { KnowledgeDocumentListItem, KnowledgeImportBatchResult, } from '../../../shared/knowledgeBase/types';
+import type {
+  KnowledgeDocumentListItem,
+  KnowledgeImportBatchResult,
+} from '../../../shared/knowledgeBase/types';
 import { i18nService } from '../../services/i18n';
 import { KnowledgeBaseServiceError } from '../../services/knowledgeBase';
 import type { WorkspaceKnowledgeDocumentsState } from './useWorkspaceKnowledgeDocuments';

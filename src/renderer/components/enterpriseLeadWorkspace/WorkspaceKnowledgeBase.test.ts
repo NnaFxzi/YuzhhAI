@@ -14,7 +14,10 @@ import type {
   EnterpriseLeadWorkspace,
 } from '../../../shared/enterpriseLeadWorkspace/types';
 import { buildDefaultEnterpriseLeadWorkspaceSettings } from '../../../shared/enterpriseLeadWorkspace/validation';
-import { EnterpriseLeadKnowledgeItemKind, EnterpriseLeadKnowledgeSection, } from './enterpriseLeadWorkspaceUi';
+import {
+  EnterpriseLeadKnowledgeItemKind,
+  EnterpriseLeadKnowledgeSection,
+} from './enterpriseLeadWorkspaceUi';
 import {
   canPreviewEnterpriseLeadOriginalDocument,
   canRetryEnterpriseLeadDocumentProcessing,
