@@ -1735,6 +1735,29 @@ describe('enterprise lead workspace UI helpers', () => {
     );
   });
 
+  test('renders newly introduced workflow task statuses', () => {
+    const statuses: EnterpriseLeadTaskStatus[] = [
+      EnterpriseLeadTaskStatus.Ready,
+      EnterpriseLeadTaskStatus.AwaitingApproval,
+      EnterpriseLeadTaskStatus.Cancelled,
+    ];
+
+    expect(statuses.map(status => getAgentStatusLabelKey(status))).toEqual([
+      'enterpriseLeadAgentStatusReady',
+      'enterpriseLeadAgentStatusAwaitingApproval',
+      'enterpriseLeadAgentStatusCancelled',
+    ]);
+    expect(getAgentCardTone(EnterpriseLeadTaskStatus.Ready).statusClassName).toContain(
+      'text-primary',
+    );
+    expect(getAgentCardTone(EnterpriseLeadTaskStatus.AwaitingApproval).statusClassName).toContain(
+      'text-amber',
+    );
+    expect(getAgentCardTone(EnterpriseLeadTaskStatus.Cancelled).statusClassName).toContain(
+      'text-slate',
+    );
+  });
+
   test('detects task output from summary text or output payload', () => {
     expect(hasTaskOutput({ summary: '  Done  ', outputPayload: {} })).toBe(true);
     expect(hasTaskOutput({ summary: '', outputPayload: { draft: 'Draft text' } })).toBe(true);

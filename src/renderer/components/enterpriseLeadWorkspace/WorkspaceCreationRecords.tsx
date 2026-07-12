@@ -26,8 +26,10 @@ const runStatusLabelKeys: Record<string, string> = {
   [EnterpriseLeadRunStatus.Draft]: 'enterpriseLeadCreationRunStatusDraft',
   [EnterpriseLeadRunStatus.Running]: 'enterpriseLeadCreationRunStatusRunning',
   [EnterpriseLeadRunStatus.NeedsInput]: 'enterpriseLeadCreationRunStatusNeedsInput',
+  [EnterpriseLeadRunStatus.AwaitingApproval]: 'enterpriseLeadCreationRunStatusAwaitingApproval',
   [EnterpriseLeadRunStatus.Blocked]: 'enterpriseLeadCreationRunStatusBlocked',
   [EnterpriseLeadRunStatus.Completed]: 'enterpriseLeadCreationRunStatusCompleted',
+  [EnterpriseLeadRunStatus.Cancelled]: 'enterpriseLeadCreationRunStatusCancelled',
   [EnterpriseLeadRunStatus.Archived]: 'enterpriseLeadCreationRunStatusArchived',
   [EnterpriseLeadRunStatus.Error]: 'enterpriseLeadCreationRunStatusError',
 };
@@ -36,8 +38,10 @@ const runStatusClassNames: Record<string, string> = {
   [EnterpriseLeadRunStatus.Draft]: 'bg-slate-500/10 text-slate-600 dark:text-slate-300',
   [EnterpriseLeadRunStatus.Running]: 'bg-primary/10 text-primary',
   [EnterpriseLeadRunStatus.NeedsInput]: 'bg-amber-500/10 text-amber-700 dark:text-amber-300',
+  [EnterpriseLeadRunStatus.AwaitingApproval]: 'bg-amber-500/10 text-amber-700 dark:text-amber-300',
   [EnterpriseLeadRunStatus.Blocked]: 'bg-orange-500/10 text-orange-700 dark:text-orange-300',
   [EnterpriseLeadRunStatus.Completed]: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
+  [EnterpriseLeadRunStatus.Cancelled]: 'bg-slate-500/10 text-slate-600 dark:text-slate-300',
   [EnterpriseLeadRunStatus.Archived]: 'bg-slate-500/10 text-slate-600 dark:text-slate-300',
   [EnterpriseLeadRunStatus.Error]: 'bg-red-500/10 text-red-700 dark:text-red-300',
 };

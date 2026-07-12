@@ -80,13 +80,7 @@ export const EnterpriseLeadRunStatus = {
   Error: 'error',
 } as const;
 export type EnterpriseLeadRunStatus =
-  | 'draft'
-  | 'running'
-  | 'needs_input'
-  | 'blocked'
-  | 'completed'
-  | 'archived'
-  | 'error';
+  (typeof EnterpriseLeadRunStatus)[keyof typeof EnterpriseLeadRunStatus];
 
 export const EnterpriseLeadTaskStatus = {
   Waiting: 'waiting',
@@ -101,13 +95,7 @@ export const EnterpriseLeadTaskStatus = {
   Error: 'error',
 } as const;
 export type EnterpriseLeadTaskStatus =
-  | 'waiting'
-  | 'running'
-  | 'needs_input'
-  | 'completed'
-  | 'stale'
-  | 'blocked'
-  | 'error';
+  (typeof EnterpriseLeadTaskStatus)[keyof typeof EnterpriseLeadTaskStatus];
 
 export const EnterpriseLeadRiskLevel = {
   Low: 'low',
