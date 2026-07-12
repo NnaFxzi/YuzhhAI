@@ -306,6 +306,41 @@ export class EnterpriseLeadWorkspaceStore {
         created_at TEXT NOT NULL,
         applied_at TEXT
       );
+
+      CREATE TABLE IF NOT EXISTS enterprise_lead_workflow_artifacts (
+        id TEXT PRIMARY KEY,
+        run_id TEXT NOT NULL,
+        task_id TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        schema_version INTEGER NOT NULL,
+        payload TEXT NOT NULL,
+        evidence_ids TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS enterprise_lead_workflow_events (
+        id TEXT PRIMARY KEY,
+        run_id TEXT NOT NULL,
+        sequence INTEGER NOT NULL,
+        type TEXT NOT NULL,
+        task_id TEXT,
+        role TEXT,
+        summary TEXT,
+        payload TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        UNIQUE(run_id, sequence)
+      );
+
+      CREATE TABLE IF NOT EXISTS enterprise_lead_task_attempts (
+        id TEXT PRIMARY KEY,
+        task_id TEXT NOT NULL,
+        attempt INTEGER NOT NULL,
+        execution_mode TEXT NOT NULL,
+        status TEXT NOT NULL,
+        error TEXT NOT NULL,
+        started_at TEXT NOT NULL,
+        ended_at TEXT
+      );
     `);
     this.ensureRunArchiveColumns();
     this.ensureAgentTaskSequenceColumn();

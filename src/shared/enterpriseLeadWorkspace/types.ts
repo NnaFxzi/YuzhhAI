@@ -20,8 +20,35 @@ import type {
 } from './constants';
 import type {
   WorkflowArtifactRef,
+  WorkflowEvent,
   WorkflowExecutionMode,
 } from './workflowContracts';
+
+export interface EnterpriseLeadWorkflowArtifact {
+  id: string;
+  runId: string;
+  taskId: string;
+  kind: string;
+  schemaVersion: number;
+  payload: Record<string, unknown>;
+  evidenceIds: string[];
+  createdAt: string;
+}
+
+export interface EnterpriseLeadWorkflowEvent extends WorkflowEvent {
+  payload: Record<string, unknown>;
+}
+
+export interface EnterpriseLeadTaskAttempt {
+  id: string;
+  taskId: string;
+  attempt: number;
+  executionMode: WorkflowExecutionMode;
+  status: string;
+  error: string;
+  startedAt: string;
+  endedAt: string | null;
+}
 
 export interface EnterpriseLeadWorkspaceProfile {
   companySummary: string;
