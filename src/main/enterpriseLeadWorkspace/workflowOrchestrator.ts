@@ -1,0 +1,415 @@
+import {
+  EnterpriseLeadRunStatus,
+  EnterpriseLeadTaskStatus,
+} from '../../shared/enterpriseLeadWorkspace/constants';
+import type { PromotionTaskResult } from '../../shared/enterpriseLeadWorkspace/promotionTaskContracts';
+import { PROMOTION_WORKFLOW_GRAPH } from '../../shared/enterpriseLeadWorkspace/promotionWorkflowGraph';
+import type {
+  EnterpriseLeadAgentTask,
+  EnterpriseLeadAgentTaskResult,
+  EnterpriseLeadWorkspaceSnapshot,
+} from '../../shared/enterpriseLeadWorkspace/types';
+import {
+  normalizeWorkflowStartOptions,
+  type WorkflowArtifactRef,
+  type WorkflowStartOptions,
+} from '../../shared/enterpriseLeadWorkspace/workflowContracts';
+import type { CreateEnterpriseLeadTaskInput, EnterpriseLeadWorkspaceStore } from './store';
+import type { WorkflowArtifactStore } from './workflowArtifactStore';
+import type { WorkflowExecutionAdapter } from './workflowExecutionAdapter';
+
+export interface EnterpriseLeadWorkflowOrchestratorOptions {
+  store: EnterpriseLeadWorkspaceStore;
+  artifactStore: WorkflowArtifactStore;
+  executionAdapter: WorkflowExecutionAdapter;
+}
+
+const isCompleted = (task: EnterpriseLeadAgentTask): boolean =>
+  task.status === EnterpriseLeadTaskStatus.Completed && !task.stale;
+
+const isRunnable = (task: EnterpriseLeadAgentTask): boolean =>
+  task.status === EnterpriseLeadTaskStatus.Ready ||
+  task.status === EnterpriseLeadTaskStatus.Error ||
+  task.status === EnterpriseLeadTaskStatus.Stale;
+
+export class EnterpriseLeadWorkflowOrchestrator {
+  private readonly activeRuns = new Map<string, Promise<EnterpriseLeadWorkspaceSnapshot>>();
+  private readonly cancelledRuns = new Set<string>();
+
+  constructor(private readonly options: EnterpriseLeadWorkflowOrchestratorOptions) {}
+
+  async startRun(
+    workspaceId: string,
+    runId: string,
+    options?: WorkflowStartOptions,
+  ): Promise<EnterpriseLeadWorkspaceSnapshot> {
+    const active = this.activeRuns.get(runId);
+    if (active) return active;
+
+    this.assertRunWorkspace(workspaceId, runId);
+    const existingTasks = this.options.store.listTasks(runId);
+    if (existingTasks.length > 0) {
+      return this.getSnapshot(workspaceId, runId);
+    }
+
+    const startOptions = normalizeWorkflowStartOptions(options);
+    this.options.store.initializeWorkflowRun(runId, this.buildWorkflowTasks(startOptions), startOptions);
+    this.options.artifactStore.appendEvent({ runId, type: 'run_started' });
+    return this.schedule(workspaceId, runId);
+  }
+
+  async resumeRun(workspaceId: string, runId: string): Promise<EnterpriseLeadWorkspaceSnapshot> {
+    const active = this.activeRuns.get(runId);
+    if (active) return active;
+
+    this.assertRunWorkspace(workspaceId, runId);
+    const tasks = this.options.store.listTasks(runId);
+    if (tasks.some(task => task.status === EnterpriseLeadTaskStatus.AwaitingApproval)) {
+      return this.getSnapshot(workspaceId, runId);
+    }
+    if (tasks.some(task => task.status === EnterpriseLeadTaskStatus.NeedsInput)) {
+      return this.getSnapshot(workspaceId, runId);
+    }
+    return this.schedule(workspaceId, runId);
+  }
+
+  async cancelRun(workspaceId: string, runId: string): Promise<EnterpriseLeadWorkspaceSnapshot> {
+    this.assertRunWorkspace(workspaceId, runId);
+    this.cancelledRuns.add(runId);
+    this.options.store.cancelWorkflowRun(runId);
+    this.options.artifactStore.appendEvent({ runId, type: 'run_cancelled' });
+    return this.getSnapshot(workspaceId, runId);
+  }
+
+  async approveTask(
+    workspaceId: string,
+    runId: string,
+    taskId: string,
+  ): Promise<EnterpriseLeadWorkspaceSnapshot> {
+    this.assertRunWorkspace(workspaceId, runId);
+    const task = this.requireApprovalTask(runId, taskId);
+    this.options.store.updateWorkflowTaskStatus(task.id, EnterpriseLeadTaskStatus.Completed);
+    this.options.artifactStore.appendEvent({
+      runId,
+      type: 'task_completed',
+      taskId: task.id,
+      role: task.role,
+      summary: 'Approved for downstream workflow execution.',
+    });
+    return this.getSnapshot(workspaceId, runId);
+  }
+
+  async rejectTask(
+    workspaceId: string,
+    runId: string,
+    taskId: string,
+  ): Promise<EnterpriseLeadWorkspaceSnapshot> {
+    this.assertRunWorkspace(workspaceId, runId);
+    const task = this.requireApprovalTask(runId, taskId);
+    this.options.store.updateWorkflowTaskStatus(task.id, EnterpriseLeadTaskStatus.Stale, {
+      summary: `${task.summary} Rejected and queued for revision.`,
+    });
+    this.options.artifactStore.appendEvent({
+      runId,
+      type: 'approval_rejected',
+      taskId: task.id,
+      role: task.role,
+      summary: 'Approval rejected; task can be retried on resume.',
+    });
+    return this.getSnapshot(workspaceId, runId);
+  }
+
+  getSnapshot(workspaceId: string, runId: string): EnterpriseLeadWorkspaceSnapshot {
+    const run = this.assertRunWorkspace(workspaceId, runId);
+    const workspace = this.options.store.getWorkspace(workspaceId);
+    if (!workspace) {
+      throw new Error('Enterprise lead workspace not found');
+    }
+    return {
+      workspace,
+      currentRun: run,
+      tasks: this.options.store.listTasks(runId),
+      pendingVersions: this.options.store.listPendingVersions(runId),
+      deliverables: [],
+      todos: [],
+      archives: [],
+    };
+  }
+
+  private buildWorkflowTasks(startOptions: WorkflowStartOptions): CreateEnterpriseLeadTaskInput[] {
+    const enabledNodes = new Set(startOptions.enabledOptionalNodes);
+    const includedNodes = PROMOTION_WORKFLOW_GRAPH.filter(
+      node => !node.optional || (node.enableWhen && enabledNodes.has(node.enableWhen)),
+    );
+    const taskIdByRole = new Map(includedNodes.map(node => [node.role, node.role]));
+
+    return includedNodes.map(node => ({
+      role: node.role,
+      nodeId: node.role,
+      dependsOnTaskIds: node.dependsOn
+        .map(role => taskIdByRole.get(role))
+        .filter((taskId): taskId is string => Boolean(taskId)),
+      executionMode: node.executionMode,
+    }));
+  }
+
+  private schedule(workspaceId: string, runId: string): Promise<EnterpriseLeadWorkspaceSnapshot> {
+    const active = this.activeRuns.get(runId);
+    if (active) return active;
+
+    this.cancelledRuns.delete(runId);
+    const promise = this.runSchedule(workspaceId, runId).finally(() => {
+      this.activeRuns.delete(runId);
+    });
+    this.activeRuns.set(runId, promise);
+    return promise;
+  }
+
+  private async runSchedule(
+    workspaceId: string,
+    runId: string,
+  ): Promise<EnterpriseLeadWorkspaceSnapshot> {
+    const startOptions = this.options.store.getWorkflowStartOptions(runId);
+    while (!this.cancelledRuns.has(runId)) {
+      const tasks = this.options.store.listTasks(runId);
+      this.markReadyTasks(runId, tasks);
+      const refreshedTasks = this.options.store.listTasks(runId);
+      const runnable = refreshedTasks.filter(isRunnable).slice(0, startOptions.maxConcurrency);
+
+      if (runnable.length === 0) {
+        return this.finishRunIfSettled(workspaceId, runId, refreshedTasks);
+      }
+
+      this.options.store.updateRunProgress({
+        runId,
+        status: EnterpriseLeadRunStatus.Running,
+        currentRole: runnable[0]?.role ?? null,
+        controllerSummary: 'Promotion workflow is processing ready tasks.',
+      });
+      await Promise.allSettled(runnable.map(task => this.executeTask(runId, task, refreshedTasks)));
+
+      const postBatchTasks = this.options.store.listTasks(runId);
+      const runStatus = this.getPausedRunStatus(postBatchTasks);
+      if (runStatus) {
+        this.options.store.updateRunProgress({
+          runId,
+          status: runStatus.status,
+          currentRole: runStatus.task.role,
+          controllerSummary: runStatus.task.summary || 'Workflow requires manual attention.',
+        });
+        return this.getSnapshot(workspaceId, runId);
+      }
+    }
+    return this.getSnapshot(workspaceId, runId);
+  }
+
+  private markReadyTasks(runId: string, tasks: EnterpriseLeadAgentTask[]): void {
+    const taskById = new Map(tasks.map(task => [task.id, task]));
+    for (const task of tasks) {
+      if (task.status !== EnterpriseLeadTaskStatus.Waiting) continue;
+      const dependencies = task.dependsOnTaskIds ?? [];
+      if (dependencies.every(taskId => isCompleted(taskById.get(taskId) ?? task))) {
+        this.options.store.updateWorkflowTaskStatus(task.id, EnterpriseLeadTaskStatus.Ready);
+        this.options.artifactStore.appendEvent({
+          runId,
+          type: 'task_ready',
+          taskId: task.id,
+          role: task.role,
+        });
+      }
+    }
+  }
+
+  private async executeTask(
+    runId: string,
+    task: EnterpriseLeadAgentTask,
+    tasks: EnterpriseLeadAgentTask[],
+  ): Promise<void> {
+    const attempt = (task.attempt ?? 0) + 1;
+    const upstreamTasks = (task.dependsOnTaskIds ?? [])
+      .map(taskId => tasks.find(candidate => candidate.id === taskId))
+      .filter((candidate): candidate is EnterpriseLeadAgentTask => Boolean(candidate));
+    const inputArtifacts = upstreamTasks.flatMap(upstream => upstream.artifactRefs ?? []);
+    const executionMode = task.executionMode;
+    if (!executionMode) {
+      throw new Error(`Workflow task ${task.id} has no execution mode`);
+    }
+
+    this.options.store.updateWorkflowTaskStatus(task.id, EnterpriseLeadTaskStatus.Running, { attempt });
+    const taskAttempt = this.options.artifactStore.createAttempt({
+      taskId: task.id,
+      attempt,
+      executionMode,
+    });
+    this.options.artifactStore.appendEvent({
+      runId,
+      type: task.status === EnterpriseLeadTaskStatus.Ready ? 'task_started' : 'task_retrying',
+      taskId: task.id,
+      role: task.role,
+    });
+
+    try {
+      const result = await this.options.executionAdapter.execute({
+        runId,
+        taskId: task.id,
+        role: task.role,
+        userGoal: typeof task.inputPayload.userGoal === 'string' ? task.inputPayload.userGoal : '',
+        inputArtifacts,
+        acceptanceCriteria: [],
+        executionMode,
+      });
+      if (this.cancelledRuns.has(runId)) {
+        this.options.artifactStore.finishAttempt(taskAttempt.id, {
+          status: EnterpriseLeadTaskStatus.Cancelled,
+        });
+        return;
+      }
+
+      const taskResult = this.persistTaskResult(runId, task, result);
+      this.options.store.updateWorkflowTaskResult(task.id, taskResult, attempt);
+      this.options.artifactStore.finishAttempt(taskAttempt.id, { status: result.status });
+      this.appendTaskResultEvent(runId, task, result);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (!this.cancelledRuns.has(runId)) {
+        this.options.store.updateWorkflowTaskStatus(task.id, EnterpriseLeadTaskStatus.Error, {
+          error: message,
+          attempt,
+        });
+        this.options.artifactStore.appendEvent({
+          runId,
+          type: 'task_failed',
+          taskId: task.id,
+          role: task.role,
+          summary: message,
+        });
+      }
+      this.options.artifactStore.finishAttempt(taskAttempt.id, {
+        status: this.cancelledRuns.has(runId) ? EnterpriseLeadTaskStatus.Cancelled : EnterpriseLeadTaskStatus.Error,
+        error: message,
+      });
+    }
+  }
+
+  private persistTaskResult(
+    runId: string,
+    task: EnterpriseLeadAgentTask,
+    result: PromotionTaskResult,
+  ): EnterpriseLeadAgentTaskResult {
+    const evidenceIds = result.artifactRefs.flatMap(artifact => artifact.evidenceIds);
+    const artifact = this.options.artifactStore.createArtifact({
+      runId,
+      taskId: task.id,
+      kind: `${task.role}_output`,
+      schemaVersion: 1,
+      payload: result.outputs as Record<string, unknown>,
+      evidenceIds,
+    });
+    const outputArtifact: WorkflowArtifactRef = {
+      id: artifact.id,
+      kind: artifact.kind,
+      schemaVersion: artifact.schemaVersion,
+      summary: result.summary,
+      producerTaskId: task.id,
+      evidenceIds: artifact.evidenceIds,
+    };
+    return {
+      ...result,
+      outputs: result.outputs as Record<string, unknown>,
+      artifactRefs: [...result.artifactRefs, outputArtifact],
+    };
+  }
+
+  private appendTaskResultEvent(
+    runId: string,
+    task: EnterpriseLeadAgentTask,
+    result: PromotionTaskResult,
+  ): void {
+    const eventType =
+      result.status === EnterpriseLeadTaskStatus.Completed
+        ? 'task_completed'
+        : result.status === EnterpriseLeadTaskStatus.NeedsInput
+          ? 'task_blocked'
+          : result.status === EnterpriseLeadTaskStatus.AwaitingApproval
+            ? 'approval_required'
+            : result.status === EnterpriseLeadTaskStatus.Blocked
+              ? 'task_blocked'
+              : 'task_failed';
+    this.options.artifactStore.appendEvent({
+      runId,
+      type: eventType,
+      taskId: task.id,
+      role: task.role,
+      summary: result.summary,
+    });
+  }
+
+  private getPausedRunStatus(tasks: EnterpriseLeadAgentTask[]): {
+    status: typeof EnterpriseLeadRunStatus[keyof typeof EnterpriseLeadRunStatus];
+    task: EnterpriseLeadAgentTask;
+  } | null {
+    const priority: Array<[
+      EnterpriseLeadAgentTask['status'],
+      typeof EnterpriseLeadRunStatus[keyof typeof EnterpriseLeadRunStatus],
+    ]> = [
+      [EnterpriseLeadTaskStatus.AwaitingApproval, EnterpriseLeadRunStatus.AwaitingApproval],
+      [EnterpriseLeadTaskStatus.NeedsInput, EnterpriseLeadRunStatus.NeedsInput],
+      [EnterpriseLeadTaskStatus.Blocked, EnterpriseLeadRunStatus.Blocked],
+      [EnterpriseLeadTaskStatus.Error, EnterpriseLeadRunStatus.Error],
+    ];
+    for (const [taskStatus, runStatus] of priority) {
+      const task = tasks.find(candidate => candidate.status === taskStatus);
+      if (task) return { status: runStatus, task };
+    }
+    return null;
+  }
+
+  private finishRunIfSettled(
+    workspaceId: string,
+    runId: string,
+    tasks: EnterpriseLeadAgentTask[],
+  ): EnterpriseLeadWorkspaceSnapshot {
+    const paused = this.getPausedRunStatus(tasks);
+    if (paused) {
+      this.options.store.updateRunProgress({
+        runId,
+        status: paused.status,
+        currentRole: paused.task.role,
+        controllerSummary: paused.task.summary || 'Workflow requires manual attention.',
+      });
+      return this.getSnapshot(workspaceId, runId);
+    }
+    if (tasks.every(isCompleted)) {
+      this.options.store.updateRunProgress({
+        runId,
+        status: EnterpriseLeadRunStatus.Completed,
+        currentRole: null,
+        controllerSummary: 'Promotion workflow completed with draft-only outputs.',
+      });
+      this.options.artifactStore.appendEvent({ runId, type: 'run_completed' });
+    }
+    return this.getSnapshot(workspaceId, runId);
+  }
+
+  private requireApprovalTask(runId: string, taskId: string): EnterpriseLeadAgentTask {
+    const task = this.options.store.getTask(taskId);
+    if (!task || task.runId !== runId) {
+      throw new Error('Enterprise lead workflow task not found');
+    }
+    if (task.status !== EnterpriseLeadTaskStatus.AwaitingApproval) {
+      throw new Error('Enterprise lead workflow task is not awaiting approval');
+    }
+    return task;
+  }
+
+  private assertRunWorkspace(workspaceId: string, runId: string) {
+    const run = this.options.store.getRun(runId);
+    if (!run) {
+      throw new Error('Enterprise lead run not found');
+    }
+    if (run.workspaceId !== workspaceId) {
+      throw new Error('Enterprise lead run does not belong to workspace');
+    }
+    return run;
+  }
+}

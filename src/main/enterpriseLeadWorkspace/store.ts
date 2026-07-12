@@ -35,7 +35,12 @@ import {
   normalizeEnterpriseLeadWorkspaceSettingsUpdate,
   normalizeWorkspaceProfile,
 } from '../../shared/enterpriseLeadWorkspace/validation';
-import type { WorkflowArtifactRef } from '../../shared/enterpriseLeadWorkspace/workflowContracts';
+import {
+  normalizeWorkflowStartOptions,
+  type WorkflowArtifactRef,
+  type WorkflowExecutionMode,
+  type WorkflowStartOptions,
+} from '../../shared/enterpriseLeadWorkspace/workflowContracts';
 import { KNOWLEDGE_DOCUMENT_LEGACY_SOURCE_PREFIX } from '../../shared/knowledgeBase/constants';
 import { buildLegacyKnowledgeSourceId } from '../knowledgeBase/legacyKnowledgeSourceIdentity';
 
@@ -84,6 +89,9 @@ export interface CreateEnterpriseLeadTaskInput {
   role: EnterpriseLeadTaskAgentRole;
   workspaceAgentId?: string | null;
   agentSnapshot?: EnterpriseLeadWorkspaceRunAgentSnapshot | null;
+  nodeId?: string;
+  dependsOnTaskIds?: string[];
+  executionMode?: WorkflowExecutionMode;
 }
 
 export interface CreateEnterpriseLeadPendingVersionInput {
@@ -139,6 +147,10 @@ type EnterpriseLeadAgentTaskRow = Omit<
   | 'handoffContext'
   | 'stale'
 > & {
+  nodeId: string | null;
+  dependsOnTaskIds: string | null;
+  attempt: number | null;
+  executionMode: WorkflowExecutionMode | null;
   agentSnapshot: string | null;
   artifactRefs: string;
   inputPayload: string;
@@ -182,6 +194,9 @@ interface NormalizedCreateEnterpriseLeadTask {
   role: EnterpriseLeadTaskAgentRole;
   workspaceAgentId: string | null;
   agentSnapshot: EnterpriseLeadWorkspaceRunAgentSnapshot | null;
+  nodeId: string | null;
+  dependsOnTaskIds: string[];
+  executionMode: WorkflowExecutionMode | null;
 }
 
 const normalizeCreateTaskInput = (
@@ -196,6 +211,11 @@ const normalizeCreateTaskInput = (
     role,
     workspaceAgentId: cleanNullableText(task.workspaceAgentId),
     agentSnapshot: normalizeEnterpriseLeadRunAgentSnapshot(task.agentSnapshot),
+    nodeId: cleanNullableText(task.nodeId),
+    dependsOnTaskIds: (task.dependsOnTaskIds ?? [])
+      .map(cleanText)
+      .filter(Boolean),
+    executionMode: task.executionMode ?? null,
   };
 };
 
@@ -221,6 +241,10 @@ const mapTaskRow = (row: EnterpriseLeadAgentTaskRow): EnterpriseLeadAgentTask =>
   agentSnapshot: row.agentSnapshot
     ? normalizeEnterpriseLeadRunAgentSnapshot(parseJsonValue(row.agentSnapshot, null))
     : null,
+  nodeId: row.nodeId ?? undefined,
+  dependsOnTaskIds: parseJsonValue(row.dependsOnTaskIds ?? '[]', []),
+  attempt: row.attempt ?? undefined,
+  executionMode: row.executionMode ?? undefined,
   artifactRefs: parseJsonValue(row.artifactRefs, []),
   inputPayload: parseJsonValue(row.inputPayload, {}),
   outputPayload: parseJsonValue(row.outputPayload, {}),
@@ -273,13 +297,18 @@ export class EnterpriseLeadWorkspaceStore {
         archive_status TEXT NOT NULL,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
-        completed_at TEXT
+        completed_at TEXT,
+        workflow_start_options TEXT
       );
 
       CREATE TABLE IF NOT EXISTS enterprise_lead_agent_tasks (
         id TEXT PRIMARY KEY,
         run_id TEXT NOT NULL,
         role TEXT NOT NULL,
+        node_id TEXT,
+        depends_on_task_ids TEXT NOT NULL DEFAULT '[]',
+        attempt INTEGER,
+        execution_mode TEXT,
         workspace_agent_id TEXT,
         agent_snapshot TEXT,
         artifact_refs TEXT NOT NULL DEFAULT '[]',
@@ -354,12 +383,41 @@ export class EnterpriseLeadWorkspaceStore {
       );
     `);
     this.ensureRunArchiveColumns();
+    this.ensureWorkflowRunOptionsColumn();
     this.ensureAgentTaskSequenceColumn();
+    this.ensureWorkflowTaskColumns();
     this.ensureAgentTaskAgentColumns();
     this.ensureAgentTaskArtifactRefsColumn();
     this.ensurePendingVersionResultColumns();
     this.ensureWorkspaceSettingsColumn();
     this.ensureWorkspaceAgentsColumn();
+  }
+
+  private ensureWorkflowRunOptionsColumn(): void {
+    const columns = this.db.pragma('table_info(enterprise_lead_runs)') as Array<{ name: string }>;
+    const columnNames = new Set(columns.map(column => column.name));
+    if (!columnNames.has('workflow_start_options')) {
+      this.db.exec('ALTER TABLE enterprise_lead_runs ADD COLUMN workflow_start_options TEXT;');
+    }
+  }
+
+  private ensureWorkflowTaskColumns(): void {
+    const columns = this.db.pragma('table_info(enterprise_lead_agent_tasks)') as Array<{ name: string }>;
+    const columnNames = new Set(columns.map(column => column.name));
+    if (!columnNames.has('node_id')) {
+      this.db.exec('ALTER TABLE enterprise_lead_agent_tasks ADD COLUMN node_id TEXT;');
+    }
+    if (!columnNames.has('depends_on_task_ids')) {
+      this.db.exec(
+        "ALTER TABLE enterprise_lead_agent_tasks ADD COLUMN depends_on_task_ids TEXT NOT NULL DEFAULT '[]';",
+      );
+    }
+    if (!columnNames.has('attempt')) {
+      this.db.exec('ALTER TABLE enterprise_lead_agent_tasks ADD COLUMN attempt INTEGER;');
+    }
+    if (!columnNames.has('execution_mode')) {
+      this.db.exec('ALTER TABLE enterprise_lead_agent_tasks ADD COLUMN execution_mode TEXT;');
+    }
   }
 
   private ensureAgentTaskAgentColumns(): void {
@@ -887,6 +945,9 @@ export class EnterpriseLeadWorkspaceStore {
             role,
             workspaceAgentId: null,
             agentSnapshot: null,
+            nodeId: null,
+            dependsOnTaskIds: [],
+            executionMode: null,
           }));
     const currentTaskRole = taskInputs[0]?.role;
     const now = new Date().toISOString();
@@ -912,11 +973,12 @@ export class EnterpriseLeadWorkspaceStore {
           current_role,
           controller_summary,
           archive_status,
+          workflow_start_options,
           created_at,
           updated_at,
           completed_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         run.id,
         run.workspaceId,
@@ -925,6 +987,7 @@ export class EnterpriseLeadWorkspaceStore {
         run.currentRole,
         run.controllerSummary,
         run.archiveStatus,
+        null,
         run.createdAt,
         run.updatedAt,
         run.completedAt,
@@ -935,6 +998,10 @@ export class EnterpriseLeadWorkspaceStore {
           id,
           run_id,
           role,
+          node_id,
+          depends_on_task_ids,
+          attempt,
+          execution_mode,
           workspace_agent_id,
           agent_snapshot,
           artifact_refs,
@@ -952,7 +1019,7 @@ export class EnterpriseLeadWorkspaceStore {
           created_at,
           updated_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
       const inputPayload = {
         workspaceId: workspace.id,
@@ -964,6 +1031,10 @@ export class EnterpriseLeadWorkspaceStore {
           randomUUID(),
           run.id,
           task.role,
+          task.nodeId,
+          JSON.stringify(task.dependsOnTaskIds),
+          null,
+          task.executionMode,
           task.workspaceAgentId,
           task.agentSnapshot ? JSON.stringify(task.agentSnapshot) : null,
           JSON.stringify([]),
@@ -992,6 +1063,88 @@ export class EnterpriseLeadWorkspaceStore {
 
     createRunTransaction();
     return run;
+  }
+
+  initializeWorkflowRun(
+    runId: string,
+    tasks: CreateEnterpriseLeadTaskInput[],
+    options: WorkflowStartOptions,
+  ): void {
+    const run = this.getRun(runId);
+    if (!run) {
+      throw new Error('Enterprise lead run not found');
+    }
+    if (this.listTasks(runId).length > 0) {
+      return;
+    }
+    const workspace = this.getWorkspace(run.workspaceId);
+    if (!workspace) {
+      throw new Error('Enterprise lead workspace not found');
+    }
+    const normalizedTasks = tasks.map(normalizeCreateTaskInput);
+    const taskRecords = normalizedTasks.map(task => ({ id: randomUUID(), task }));
+    const taskIdByNode = new Map<string, string>();
+    taskRecords.forEach(({ id, task }) => {
+      if (task.nodeId) taskIdByNode.set(task.nodeId, id);
+    });
+    const now = new Date().toISOString();
+    const insert = this.db.prepare(`
+      INSERT INTO enterprise_lead_agent_tasks (
+        id, run_id, role, node_id, depends_on_task_ids, attempt, execution_mode,
+        workspace_agent_id, agent_snapshot, artifact_refs, sequence, status,
+        input_payload, output_payload, summary, missing_info, todos, risks,
+        handoff_context, error, stale, created_at, updated_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    const initialize = this.db.transaction(() => {
+      this.db.prepare(`
+        UPDATE enterprise_lead_runs
+        SET workflow_start_options = ?, updated_at = ?
+        WHERE id = ?
+      `).run(JSON.stringify(options), now, runId);
+      taskRecords.forEach(({ id, task }, index) => {
+        insert.run(
+          id,
+          runId,
+          task.role,
+          task.nodeId,
+          JSON.stringify(task.dependsOnTaskIds.map(taskId => taskIdByNode.get(taskId) ?? taskId)),
+          null,
+          task.executionMode,
+          task.workspaceAgentId,
+          task.agentSnapshot ? JSON.stringify(task.agentSnapshot) : null,
+          JSON.stringify([]),
+          index,
+          EnterpriseLeadTaskStatus.Waiting,
+          JSON.stringify({ workspaceId: workspace.id, workspaceProfile: workspace.profile, userGoal: run.userGoal }),
+          JSON.stringify({}),
+          '',
+          JSON.stringify([]),
+          JSON.stringify([]),
+          JSON.stringify([]),
+          JSON.stringify({}),
+          '',
+          0,
+          now,
+          now,
+        );
+      });
+    });
+    initialize();
+  }
+
+  getWorkflowStartOptions(runId: string): WorkflowStartOptions {
+    const row = this.db.prepare(`
+      SELECT workflow_start_options as workflowStartOptions
+      FROM enterprise_lead_runs WHERE id = ? LIMIT 1
+    `).get(runId) as { workflowStartOptions: string | null } | undefined;
+    if (!row) {
+      throw new Error('Enterprise lead run not found');
+    }
+    return normalizeWorkflowStartOptions(
+      row.workflowStartOptions ? parseJsonValue(row.workflowStartOptions, {}) : {},
+    );
   }
 
   getRun(runId: string): EnterpriseLeadRun | null {
@@ -1129,6 +1282,10 @@ export class EnterpriseLeadWorkspaceStore {
         id,
         run_id as runId,
         role,
+        node_id as nodeId,
+        depends_on_task_ids as dependsOnTaskIds,
+        attempt,
+        execution_mode as executionMode,
         workspace_agent_id as workspaceAgentId,
         agent_snapshot as agentSnapshot,
         artifact_refs as artifactRefs,
@@ -1158,6 +1315,10 @@ export class EnterpriseLeadWorkspaceStore {
         id,
         run_id as runId,
         role,
+        node_id as nodeId,
+        depends_on_task_ids as dependsOnTaskIds,
+        attempt,
+        execution_mode as executionMode,
         workspace_agent_id as workspaceAgentId,
         agent_snapshot as agentSnapshot,
         artifact_refs as artifactRefs,
@@ -1227,6 +1388,82 @@ export class EnterpriseLeadWorkspaceStore {
     });
 
     updateTransaction();
+  }
+
+  updateWorkflowTaskResult(
+    taskId: string,
+    result: EnterpriseLeadAgentTaskResult,
+    attempt: number,
+  ): void {
+    const task = this.getTask(taskId);
+    if (!task) {
+      throw new Error('Enterprise lead task not found');
+    }
+    this.assertRunMutable(task.runId);
+    const now = new Date().toISOString();
+    this.db.prepare(`
+      UPDATE enterprise_lead_agent_tasks
+      SET
+        status = ?, output_payload = ?, artifact_refs = ?, summary = ?,
+        missing_info = ?, todos = ?, risks = ?, handoff_context = ?, error = '',
+        stale = 0, attempt = ?, updated_at = ?
+      WHERE id = ?
+    `).run(
+      result.status,
+      JSON.stringify(result.outputs),
+      JSON.stringify(result.artifactRefs ?? task.artifactRefs ?? []),
+      result.summary,
+      JSON.stringify(result.missingInfo),
+      JSON.stringify(result.todos),
+      JSON.stringify(result.risks),
+      JSON.stringify(result.handoffContext),
+      attempt,
+      now,
+      taskId,
+    );
+  }
+
+  updateWorkflowTaskStatus(
+    taskId: string,
+    status: EnterpriseLeadTaskStatus,
+    options: { summary?: string; error?: string; attempt?: number } = {},
+  ): void {
+    const task = this.getTask(taskId);
+    if (!task) {
+      throw new Error('Enterprise lead task not found');
+    }
+    this.assertRunMutable(task.runId);
+    this.db.prepare(`
+      UPDATE enterprise_lead_agent_tasks
+      SET status = ?, summary = ?, error = ?, stale = ?, attempt = COALESCE(?, attempt), updated_at = ?
+      WHERE id = ?
+    `).run(
+      status,
+      options.summary ?? task.summary,
+      options.error ?? '',
+      status === EnterpriseLeadTaskStatus.Stale ? 1 : 0,
+      options.attempt ?? null,
+      new Date().toISOString(),
+      taskId,
+    );
+  }
+
+  cancelWorkflowRun(runId: string): void {
+    this.assertRunMutable(runId);
+    const now = new Date().toISOString();
+    const cancel = this.db.transaction(() => {
+      this.db.prepare(`
+        UPDATE enterprise_lead_agent_tasks
+        SET status = ?, updated_at = ?
+        WHERE run_id = ? AND status <> ?
+      `).run(EnterpriseLeadTaskStatus.Cancelled, now, runId, EnterpriseLeadTaskStatus.Completed);
+      this.db.prepare(`
+        UPDATE enterprise_lead_runs
+        SET status = ?, current_role = NULL, controller_summary = ?, updated_at = ?
+        WHERE id = ?
+      `).run(EnterpriseLeadRunStatus.Cancelled, 'Workflow cancelled.', now, runId);
+    });
+    cancel();
   }
 
   createPendingVersion(input: CreateEnterpriseLeadPendingVersionInput): EnterpriseLeadPendingVersion {

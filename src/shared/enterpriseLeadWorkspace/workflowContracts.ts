@@ -36,12 +36,45 @@ export interface WorkflowTaskExecutionContext {
   executionMode: WorkflowExecutionMode;
 }
 
+export const WorkflowOptionalNode = {
+  SalesHandoffRequested: 'sales_handoff_requested',
+  MonitoringRequested: 'monitoring_requested',
+} as const;
+export type WorkflowOptionalNode =
+  (typeof WorkflowOptionalNode)[keyof typeof WorkflowOptionalNode];
+
 export interface WorkflowStartOptions {
   enabledOptionalNodes: string[];
   maxConcurrency: number;
 }
 
+export const DEFAULT_WORKFLOW_START_OPTIONS: WorkflowStartOptions = {
+  enabledOptionalNodes: [],
+  maxConcurrency: 3,
+};
+
+export const normalizeWorkflowStartOptions = (
+  options?: Partial<WorkflowStartOptions>,
+): WorkflowStartOptions => {
+  const allowedOptionalNodes = new Set<string>(Object.values(WorkflowOptionalNode));
+  const enabledOptionalNodes = Array.from(
+    new Set(
+      (options?.enabledOptionalNodes ?? []).filter(
+        (node): node is WorkflowOptionalNode => allowedOptionalNodes.has(node),
+      ),
+    ),
+  );
+  const requestedConcurrency = options?.maxConcurrency;
+  const maxConcurrency =
+    typeof requestedConcurrency === 'number' && Number.isFinite(requestedConcurrency)
+      ? Math.min(3, Math.max(1, Math.floor(requestedConcurrency)))
+      : DEFAULT_WORKFLOW_START_OPTIONS.maxConcurrency;
+
+  return { enabledOptionalNodes, maxConcurrency };
+};
+
 export interface WorkflowEvent {
+  id?: string;
   runId: string;
   sequence: number;
   type:
