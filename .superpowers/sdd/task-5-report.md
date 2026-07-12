@@ -45,3 +45,10 @@ Feature commit: `2087cce7 feat(workflow): connect workspace service to promotion
 ## Review-fix 3
 
 - Fixed Electron compilation integration errors by importing `EnterpriseLeadWorkspace`, narrowing promotion outputs through an explicit object normalizer before Artifact Store/task-result writes, and using the `EnterpriseLeadTaskStatus` type alias for the legacy approval signature.
+
+## Review-fix 4
+
+- Preserved a task's execution context by persisting a deduplicated union of input artifacts, already-persisted task artifacts, model-produced artifacts, and the durable task output artifact. Retries therefore retain task-owned context even when the model does not echo it.
+- Changed pending-version application to invalidate only transitive dependents for runs that contain graph/DAG dependency metadata. Legacy task rows without node or dependency metadata retain the sequence-based fallback.
+- Added regressions for task-owned artifact retention across result persistence and retry, and for scraping invalidation that stales cleaning, insight, and scoring while preserving the independent product-selling task.
+- Verification: elevated `npx vitest run src/main/enterpriseLeadWorkspace/service.test.ts src/main/enterpriseLeadWorkspace/workflowOrchestrator.test.ts src/main/enterpriseLeadWorkspace/store.test.ts` (3 files, 112 tests), `npm run compile:electron`, changed-file ESLint with `--max-warnings 0`, and `git diff --check` all pass.

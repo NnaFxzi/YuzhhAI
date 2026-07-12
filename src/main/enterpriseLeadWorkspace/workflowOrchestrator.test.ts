@@ -182,15 +182,7 @@ describe('EnterpriseLeadWorkflowOrchestrator', () => {
     expect(setupResult.adapter.calls.get(EnterpriseLeadAgentRole.PromotionController)).toBe(controllerCalls);
   });
 
-  test('includes persisted task artifacts alongside dependency artifacts on retry', async () => {
-    const dependencyArtifact = {
-      id: 'dependency-artifact',
-      kind: 'source',
-      schemaVersion: 1,
-      summary: 'Dependency source',
-      producerTaskId: 'dependency-task',
-      evidenceIds: [],
-    };
+  test('retains own task artifacts after result persistence and on retry without model echo', async () => {
     const taskArtifact = {
       id: 'task-artifact',
       kind: 'draft',
@@ -201,21 +193,33 @@ describe('EnterpriseLeadWorkflowOrchestrator', () => {
     };
     const adapter = new FakeWorkflowExecutionAdapter({
       [EnterpriseLeadAgentRole.PromotionController]: [
-        {
-          status: EnterpriseLeadTaskStatus.Error,
-          artifactRefs: [taskArtifact, dependencyArtifact],
-        },
+        { status: EnterpriseLeadTaskStatus.Error },
         { status: EnterpriseLeadTaskStatus.Completed },
       ],
-      [EnterpriseLeadAgentRole.PromotionDataCleaning]: {
-        artifactRefs: [dependencyArtifact],
-      },
     });
     const setupResult = setup(adapter);
     databases.push(setupResult.database);
 
-    const failed = await setupResult.orchestrator.startRun(setupResult.workspace.id, setupResult.run.id);
+    setupResult.store.initializeWorkflowRun(
+      setupResult.run.id,
+      [{ role: EnterpriseLeadAgentRole.PromotionController, nodeId: 'controller' }],
+      { enabledOptionalNodes: [], maxConcurrency: 1 },
+    );
+    const controllerTask = setupResult.store.listTasks(setupResult.run.id)[0];
+    setupResult.database.prepare(`
+      UPDATE enterprise_lead_agent_tasks
+      SET artifact_refs = ?
+      WHERE id = ?
+    `).run(JSON.stringify([taskArtifact]), controllerTask.id);
+
+    const failed = await setupResult.orchestrator.resumeRun(
+      setupResult.workspace.id,
+      setupResult.run.id,
+    );
     expect(failed.currentRun?.status).toBe(EnterpriseLeadRunStatus.Error);
+    expect(setupResult.store.getTask(controllerTask.id)?.artifactRefs).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: taskArtifact.id })]),
+    );
 
     const resumed = await setupResult.orchestrator.resumeRun(setupResult.workspace.id, setupResult.run.id);
     expect(resumed.currentRun?.status).toBe(EnterpriseLeadRunStatus.Completed);
@@ -223,14 +227,13 @@ describe('EnterpriseLeadWorkflowOrchestrator', () => {
     const controllerContexts = adapter.contexts.filter(
       context => context.role === EnterpriseLeadAgentRole.PromotionController,
     );
-    const retryContext = controllerContexts[1];
-    expect(retryContext?.inputArtifacts).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ id: taskArtifact.id }),
-        expect.objectContaining({ id: dependencyArtifact.id }),
-      ]),
-    );
-    expect(retryContext?.inputArtifacts.filter(artifact => artifact.id === dependencyArtifact.id)).toHaveLength(1);
+    expect(controllerContexts).toHaveLength(2);
+    controllerContexts.forEach(context => {
+      expect(context.inputArtifacts).toEqual(
+        expect.arrayContaining([expect.objectContaining({ id: taskArtifact.id })]),
+      );
+      expect(context.inputArtifacts.filter(artifact => artifact.id === taskArtifact.id)).toHaveLength(1);
+    });
   });
 
   test('recovers persisted running tasks on resume without rerunning completed work', async () => {

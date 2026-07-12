@@ -1657,6 +1657,10 @@ export class EnterpriseLeadWorkspaceStore {
       throw new Error('Enterprise lead task not found');
     }
     this.assertRunMutable(pendingVersion.runId);
+    const runTasks = this.listTasks(pendingVersion.runId);
+    const dependentTaskIds = this.hasWorkflowDependencyMetadata(runTasks)
+      ? this.findTransitiveDependentTaskIds(runTasks, pendingVersion.taskId)
+      : null;
 
     const now = new Date().toISOString();
     const result = taskResult ?? {
@@ -1708,7 +1712,11 @@ export class EnterpriseLeadWorkspaceStore {
         pendingVersion.taskId,
       );
 
-      this.markDownstreamTasksStale(pendingVersion.runId, taskSequence.sequence, now);
+      if (dependentTaskIds) {
+        this.markTasksStale(dependentTaskIds, now);
+      } else {
+        this.markDownstreamTasksStale(pendingVersion.runId, taskSequence.sequence, now);
+      }
     });
 
     applyTransaction();
@@ -1782,6 +1790,39 @@ export class EnterpriseLeadWorkspaceStore {
     `).get(taskId) as { sequence: number } | undefined;
 
     return row || null;
+  }
+
+  private hasWorkflowDependencyMetadata(tasks: EnterpriseLeadAgentTask[]): boolean {
+    return tasks.some(task => Boolean(task.nodeId) || (task.dependsOnTaskIds?.length ?? 0) > 0);
+  }
+
+  private findTransitiveDependentTaskIds(
+    tasks: EnterpriseLeadAgentTask[],
+    taskId: string,
+  ): string[] {
+    const dependentTaskIds = new Set<string>();
+    const pendingTaskIds = [taskId];
+    while (pendingTaskIds.length > 0) {
+      const upstreamTaskId = pendingTaskIds.shift();
+      tasks
+        .filter(candidate => (candidate.dependsOnTaskIds ?? []).includes(upstreamTaskId ?? ''))
+        .forEach(candidate => {
+          if (dependentTaskIds.has(candidate.id)) return;
+          dependentTaskIds.add(candidate.id);
+          pendingTaskIds.push(candidate.id);
+        });
+    }
+    return [...dependentTaskIds];
+  }
+
+  private markTasksStale(taskIds: string[], now: string): void {
+    taskIds.forEach(taskId => {
+      this.db.prepare(`
+        UPDATE enterprise_lead_agent_tasks
+        SET status = ?, stale = 1, updated_at = ?
+        WHERE id = ?
+      `).run(EnterpriseLeadTaskStatus.Stale, now, taskId);
+    });
   }
 
   private markDownstreamTasksStale(runId: string, sequence: number, now: string): void {

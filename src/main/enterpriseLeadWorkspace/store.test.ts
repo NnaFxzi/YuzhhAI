@@ -1055,6 +1055,98 @@ describe('EnterpriseLeadWorkspaceStore', () => {
     });
   });
 
+  test('marks only transitive DAG dependents stale after applying a pending version', () => {
+    setupStore();
+    const workspace = store.createWorkspace({
+      name: '推广工作流依赖失效测试',
+      type: EnterpriseLeadWorkspaceType.EnterpriseLead,
+      profile,
+      extractionSources: [],
+      enabledAgentRoles: [],
+    });
+    const run = store.createRun({
+      workspaceId: workspace.id,
+      userGoal: '验证推广 DAG 失效范围',
+      tasks: [
+        { role: EnterpriseLeadAgentRole.PromotionController, nodeId: 'controller' },
+        {
+          role: EnterpriseLeadAgentRole.PromotionDataScraping,
+          nodeId: 'scraping',
+          dependsOnTaskIds: ['controller'],
+        },
+        {
+          role: EnterpriseLeadAgentRole.ProductSellingPoint,
+          nodeId: 'selling',
+          dependsOnTaskIds: ['controller'],
+        },
+        {
+          role: EnterpriseLeadAgentRole.PromotionDataCleaning,
+          nodeId: 'cleaning',
+          dependsOnTaskIds: ['scraping', 'selling'],
+        },
+        {
+          role: EnterpriseLeadAgentRole.PromotionCompetitorInsight,
+          nodeId: 'insight',
+          dependsOnTaskIds: ['cleaning'],
+        },
+        {
+          role: EnterpriseLeadAgentRole.PromotionLeadScoring,
+          nodeId: 'scoring',
+          dependsOnTaskIds: ['cleaning'],
+        },
+      ],
+    });
+    const tasksByRole = new Map(store.listTasks(run.id).map(task => [task.role, task]));
+    const scrapingTask = tasksByRole.get(EnterpriseLeadAgentRole.PromotionDataScraping)!;
+    const sellingTask = tasksByRole.get(EnterpriseLeadAgentRole.ProductSellingPoint)!;
+    const cleaningTask = tasksByRole.get(EnterpriseLeadAgentRole.PromotionDataCleaning)!;
+    const insightTask = tasksByRole.get(EnterpriseLeadAgentRole.PromotionCompetitorInsight)!;
+    const scoringTask = tasksByRole.get(EnterpriseLeadAgentRole.PromotionLeadScoring)!;
+    const completedResult = (task: typeof scrapingTask) => ({
+      role: task.role,
+      status: EnterpriseLeadTaskStatus.Completed,
+      summary: `${task.role} completed`,
+      outputs: {},
+      missingInfo: [],
+      todos: [],
+      risks: [],
+      handoffContext: {},
+    });
+
+    [sellingTask, cleaningTask, insightTask, scoringTask].forEach(task => {
+      store.updateTaskResult(task.id, completedResult(task));
+    });
+    const pendingVersion = store.createPendingVersion({
+      taskId: scrapingTask.id,
+      userMessage: '重新抓取线索来源',
+      summary: '新版抓取结果。',
+      outputPayload: {},
+      missingInfo: [],
+      todos: [],
+      risks: [],
+      handoffContext: {},
+    });
+
+    store.applyPendingVersion(pendingVersion.id);
+
+    expect(store.getTask(cleaningTask.id)).toMatchObject({
+      status: EnterpriseLeadTaskStatus.Stale,
+      stale: true,
+    });
+    expect(store.getTask(insightTask.id)).toMatchObject({
+      status: EnterpriseLeadTaskStatus.Stale,
+      stale: true,
+    });
+    expect(store.getTask(scoringTask.id)).toMatchObject({
+      status: EnterpriseLeadTaskStatus.Stale,
+      stale: true,
+    });
+    expect(store.getTask(sellingTask.id)).toMatchObject({
+      status: EnterpriseLeadTaskStatus.Completed,
+      stale: false,
+    });
+  });
+
   test('orders tasks by semantic sequence when SQLite rowids change', () => {
     setupStore();
     const workspace = store.createWorkspace({

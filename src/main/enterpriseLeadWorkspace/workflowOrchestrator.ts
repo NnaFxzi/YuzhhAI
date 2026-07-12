@@ -320,7 +320,7 @@ export class EnterpriseLeadWorkflowOrchestrator {
         return;
       }
 
-      const taskResult = this.persistTaskResult(runId, task, result);
+      const taskResult = this.persistTaskResult(runId, task, inputArtifacts, result);
       this.options.store.updateWorkflowTaskResult(task.id, taskResult, attempt);
       this.options.artifactStore.finishAttempt(taskAttempt.id, { status: result.status });
       this.appendTaskResultEvent(runId, task, result);
@@ -349,6 +349,7 @@ export class EnterpriseLeadWorkflowOrchestrator {
   private persistTaskResult(
     runId: string,
     task: EnterpriseLeadAgentTask,
+    inputArtifacts: WorkflowArtifactRef[],
     result: PromotionTaskResult,
   ): EnterpriseLeadAgentTaskResult {
     const evidenceIds = result.artifactRefs.flatMap(artifact => artifact.evidenceIds);
@@ -371,7 +372,12 @@ export class EnterpriseLeadWorkflowOrchestrator {
     return {
       ...result,
       outputs: result.outputs as Record<string, unknown>,
-      artifactRefs: [...result.artifactRefs, outputArtifact],
+      artifactRefs: dedupeWorkflowArtifactRefs([
+        ...inputArtifacts,
+        ...(task.artifactRefs ?? []),
+        ...result.artifactRefs,
+        outputArtifact,
+      ]),
     };
   }
 
