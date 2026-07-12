@@ -336,7 +336,9 @@ export interface EnterpriseLeadPendingVersion {
   role: EnterpriseLeadTaskAgentRole;
   userMessage: string;
   summary: string;
+  taskStatus?: EnterpriseLeadTaskStatus;
   outputPayload: Record<string, unknown>;
+  artifactRefs?: WorkflowArtifactRef[];
   missingInfo: string[];
   todos: EnterpriseLeadTodoInput[];
   risks: EnterpriseLeadRiskItem[];

@@ -11,6 +11,7 @@ import type {
 } from '../../shared/enterpriseLeadWorkspace/types';
 import { buildDefaultEnterpriseLeadWorkspaceSettings } from '../../shared/enterpriseLeadWorkspace/validation';
 import {
+  buildAgentChatPrompt,
   buildAgentTaskPrompt,
   buildPromotionTaskOutputSchema,
 } from './promptTemplates';
@@ -119,6 +120,43 @@ describe('promotion task prompts', () => {
     expect(prompt).toContain('inputArtifacts');
     expect(prompt).not.toContain('CURRENT_TASK_RAW_PAYLOAD');
     expect(prompt).not.toContain('UNTRUSTED_RAW_UPSTREAM_OUTPUT');
+  });
+
+  test('uses the promotion-safe contract path for product selling point chat revisions', () => {
+    const prompt = buildAgentChatPrompt({
+      workspace,
+      task: task(EnterpriseLeadAgentRole.ProductSellingPoint),
+      upstreamTasks: [
+        {
+          ...task(EnterpriseLeadAgentRole.PromotionController),
+          outputPayload: { unsafe: 'UNTRUSTED_RAW_UPSTREAM_OUTPUT' },
+        },
+      ],
+      userMessage: '请将卖点表达得更具体。',
+    });
+
+    expect(prompt).toContain('sellingPoints');
+    expect(prompt).toContain('inputArtifacts');
+    expect(prompt).not.toContain('CURRENT_TASK_RAW_PAYLOAD');
+    expect(prompt).not.toContain('UNTRUSTED_RAW_UPSTREAM_OUTPUT');
+  });
+
+  test('keeps legacy chat prompts on the current task and upstream payload path', () => {
+    const prompt = buildAgentChatPrompt({
+      workspace,
+      task: task(EnterpriseLeadAgentRole.TopicPlanning),
+      upstreamTasks: [
+        {
+          ...task(EnterpriseLeadAgentRole.ProductUnderstanding),
+          outputPayload: { draft: 'LEGACY_RAW_UPSTREAM_OUTPUT' },
+        },
+      ],
+      userMessage: '换一个角度。',
+    });
+
+    expect(prompt).toContain('CURRENT_TASK_RAW_PAYLOAD');
+    expect(prompt).toContain('LEGACY_RAW_UPSTREAM_OUTPUT');
+    expect(prompt).toContain('"outputs": {}');
   });
 
   test('builds the fixed role schema for promotion monitoring output', () => {

@@ -1783,6 +1783,9 @@ describe('EnterpriseLeadWorkspaceService', () => {
         draft: '您好，我们可以先根据尺寸做包装建议。',
       },
     });
+    expect(appliedSnapshot.tasks.find(item => item.id === task.id)?.outputPayload).toEqual({
+      draft: '您好，我们可以先根据尺寸做包装建议。',
+    });
     expect(appliedSnapshot.pendingVersions[0]).toMatchObject({
       id: pendingVersion.id,
       status: 'applied',
@@ -1983,6 +1986,114 @@ describe('EnterpriseLeadWorkspaceService', () => {
     expect(setup.store.getTask(task.id)).toMatchObject({
       status: EnterpriseLeadTaskStatus.NeedsInput,
       outputPayload: {},
+    });
+  });
+
+  test('applies malformed promotion chat revisions as needs-input instead of completed', async () => {
+    const setup = createService();
+    db = setup.db;
+    const workspace = setup.service.createWorkspace({
+      ...draftPayload(),
+      workspaceAgents: buildDefaultPromotionDepartmentWorkspaceAgents(),
+    });
+    const snapshot = setup.service.createRun(workspace.id, '修订推广线索');
+    const task = snapshot.tasks.find(
+      item => item.role === EnterpriseLeadAgentRole.PromotionDataScraping,
+    );
+    if (!task) throw new Error('Expected promotion scraping task');
+    setup.modelClient.enqueue({
+      role: EnterpriseLeadAgentRole.PromotionDataScraping,
+      status: EnterpriseLeadTaskStatus.Completed,
+      summary: '缺少来源的推广线索。',
+      outputs: {
+        items: [
+          {
+            sourceKind: 'search',
+            title: '缺少来源证据的线索',
+            content: '模型没有提供来源 URL。',
+            capturedAt: '2026-07-12T00:00:00.000Z',
+            confidence: 'high',
+          },
+        ],
+      },
+      missingInfo: [],
+      todos: [],
+      risks: [],
+      handoffContext: {},
+    });
+
+    const pendingVersion = await setup.service.createPendingVersionFromChat(
+      task.id,
+      '补上来源后再生成一版。',
+    );
+    const appliedSnapshot = setup.service.applyPendingVersion(pendingVersion.id);
+
+    expect(pendingVersion).toMatchObject({
+      outputPayload: {},
+      artifactRefs: [],
+    });
+    expect(appliedSnapshot.tasks.find(item => item.id === task.id)).toMatchObject({
+      status: EnterpriseLeadTaskStatus.NeedsInput,
+      outputPayload: {},
+      artifactRefs: [],
+    });
+  });
+
+  test('preserves promotion chat revision artifact references through application', async () => {
+    const setup = createService();
+    db = setup.db;
+    const workspace = setup.service.createWorkspace({
+      ...draftPayload(),
+      workspaceAgents: buildDefaultPromotionDepartmentWorkspaceAgents(),
+    });
+    const snapshot = setup.service.createRun(workspace.id, '修订推广线索');
+    const task = snapshot.tasks.find(
+      item => item.role === EnterpriseLeadAgentRole.PromotionDataScraping,
+    );
+    if (!task) throw new Error('Expected promotion scraping task');
+    const artifactRefs = [
+      {
+        id: 'source-evidence-1',
+        kind: 'scraped_lead',
+        schemaVersion: 1,
+        summary: '官网公开采购线索',
+        producerTaskId: task.id,
+        evidenceIds: ['https://example.com/lead'],
+      },
+    ];
+    setup.modelClient.enqueue({
+      role: EnterpriseLeadAgentRole.PromotionDataScraping,
+      status: EnterpriseLeadTaskStatus.Completed,
+      summary: '已补充来源证据的推广线索。',
+      outputs: {
+        items: [
+          {
+            sourceKind: 'website',
+            sourceUrl: 'https://example.com/lead',
+            title: '公开采购线索',
+            content: '公开页面显示包装采购需求。',
+            capturedAt: '2026-07-12T00:00:00.000Z',
+            confidence: 'high',
+          },
+        ],
+        artifactRefs,
+      },
+      missingInfo: [],
+      todos: [],
+      risks: [],
+      handoffContext: {},
+    });
+
+    const pendingVersion = await setup.service.createPendingVersionFromChat(
+      task.id,
+      '保留来源证据后再生成一版。',
+    );
+    const appliedSnapshot = setup.service.applyPendingVersion(pendingVersion.id);
+
+    expect(pendingVersion).toMatchObject({ artifactRefs });
+    expect(appliedSnapshot.tasks.find(item => item.id === task.id)).toMatchObject({
+      status: EnterpriseLeadTaskStatus.Completed,
+      artifactRefs,
     });
   });
 

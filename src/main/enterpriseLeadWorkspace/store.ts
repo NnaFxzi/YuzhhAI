@@ -35,6 +35,7 @@ import {
   normalizeEnterpriseLeadWorkspaceSettingsUpdate,
   normalizeWorkspaceProfile,
 } from '../../shared/enterpriseLeadWorkspace/validation';
+import type { WorkflowArtifactRef } from '../../shared/enterpriseLeadWorkspace/workflowContracts';
 import { KNOWLEDGE_DOCUMENT_LEGACY_SOURCE_PREFIX } from '../../shared/knowledgeBase/constants';
 import { buildLegacyKnowledgeSourceId } from '../knowledgeBase/legacyKnowledgeSourceIdentity';
 
@@ -89,7 +90,9 @@ export interface CreateEnterpriseLeadPendingVersionInput {
   taskId: string;
   userMessage: string;
   summary: string;
+  taskStatus?: EnterpriseLeadTaskStatus;
   outputPayload: Record<string, unknown>;
+  artifactRefs?: WorkflowArtifactRef[];
   missingInfo: string[];
   todos: EnterpriseLeadTodoInput[];
   risks: EnterpriseLeadRiskItem[];
@@ -149,9 +152,10 @@ type EnterpriseLeadAgentTaskRow = Omit<
 
 type EnterpriseLeadPendingVersionRow = Omit<
   EnterpriseLeadPendingVersion,
-  'outputPayload' | 'missingInfo' | 'todos' | 'risks' | 'handoffContext'
+  'outputPayload' | 'artifactRefs' | 'missingInfo' | 'todos' | 'risks' | 'handoffContext'
 > & {
   outputPayload: string;
+  artifactRefs: string;
   missingInfo: string;
   todos: string;
   risks: string;
@@ -230,6 +234,7 @@ const mapTaskRow = (row: EnterpriseLeadAgentTaskRow): EnterpriseLeadAgentTask =>
 const mapPendingVersionRow = (row: EnterpriseLeadPendingVersionRow): EnterpriseLeadPendingVersion => ({
   ...row,
   outputPayload: parseJsonValue(row.outputPayload, {}),
+  artifactRefs: parseJsonValue(row.artifactRefs, []),
   missingInfo: parseJsonValue(row.missingInfo, []),
   todos: parseJsonValue(row.todos, []),
   risks: parseJsonValue(row.risks, []),
@@ -301,7 +306,9 @@ export class EnterpriseLeadWorkspaceStore {
         role TEXT NOT NULL,
         user_message TEXT NOT NULL,
         summary TEXT NOT NULL,
+        task_status TEXT NOT NULL DEFAULT 'completed',
         output_payload TEXT NOT NULL,
+        artifact_refs TEXT NOT NULL DEFAULT '[]',
         missing_info TEXT NOT NULL,
         todos TEXT NOT NULL,
         risks TEXT NOT NULL,
@@ -350,6 +357,7 @@ export class EnterpriseLeadWorkspaceStore {
     this.ensureAgentTaskSequenceColumn();
     this.ensureAgentTaskAgentColumns();
     this.ensureAgentTaskArtifactRefsColumn();
+    this.ensurePendingVersionResultColumns();
     this.ensureWorkspaceSettingsColumn();
     this.ensureWorkspaceAgentsColumn();
   }
@@ -371,6 +379,23 @@ export class EnterpriseLeadWorkspaceStore {
     if (!columnNames.has('artifact_refs')) {
       this.db.exec(
         "ALTER TABLE enterprise_lead_agent_tasks ADD COLUMN artifact_refs TEXT NOT NULL DEFAULT '[]';",
+      );
+    }
+  }
+
+  private ensurePendingVersionResultColumns(): void {
+    const columns = this.db.pragma('table_info(enterprise_lead_pending_versions)') as Array<{
+      name: string;
+    }>;
+    const columnNames = new Set(columns.map(column => column.name));
+    if (!columnNames.has('task_status')) {
+      this.db.exec(
+        "ALTER TABLE enterprise_lead_pending_versions ADD COLUMN task_status TEXT NOT NULL DEFAULT 'completed';",
+      );
+    }
+    if (!columnNames.has('artifact_refs')) {
+      this.db.exec(
+        "ALTER TABLE enterprise_lead_pending_versions ADD COLUMN artifact_refs TEXT NOT NULL DEFAULT '[]';",
       );
     }
   }
@@ -1220,7 +1245,9 @@ export class EnterpriseLeadWorkspaceStore {
       role: task.role,
       userMessage: input.userMessage,
       summary: input.summary,
+      taskStatus: input.taskStatus ?? EnterpriseLeadTaskStatus.Completed,
       outputPayload: input.outputPayload,
+      artifactRefs: input.artifactRefs ?? task.artifactRefs ?? [],
       missingInfo: input.missingInfo,
       todos: input.todos,
       risks: input.risks,
@@ -1239,7 +1266,9 @@ export class EnterpriseLeadWorkspaceStore {
         role,
         user_message,
         summary,
+        task_status,
         output_payload,
+        artifact_refs,
         missing_info,
         todos,
         risks,
@@ -1248,7 +1277,7 @@ export class EnterpriseLeadWorkspaceStore {
         created_at,
         applied_at
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       pendingVersion.id,
       pendingVersion.taskId,
@@ -1257,7 +1286,9 @@ export class EnterpriseLeadWorkspaceStore {
       pendingVersion.role,
       pendingVersion.userMessage,
       pendingVersion.summary,
+      pendingVersion.taskStatus,
       JSON.stringify(pendingVersion.outputPayload),
+      JSON.stringify(pendingVersion.artifactRefs),
       JSON.stringify(pendingVersion.missingInfo),
       JSON.stringify(pendingVersion.todos),
       JSON.stringify(pendingVersion.risks),
@@ -1280,7 +1311,9 @@ export class EnterpriseLeadWorkspaceStore {
         role,
         user_message as userMessage,
         summary,
+        task_status as taskStatus,
         output_payload as outputPayload,
+        artifact_refs as artifactRefs,
         missing_info as missingInfo,
         todos,
         risks,
@@ -1296,7 +1329,10 @@ export class EnterpriseLeadWorkspaceStore {
     return rows.map(mapPendingVersionRow);
   }
 
-  applyPendingVersion(pendingVersionId: string): EnterpriseLeadPendingVersion {
+  applyPendingVersion(
+    pendingVersionId: string,
+    taskResult?: EnterpriseLeadAgentTaskResult,
+  ): EnterpriseLeadPendingVersion {
     const pendingVersion = this.getPendingVersion(pendingVersionId);
     if (!pendingVersion) {
       throw new Error('Enterprise lead pending version not found');
@@ -1312,6 +1348,17 @@ export class EnterpriseLeadWorkspaceStore {
     this.assertRunMutable(pendingVersion.runId);
 
     const now = new Date().toISOString();
+    const result = taskResult ?? {
+      role: pendingVersion.role,
+      status: pendingVersion.taskStatus ?? EnterpriseLeadTaskStatus.Completed,
+      summary: pendingVersion.summary,
+      outputs: pendingVersion.outputPayload,
+      artifactRefs: pendingVersion.artifactRefs ?? [],
+      missingInfo: pendingVersion.missingInfo,
+      todos: pendingVersion.todos,
+      risks: pendingVersion.risks,
+      handoffContext: pendingVersion.handoffContext,
+    };
     const applyTransaction = this.db.transaction(() => {
       const pendingUpdate = this.db.prepare(`
         UPDATE enterprise_lead_pending_versions
@@ -1327,6 +1374,7 @@ export class EnterpriseLeadWorkspaceStore {
         SET
           status = ?,
           output_payload = ?,
+          artifact_refs = ?,
           summary = ?,
           missing_info = ?,
           todos = ?,
@@ -1337,13 +1385,14 @@ export class EnterpriseLeadWorkspaceStore {
           updated_at = ?
         WHERE id = ?
       `).run(
-        EnterpriseLeadTaskStatus.Completed,
-        JSON.stringify(pendingVersion.outputPayload),
-        pendingVersion.summary,
-        JSON.stringify(pendingVersion.missingInfo),
-        JSON.stringify(pendingVersion.todos),
-        JSON.stringify(pendingVersion.risks),
-        JSON.stringify(pendingVersion.handoffContext),
+        result.status,
+        JSON.stringify(result.outputs),
+        JSON.stringify(result.artifactRefs ?? []),
+        result.summary,
+        JSON.stringify(result.missingInfo),
+        JSON.stringify(result.todos),
+        JSON.stringify(result.risks),
+        JSON.stringify(result.handoffContext),
         now,
         pendingVersion.taskId,
       );
@@ -1360,7 +1409,7 @@ export class EnterpriseLeadWorkspaceStore {
     };
   }
 
-  private getPendingVersion(pendingVersionId: string): EnterpriseLeadPendingVersion | null {
+  getPendingVersion(pendingVersionId: string): EnterpriseLeadPendingVersion | null {
     const row = this.db.prepare(`
       SELECT
         id,
@@ -1370,7 +1419,9 @@ export class EnterpriseLeadWorkspaceStore {
         role,
         user_message as userMessage,
         summary,
+        task_status as taskStatus,
         output_payload as outputPayload,
+        artifact_refs as artifactRefs,
         missing_info as missingInfo,
         todos,
         risks,

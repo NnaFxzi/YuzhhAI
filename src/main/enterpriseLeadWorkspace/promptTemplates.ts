@@ -578,6 +578,7 @@ export function buildAgentChatPrompt({
   userMessage,
 }: AgentChatPromptInput): string {
   const metadata = getAgentTaskPromptMetadata(task);
+  const promotion = isPromotionTask(task, upstreamTasks);
   const agentConfigLines = [
     metadata.identity ? `Agent 身份：${metadata.identity}` : '',
     metadata.systemPrompt ? `Agent 系统提示词：${metadata.systemPrompt}` : '',
@@ -593,19 +594,17 @@ export function buildAgentChatPrompt({
     '',
     '请只输出结构化 JSON，格式与 Agent 任务结果一致。不要直接修改外部系统。',
     '输出 JSON schema：',
-    stringify(taskResultSchema),
+    stringify(buildTaskResultSchema(task.role, promotion)),
     '',
     '用户反馈：',
     userMessage,
     '',
     '工作空间：',
-    stringify(toPromptWorkspace(workspace)),
+    stringify(promotion ? toPromotionPromptWorkspace(workspace) : toPromptWorkspace(workspace)),
     '',
-    '当前任务：',
-    stringify(task),
-    '',
-    '上游 Agent 结果：',
-    buildUpstreamSection(upstreamTasks),
+    ...(promotion
+      ? ['任务输入与 Artifact 摘要：', stringify(buildPromotionTaskContext(task, upstreamTasks))]
+      : ['当前任务：', stringify(task), '', '上游 Agent 结果：', buildUpstreamSection(upstreamTasks)]),
   ].join('\n');
 }
 

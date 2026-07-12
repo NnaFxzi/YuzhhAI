@@ -555,6 +555,39 @@ const normalizeLiveTaskResult = (
   }
 };
 
+const normalizePendingVersionTaskResult = (
+  pendingVersion: EnterpriseLeadPendingVersion,
+  task: EnterpriseLeadAgentTask,
+  upstreamTasks: EnterpriseLeadAgentTask[],
+): EnterpriseLeadAgentTaskResult => {
+  const artifactRefs = pendingVersion.artifactRefs ?? task.artifactRefs ?? [];
+  const promotion = isPromotionTaskContext(task.role, upstreamTasks.map(upstream => upstream.role));
+  const result = normalizeLiveTaskResult(
+    {
+      role: pendingVersion.role,
+      status: pendingVersion.taskStatus ?? EnterpriseLeadTaskStatus.Completed,
+      summary: pendingVersion.summary,
+      outputs: promotion
+        ? {
+            ...pendingVersion.outputPayload,
+            artifactRefs,
+          }
+        : pendingVersion.outputPayload,
+      missingInfo: pendingVersion.missingInfo,
+      todos: pendingVersion.todos,
+      risks: pendingVersion.risks,
+      handoffContext: pendingVersion.handoffContext,
+    },
+    task,
+    upstreamTasks,
+  );
+
+  return {
+    ...result,
+    artifactRefs: result.artifactRefs ?? artifactRefs,
+  };
+};
+
 const resolveWorkspaceApiConfig = (workspace: EnterpriseLeadWorkspace) =>
   resolveRawApiConfigFromAppConfig({
     model: {
@@ -1260,7 +1293,11 @@ export class EnterpriseLeadWorkspaceService {
       ...(taskModel ? { model: taskModel } : {}),
     });
     const normalizedResult = sanitizeTaskResult(
-      normalizeAgentTaskResultInput(parseModelJsonObject(result.text)),
+      normalizeLiveTaskResult(
+        parseModelJsonObject(result.text),
+        taskContext.task,
+        taskContext.upstreamTasks,
+      ),
       taskContext.task,
     );
 
@@ -1268,7 +1305,9 @@ export class EnterpriseLeadWorkspaceService {
       taskId,
       userMessage,
       summary: normalizedResult.summary,
+      taskStatus: normalizedResult.status as EnterpriseLeadTaskStatus,
       outputPayload: normalizedResult.outputs,
+      artifactRefs: normalizedResult.artifactRefs ?? taskContext.task.artifactRefs ?? [],
       missingInfo: normalizedResult.missingInfo,
       todos: normalizedResult.todos,
       risks: normalizedResult.risks,
@@ -1277,8 +1316,21 @@ export class EnterpriseLeadWorkspaceService {
   }
 
   applyPendingVersion(pendingVersionId: string): EnterpriseLeadWorkspaceSnapshot {
-    const pendingVersion = this.store.applyPendingVersion(pendingVersionId);
-    return this.getSnapshot(pendingVersion.workspaceId, pendingVersion.runId);
+    const pendingVersion = this.store.getPendingVersion(pendingVersionId);
+    if (!pendingVersion) {
+      throw new Error('Enterprise lead pending version not found');
+    }
+    const taskContext = this.getTaskContext(pendingVersion.taskId);
+    const taskResult = sanitizeTaskResult(
+      normalizePendingVersionTaskResult(
+        pendingVersion,
+        taskContext.task,
+        taskContext.upstreamTasks,
+      ),
+      taskContext.task,
+    );
+    const appliedPendingVersion = this.store.applyPendingVersion(pendingVersionId, taskResult);
+    return this.getSnapshot(appliedPendingVersion.workspaceId, appliedPendingVersion.runId);
   }
 
   archiveRun(workspaceId: string, runId: string): EnterpriseLeadWorkspaceSnapshot {
