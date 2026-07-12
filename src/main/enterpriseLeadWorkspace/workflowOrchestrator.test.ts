@@ -8,6 +8,7 @@ import {
   EnterpriseLeadWorkspaceType,
 } from '../../shared/enterpriseLeadWorkspace/constants';
 import type { PromotionTaskResult } from '../../shared/enterpriseLeadWorkspace/promotionTaskContracts';
+import { WorkflowExecutionMode } from '../../shared/enterpriseLeadWorkspace/workflowContracts';
 import { EnterpriseLeadWorkspaceStore } from './store';
 import { WorkflowArtifactStore } from './workflowArtifactStore';
 import type { WorkflowExecutionAdapter } from './workflowExecutionAdapter';
@@ -177,6 +178,72 @@ describe('EnterpriseLeadWorkflowOrchestrator', () => {
     expect(resumed.currentRun?.status).toBe(EnterpriseLeadRunStatus.Completed);
     expect(setupResult.adapter.calls.get(EnterpriseLeadAgentRole.PromotionDataCleaning)).toBe(2);
     expect(setupResult.adapter.calls.get(EnterpriseLeadAgentRole.PromotionController)).toBe(controllerCalls);
+  });
+
+  test('recovers persisted running tasks on resume without rerunning completed work', async () => {
+    const firstAdapter = new FakeWorkflowExecutionAdapter({
+      [EnterpriseLeadAgentRole.PromotionDataCleaning]: {
+        status: EnterpriseLeadTaskStatus.Error,
+        summary: 'temporary failure',
+      },
+    });
+    const setupResult = setup(firstAdapter);
+    databases.push(setupResult.database);
+
+    const interrupted = await setupResult.orchestrator.startRun(
+      setupResult.workspace.id,
+      setupResult.run.id,
+    );
+    const cleaningTask = interrupted.tasks.find(
+      task => task.role === EnterpriseLeadAgentRole.PromotionDataCleaning,
+    );
+    if (!cleaningTask) throw new Error('Expected data cleaning task');
+
+    const orphanedAttempt = (cleaningTask.attempt ?? 0) + 1;
+    setupResult.store.updateWorkflowTaskStatus(cleaningTask.id, EnterpriseLeadTaskStatus.Running, {
+      attempt: orphanedAttempt,
+    });
+    setupResult.artifacts.createAttempt({
+      taskId: cleaningTask.id,
+      attempt: orphanedAttempt,
+      executionMode: WorkflowExecutionMode.Inline,
+    });
+
+    const restartedAdapter = new FakeWorkflowExecutionAdapter();
+    const restartedOrchestrator = new EnterpriseLeadWorkflowOrchestrator({
+      store: setupResult.store,
+      artifactStore: setupResult.artifacts,
+      executionAdapter: restartedAdapter,
+    });
+    const resumed = await restartedOrchestrator.resumeRun(
+      setupResult.workspace.id,
+      setupResult.run.id,
+    );
+
+    expect(resumed.currentRun?.status).toBe(EnterpriseLeadRunStatus.Completed);
+    expect(restartedAdapter.calls.get(EnterpriseLeadAgentRole.PromotionController)).toBeUndefined();
+    expect(restartedAdapter.calls.get(EnterpriseLeadAgentRole.PromotionDataCleaning)).toBe(1);
+    expect(setupResult.artifacts.listEvents(setupResult.run.id)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'task_failed',
+          taskId: cleaningTask.id,
+          summary: 'Workflow task was interrupted by process restart.',
+        }),
+        expect.objectContaining({ type: 'task_retrying', taskId: cleaningTask.id }),
+      ]),
+    );
+    const attempts = setupResult.database
+      .prepare(
+        'SELECT attempt, status FROM enterprise_lead_task_attempts WHERE task_id = ? ORDER BY attempt ASC, rowid ASC',
+      )
+      .all(cleaningTask.id) as Array<{ attempt: number; status: string }>;
+    expect(attempts).toEqual(
+      expect.arrayContaining([
+        { attempt: orphanedAttempt, status: EnterpriseLeadTaskStatus.Error },
+        { attempt: orphanedAttempt + 1, status: EnterpriseLeadTaskStatus.Completed },
+      ]),
+    );
   });
 
   test('persists normalized start options and does not enable new optional nodes on resume', async () => {

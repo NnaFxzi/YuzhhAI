@@ -1262,9 +1262,12 @@ export class EnterpriseLeadWorkspaceService {
     const tasks = this.store.listTasks(run.id);
 
     if (this.isPromotionWorkflowRun(workspaceId, tasks)) {
-      return tasks.length === 0
-        ? this.workflowOrchestrator.startRun(workspaceId, run.id)
-        : this.workflowOrchestrator.resumeRun(workspaceId, run.id);
+      if (tasks.length === 0) {
+        await this.workflowOrchestrator.startRun(workspaceId, run.id);
+      } else {
+        await this.workflowOrchestrator.resumeRun(workspaceId, run.id);
+      }
+      return this.getSnapshot(workspaceId, run.id);
     }
 
     for (const task of tasks) {

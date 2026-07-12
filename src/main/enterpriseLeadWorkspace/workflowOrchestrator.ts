@@ -65,10 +65,12 @@ export class EnterpriseLeadWorkflowOrchestrator {
 
     this.assertRunWorkspace(workspaceId, runId);
     const tasks = this.options.store.listTasks(runId);
-    if (tasks.some(task => task.status === EnterpriseLeadTaskStatus.AwaitingApproval)) {
+    this.recoverInterruptedTasks(runId, tasks);
+    const recoveredTasks = this.options.store.listTasks(runId);
+    if (recoveredTasks.some(task => task.status === EnterpriseLeadTaskStatus.AwaitingApproval)) {
       return this.getSnapshot(workspaceId, runId);
     }
-    if (tasks.some(task => task.status === EnterpriseLeadTaskStatus.NeedsInput)) {
+    if (recoveredTasks.some(task => task.status === EnterpriseLeadTaskStatus.NeedsInput)) {
       return this.getSnapshot(workspaceId, runId);
     }
     return this.schedule(workspaceId, runId);
@@ -235,6 +237,32 @@ export class EnterpriseLeadWorkflowOrchestrator {
         });
       }
     }
+  }
+
+  private recoverInterruptedTasks(runId: string, tasks: EnterpriseLeadAgentTask[]): void {
+    const recoveryError = 'Workflow task was interrupted by process restart.';
+    tasks
+      .filter(task => task.status === EnterpriseLeadTaskStatus.Running)
+      .forEach(task => {
+        const hasAttempt = typeof task.attempt === 'number' && task.attempt > 0;
+        const recoveredStatus = hasAttempt
+          ? EnterpriseLeadTaskStatus.Error
+          : EnterpriseLeadTaskStatus.Ready;
+        this.options.store.updateWorkflowTaskStatus(task.id, recoveredStatus, {
+          ...(hasAttempt ? { error: recoveryError } : {}),
+          summary: hasAttempt ? recoveryError : task.summary,
+        });
+        if (hasAttempt) {
+          this.options.artifactStore.recoverRunningAttempt(task.id, task.attempt!, recoveryError);
+        }
+        this.options.artifactStore.appendEvent({
+          runId,
+          type: hasAttempt ? 'task_failed' : 'task_ready',
+          taskId: task.id,
+          role: task.role,
+          summary: hasAttempt ? recoveryError : 'Task is ready after process restart.',
+        });
+      });
   }
 
   private async executeTask(

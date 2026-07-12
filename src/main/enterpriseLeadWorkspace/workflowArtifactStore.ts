@@ -257,6 +257,21 @@ export class WorkflowArtifactStore {
     }
     return mapAttempt(row);
   }
+
+  recoverRunningAttempt(
+    taskId: string,
+    attempt: number,
+    error: string,
+  ): EnterpriseLeadTaskAttempt | null {
+    const row = this.db.prepare(`
+      SELECT id
+      FROM enterprise_lead_task_attempts
+      WHERE task_id = ? AND attempt = ? AND status = 'running'
+      ORDER BY rowid DESC
+      LIMIT 1
+    `).get(taskId, attempt) as { id: string } | undefined;
+    return row ? this.finishAttempt(row.id, { status: 'error', error }) : null;
+  }
 }
 
 export const createWorkflowArtifactStore = (

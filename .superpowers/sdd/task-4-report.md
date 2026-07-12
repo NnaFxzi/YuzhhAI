@@ -30,6 +30,13 @@ Commit: `8986bdf0 feat(workflow): add resumable promotion orchestrator`
 - `src/main/enterpriseLeadWorkspace/store.ts`
 - `src/shared/enterpriseLeadWorkspace/workflowContracts.ts`
 
+## Review-fix2
+
+- Production promotion workflow results now rehydrate through the service snapshot builder after orchestrator execution, preserving deliverables and todos derived from persisted tasks and retaining archive derivation behavior.
+- Resume recovers persisted `running` tasks left by a process restart: attempted tasks transition to retryable error, open attempts are finalized as errors, recovery events are emitted, and unattempted tasks become ready. Completed tasks remain excluded from retry scheduling.
+- Regression coverage: production `runWorkflow` preserves derived deliverables/todos; restart/resume retries an orphaned task, closes its orphan attempt, emits recovery/retry events, and does not rerun completed upstream work.
+- Validation: `npm test -- workflowOrchestrator service store` passes (632 tests); changed-file ESLint and `git diff --check` pass. `npx tsc --project electron-tsconfig.json --noEmit` still reports the pre-existing Task 3 typing error at `service.ts:556` (`PromotionTaskResult<object>` outputs are narrower than `Record<string, unknown>`).
+
 ## Review-fix1
 
 - Production integration: `EnterpriseLeadWorkspaceService` now owns an `EnterpriseLeadWorkflowOrchestrator` with an `InlineWorkflowExecutionAdapter` backed by the existing model client. New promotion-controller workspaces create an empty run and `runWorkflow` initializes/resumes the persisted DAG. Historical task rows without DAG node IDs, and all non-promotion runs, continue through the legacy sequential path.

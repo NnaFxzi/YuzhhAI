@@ -2495,7 +2495,14 @@ describe('EnterpriseLeadWorkspaceService', () => {
         riskNotes: ['仅生成草稿'],
       },
       missingInfo: [],
-      todos: [],
+      todos: [
+        {
+          kind: EnterpriseLeadTodoKind.ManualPublish,
+          title: '确认首发平台',
+          description: '确认推广草稿的首发平台。',
+          role: EnterpriseLeadAgentRole.PromotionController,
+        },
+      ],
       risks: [],
       handoffContext: {},
     });
@@ -2511,6 +2518,22 @@ describe('EnterpriseLeadWorkspaceService', () => {
       nodeId: EnterpriseLeadAgentRole.PromotionController,
       executionMode: 'inline',
     });
+    expect(snapshot.deliverables).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          role: EnterpriseLeadAgentRole.PromotionController,
+          summary: '推广总控计划已生成。',
+        }),
+      ]),
+    );
+    expect(snapshot.todos).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          title: '确认首发平台',
+          role: EnterpriseLeadAgentRole.PromotionController,
+        }),
+      ]),
+    );
     expect(new WorkflowArtifactStore(setup.db).listEvents(created.currentRun.id)).toEqual(
       expect.arrayContaining([expect.objectContaining({ type: 'run_started' })]),
     );
