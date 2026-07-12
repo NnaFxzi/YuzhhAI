@@ -2560,6 +2560,48 @@ describe('EnterpriseLeadWorkspaceService', () => {
     );
   });
 
+  test('recovers a legacy zero-task promotion run into an executing DAG', async () => {
+    const setup = createService();
+    db = setup.db;
+    const workspace = setup.service.createWorkspace({
+      ...draftPayload(),
+      workspaceAgents: buildDefaultPromotionDepartmentWorkspaceAgents(),
+    });
+    const legacyRun = setup.store.createRun({
+      workspaceId: workspace.id,
+      userGoal: '恢复历史推广任务',
+    });
+    expect(setup.store.listTasks(legacyRun.id)).toHaveLength(0);
+    setup.modelClient.enqueue({
+      role: EnterpriseLeadAgentRole.PromotionController,
+      status: EnterpriseLeadTaskStatus.NeedsInput,
+      summary: '推广总控计划已生成，需要确认执行范围。',
+      outputs: {
+        controlPlan: '先完成线索调研。',
+        priorityTasks: ['调研'],
+        riskNotes: ['仅生成草稿'],
+      },
+      missingInfo: ['执行范围'],
+      todos: [],
+      risks: [],
+      handoffContext: {},
+    });
+
+    const recovered = await setup.service.runWorkflow(workspace.id, legacyRun.id);
+
+    expect(recovered.currentRun).toMatchObject({
+      id: legacyRun.id,
+      workflowVersion: PROMOTION_WORKFLOW_VERSION,
+      status: EnterpriseLeadRunStatus.NeedsInput,
+    });
+    expect(recovered.tasks.map(task => task.nodeId)).toEqual(
+      PROMOTION_WORKFLOW_GRAPH.filter(node => !node.optional).map(node => node.role),
+    );
+    expect(recovered.tasks.find(task => task.role === EnterpriseLeadAgentRole.PromotionController)).toMatchObject({
+      status: EnterpriseLeadTaskStatus.NeedsInput,
+    });
+  });
+
   test('requires product selling points and scraped data before running promotion cleaning', async () => {
     const setup = createService();
     db = setup.db;

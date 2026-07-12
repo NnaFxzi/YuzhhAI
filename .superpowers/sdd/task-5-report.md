@@ -34,3 +34,10 @@ Feature commit: `2087cce7 feat(workflow): connect workspace service to promotion
 
 - Fixed `workflowOrchestrator.ts` execution context construction to merge and deduplicate persisted task artifact refs with dependency artifact refs, preserving Artifact-only context on retries without including raw upstream output payloads.
 - Added an orchestrator regression covering a failed controller task and retry execution with task-owned and dependency artifact refs.
+
+## Review-fix 2
+
+- Fixed legacy unversioned promotion runs with zero persisted tasks being completed by the legacy serial loop without execution.
+- `runWorkflow` now recognizes the promotion workspace shape, materializes the non-optional promotion DAG once, persists `promotion-v1`, and resumes it through the workflow orchestrator. Populated DAGs and nonpromotion historical runs retain their existing behavior.
+- Added a service regression constructing a legacy zero-task promotion run and verifying graph materialization plus controller execution into `needs_input`.
+- Verification: elevated `npm test -- service workflow` (37 files, 381 tests), `npx tsc --noEmit`, changed-file ESLint with `--max-warnings 0`, and `git diff --check` all pass.

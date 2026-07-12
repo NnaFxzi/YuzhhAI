@@ -1105,6 +1105,7 @@ export class EnterpriseLeadWorkspaceStore {
     runId: string,
     tasks: CreateEnterpriseLeadTaskInput[],
     options: WorkflowStartOptions,
+    workflowVersion?: string,
   ): void {
     const run = this.getRun(runId);
     if (!run) {
@@ -1136,9 +1137,9 @@ export class EnterpriseLeadWorkspaceStore {
     const initialize = this.db.transaction(() => {
       this.db.prepare(`
         UPDATE enterprise_lead_runs
-        SET workflow_start_options = ?, updated_at = ?
+        SET workflow_version = COALESCE(workflow_version, ?), workflow_start_options = ?, updated_at = ?
         WHERE id = ?
-      `).run(JSON.stringify(options), now, runId);
+      `).run(workflowVersion ?? null, JSON.stringify(options), now, runId);
       taskRecords.forEach(({ id, task }, index) => {
         insert.run(
           id,

@@ -48,6 +48,7 @@ import {
   normalizeWorkspaceDraftInput,
 } from '../../shared/enterpriseLeadWorkspace/validation';
 import {
+  normalizeWorkflowStartOptions,
   type WorkflowArtifactRef,
   WorkflowExecutionMode,
   type WorkflowTaskExecutionContext,
@@ -1327,9 +1328,23 @@ export class EnterpriseLeadWorkspaceService {
 
   async runWorkflow(workspaceId: string, runId: string): Promise<EnterpriseLeadWorkspaceSnapshot> {
     const run = this.getRunForWorkspace(workspaceId, runId);
-    const tasks = this.store.listTasks(run.id);
+    let tasks = this.store.listTasks(run.id);
 
-    if (this.isPromotionWorkflowRun(run)) {
+    if (tasks.length === 0) {
+      const workspace = this.store.getWorkspace(workspaceId);
+      if (workspace && this.isPromotionWorkflowWorkspace(workspace)) {
+        this.store.initializeWorkflowRun(
+          run.id,
+          this.resolvePromotionRunTasks(workspace),
+          normalizeWorkflowStartOptions(),
+          PROMOTION_WORKFLOW_VERSION,
+        );
+        tasks = this.store.listTasks(run.id);
+      }
+    }
+
+    const refreshedRun = this.store.getRun(run.id) ?? run;
+    if (this.isPromotionWorkflowRun(refreshedRun)) {
       await this.workflowOrchestrator.resumeRun(workspaceId, run.id);
       return this.getSnapshot(workspaceId, run.id);
     }
