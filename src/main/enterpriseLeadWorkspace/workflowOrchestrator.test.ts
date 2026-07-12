@@ -216,6 +216,48 @@ describe('EnterpriseLeadWorkflowOrchestrator', () => {
     expect(cancelled.tasks.filter(task => task.status !== EnterpriseLeadTaskStatus.Completed))
       .toEqual(expect.arrayContaining([expect.objectContaining({ status: EnterpriseLeadTaskStatus.Cancelled })]));
     expect(setupResult.artifacts.listRunArtifacts(setupResult.run.id)).toHaveLength(artifactCount);
+    const cancelledTaskIds = cancelled.tasks
+      .filter(task => task.status === EnterpriseLeadTaskStatus.Cancelled)
+      .map(task => task.id);
+    const events = setupResult.artifacts.listEvents(setupResult.run.id);
+    expect(events.filter(event => event.type === 'task_cancelled').map(event => event.taskId)).toEqual(
+      expect.arrayContaining(cancelledTaskIds),
+    );
+    expect(events.map(event => event.type)).toContain('run_cancelled');
+  });
+
+  test('settles the remaining parallel task when another task fails', async () => {
+    const adapter: WorkflowExecutionAdapter = {
+      async execute(context) {
+        if (context.role === EnterpriseLeadAgentRole.PromotionCompetitorInsight) {
+          throw new Error('competitor source unavailable');
+        }
+        return {
+          role: context.role,
+          status: EnterpriseLeadTaskStatus.Completed,
+          summary: `${context.role} completed`,
+          outputs: { role: context.role },
+          missingInfo: [],
+          todos: [],
+          risks: [],
+          handoffContext: {},
+          artifactRefs: [],
+        } as PromotionTaskResult;
+      },
+    };
+    const setupResult = setup(adapter);
+    databases.push(setupResult.database);
+
+    const snapshot = await setupResult.orchestrator.startRun(
+      setupResult.workspace.id,
+      setupResult.run.id,
+    );
+
+    expect(snapshot.currentRun?.status).toBe(EnterpriseLeadRunStatus.Error);
+    expect(snapshot.tasks.find(task => task.role === EnterpriseLeadAgentRole.PromotionCompetitorInsight)?.status)
+      .toBe(EnterpriseLeadTaskStatus.Error);
+    expect(snapshot.tasks.find(task => task.role === EnterpriseLeadAgentRole.PromotionLeadScoring)?.status)
+      .toBe(EnterpriseLeadTaskStatus.Completed);
   });
 
   test('returns the single active run for duplicate starts', async () => {

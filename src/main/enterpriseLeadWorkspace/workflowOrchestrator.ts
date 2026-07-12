@@ -12,6 +12,7 @@ import type {
 import {
   normalizeWorkflowStartOptions,
   type WorkflowArtifactRef,
+  WorkflowExecutionMode,
   type WorkflowStartOptions,
 } from '../../shared/enterpriseLeadWorkspace/workflowContracts';
 import type { CreateEnterpriseLeadTaskInput, EnterpriseLeadWorkspaceStore } from './store';
@@ -76,7 +77,23 @@ export class EnterpriseLeadWorkflowOrchestrator {
   async cancelRun(workspaceId: string, runId: string): Promise<EnterpriseLeadWorkspaceSnapshot> {
     this.assertRunWorkspace(workspaceId, runId);
     this.cancelledRuns.add(runId);
+    const unfinishedTasks = this.options.store
+      .listTasks(runId)
+      .filter(
+        task =>
+          task.status !== EnterpriseLeadTaskStatus.Completed &&
+          task.status !== EnterpriseLeadTaskStatus.Cancelled,
+      );
     this.options.store.cancelWorkflowRun(runId);
+    unfinishedTasks.forEach(task => {
+      this.options.artifactStore.appendEvent({
+        runId,
+        type: 'task_cancelled',
+        taskId: task.id,
+        role: task.role,
+        summary: 'Task cancelled before completion.',
+      });
+    });
     this.options.artifactStore.appendEvent({ runId, type: 'run_cancelled' });
     return this.getSnapshot(workspaceId, runId);
   }
@@ -230,10 +247,7 @@ export class EnterpriseLeadWorkflowOrchestrator {
       .map(taskId => tasks.find(candidate => candidate.id === taskId))
       .filter((candidate): candidate is EnterpriseLeadAgentTask => Boolean(candidate));
     const inputArtifacts = upstreamTasks.flatMap(upstream => upstream.artifactRefs ?? []);
-    const executionMode = task.executionMode;
-    if (!executionMode) {
-      throw new Error(`Workflow task ${task.id} has no execution mode`);
-    }
+    const executionMode = task.executionMode ?? WorkflowExecutionMode.Inline;
 
     this.options.store.updateWorkflowTaskStatus(task.id, EnterpriseLeadTaskStatus.Running, { attempt });
     const taskAttempt = this.options.artifactStore.createAttempt({

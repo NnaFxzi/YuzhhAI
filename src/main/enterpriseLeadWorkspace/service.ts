@@ -20,6 +20,7 @@ import {
   isPromotionTaskContext,
   parsePromotionTaskResult,
 } from '../../shared/enterpriseLeadWorkspace/promotionTaskContracts';
+import { PROMOTION_WORKFLOW_GRAPH } from '../../shared/enterpriseLeadWorkspace/promotionWorkflowGraph';
 import type {
   EnterpriseLeadAgentTask,
   EnterpriseLeadAgentTaskResult,
@@ -75,6 +76,9 @@ import {
   buildDefaultEnterpriseLeadWorkspaceAgents,
   getEnterpriseLeadAgentMetadata,
 } from './workflow';
+import { WorkflowArtifactStore } from './workflowArtifactStore';
+import { InlineWorkflowExecutionAdapter } from './workflowExecutionAdapter';
+import { EnterpriseLeadWorkflowOrchestrator } from './workflowOrchestrator';
 
 interface EnterpriseLeadWorkspaceServiceOptions {
   store: EnterpriseLeadWorkspaceStore;
@@ -638,6 +642,8 @@ export class EnterpriseLeadWorkspaceService {
 
   private readonly staleDocumentProcessingMs: number;
 
+  private readonly workflowOrchestrator: EnterpriseLeadWorkflowOrchestrator;
+
   private documentProcessingQueue: Promise<void> = Promise.resolve();
 
   constructor(options: EnterpriseLeadWorkspaceServiceOptions) {
@@ -653,6 +659,14 @@ export class EnterpriseLeadWorkspaceService {
       options.staleDocumentProcessingMs,
       DEFAULT_STALE_DOCUMENT_PROCESSING_MS,
     );
+    this.workflowOrchestrator = new EnterpriseLeadWorkflowOrchestrator({
+      store: this.store,
+      artifactStore: new WorkflowArtifactStore(this.store.getDatabase()),
+      executionAdapter: new InlineWorkflowExecutionAdapter({
+        modelClient: this.modelClient,
+        resolvePromptContext: async context => this.getTaskContext(context.taskId),
+      }),
+    });
   }
 
   listWorkspaces(): EnterpriseLeadWorkspace[] {
@@ -1193,7 +1207,12 @@ export class EnterpriseLeadWorkspaceService {
     }
     const dynamicTasks = this.resolveRunTasksForWorkspace(workspace);
     const run =
-      dynamicTasks.length > 0
+      this.isPromotionWorkflowWorkspace(workspace)
+        ? this.store.createRun({
+            workspaceId,
+            userGoal,
+          })
+        : dynamicTasks.length > 0
         ? this.store.createRun({
             workspaceId,
             userGoal,
@@ -1241,6 +1260,12 @@ export class EnterpriseLeadWorkspaceService {
   async runWorkflow(workspaceId: string, runId: string): Promise<EnterpriseLeadWorkspaceSnapshot> {
     const run = this.getRunForWorkspace(workspaceId, runId);
     const tasks = this.store.listTasks(run.id);
+
+    if (this.isPromotionWorkflowRun(workspaceId, tasks)) {
+      return tasks.length === 0
+        ? this.workflowOrchestrator.startRun(workspaceId, run.id)
+        : this.workflowOrchestrator.resumeRun(workspaceId, run.id);
+    }
 
     for (const task of tasks) {
       if (task.status === EnterpriseLeadTaskStatus.Completed && !task.stale) {
@@ -1366,6 +1391,26 @@ export class EnterpriseLeadWorkspaceService {
 
   private resolveLegacyRunRoles(workspace: EnterpriseLeadWorkspace): EnterpriseLeadAgentRole[] {
     return workspace.enabledAgentRoles.filter(isEnterpriseLeadAgentRole);
+  }
+
+  private isPromotionWorkflowWorkspace(workspace: EnterpriseLeadWorkspace): boolean {
+    const configuredRoles =
+      workspace.workspaceAgents.length > 0
+        ? workspace.workspaceAgents.filter(agent => agent.enabled).map(agent => agent.agentId)
+        : workspace.enabledAgentRoles;
+    return configuredRoles.includes(EnterpriseLeadAgentRole.PromotionController);
+  }
+
+  private isPromotionWorkflowRun(
+    workspaceId: string,
+    tasks: EnterpriseLeadAgentTask[],
+  ): boolean {
+    if (tasks.length === 0) {
+      const workspace = this.store.getWorkspace(workspaceId);
+      return workspace ? this.isPromotionWorkflowWorkspace(workspace) : false;
+    }
+    const promotionNodeIds = new Set(PROMOTION_WORKFLOW_GRAPH.map(node => node.role));
+    return tasks.every(task => task.nodeId && promotionNodeIds.has(task.nodeId));
   }
 
   private resolveRunTasksForWorkspace(

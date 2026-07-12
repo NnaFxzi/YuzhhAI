@@ -85,6 +85,7 @@ export interface WorkflowEvent {
     | 'task_completed'
     | 'task_failed'
     | 'task_blocked'
+    | 'task_cancelled'
     | 'approval_required'
     | 'approval_rejected'
     | 'run_completed'

@@ -38,7 +38,7 @@ import {
 import {
   normalizeWorkflowStartOptions,
   type WorkflowArtifactRef,
-  type WorkflowExecutionMode,
+  WorkflowExecutionMode,
   type WorkflowStartOptions,
 } from '../../shared/enterpriseLeadWorkspace/workflowContracts';
 import { KNOWLEDGE_DOCUMENT_LEGACY_SOURCE_PREFIX } from '../../shared/knowledgeBase/constants';
@@ -386,6 +386,7 @@ export class EnterpriseLeadWorkspaceStore {
     this.ensureWorkflowRunOptionsColumn();
     this.ensureAgentTaskSequenceColumn();
     this.ensureWorkflowTaskColumns();
+    this.migrateLegacyWorkflowTaskExecutionModes();
     this.ensureAgentTaskAgentColumns();
     this.ensureAgentTaskArtifactRefsColumn();
     this.ensurePendingVersionResultColumns();
@@ -418,6 +419,18 @@ export class EnterpriseLeadWorkspaceStore {
     if (!columnNames.has('execution_mode')) {
       this.db.exec('ALTER TABLE enterprise_lead_agent_tasks ADD COLUMN execution_mode TEXT;');
     }
+  }
+
+  private migrateLegacyWorkflowTaskExecutionModes(): void {
+    this.db.prepare(`
+      UPDATE enterprise_lead_agent_tasks
+      SET execution_mode = ?
+      WHERE execution_mode IS NULL
+    `).run(WorkflowExecutionMode.Inline);
+  }
+
+  getDatabase(): Database.Database {
+    return this.db;
   }
 
   private ensureAgentTaskAgentColumns(): void {

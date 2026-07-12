@@ -48,6 +48,7 @@ import {
   buildDefaultPromotionDepartmentWorkspaceAgents,
   ENTERPRISE_LEAD_AGENT_WORKFLOW,
 } from './workflow';
+import { WorkflowArtifactStore } from './workflowArtifactStore';
 
 class FakeModelClient implements ModelClientAdapter {
   readonly prompts: ModelGenerationInput[] = [];
@@ -124,6 +125,26 @@ const createService = (
     } as never),
     store,
   };
+};
+
+const createLegacyWorkspaceRun = (
+  service: EnterpriseLeadWorkspaceService,
+  store: EnterpriseLeadWorkspaceStore,
+  workspaceId: string,
+  userGoal: string,
+) => {
+  const workspace = service.getWorkspace(workspaceId);
+  if (!workspace) {
+    throw new Error('Expected workspace');
+  }
+  const roles = workspace.workspaceAgents
+    .filter(agent => agent.enabled)
+    .map(agent => agent.agentId)
+    .filter((role): role is EnterpriseLeadAgentRole =>
+      Object.values(EnterpriseLeadAgentRole).includes(role as EnterpriseLeadAgentRole),
+    );
+  const run = store.createRun({ workspaceId, userGoal, roles });
+  return service.getSnapshot(workspaceId, run.id);
 };
 
 const draftPayload = (): EnterpriseLeadWorkspaceDraft => ({
@@ -1951,7 +1972,12 @@ describe('EnterpriseLeadWorkspaceService', () => {
       ...draftPayload(),
       workspaceAgents: buildDefaultPromotionDepartmentWorkspaceAgents(),
     });
-    const snapshot = setup.service.createRun(workspace.id, '抓取有来源的推广线索');
+    const snapshot = createLegacyWorkspaceRun(
+      setup.service,
+      setup.store,
+      workspace.id,
+      '抓取有来源的推广线索',
+    );
     const task = snapshot.tasks.find(
       item => item.role === EnterpriseLeadAgentRole.PromotionDataScraping,
     );
@@ -2017,7 +2043,7 @@ describe('EnterpriseLeadWorkspaceService', () => {
       ...draftPayload(),
       workspaceAgents: buildDefaultPromotionDepartmentWorkspaceAgents(),
     });
-    const snapshot = setup.service.createRun(workspace.id, '验证推广交付物');
+    const snapshot = createLegacyWorkspaceRun(setup.service, setup.store, workspace.id, '验证推广交付物');
     const task = snapshot.tasks.find(item => item.role === role);
     if (!task) throw new Error(`Expected promotion task for ${role}`);
     setup.modelClient.enqueue({
@@ -2050,7 +2076,7 @@ describe('EnterpriseLeadWorkspaceService', () => {
       ...draftPayload(),
       workspaceAgents: buildDefaultPromotionDepartmentWorkspaceAgents(),
     });
-    const snapshot = setup.service.createRun(workspace.id, '生成推广卖点');
+    const snapshot = createLegacyWorkspaceRun(setup.service, setup.store, workspace.id, '生成推广卖点');
     const task = snapshot.tasks.find(
       item => item.role === EnterpriseLeadAgentRole.ProductSellingPoint,
     );
@@ -2085,7 +2111,7 @@ describe('EnterpriseLeadWorkspaceService', () => {
       ...draftPayload(),
       workspaceAgents: buildDefaultPromotionDepartmentWorkspaceAgents(),
     });
-    const snapshot = setup.service.createRun(workspace.id, '生成发布排期草稿');
+    const snapshot = createLegacyWorkspaceRun(setup.service, setup.store, workspace.id, '生成发布排期草稿');
     const task = snapshot.tasks.find(
       item => item.role === EnterpriseLeadAgentRole.PromotionPublishingSchedule,
     );
@@ -2120,7 +2146,7 @@ describe('EnterpriseLeadWorkspaceService', () => {
       ...draftPayload(),
       workspaceAgents: buildDefaultPromotionDepartmentWorkspaceAgents(),
     });
-    const snapshot = setup.service.createRun(workspace.id, '分析竞品推广机会');
+    const snapshot = createLegacyWorkspaceRun(setup.service, setup.store, workspace.id, '分析竞品推广机会');
     const task = snapshot.tasks.find(
       item => item.role === EnterpriseLeadAgentRole.PromotionCompetitorInsight,
     );
@@ -2151,7 +2177,7 @@ describe('EnterpriseLeadWorkspaceService', () => {
       ...draftPayload(),
       workspaceAgents: buildDefaultPromotionDepartmentWorkspaceAgents(),
     });
-    const snapshot = setup.service.createRun(workspace.id, '修订推广线索');
+    const snapshot = createLegacyWorkspaceRun(setup.service, setup.store, workspace.id, '修订推广线索');
     const task = snapshot.tasks.find(
       item => item.role === EnterpriseLeadAgentRole.PromotionDataScraping,
     );
@@ -2204,7 +2230,7 @@ describe('EnterpriseLeadWorkspaceService', () => {
         ...buildDefaultEnterpriseLeadWorkspaceAgents([EnterpriseLeadAgentRole.SalesHandoff]),
       ],
     });
-    const snapshot = setup.service.createRun(workspace.id, '生成销售交接草稿');
+    const snapshot = createLegacyWorkspaceRun(setup.service, setup.store, workspace.id, '生成销售交接草稿');
     const task = snapshot.tasks.find(item => item.role === EnterpriseLeadAgentRole.SalesHandoff);
     if (!task) throw new Error('Expected promotion sales handoff task');
     setup.modelClient.enqueue({
@@ -2241,7 +2267,7 @@ describe('EnterpriseLeadWorkspaceService', () => {
       ...draftPayload(),
       workspaceAgents: buildDefaultPromotionDepartmentWorkspaceAgents(),
     });
-    const snapshot = setup.service.createRun(workspace.id, '修订推广线索');
+    const snapshot = createLegacyWorkspaceRun(setup.service, setup.store, workspace.id, '修订推广线索');
     const task = snapshot.tasks.find(
       item => item.role === EnterpriseLeadAgentRole.PromotionDataScraping,
     );
@@ -2446,6 +2472,48 @@ describe('EnterpriseLeadWorkspaceService', () => {
       summary: '',
       stale: false,
     });
+  });
+
+  test('runWorkflow routes a new promotion workspace run through the DAG orchestrator', async () => {
+    const setup = createService();
+    db = setup.db;
+    const workspace = setup.service.createWorkspace({
+      ...draftPayload(),
+      workspaceAgents: buildDefaultPromotionDepartmentWorkspaceAgents(),
+    });
+    const created = setup.service.createRun(workspace.id, '生成推广获客方案');
+    if (!created.currentRun) {
+      throw new Error('Expected a promotion run');
+    }
+    setup.modelClient.enqueue({
+      role: EnterpriseLeadAgentRole.PromotionController,
+      status: EnterpriseLeadTaskStatus.Completed,
+      summary: '推广总控计划已生成。',
+      outputs: {
+        controlPlan: '先完成线索调研和内容草稿。',
+        priorityTasks: ['调研'],
+        riskNotes: ['仅生成草稿'],
+      },
+      missingInfo: [],
+      todos: [],
+      risks: [],
+      handoffContext: {},
+    });
+
+    expect(created.tasks).toEqual([]);
+    const snapshot = await setup.service.runWorkflow(workspace.id, created.currentRun.id);
+    const controllerTask = snapshot.tasks.find(
+      task => task.role === EnterpriseLeadAgentRole.PromotionController,
+    );
+
+    expect(controllerTask).toMatchObject({
+      status: EnterpriseLeadTaskStatus.Completed,
+      nodeId: EnterpriseLeadAgentRole.PromotionController,
+      executionMode: 'inline',
+    });
+    expect(new WorkflowArtifactStore(setup.db).listEvents(created.currentRun.id)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ type: 'run_started' })]),
+    );
   });
 
   test('archiveRun archives a workspace run and rejects foreign runs', () => {
@@ -2860,7 +2928,7 @@ describe('EnterpriseLeadWorkspaceService', () => {
       ...draftPayload(),
       workspaceAgents: buildDefaultPromotionDepartmentWorkspaceAgents(),
     });
-    const snapshot = setup.service.createRun(workspace.id, '执行推广部闭环');
+    const snapshot = createLegacyWorkspaceRun(setup.service, setup.store, workspace.id, '执行推广部闭环');
     const runId = snapshot.currentRun?.id;
     if (!runId) throw new Error('Expected promotion department run');
 

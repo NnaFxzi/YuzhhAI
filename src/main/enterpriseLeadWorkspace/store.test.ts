@@ -16,6 +16,7 @@ import {
   EnterpriseLeadWorkspaceType,
 } from '../../shared/enterpriseLeadWorkspace/constants';
 import { buildDefaultEnterpriseLeadWorkspaceSettings } from '../../shared/enterpriseLeadWorkspace/validation';
+import { WorkflowExecutionMode } from '../../shared/enterpriseLeadWorkspace/workflowContracts';
 import {
   KnowledgeDocumentSourceMode,
   KnowledgeDocumentStatus,
@@ -915,6 +916,28 @@ describe('EnterpriseLeadWorkspaceStore', () => {
     const reloadedStore = new EnterpriseLeadWorkspaceStore(db!);
 
     expect(reloadedStore.getTask(task.id)?.artifactRefs).toEqual(artifactRefs);
+  });
+
+  test('migrates legacy workflow tasks without an execution mode to inline execution', () => {
+    setupStore();
+    const workspace = store.createWorkspace({
+      name: '兼容旧版推广任务',
+      type: EnterpriseLeadWorkspaceType.EnterpriseLead,
+      profile,
+      extractionSources: [],
+      enabledAgentRoles: [],
+    });
+    const run = store.createRun({
+      workspaceId: workspace.id,
+      userGoal: '恢复旧版推广任务',
+      roles: [EnterpriseLeadAgentRole.PromotionDataScraping],
+    });
+    const task = store.listTasks(run.id)[0];
+    db!.prepare('UPDATE enterprise_lead_agent_tasks SET execution_mode = NULL WHERE id = ?').run(task.id);
+
+    const reloadedStore = new EnterpriseLeadWorkspaceStore(db!);
+
+    expect(reloadedStore.getTask(task.id)?.executionMode).toBe(WorkflowExecutionMode.Inline);
   });
 
   test('creates and applies a pending agent version', () => {
