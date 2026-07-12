@@ -5,12 +5,14 @@ import {
 } from '../../shared/enterpriseLeadWorkspace/constants';
 import type {
   EnterpriseLeadAgentTask,
+  EnterpriseLeadTaskAgentRole,
   EnterpriseLeadWorkspace,
   EnterpriseLeadWorkspaceAgentCalibrationDraft,
   EnterpriseLeadWorkspaceAgentCalibrationExample,
   EnterpriseLeadWorkspaceContentPlatformConfig,
   EnterpriseLeadWorkspaceContentPlatformSettings,
 } from '../../shared/enterpriseLeadWorkspace/types';
+import type { WorkflowArtifactRef } from '../../shared/enterpriseLeadWorkspace/workflowContracts';
 import {
   AiDialogueReplyLanguage,
   AiDialogueReplySurface,
@@ -251,6 +253,132 @@ const taskResultSchema = {
   handoffContext: {},
 };
 
+const promotionRolePrefix = 'promotion_';
+
+export function buildPromotionTaskOutputSchema(role: EnterpriseLeadTaskAgentRole): Record<string, unknown> {
+  switch (role) {
+    case EnterpriseLeadAgentRole.PromotionDataScraping:
+      return {
+        items: [
+          {
+            sourceKind: 'website | social | search | manual | unknown',
+            sourceUrl: 'http(s) source evidence URL',
+            title: '标题',
+            content: '有证据支持的内容摘录',
+            capturedAt: 'ISO timestamp',
+            confidence: 'high | medium | low',
+          },
+        ],
+      };
+    case EnterpriseLeadAgentRole.PromotionDataCleaning:
+      return {
+        records: [
+          {
+            id: '线索 ID',
+            companyName: '企业名称',
+            industry: '行业',
+            contactHint: '公开联系线索；没有时留空',
+            fieldConfidence: { companyName: 'high | medium | low' },
+          },
+        ],
+        duplicates: ['重复线索 ID'],
+        missingFields: ['缺失字段'],
+      };
+    case EnterpriseLeadAgentRole.PromotionLeadScoring:
+      return {
+        leads: [
+          {
+            id: '线索 ID',
+            score: '0-100',
+            tier: 'high | medium | low',
+            reasons: ['评分依据'],
+            missingFields: ['缺失字段'],
+            nextAction: '仅供人工执行的下一步建议',
+          },
+        ],
+      };
+    case EnterpriseLeadAgentRole.PromotionMultiPlatformAssets:
+      return {
+        assets: [
+          {
+            platform: '目标平台',
+            title: '草稿标题',
+            body: '草稿正文',
+            tags: ['标签'],
+            callToAction: '草稿 CTA',
+            manualReviewRequired: true,
+          },
+        ],
+      };
+    case EnterpriseLeadAgentRole.ContentQuality:
+      return {
+        riskLevel: 'low | medium | high',
+        blockingIssues: ['阻断问题'],
+        warnings: ['警告'],
+        requiredRevisions: ['必须修改项'],
+        canArchive: false,
+      };
+    case EnterpriseLeadAgentRole.PromotionAccountMonitoring:
+      return {
+        metrics: ['渠道指标对象'],
+        anomalies: ['异常对象'],
+        hypotheses: ['异常假设'],
+        adjustmentActions: ['人工确认后的调整建议'],
+      };
+    default:
+      return {};
+  }
+}
+
+const toPromptArtifactSummary = (artifact: WorkflowArtifactRef) => ({
+  id: artifact.id,
+  kind: artifact.kind,
+  schemaVersion: artifact.schemaVersion,
+  summary: artifact.summary,
+  producerTaskId: artifact.producerTaskId,
+  evidenceIds: artifact.evidenceIds,
+});
+
+const isPromotionTask = (
+  task: EnterpriseLeadAgentTask,
+  upstreamTasks: EnterpriseLeadAgentTask[],
+): boolean =>
+  task.role.startsWith(promotionRolePrefix) ||
+  (task.role === EnterpriseLeadAgentRole.ContentQuality &&
+    upstreamTasks.some(upstream => upstream.role.startsWith(promotionRolePrefix)));
+
+const buildPromotionTaskContext = (
+  task: EnterpriseLeadAgentTask,
+  upstreamTasks: EnterpriseLeadAgentTask[],
+) => ({
+  taskId: task.id,
+  runId: task.runId,
+  role: task.role,
+  status: task.status,
+  inputArtifacts: (task.artifactRefs ?? []).map(toPromptArtifactSummary),
+  artifactSummaries: upstreamTasks.flatMap(upstream =>
+    (upstream.artifactRefs ?? []).map(toPromptArtifactSummary),
+  ),
+});
+
+const toPromotionPromptWorkspace = (workspace: EnterpriseLeadWorkspace) => ({
+  id: workspace.id,
+  name: workspace.name,
+  profile: workspace.profile,
+  riskRules: workspace.riskRules,
+  research: {
+    external: toPromptExternalResearchSettings(workspace),
+    domestic: workspace.settings.domesticResearch,
+  },
+  platforms: toPromptContentPlatformSettings(workspace.settings.contentPlatforms),
+  outputPreferences: workspace.settings.outputPreferences,
+});
+
+const buildTaskResultSchema = (role: EnterpriseLeadTaskAgentRole, promotion: boolean) => ({
+  ...taskResultSchema,
+  outputs: promotion ? buildPromotionTaskOutputSchema(role) : taskResultSchema.outputs,
+});
+
 const buildSafetySection = (): string => safetyBoundaries.map(item => `- ${item}`).join('\n');
 
 const buildChatSafetySection = (): string =>
@@ -412,6 +540,7 @@ export function buildAgentTaskPrompt({
   upstreamTasks,
 }: AgentTaskPromptInput): string {
   const metadata = getAgentTaskPromptMetadata(task);
+  const promotion = isPromotionTask(task, upstreamTasks);
   const agentConfigLines = [
     metadata.identity ? `Agent 身份：${metadata.identity}` : '',
     metadata.systemPrompt ? `Agent 系统提示词：${metadata.systemPrompt}` : '',
@@ -427,18 +556,18 @@ export function buildAgentTaskPrompt({
     '安全边界：',
     buildSafetySection(),
     '',
-    '请基于工作空间、当前任务和上游 Agent 结果生成本 Agent 的结构化 JSON 结果。',
+    promotion
+      ? '请基于工作空间、输入 Artifact 和 Artifact 摘要生成本 Agent 的结构化 JSON 结果。'
+      : '请基于工作空间、当前任务和上游 Agent 结果生成本 Agent 的结构化 JSON 结果。',
     '输出 JSON schema：',
-    stringify(taskResultSchema),
+    stringify(buildTaskResultSchema(task.role, promotion)),
     '',
     '工作空间：',
-    stringify(toPromptWorkspace(workspace)),
+    stringify(promotion ? toPromotionPromptWorkspace(workspace) : toPromptWorkspace(workspace)),
     '',
-    '当前任务：',
-    stringify(task),
-    '',
-    '上游 Agent 结果：',
-    buildUpstreamSection(upstreamTasks),
+    ...(promotion
+      ? ['任务输入与 Artifact 摘要：', stringify(buildPromotionTaskContext(task, upstreamTasks))]
+      : ['当前任务：', stringify(task), '', '上游 Agent 结果：', buildUpstreamSection(upstreamTasks)]),
   ].join('\n');
 }
 

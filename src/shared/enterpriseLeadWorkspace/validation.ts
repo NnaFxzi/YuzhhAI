@@ -895,6 +895,7 @@ export function normalizeAgentTaskResultInput(value: unknown): EnterpriseLeadAge
   if (!role) throw new Error('agent task result role is required');
   const summary = cleanText(record.summary);
   if (!summary) throw new Error('agent task result summary is required');
+  const status = cleanText(record.status);
 
   return {
     role,
@@ -914,7 +915,11 @@ export function normalizeAgentTaskResultInput(value: unknown): EnterpriseLeadAge
         })
       : [],
     handoffContext: readRecord(record.handoffContext),
-    status: cleanText(record.status) || EnterpriseLeadTaskStatus.Completed,
+    status: !status
+      ? EnterpriseLeadTaskStatus.Completed
+      : Object.values(EnterpriseLeadTaskStatus).includes(status as EnterpriseLeadTaskStatus)
+        ? (status as EnterpriseLeadTaskStatus)
+        : EnterpriseLeadTaskStatus.NeedsInput,
   };
 }
 
