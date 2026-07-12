@@ -29,3 +29,8 @@ Feature commit: `2087cce7 feat(workflow): connect workspace service to promotion
 - `src/main/enterpriseLeadWorkspace/promptTemplates.test.ts`
 - `src/shared/enterpriseLeadWorkspace/promotionWorkflowGraph.ts`
 - `src/shared/enterpriseLeadWorkspace/validation.ts`
+
+## Review-fix 1
+
+- Fixed `workflowOrchestrator.ts` execution context construction to merge and deduplicate persisted task artifact refs with dependency artifact refs, preserving Artifact-only context on retries without including raw upstream output payloads.
+- Added an orchestrator regression covering a failed controller task and retry execution with task-owned and dependency artifact refs.

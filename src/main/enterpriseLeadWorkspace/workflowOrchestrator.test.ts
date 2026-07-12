@@ -20,12 +20,14 @@ class FakeWorkflowExecutionAdapter implements WorkflowExecutionAdapter {
   active = 0;
   maxConcurrent = 0;
   readonly calls = new Map<string, number>();
+  readonly contexts: Array<Parameters<WorkflowExecutionAdapter['execute']>[0]> = [];
 
   constructor(
     private readonly results: Partial<Record<string, TaskResultOverride | TaskResultOverride[]>> = {},
   ) {}
 
   async execute(context: Parameters<WorkflowExecutionAdapter['execute']>[0]): Promise<PromotionTaskResult> {
+    this.contexts.push(context);
     this.active += 1;
     this.maxConcurrent = Math.max(this.maxConcurrent, this.active);
     this.calls.set(context.role, (this.calls.get(context.role) ?? 0) + 1);
@@ -178,6 +180,57 @@ describe('EnterpriseLeadWorkflowOrchestrator', () => {
     expect(resumed.currentRun?.status).toBe(EnterpriseLeadRunStatus.Completed);
     expect(setupResult.adapter.calls.get(EnterpriseLeadAgentRole.PromotionDataCleaning)).toBe(2);
     expect(setupResult.adapter.calls.get(EnterpriseLeadAgentRole.PromotionController)).toBe(controllerCalls);
+  });
+
+  test('includes persisted task artifacts alongside dependency artifacts on retry', async () => {
+    const dependencyArtifact = {
+      id: 'dependency-artifact',
+      kind: 'source',
+      schemaVersion: 1,
+      summary: 'Dependency source',
+      producerTaskId: 'dependency-task',
+      evidenceIds: [],
+    };
+    const taskArtifact = {
+      id: 'task-artifact',
+      kind: 'draft',
+      schemaVersion: 1,
+      summary: 'Persisted task context',
+      producerTaskId: 'controller-task',
+      evidenceIds: [],
+    };
+    const adapter = new FakeWorkflowExecutionAdapter({
+      [EnterpriseLeadAgentRole.PromotionController]: [
+        {
+          status: EnterpriseLeadTaskStatus.Error,
+          artifactRefs: [taskArtifact, dependencyArtifact],
+        },
+        { status: EnterpriseLeadTaskStatus.Completed },
+      ],
+      [EnterpriseLeadAgentRole.PromotionDataCleaning]: {
+        artifactRefs: [dependencyArtifact],
+      },
+    });
+    const setupResult = setup(adapter);
+    databases.push(setupResult.database);
+
+    const failed = await setupResult.orchestrator.startRun(setupResult.workspace.id, setupResult.run.id);
+    expect(failed.currentRun?.status).toBe(EnterpriseLeadRunStatus.Error);
+
+    const resumed = await setupResult.orchestrator.resumeRun(setupResult.workspace.id, setupResult.run.id);
+    expect(resumed.currentRun?.status).toBe(EnterpriseLeadRunStatus.Completed);
+
+    const controllerContexts = adapter.contexts.filter(
+      context => context.role === EnterpriseLeadAgentRole.PromotionController,
+    );
+    const retryContext = controllerContexts[1];
+    expect(retryContext?.inputArtifacts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: taskArtifact.id }),
+        expect.objectContaining({ id: dependencyArtifact.id }),
+      ]),
+    );
+    expect(retryContext?.inputArtifacts.filter(artifact => artifact.id === dependencyArtifact.id)).toHaveLength(1);
   });
 
   test('recovers persisted running tasks on resume without rerunning completed work', async () => {

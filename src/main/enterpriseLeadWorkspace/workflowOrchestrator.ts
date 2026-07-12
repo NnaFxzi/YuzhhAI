@@ -33,6 +33,9 @@ const isRunnable = (task: EnterpriseLeadAgentTask): boolean =>
   task.status === EnterpriseLeadTaskStatus.Error ||
   task.status === EnterpriseLeadTaskStatus.Stale;
 
+const dedupeWorkflowArtifactRefs = (artifactRefs: WorkflowArtifactRef[]): WorkflowArtifactRef[] =>
+  Array.from(new Map(artifactRefs.map(artifact => [artifact.id, artifact])).values());
+
 export class EnterpriseLeadWorkflowOrchestrator {
   private readonly activeRuns = new Map<string, Promise<EnterpriseLeadWorkspaceSnapshot>>();
   private readonly cancelledRuns = new Set<string>();
@@ -281,7 +284,10 @@ export class EnterpriseLeadWorkflowOrchestrator {
     const upstreamTasks = (task.dependsOnTaskIds ?? [])
       .map(taskId => tasks.find(candidate => candidate.id === taskId))
       .filter((candidate): candidate is EnterpriseLeadAgentTask => Boolean(candidate));
-    const inputArtifacts = upstreamTasks.flatMap(upstream => upstream.artifactRefs ?? []);
+    const inputArtifacts = dedupeWorkflowArtifactRefs([
+      ...(task.artifactRefs ?? []),
+      ...upstreamTasks.flatMap(upstream => upstream.artifactRefs ?? []),
+    ]);
     const executionMode = task.executionMode ?? WorkflowExecutionMode.Inline;
 
     this.options.store.updateWorkflowTaskStatus(task.id, EnterpriseLeadTaskStatus.Running, { attempt });
