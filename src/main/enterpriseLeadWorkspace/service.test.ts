@@ -1989,6 +1989,41 @@ describe('EnterpriseLeadWorkspaceService', () => {
     });
   });
 
+  test('downgrades malformed promotion text arrays before they persist as completed', async () => {
+    const setup = createService();
+    db = setup.db;
+    const workspace = setup.service.createWorkspace({
+      ...draftPayload(),
+      workspaceAgents: buildDefaultPromotionDepartmentWorkspaceAgents(),
+    });
+    const snapshot = setup.service.createRun(workspace.id, '生成推广卖点');
+    const task = snapshot.tasks.find(
+      item => item.role === EnterpriseLeadAgentRole.ProductSellingPoint,
+    );
+    if (!task) throw new Error('Expected promotion selling point task');
+    setup.modelClient.enqueue({
+      role: EnterpriseLeadAgentRole.ProductSellingPoint,
+      status: EnterpriseLeadTaskStatus.Completed,
+      summary: '已生成卖点。',
+      outputs: { sellingPoints: [123] },
+      missingInfo: [],
+      todos: [],
+      risks: [],
+      handoffContext: {},
+    });
+
+    const updatedTask = await setup.service.runTask(task.id);
+
+    expect(updatedTask).toMatchObject({
+      status: EnterpriseLeadTaskStatus.NeedsInput,
+      outputPayload: {},
+    });
+    expect(setup.store.getTask(task.id)).toMatchObject({
+      status: EnterpriseLeadTaskStatus.NeedsInput,
+      outputPayload: {},
+    });
+  });
+
   test('applies malformed promotion chat revisions as needs-input instead of completed', async () => {
     const setup = createService();
     db = setup.db;

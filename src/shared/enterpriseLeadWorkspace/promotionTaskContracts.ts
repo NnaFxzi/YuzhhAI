@@ -124,9 +124,12 @@ const readRequiredArray = (record: UnknownRecord, key: string): unknown[] => {
 };
 
 const normalizeTextList = (value: unknown, key: string): string[] =>
-  readRequiredArray({ [key]: value }, key)
-    .map(item => (typeof item === 'string' ? item.trim() : ''))
-    .filter(Boolean);
+  readRequiredArray({ [key]: value }, key).map((item, index) => {
+    if (typeof item !== 'string' || !item.trim()) {
+      throw new Error(`promotion task output ${key}[${index}] must be non-empty text`);
+    }
+    return item.trim();
+  });
 
 const normalizeRecordArray = (value: unknown, key: string): UnknownRecord[] =>
   readRequiredArray({ [key]: value }, key).map((item, index) => {

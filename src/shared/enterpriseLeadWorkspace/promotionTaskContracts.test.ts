@@ -186,6 +186,75 @@ describe('promotion workflow contracts', () => {
     ).toThrow('sellingPoints');
   });
 
+  test.each([
+    {
+      role: EnterpriseLeadAgentRole.ProductSellingPoint,
+      key: 'sellingPoints',
+      outputs: { sellingPoints: [123] },
+    },
+    {
+      role: EnterpriseLeadAgentRole.PromotionDataCleaning,
+      key: 'duplicates',
+      outputs: { records: [], duplicates: [123], missingFields: [] },
+    },
+    {
+      role: EnterpriseLeadAgentRole.PromotionLeadScoring,
+      key: 'reasons',
+      outputs: {
+        leads: [
+          {
+            id: 'lead-1',
+            score: 80,
+            tier: 'high',
+            reasons: [123],
+            missingFields: [],
+            nextAction: '人工确认联系人',
+          },
+        ],
+      },
+    },
+    {
+      role: EnterpriseLeadAgentRole.PromotionMultiPlatformAssets,
+      key: 'tags',
+      outputs: {
+        assets: [
+          {
+            platform: 'xiaohongshu',
+            title: '标题',
+            body: '正文',
+            tags: [123],
+            callToAction: '咨询',
+          },
+        ],
+      },
+    },
+    {
+      role: EnterpriseLeadAgentRole.ContentQuality,
+      key: 'requiredRevisions',
+      outputs: {
+        riskLevel: 'low',
+        blockingIssues: [],
+        warnings: [],
+        requiredRevisions: [123],
+        canArchive: true,
+      },
+    },
+    {
+      role: EnterpriseLeadAgentRole.PromotionAccountMonitoring,
+      key: 'adjustmentActions',
+      outputs: {
+        metrics: [],
+        anomalies: [],
+        hypotheses: [],
+        adjustmentActions: [123],
+      },
+    },
+  ])('rejects non-text elements in $key arrays for $role', ({ role, key, outputs }) => {
+    expect(() => parsePromotionTaskResult(role, { ...taskResult(outputs) })).toThrow(
+      `${key}[0]`,
+    );
+  });
+
   test('rejects invalid content quality risk levels and protects high-risk archives', () => {
     const result = parsePromotionTaskResult(EnterpriseLeadAgentRole.ContentQuality, {
       ...taskResult({
