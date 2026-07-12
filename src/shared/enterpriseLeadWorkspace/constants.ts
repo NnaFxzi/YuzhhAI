@@ -72,25 +72,42 @@ export const EnterpriseLeadRunStatus = {
   Draft: 'draft',
   Running: 'running',
   NeedsInput: 'needs_input',
+  AwaitingApproval: 'awaiting_approval',
   Blocked: 'blocked',
   Completed: 'completed',
+  Cancelled: 'cancelled',
   Archived: 'archived',
   Error: 'error',
 } as const;
 export type EnterpriseLeadRunStatus =
-  (typeof EnterpriseLeadRunStatus)[keyof typeof EnterpriseLeadRunStatus];
+  | 'draft'
+  | 'running'
+  | 'needs_input'
+  | 'blocked'
+  | 'completed'
+  | 'archived'
+  | 'error';
 
 export const EnterpriseLeadTaskStatus = {
   Waiting: 'waiting',
+  Ready: 'ready',
   Running: 'running',
   NeedsInput: 'needs_input',
+  AwaitingApproval: 'awaiting_approval',
   Completed: 'completed',
   Stale: 'stale',
   Blocked: 'blocked',
+  Cancelled: 'cancelled',
   Error: 'error',
 } as const;
 export type EnterpriseLeadTaskStatus =
-  (typeof EnterpriseLeadTaskStatus)[keyof typeof EnterpriseLeadTaskStatus];
+  | 'waiting'
+  | 'running'
+  | 'needs_input'
+  | 'completed'
+  | 'stale'
+  | 'blocked'
+  | 'error';
 
 export const EnterpriseLeadRiskLevel = {
   Low: 'low',

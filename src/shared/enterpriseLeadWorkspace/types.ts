@@ -18,6 +18,10 @@ import type {
   EnterpriseLeadWorkspaceAgentSource,
   EnterpriseLeadWorkspaceType,
 } from './constants';
+import type {
+  WorkflowArtifactRef,
+  WorkflowExecutionMode,
+} from './workflowContracts';
 
 export interface EnterpriseLeadWorkspaceProfile {
   companySummary: string;
@@ -236,6 +240,7 @@ export interface EnterpriseLeadRun {
   workspaceId: string;
   userGoal: string;
   status: EnterpriseLeadRunStatus;
+  workflowVersion?: string;
   currentRole: EnterpriseLeadTaskAgentRole | null;
   controllerSummary: string;
   archiveStatus: 'not_archived' | 'archived';
@@ -274,6 +279,11 @@ export interface EnterpriseLeadAgentTask {
   id: string;
   runId: string;
   role: EnterpriseLeadTaskAgentRole;
+  nodeId?: string;
+  dependsOnTaskIds?: string[];
+  attempt?: number;
+  executionMode?: WorkflowExecutionMode;
+  artifactRefs?: WorkflowArtifactRef[];
   workspaceAgentId: string | null;
   agentSnapshot: EnterpriseLeadWorkspaceRunAgentSnapshot | null;
   status: EnterpriseLeadTaskStatus;
