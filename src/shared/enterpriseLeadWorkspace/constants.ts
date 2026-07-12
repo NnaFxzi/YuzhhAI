@@ -408,3 +408,14 @@ export const EnterpriseLeadWorkspaceIpc = {
 } as const;
 export type EnterpriseLeadWorkspaceIpc =
   (typeof EnterpriseLeadWorkspaceIpc)[keyof typeof EnterpriseLeadWorkspaceIpc];
+
+export const EnterpriseLeadWorkflowIpc = {
+  Start: 'enterpriseLeadWorkflow:start',
+  Resume: 'enterpriseLeadWorkflow:resume',
+  Cancel: 'enterpriseLeadWorkflow:cancel',
+  ApproveTask: 'enterpriseLeadWorkflow:approveTask',
+  RejectTask: 'enterpriseLeadWorkflow:rejectTask',
+  Event: 'enterpriseLeadWorkflow:event',
+} as const;
+export type EnterpriseLeadWorkflowIpc =
+  (typeof EnterpriseLeadWorkflowIpc)[keyof typeof EnterpriseLeadWorkflowIpc];

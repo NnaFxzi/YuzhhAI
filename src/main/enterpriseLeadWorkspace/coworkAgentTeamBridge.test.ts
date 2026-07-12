@@ -83,6 +83,20 @@ describe('buildCoworkWorkspaceAgentTeamPrompt', () => {
     expect(prompt).toMatch(/Risk Agent \(target\)/);
   });
 
+  test('keeps Cowork role routing distinct from executed promotion workflows', () => {
+    const prompt = buildCoworkWorkspaceAgentTeamPrompt({
+      workspace: workspaceWithAgents([
+        agentBinding('controller', 'Controller Agent', 0),
+      ]),
+      selection: selection(CoworkWorkspaceAgentMode.Auto),
+    });
+
+    expect(prompt).toContain('Auto/manual selection only routes the current Cowork turn');
+    expect(prompt).toContain('complete promotion plan, bulk lead generation, or ongoing monitoring');
+    expect(prompt).toContain('workflow run page');
+    expect(prompt).toContain('Workflow Event or an OpenClaw child-session event');
+  });
+
   test('falls back to automatic routing when a manual target is unavailable', () => {
     const prompt = buildCoworkWorkspaceAgentTeamPrompt({
       workspace: workspaceWithAgents([

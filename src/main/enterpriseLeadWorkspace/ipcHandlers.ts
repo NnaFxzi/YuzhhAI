@@ -1,11 +1,15 @@
 import { ipcMain } from 'electron';
 
-import { EnterpriseLeadWorkspaceIpc } from '../../shared/enterpriseLeadWorkspace/constants';
+import {
+  EnterpriseLeadWorkflowIpc,
+  EnterpriseLeadWorkspaceIpc,
+} from '../../shared/enterpriseLeadWorkspace/constants';
 import type {
   EnterpriseLeadAgentTask,
   EnterpriseLeadExtractionSource,
   EnterpriseLeadIpcResult,
   EnterpriseLeadPendingVersion,
+  EnterpriseLeadWorkflowEvent,
   EnterpriseLeadWorkspace,
   EnterpriseLeadWorkspaceAgentBinding,
   EnterpriseLeadWorkspaceAgentCalibrationRequest,
@@ -20,6 +24,8 @@ import {
   normalizeEnterpriseLeadExtractionSources,
   normalizeWorkspaceProfile,
 } from '../../shared/enterpriseLeadWorkspace/validation';
+import type { WorkflowStartOptions } from '../../shared/enterpriseLeadWorkspace/workflowContracts';
+import type { AppendWorkflowEventInput } from './workflowArtifactStore';
 
 export interface EnterpriseLeadWorkspaceHandlerDeps {
   service: {
@@ -87,7 +93,32 @@ export interface EnterpriseLeadWorkspaceHandlerDeps {
       workspaceId: string,
       runId: string,
     ) => EnterpriseLeadWorkspaceSnapshot | Promise<EnterpriseLeadWorkspaceSnapshot>;
+    startWorkflow: (
+      workspaceId: string,
+      runId: string,
+      options: WorkflowStartOptions,
+    ) => EnterpriseLeadWorkspaceSnapshot | Promise<EnterpriseLeadWorkspaceSnapshot>;
+    resumeRun: (
+      workspaceId: string,
+      runId: string,
+    ) => EnterpriseLeadWorkspaceSnapshot | Promise<EnterpriseLeadWorkspaceSnapshot>;
+    cancelRun: (
+      workspaceId: string,
+      runId: string,
+    ) => EnterpriseLeadWorkspaceSnapshot | Promise<EnterpriseLeadWorkspaceSnapshot>;
+    approveTask: (
+      workspaceId: string,
+      runId: string,
+      taskId: string,
+    ) => EnterpriseLeadWorkspaceSnapshot | Promise<EnterpriseLeadWorkspaceSnapshot>;
+    rejectTask: (
+      workspaceId: string,
+      runId: string,
+      taskId: string,
+    ) => EnterpriseLeadWorkspaceSnapshot | Promise<EnterpriseLeadWorkspaceSnapshot>;
   };
+  listWorkflowEvents: (runId: string) => EnterpriseLeadWorkflowEvent[];
+  appendWorkflowEvent: (input: AppendWorkflowEventInput) => EnterpriseLeadWorkflowEvent;
 }
 
 const toErrorMessage = (error: unknown): string =>
@@ -126,6 +157,24 @@ const requireNonNegativeInteger = (value: unknown, label: string): number => {
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+
+const readWorkflowStartOptions = (value: unknown): WorkflowStartOptions => {
+  if (!isPlainObject(value)) {
+    throw new Error('Workflow start options are required');
+  }
+  if (!Array.isArray(value.enabledOptionalNodes)) {
+    throw new Error('Workflow optional nodes are required');
+  }
+  if (typeof value.maxConcurrency !== 'number' || !Number.isFinite(value.maxConcurrency)) {
+    throw new Error('Workflow max concurrency is required');
+  }
+  return {
+    enabledOptionalNodes: value.enabledOptionalNodes.filter(
+      (node): node is string => typeof node === 'string',
+    ),
+    maxConcurrency: value.maxConcurrency,
+  };
+};
 
 const readWorkspaceAgents = (value: unknown): EnterpriseLeadWorkspaceAgentBinding[] => {
   if (!Array.isArray(value)) {
@@ -188,6 +237,13 @@ const fail = <T>(error: unknown): EnterpriseLeadIpcResult<T> => ({
   success: false,
   error: toErrorMessage(error),
 });
+
+const sendWorkflowEvents = (
+  sender: { send: (channel: string, payload: EnterpriseLeadWorkflowEvent) => void },
+  events: EnterpriseLeadWorkflowEvent[],
+): void => {
+  events.forEach(workflowEvent => sender.send(EnterpriseLeadWorkflowIpc.Event, workflowEvent));
+};
 
 export function registerEnterpriseLeadWorkspaceHandlers(
   deps: EnterpriseLeadWorkspaceHandlerDeps,
@@ -445,6 +501,98 @@ export function registerEnterpriseLeadWorkspaceHandlers(
         const workspaceId = requireNonEmptyString(input?.workspaceId, 'Workspace id');
         const runId = requireNonEmptyString(input?.runId, 'Run id');
         return ok(await deps.service.archiveRun(workspaceId, runId));
+      } catch (error) {
+        return fail<EnterpriseLeadWorkspaceSnapshot>(error);
+      }
+    },
+  );
+
+  ipcMain.handle(
+    EnterpriseLeadWorkflowIpc.Start,
+    async (event, input: { workspaceId?: unknown; runId?: unknown; options?: unknown }) => {
+      try {
+        const workspaceId = requireNonEmptyString(input?.workspaceId, 'Workspace id');
+        const runId = requireNonEmptyString(input?.runId, 'Run id');
+        const options = readWorkflowStartOptions(input?.options);
+        const snapshot = await deps.service.getSnapshot(workspaceId, runId);
+
+        void (async () => {
+          try {
+            await deps.service.startWorkflow(workspaceId, runId, options);
+            sendWorkflowEvents(event.sender, deps.listWorkflowEvents(runId));
+          } catch (error) {
+            const workflowEvent = deps.appendWorkflowEvent({
+              runId,
+              type: 'run_error',
+              summary: toErrorMessage(error),
+            });
+            event.sender.send(EnterpriseLeadWorkflowIpc.Event, workflowEvent);
+          }
+        })();
+
+        return ok(snapshot);
+      } catch (error) {
+        return fail<EnterpriseLeadWorkspaceSnapshot>(error);
+      }
+    },
+  );
+
+  ipcMain.handle(
+    EnterpriseLeadWorkflowIpc.Resume,
+    async (event, input: { workspaceId?: unknown; runId?: unknown }) => {
+      try {
+        const workspaceId = requireNonEmptyString(input?.workspaceId, 'Workspace id');
+        const runId = requireNonEmptyString(input?.runId, 'Run id');
+        const snapshot = await deps.service.resumeRun(workspaceId, runId);
+        sendWorkflowEvents(event.sender, deps.listWorkflowEvents(runId));
+        return ok(snapshot);
+      } catch (error) {
+        return fail<EnterpriseLeadWorkspaceSnapshot>(error);
+      }
+    },
+  );
+
+  ipcMain.handle(
+    EnterpriseLeadWorkflowIpc.Cancel,
+    async (event, input: { workspaceId?: unknown; runId?: unknown }) => {
+      try {
+        const workspaceId = requireNonEmptyString(input?.workspaceId, 'Workspace id');
+        const runId = requireNonEmptyString(input?.runId, 'Run id');
+        const snapshot = await deps.service.cancelRun(workspaceId, runId);
+        sendWorkflowEvents(event.sender, deps.listWorkflowEvents(runId));
+        return ok(snapshot);
+      } catch (error) {
+        return fail<EnterpriseLeadWorkspaceSnapshot>(error);
+      }
+    },
+  );
+
+  ipcMain.handle(
+    EnterpriseLeadWorkflowIpc.ApproveTask,
+    async (event, input: { workspaceId?: unknown; runId?: unknown; taskId?: unknown }) => {
+      try {
+        const workspaceId = requireNonEmptyString(input?.workspaceId, 'Workspace id');
+        const runId = requireNonEmptyString(input?.runId, 'Run id');
+        const taskId = requireNonEmptyString(input?.taskId, 'Task id');
+        const snapshot = await deps.service.approveTask(workspaceId, runId, taskId);
+        sendWorkflowEvents(event.sender, deps.listWorkflowEvents(runId));
+        return ok(snapshot);
+      } catch (error) {
+        return fail<EnterpriseLeadWorkspaceSnapshot>(error);
+      }
+    },
+  );
+
+  ipcMain.handle(
+    EnterpriseLeadWorkflowIpc.RejectTask,
+    async (event, input: { workspaceId?: unknown; runId?: unknown; taskId?: unknown }) => {
+      try {
+        const workspaceId = requireNonEmptyString(input?.workspaceId, 'Workspace id');
+        const runId = requireNonEmptyString(input?.runId, 'Run id');
+        const taskId = requireNonEmptyString(input?.taskId, 'Task id');
+        const snapshot = await deps.service.rejectTask(workspaceId, runId, taskId);
+        sendWorkflowEvents(event.sender, deps.listWorkflowEvents(runId));
+        return ok(snapshot);
       } catch (error) {
         return fail<EnterpriseLeadWorkspaceSnapshot>(error);
       }

@@ -26,15 +26,20 @@ import type { LayeredCoworkSettingsUpdate } from '../shared/cowork/layeredSettin
 import type { CoworkWorkspaceAgentSelection } from '../shared/cowork/workspaceAgentSelection';
 import { DataMigrationIpc } from '../shared/dataMigration/constants';
 import { DialogIpc } from '../shared/dialog/constants';
-import { EnterpriseLeadWorkspaceIpc } from '../shared/enterpriseLeadWorkspace/constants';
+import {
+  EnterpriseLeadWorkflowIpc,
+  EnterpriseLeadWorkspaceIpc,
+} from '../shared/enterpriseLeadWorkspace/constants';
 import type {
   EnterpriseLeadExtractionSource,
+  EnterpriseLeadWorkflowEvent,
   EnterpriseLeadWorkspaceAgentBinding,
   EnterpriseLeadWorkspaceAgentCalibrationRequest,
   EnterpriseLeadWorkspaceDraft,
   EnterpriseLeadWorkspaceProfile,
   EnterpriseLeadWorkspaceSettingsUpdate,
 } from '../shared/enterpriseLeadWorkspace/types';
+import type { WorkflowStartOptions } from '../shared/enterpriseLeadWorkspace/workflowContracts';
 import {
   type HtmlShareAccessMode,
   type HtmlShareConfigurableStatus,
@@ -265,6 +270,22 @@ contextBridge.exposeInMainWorld('electron', {
       ipcRenderer.invoke(EnterpriseLeadWorkspaceIpc.ApplyPendingVersion, pendingVersionId),
     archiveRun: (workspaceId: string, runId: string) =>
       ipcRenderer.invoke(EnterpriseLeadWorkspaceIpc.ArchiveRun, { workspaceId, runId }),
+    startWorkflow: (workspaceId: string, runId: string, options: WorkflowStartOptions) =>
+      ipcRenderer.invoke(EnterpriseLeadWorkflowIpc.Start, { workspaceId, runId, options }),
+    resumeWorkflow: (workspaceId: string, runId: string) =>
+      ipcRenderer.invoke(EnterpriseLeadWorkflowIpc.Resume, { workspaceId, runId }),
+    cancelWorkflow: (workspaceId: string, runId: string) =>
+      ipcRenderer.invoke(EnterpriseLeadWorkflowIpc.Cancel, { workspaceId, runId }),
+    approveWorkflowTask: (workspaceId: string, runId: string, taskId: string) =>
+      ipcRenderer.invoke(EnterpriseLeadWorkflowIpc.ApproveTask, { workspaceId, runId, taskId }),
+    rejectWorkflowTask: (workspaceId: string, runId: string, taskId: string) =>
+      ipcRenderer.invoke(EnterpriseLeadWorkflowIpc.RejectTask, { workspaceId, runId, taskId }),
+    onEvent: (listener: (workflowEvent: EnterpriseLeadWorkflowEvent) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, payload: EnterpriseLeadWorkflowEvent) =>
+        listener(payload);
+      ipcRenderer.on(EnterpriseLeadWorkflowIpc.Event, handler);
+      return () => ipcRenderer.removeListener(EnterpriseLeadWorkflowIpc.Event, handler);
+    },
   },
   ipcRenderer: {
     send: (channel: string, ...args: any[]) => {

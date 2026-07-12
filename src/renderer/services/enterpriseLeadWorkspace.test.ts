@@ -201,6 +201,26 @@ describe('enterpriseLeadWorkspaceService', () => {
     expect(result).toEqual([]);
   });
 
+  test('filters workflow events by run and unsubscribes the preload listener', () => {
+    let preloadListener: ((event: { runId: string; type: string }) => void) | undefined;
+    const unsubscribe = vi.fn();
+    const onEvent = vi.fn((listener: (event: { runId: string; type: string }) => void) => {
+      preloadListener = listener;
+      return unsubscribe;
+    });
+    const listener = vi.fn();
+    createWindowWithEnterpriseLeadWorkspace({ onEvent });
+
+    const stop = enterpriseLeadWorkspaceService.onWorkflowEvent('run-1', listener);
+    preloadListener?.({ runId: 'run-2', type: 'task_started' });
+    preloadListener?.({ runId: 'run-1', type: 'task_completed' });
+    stop();
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(listener).toHaveBeenCalledWith({ runId: 'run-1', type: 'task_completed' });
+    expect(unsubscribe).toHaveBeenCalledOnce();
+  });
+
   test('tests workspace Agent drafts through bridge', async () => {
     const testWorkspaceAgent = vi.fn(async () => ({
       success: true as const,

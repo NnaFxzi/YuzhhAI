@@ -3,6 +3,7 @@ import type {
   EnterpriseLeadExtractionSource,
   EnterpriseLeadIpcResult,
   EnterpriseLeadPendingVersion,
+  EnterpriseLeadWorkflowEvent,
   EnterpriseLeadWorkspace,
   EnterpriseLeadWorkspaceAgentBinding,
   EnterpriseLeadWorkspaceAgentCalibrationRequest,
@@ -13,6 +14,7 @@ import type {
   EnterpriseLeadWorkspaceSettingsUpdate,
   EnterpriseLeadWorkspaceSnapshot,
 } from '../../shared/enterpriseLeadWorkspace/types';
+import type { WorkflowStartOptions } from '../../shared/enterpriseLeadWorkspace/workflowContracts';
 
 type EnterpriseLeadWorkspaceApi = Window['electron']['enterpriseLeadWorkspace'];
 
@@ -218,6 +220,65 @@ export const archiveRun = async (
     api.archiveRun(workspaceId, runId),
   );
 
+export const startWorkflow = async (
+  workspaceId: string,
+  runId: string,
+  options: WorkflowStartOptions,
+): Promise<EnterpriseLeadWorkspaceSnapshot | null> =>
+  requestOrThrow<EnterpriseLeadWorkspaceSnapshot | null>('startWorkflow', null, api =>
+    api.startWorkflow(workspaceId, runId, options),
+  );
+
+export const resumeWorkflow = async (
+  workspaceId: string,
+  runId: string,
+): Promise<EnterpriseLeadWorkspaceSnapshot | null> =>
+  requestOrThrow<EnterpriseLeadWorkspaceSnapshot | null>('resumeWorkflow', null, api =>
+    api.resumeWorkflow(workspaceId, runId),
+  );
+
+export const cancelWorkflow = async (
+  workspaceId: string,
+  runId: string,
+): Promise<EnterpriseLeadWorkspaceSnapshot | null> =>
+  requestOrThrow<EnterpriseLeadWorkspaceSnapshot | null>('cancelWorkflow', null, api =>
+    api.cancelWorkflow(workspaceId, runId),
+  );
+
+export const approveWorkflowTask = async (
+  workspaceId: string,
+  runId: string,
+  taskId: string,
+): Promise<EnterpriseLeadWorkspaceSnapshot | null> =>
+  requestOrThrow<EnterpriseLeadWorkspaceSnapshot | null>('approveWorkflowTask', null, api =>
+    api.approveWorkflowTask(workspaceId, runId, taskId),
+  );
+
+export const rejectWorkflowTask = async (
+  workspaceId: string,
+  runId: string,
+  taskId: string,
+): Promise<EnterpriseLeadWorkspaceSnapshot | null> =>
+  requestOrThrow<EnterpriseLeadWorkspaceSnapshot | null>('rejectWorkflowTask', null, api =>
+    api.rejectWorkflowTask(workspaceId, runId, taskId),
+  );
+
+export const onWorkflowEvent = (
+  runId: string,
+  listener: (event: EnterpriseLeadWorkflowEvent) => void,
+): (() => void) => {
+  const api = getApi();
+  if (!api || typeof api.onEvent !== 'function') {
+    logError('onWorkflowEvent', 'Enterprise lead workflow event API is unavailable');
+    return () => undefined;
+  }
+  return api.onEvent(event => {
+    if (event.runId === runId) {
+      listener(event);
+    }
+  });
+};
+
 export const enterpriseLeadWorkspaceService = {
   listWorkspaces,
   getWorkspace,
@@ -239,4 +300,10 @@ export const enterpriseLeadWorkspaceService = {
   createPendingVersion,
   applyPendingVersion,
   archiveRun,
+  startWorkflow,
+  resumeWorkflow,
+  cancelWorkflow,
+  approveWorkflowTask,
+  rejectWorkflowTask,
+  onWorkflowEvent,
 };

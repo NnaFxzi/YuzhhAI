@@ -130,6 +130,7 @@ import { buildCoworkWorkspaceAgentTeamPrompt } from './enterpriseLeadWorkspace/c
 import { registerEnterpriseLeadWorkspaceHandlers } from './enterpriseLeadWorkspace/ipcHandlers';
 import { EnterpriseLeadWorkspaceService } from './enterpriseLeadWorkspace/service';
 import { EnterpriseLeadWorkspaceStore } from './enterpriseLeadWorkspace/store';
+import { WorkflowArtifactStore } from './enterpriseLeadWorkspace/workflowArtifactStore';
 import { setLanguage, t } from './i18n';
 import { IMGatewayConfig, IMGatewayManager } from './im';
 import {
@@ -6289,6 +6290,7 @@ if (!gotTheLock) {
       : [],
   );
 
+  const enterpriseLeadWorkflowArtifactStore = new WorkflowArtifactStore(getStore().getDatabase());
   registerEnterpriseLeadWorkspaceHandlers({
     service: {
       listWorkspaces: () => getEnterpriseLeadWorkspaceService().listWorkspaces(),
@@ -6337,7 +6339,19 @@ if (!gotTheLock) {
         getEnterpriseLeadWorkspaceService().applyPendingVersion(pendingVersionId),
       archiveRun: (workspaceId, runId) =>
         getEnterpriseLeadWorkspaceService().archiveRun(workspaceId, runId),
+      startWorkflow: (workspaceId, runId, _options) =>
+        getEnterpriseLeadWorkspaceService().runWorkflow(workspaceId, runId),
+      resumeRun: (workspaceId, runId) =>
+        getEnterpriseLeadWorkspaceService().resumeRun(workspaceId, runId),
+      cancelRun: (workspaceId, runId) =>
+        getEnterpriseLeadWorkspaceService().cancelRun(workspaceId, runId),
+      approveTask: (workspaceId, runId, taskId) =>
+        getEnterpriseLeadWorkspaceService().approveTask(workspaceId, runId, taskId),
+      rejectTask: (workspaceId, runId, taskId) =>
+        getEnterpriseLeadWorkspaceService().rejectTask(workspaceId, runId, taskId),
     },
+    listWorkflowEvents: runId => enterpriseLeadWorkflowArtifactStore.listEvents(runId),
+    appendWorkflowEvent: input => enterpriseLeadWorkflowArtifactStore.appendEvent(input),
   });
 
   ipcMain.handle(OpenClawEngineIpc.GetStatus, async () => {

@@ -47,6 +47,7 @@ import type {
   EnterpriseLeadExtractionSource,
   EnterpriseLeadIpcResult,
   EnterpriseLeadPendingVersion,
+  EnterpriseLeadWorkflowEvent,
   EnterpriseLeadWorkspace,
   EnterpriseLeadWorkspaceAgentBinding,
   EnterpriseLeadWorkspaceAgentCalibrationRequest,
@@ -57,6 +58,7 @@ import type {
   EnterpriseLeadWorkspaceSettingsUpdate,
   EnterpriseLeadWorkspaceSnapshot,
 } from '../../shared/enterpriseLeadWorkspace/types';
+import type { WorkflowStartOptions } from '../../shared/enterpriseLeadWorkspace/workflowContracts';
 import type {
   HtmlShareAccessMode,
   HtmlShareConfigurableStatus,
@@ -784,6 +786,30 @@ interface IElectronAPI {
       workspaceId: string,
       runId: string,
     ) => Promise<EnterpriseLeadIpcResult<EnterpriseLeadWorkspaceSnapshot>>;
+    startWorkflow: (
+      workspaceId: string,
+      runId: string,
+      options: WorkflowStartOptions,
+    ) => Promise<EnterpriseLeadIpcResult<EnterpriseLeadWorkspaceSnapshot>>;
+    resumeWorkflow: (
+      workspaceId: string,
+      runId: string,
+    ) => Promise<EnterpriseLeadIpcResult<EnterpriseLeadWorkspaceSnapshot>>;
+    cancelWorkflow: (
+      workspaceId: string,
+      runId: string,
+    ) => Promise<EnterpriseLeadIpcResult<EnterpriseLeadWorkspaceSnapshot>>;
+    approveWorkflowTask: (
+      workspaceId: string,
+      runId: string,
+      taskId: string,
+    ) => Promise<EnterpriseLeadIpcResult<EnterpriseLeadWorkspaceSnapshot>>;
+    rejectWorkflowTask: (
+      workspaceId: string,
+      runId: string,
+      taskId: string,
+    ) => Promise<EnterpriseLeadIpcResult<EnterpriseLeadWorkspaceSnapshot>>;
+    onEvent: (listener: (event: EnterpriseLeadWorkflowEvent) => void) => () => void;
   };
   getApiConfig: () => Promise<CoworkApiConfig | null>;
   checkApiConfig: (options?: {
