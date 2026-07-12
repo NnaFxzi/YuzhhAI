@@ -41,3 +41,7 @@ Feature commit: `2087cce7 feat(workflow): connect workspace service to promotion
 - `runWorkflow` now recognizes the promotion workspace shape, materializes the non-optional promotion DAG once, persists `promotion-v1`, and resumes it through the workflow orchestrator. Populated DAGs and nonpromotion historical runs retain their existing behavior.
 - Added a service regression constructing a legacy zero-task promotion run and verifying graph materialization plus controller execution into `needs_input`.
 - Verification: elevated `npm test -- service workflow` (37 files, 381 tests), `npx tsc --noEmit`, changed-file ESLint with `--max-warnings 0`, and `git diff --check` all pass.
+
+## Review-fix 3
+
+- Fixed Electron compilation integration errors by importing `EnterpriseLeadWorkspace`, narrowing promotion outputs through an explicit object normalizer before Artifact Store/task-result writes, and using the `EnterpriseLeadTaskStatus` type alias for the legacy approval signature.

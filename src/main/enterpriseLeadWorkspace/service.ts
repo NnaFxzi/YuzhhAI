@@ -11,6 +11,7 @@ import {
   EnterpriseLeadRiskLevel,
   EnterpriseLeadRunStatus,
   EnterpriseLeadTaskStatus,
+  type EnterpriseLeadTaskStatus as EnterpriseLeadTaskStatusType,
   EnterpriseLeadTodoKind,
   EnterpriseLeadWorkspaceAgentCalibrationCheckId,
   EnterpriseLeadWorkspaceAgentSource,
@@ -19,6 +20,7 @@ import {
 import {
   isPromotionTaskContext,
   parsePromotionTaskResult,
+  type PromotionTaskResult,
 } from '../../shared/enterpriseLeadWorkspace/promotionTaskContracts';
 import { PROMOTION_WORKFLOW_GRAPH } from '../../shared/enterpriseLeadWorkspace/promotionWorkflowGraph';
 import type {
@@ -537,6 +539,25 @@ const sanitizeTaskResult = (
     : EnterpriseLeadTaskStatus.NeedsInput,
 });
 
+const normalizeWorkflowPayload = (value: unknown): Record<string, unknown> => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('Promotion task outputs must be an object');
+  }
+  return Object.fromEntries(Object.entries(value));
+};
+
+const normalizePromotionTaskResult = (
+  result: PromotionTaskResult,
+): EnterpriseLeadAgentTaskResult => ({
+  ...result,
+  outputs: normalizeWorkflowPayload(result.outputs),
+});
+
+type LegacyApprovalTaskStatus = Extract<
+  EnterpriseLeadTaskStatusType,
+  typeof EnterpriseLeadTaskStatus.Completed | typeof EnterpriseLeadTaskStatus.Stale
+>;
+
 const buildPromotionContractNeedsInputResult = (
   task: EnterpriseLeadAgentTask,
   modelResult: unknown,
@@ -575,7 +596,7 @@ const normalizeLiveTaskResult = (
   }
 
   try {
-    return parsePromotionTaskResult(task.role, modelResult);
+    return normalizePromotionTaskResult(parsePromotionTaskResult(task.role, modelResult));
   } catch {
     return buildPromotionContractNeedsInputResult(task, modelResult);
   }
@@ -1459,7 +1480,9 @@ export class EnterpriseLeadWorkspaceService {
       acceptanceCriteria: [],
       executionMode: taskContext.task.executionMode ?? WorkflowExecutionMode.Inline,
     };
-    const result = await this.workflowExecutionAdapter.execute(executionContext);
+    const result = normalizePromotionTaskResult(
+      await this.workflowExecutionAdapter.execute(executionContext),
+    );
     const artifact = this.workflowArtifactStore.createArtifact({
       runId: run.id,
       taskId: taskContext.task.id,
@@ -1498,7 +1521,7 @@ export class EnterpriseLeadWorkspaceService {
   private updateLegacyApprovalTask(
     runId: string,
     taskId: string,
-    status: EnterpriseLeadTaskStatus.Completed | EnterpriseLeadTaskStatus.Stale,
+    status: LegacyApprovalTaskStatus,
   ): void {
     const task = this.store.getTask(taskId);
     if (!task || task.runId !== runId || task.status !== EnterpriseLeadTaskStatus.AwaitingApproval) {

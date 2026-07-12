@@ -1,5 +1,6 @@
 import type { PromotionTaskResult } from '../../shared/enterpriseLeadWorkspace/promotionTaskContracts';
 import { parsePromotionTaskResult } from '../../shared/enterpriseLeadWorkspace/promotionTaskContracts';
+import type { EnterpriseLeadWorkspace } from '../../shared/enterpriseLeadWorkspace/types';
 import {
   WorkflowExecutionMode,
   type WorkflowTaskExecutionContext,
