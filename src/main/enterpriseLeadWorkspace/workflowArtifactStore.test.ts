@@ -2,18 +2,27 @@ import Database from 'better-sqlite3';
 import { afterEach, describe, expect, test } from 'vitest';
 
 import { WorkflowExecutionMode } from '../../shared/enterpriseLeadWorkspace/workflowContracts';
+import { EnterpriseLeadWorkspaceStore } from './store';
 import { createWorkflowArtifactStore, WorkflowArtifactStore } from './workflowArtifactStore';
 
 describe('WorkflowArtifactStore', () => {
   let database: Database.Database | undefined;
+  const stores: WorkflowArtifactStore[] = [];
 
   afterEach(() => {
+    stores.splice(0).forEach(store => store.close());
     database?.close();
     database = undefined;
   });
 
-  test('stores artifact lineage and returns events in sequence order', () => {
+  const createStore = (): WorkflowArtifactStore => {
     const store = createWorkflowArtifactStore(':memory:');
+    stores.push(store);
+    return store;
+  };
+
+  test('stores artifact lineage and returns events in sequence order', () => {
+    const store = createStore();
 
     const artifact = store.createArtifact({
       runId: 'run-1',
@@ -36,7 +45,7 @@ describe('WorkflowArtifactStore', () => {
   });
 
   test('round trips artifacts, events, and task attempts through JSON storage', () => {
-    const store = createWorkflowArtifactStore(':memory:');
+    const store = createStore();
     const artifact = store.createArtifact({
       runId: 'run-1',
       taskId: 'task-1',
@@ -77,7 +86,18 @@ describe('WorkflowArtifactStore', () => {
     });
   });
 
-  test('initializes new tables alongside legacy workspace data', () => {
+  test('closes string-path connections without closing caller-owned databases', () => {
+    const store = createWorkflowArtifactStore(':memory:');
+    expect(() => store.close()).not.toThrow();
+    expect(() => store.listEvents('run-1')).toThrow();
+
+    database = new Database(':memory:');
+    const callerOwnedStore = new WorkflowArtifactStore(database);
+    callerOwnedStore.close();
+    expect(database.open).toBe(true);
+  });
+
+  test('initializes new tables while preserving legacy workspace, run, and task reads', () => {
     database = new Database(':memory:');
     database.exec(`
       CREATE TABLE enterprise_lead_workspaces (
@@ -88,17 +108,87 @@ describe('WorkflowArtifactStore', () => {
         extraction_sources TEXT NOT NULL,
         risk_rules TEXT NOT NULL,
         enabled_agent_roles TEXT NOT NULL,
+        recent_run_id TEXT,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
+      );
+      CREATE TABLE enterprise_lead_runs (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL,
+        user_goal TEXT NOT NULL,
+        status TEXT NOT NULL,
+        current_role TEXT,
+        controller_summary TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      CREATE TABLE enterprise_lead_agent_tasks (
+        id TEXT PRIMARY KEY,
+        run_id TEXT NOT NULL,
+        role TEXT NOT NULL,
+        status TEXT NOT NULL,
+        input_payload TEXT NOT NULL,
+        output_payload TEXT NOT NULL,
+        summary TEXT NOT NULL,
+        missing_info TEXT NOT NULL,
+        todos TEXT NOT NULL,
+        risks TEXT NOT NULL,
+        handoff_context TEXT NOT NULL,
+        error TEXT NOT NULL,
+        stale INTEGER NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      INSERT INTO enterprise_lead_workspaces VALUES (
+        'legacy-workspace', 'Legacy workspace', 'enterprise_lead',
+        '{"companySummary":"old company"}', '[]', '["no_real_publish"]',
+        '["controller"]', 'legacy-run', '2026-01-01T00:00:00.000Z',
+        '2026-01-02T00:00:00.000Z'
+      );
+      INSERT INTO enterprise_lead_runs (
+        id, workspace_id, user_goal, status, current_role, controller_summary,
+        created_at, updated_at
+      ) VALUES (
+        'legacy-run', 'legacy-workspace', 'old goal', 'completed',
+        'controller', 'old summary', '2026-01-01T00:00:00.000Z',
+        '2026-01-02T00:00:00.000Z'
+      );
+      INSERT INTO enterprise_lead_agent_tasks (
+        id, run_id, role, status, input_payload, output_payload, summary,
+        missing_info, todos, risks, handoff_context, error, stale, created_at,
+        updated_at
+      ) VALUES (
+        'legacy-task', 'legacy-run', 'controller', 'completed', '{"input":1}',
+        '{"output":2}', 'old task summary', '[]', '[]', '[]', '{}', '', 0,
+        '2026-01-01T00:00:00.000Z', '2026-01-02T00:00:00.000Z'
       );
     `);
 
     const store = new WorkflowArtifactStore(database);
+    const workspaceStore = new EnterpriseLeadWorkspaceStore(database);
 
     expect(store.listRunArtifacts('legacy-run')).toEqual([]);
     expect(store.listEvents('legacy-run')).toEqual([]);
-    expect(database.prepare('SELECT COUNT(*) AS count FROM enterprise_lead_workspaces').get()).toEqual({
-      count: 0,
+    expect(workspaceStore.getWorkspace('legacy-workspace')).toMatchObject({
+      id: 'legacy-workspace',
+      name: 'Legacy workspace',
+      profile: { companySummary: 'old company' },
+    });
+    expect(workspaceStore.getRun('legacy-run')).toMatchObject({
+      id: 'legacy-run',
+      workspaceId: 'legacy-workspace',
+      userGoal: 'old goal',
+      controllerSummary: 'old summary',
+      archiveStatus: 'not_archived',
+      completedAt: null,
+    });
+    expect(workspaceStore.getTask('legacy-task')).toMatchObject({
+      id: 'legacy-task',
+      runId: 'legacy-run',
+      inputPayload: { input: 1 },
+      outputPayload: { output: 2 },
+      summary: 'old task summary',
+      stale: false,
     });
   });
 });

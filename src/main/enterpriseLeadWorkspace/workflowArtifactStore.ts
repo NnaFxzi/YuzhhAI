@@ -110,8 +110,17 @@ const mapAttempt = (row: AttemptRow): EnterpriseLeadTaskAttempt => ({
 });
 
 export class WorkflowArtifactStore {
-  constructor(private readonly db: Database.Database) {
+  constructor(
+    private readonly db: Database.Database,
+    private readonly ownsDatabase = false,
+  ) {
     new EnterpriseLeadWorkspaceStore(db);
+  }
+
+  close(): void {
+    if (this.ownsDatabase && this.db.open) {
+      this.db.close();
+    }
   }
 
   createArtifact(input: CreateWorkflowArtifactInput): EnterpriseLeadWorkflowArtifact {
@@ -254,5 +263,5 @@ export const createWorkflowArtifactStore = (
   databaseOrPath: Database.Database | string,
 ): WorkflowArtifactStore => {
   const database = typeof databaseOrPath === 'string' ? new Database(databaseOrPath) : databaseOrPath;
-  return new WorkflowArtifactStore(database);
+  return new WorkflowArtifactStore(database, typeof databaseOrPath === 'string');
 };
