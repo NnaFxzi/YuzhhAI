@@ -81,6 +81,7 @@ export interface CreateEnterpriseLeadWorkspaceInput {
 export interface CreateEnterpriseLeadRunInput {
   workspaceId: string;
   userGoal: string;
+  workflowVersion?: string;
   roles?: EnterpriseLeadAgentRole[];
   tasks?: CreateEnterpriseLeadTaskInput[];
 }
@@ -133,7 +134,9 @@ type EnterpriseLeadWorkspaceRow = Omit<
   recentRunId: string | null;
 };
 
-type EnterpriseLeadRunRow = EnterpriseLeadRun;
+type EnterpriseLeadRunRow = Omit<EnterpriseLeadRun, 'workflowVersion'> & {
+  workflowVersion: string | null;
+};
 
 type EnterpriseLeadAgentTaskRow = Omit<
   EnterpriseLeadAgentTask,
@@ -233,7 +236,10 @@ const mapWorkspaceRow = (row: EnterpriseLeadWorkspaceRow): EnterpriseLeadWorkspa
   ),
 });
 
-const mapRunRow = (row: EnterpriseLeadRunRow): EnterpriseLeadRun => row;
+const mapRunRow = (row: EnterpriseLeadRunRow): EnterpriseLeadRun => ({
+  ...row,
+  workflowVersion: row.workflowVersion ?? undefined,
+});
 
 const mapTaskRow = (row: EnterpriseLeadAgentTaskRow): EnterpriseLeadAgentTask => ({
   ...row,
@@ -295,6 +301,7 @@ export class EnterpriseLeadWorkspaceStore {
         current_role TEXT,
         controller_summary TEXT NOT NULL,
         archive_status TEXT NOT NULL,
+        workflow_version TEXT,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
         completed_at TEXT,
@@ -383,6 +390,7 @@ export class EnterpriseLeadWorkspaceStore {
       );
     `);
     this.ensureRunArchiveColumns();
+    this.ensureWorkflowVersionColumn();
     this.ensureWorkflowRunOptionsColumn();
     this.ensureAgentTaskSequenceColumn();
     this.ensureWorkflowTaskColumns();
@@ -399,6 +407,13 @@ export class EnterpriseLeadWorkspaceStore {
     const columnNames = new Set(columns.map(column => column.name));
     if (!columnNames.has('workflow_start_options')) {
       this.db.exec('ALTER TABLE enterprise_lead_runs ADD COLUMN workflow_start_options TEXT;');
+    }
+  }
+
+  private ensureWorkflowVersionColumn(): void {
+    const columns = this.db.pragma('table_info(enterprise_lead_runs)') as Array<{ name: string }>;
+    if (!columns.some(column => column.name === 'workflow_version')) {
+      this.db.exec('ALTER TABLE enterprise_lead_runs ADD COLUMN workflow_version TEXT;');
     }
   }
 
@@ -962,6 +977,11 @@ export class EnterpriseLeadWorkspaceStore {
             dependsOnTaskIds: [],
             executionMode: null,
           }));
+    const taskRecords = taskInputs.map(task => ({ id: randomUUID(), task }));
+    const taskIdByNode = new Map<string, string>();
+    taskRecords.forEach(({ id, task }) => {
+      if (task.nodeId) taskIdByNode.set(task.nodeId, id);
+    });
     const currentTaskRole = taskInputs[0]?.role;
     const now = new Date().toISOString();
     const run: EnterpriseLeadRun = {
@@ -969,6 +989,7 @@ export class EnterpriseLeadWorkspaceStore {
       workspaceId: input.workspaceId,
       userGoal: input.userGoal,
       status: EnterpriseLeadRunStatus.Running,
+      workflowVersion: cleanNullableText(input.workflowVersion) ?? undefined,
       currentRole: currentTaskRole ?? null,
       controllerSummary: '',
       archiveStatus: 'not_archived',
@@ -986,12 +1007,13 @@ export class EnterpriseLeadWorkspaceStore {
           current_role,
           controller_summary,
           archive_status,
+          workflow_version,
           workflow_start_options,
           created_at,
           updated_at,
           completed_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         run.id,
         run.workspaceId,
@@ -1000,6 +1022,7 @@ export class EnterpriseLeadWorkspaceStore {
         run.currentRole,
         run.controllerSummary,
         run.archiveStatus,
+        run.workflowVersion ?? null,
         null,
         run.createdAt,
         run.updatedAt,
@@ -1039,13 +1062,13 @@ export class EnterpriseLeadWorkspaceStore {
         workspaceProfile: workspace.profile,
         userGoal: input.userGoal,
       };
-      taskInputs.forEach((task, index) => {
+      taskRecords.forEach(({ id, task }, index) => {
         insertTask.run(
-          randomUUID(),
+          id,
           run.id,
           task.role,
           task.nodeId,
-          JSON.stringify(task.dependsOnTaskIds),
+          JSON.stringify(task.dependsOnTaskIds.map(taskId => taskIdByNode.get(taskId) ?? taskId)),
           null,
           task.executionMode,
           task.workspaceAgentId,
@@ -1170,6 +1193,7 @@ export class EnterpriseLeadWorkspaceStore {
         current_role as currentRole,
         controller_summary as controllerSummary,
         archive_status as archiveStatus,
+        workflow_version as workflowVersion,
         created_at as createdAt,
         updated_at as updatedAt,
         completed_at as completedAt
@@ -1191,6 +1215,7 @@ export class EnterpriseLeadWorkspaceStore {
         current_role as currentRole,
         controller_summary as controllerSummary,
         archive_status as archiveStatus,
+        workflow_version as workflowVersion,
         created_at as createdAt,
         updated_at as updatedAt,
         completed_at as completedAt
@@ -1459,6 +1484,41 @@ export class EnterpriseLeadWorkspaceStore {
       new Date().toISOString(),
       taskId,
     );
+  }
+
+  markWorkflowDownstreamTasksStale(taskId: string): void {
+    const task = this.getTask(taskId);
+    if (!task) {
+      throw new Error('Enterprise lead task not found');
+    }
+    this.assertRunMutable(task.runId);
+
+    const tasks = this.listTasks(task.runId);
+    const staleTaskIds = new Set<string>();
+    const pendingTaskIds = [task.id];
+    while (pendingTaskIds.length > 0) {
+      const upstreamTaskId = pendingTaskIds.shift();
+      tasks
+        .filter(candidate => (candidate.dependsOnTaskIds ?? []).includes(upstreamTaskId ?? ''))
+        .forEach(candidate => {
+          if (staleTaskIds.has(candidate.id)) return;
+          staleTaskIds.add(candidate.id);
+          pendingTaskIds.push(candidate.id);
+        });
+    }
+    if (staleTaskIds.size === 0) return;
+
+    const now = new Date().toISOString();
+    const markStale = this.db.transaction(() => {
+      staleTaskIds.forEach(downstreamTaskId => {
+        this.db.prepare(`
+          UPDATE enterprise_lead_agent_tasks
+          SET status = ?, stale = 1, updated_at = ?
+          WHERE id = ?
+        `).run(EnterpriseLeadTaskStatus.Stale, now, downstreamTaskId);
+      });
+    });
+    markStale();
   }
 
   cancelWorkflowRun(runId: string): void {

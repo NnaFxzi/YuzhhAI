@@ -21,6 +21,7 @@ import {
   EnterpriseLeadWorkspaceAgentCalibrationCheckId,
   EnterpriseLeadWorkspaceAgentSource,
 } from '../../shared/enterpriseLeadWorkspace/constants';
+import { PROMOTION_WORKFLOW_GRAPH } from '../../shared/enterpriseLeadWorkspace/promotionWorkflowGraph';
 import type { EnterpriseLeadWorkspaceDraft } from '../../shared/enterpriseLeadWorkspace/types';
 import { buildDefaultEnterpriseLeadWorkspaceSettings } from '../../shared/enterpriseLeadWorkspace/validation';
 import {
@@ -47,6 +48,7 @@ import {
   buildDefaultEnterpriseLeadWorkspaceAgents,
   buildDefaultPromotionDepartmentWorkspaceAgents,
   ENTERPRISE_LEAD_AGENT_WORKFLOW,
+  PROMOTION_WORKFLOW_VERSION,
 } from './workflow';
 import { WorkflowArtifactStore } from './workflowArtifactStore';
 
@@ -1096,7 +1098,7 @@ describe('EnterpriseLeadWorkspaceService', () => {
       identity: 'Workspace identity',
       systemPrompt: 'Workspace-only execution prompt',
       model: 'gpt-4.1',
-      skillIds: [],
+      skillIds: ['workspace-skill'],
     });
     expect(snapshot.tasks[1].agentSnapshot).toMatchObject({
       agentId: 'agent-risk',
@@ -1280,7 +1282,7 @@ describe('EnterpriseLeadWorkspaceService', () => {
       systemPrompt: 'Global system prompt',
       icon: 'global',
       model: 'global-model',
-      skillIds: [],
+      skillIds: ['global-skill'],
     });
     expect(agentProvider.getAgent).toHaveBeenCalledWith('agent-content');
   });
@@ -1325,7 +1327,7 @@ describe('EnterpriseLeadWorkspaceService', () => {
     const snapshot = setup.service.createRun(workspace.id, '只使用空间技能');
     const task = snapshot.tasks[0];
 
-    expect(task.agentSnapshot?.skillIds).toEqual(['space-skill']);
+    expect(task.agentSnapshot?.skillIds).toEqual(['space-skill', 'agent-skill']);
 
     setup.modelClient.enqueue({
       role: task.role,
@@ -1342,9 +1344,8 @@ describe('EnterpriseLeadWorkspaceService', () => {
 
     const taskPrompt = setup.modelClient.prompts.at(-1)?.prompt ?? '';
     expect(taskPrompt).toContain('space-skill');
-    expect(taskPrompt).toMatch(/"workspaceAgents": \[\s*\{[\s\S]*"skillIds": \[\]/);
-    expect(taskPrompt).toMatch(/"agentSnapshot": \{[\s\S]*"skillIds": \[\s*"space-skill"\s*\]/);
-    expect(taskPrompt).not.toContain('agent-skill');
+    expect(taskPrompt).toMatch(/"workspaceAgents": \[\s*\{[\s\S]*"skillIds": \[\s*"agent-skill"\s*\]/);
+    expect(taskPrompt).toMatch(/"agentSnapshot": \{[\s\S]*"skillIds": \[\s*"space-skill",\s*"agent-skill"\s*\]/);
     expect(taskPrompt).not.toContain('global-skill');
   });
 
@@ -1431,14 +1432,14 @@ describe('EnterpriseLeadWorkspaceService', () => {
       name: 'Original content Agent',
       systemPrompt: 'Original prompt',
       model: 'gpt-original',
-      skillIds: [],
+      skillIds: ['original-skill'],
     });
     expect(secondSnapshot.tasks[0].agentSnapshot).toMatchObject({
       agentId: 'agent-content',
       name: 'Edited content Agent',
       systemPrompt: 'Edited prompt',
       model: 'gpt-edited',
-      skillIds: [],
+      skillIds: ['edited-skill'],
     });
   });
 
@@ -2474,7 +2475,7 @@ describe('EnterpriseLeadWorkspaceService', () => {
     });
   });
 
-  test('runWorkflow routes a new promotion workspace run through the DAG orchestrator', async () => {
+  test('creates a versioned promotion DAG and routes it through the orchestrator', async () => {
     const setup = createService();
     db = setup.db;
     const workspace = setup.service.createWorkspace({
@@ -2487,7 +2488,7 @@ describe('EnterpriseLeadWorkspaceService', () => {
     }
     setup.modelClient.enqueue({
       role: EnterpriseLeadAgentRole.PromotionController,
-      status: EnterpriseLeadTaskStatus.Completed,
+      status: EnterpriseLeadTaskStatus.NeedsInput,
       summary: '推广总控计划已生成。',
       outputs: {
         controlPlan: '先完成线索调研和内容草稿。',
@@ -2507,14 +2508,34 @@ describe('EnterpriseLeadWorkspaceService', () => {
       handoffContext: {},
     });
 
-    expect(created.tasks).toEqual([]);
+    expect(created.currentRun).toMatchObject({ workflowVersion: PROMOTION_WORKFLOW_VERSION });
+    expect(created.tasks.map(task => task.nodeId)).toEqual(
+      PROMOTION_WORKFLOW_GRAPH.filter(node => !node.optional).map(node => node.role),
+    );
+    const cleaningTask = created.tasks.find(
+      task => task.role === EnterpriseLeadAgentRole.PromotionDataCleaning,
+    );
+    const scrapingTask = created.tasks.find(
+      task => task.role === EnterpriseLeadAgentRole.PromotionDataScraping,
+    );
+    const sellingPointTask = created.tasks.find(
+      task => task.role === EnterpriseLeadAgentRole.ProductSellingPoint,
+    );
+    if (!cleaningTask || !scrapingTask || !sellingPointTask) {
+      throw new Error('Expected promotion graph tasks');
+    }
+    expect(cleaningTask.dependsOnTaskIds).toEqual(
+      expect.arrayContaining([scrapingTask.id, sellingPointTask.id]),
+    );
+    expect(cleaningTask.executionMode).toBe('inline');
+
     const snapshot = await setup.service.runWorkflow(workspace.id, created.currentRun.id);
     const controllerTask = snapshot.tasks.find(
       task => task.role === EnterpriseLeadAgentRole.PromotionController,
     );
 
     expect(controllerTask).toMatchObject({
-      status: EnterpriseLeadTaskStatus.Completed,
+      status: EnterpriseLeadTaskStatus.NeedsInput,
       nodeId: EnterpriseLeadAgentRole.PromotionController,
       executionMode: 'inline',
     });
@@ -2537,6 +2558,150 @@ describe('EnterpriseLeadWorkspaceService', () => {
     expect(new WorkflowArtifactStore(setup.db).listEvents(created.currentRun.id)).toEqual(
       expect.arrayContaining([expect.objectContaining({ type: 'run_started' })]),
     );
+  });
+
+  test('requires product selling points and scraped data before running promotion cleaning', async () => {
+    const setup = createService();
+    db = setup.db;
+    const workspace = setup.service.createWorkspace({
+      ...draftPayload(),
+      workspaceAgents: buildDefaultPromotionDepartmentWorkspaceAgents(),
+    });
+    const snapshot = setup.service.createRun(workspace.id, '清洗推广线索');
+    const controller = snapshot.tasks.find(
+      task => task.role === EnterpriseLeadAgentRole.PromotionController,
+    );
+    const scraping = snapshot.tasks.find(
+      task => task.role === EnterpriseLeadAgentRole.PromotionDataScraping,
+    );
+    const sellingPoint = snapshot.tasks.find(
+      task => task.role === EnterpriseLeadAgentRole.ProductSellingPoint,
+    );
+    const cleaning = snapshot.tasks.find(
+      task => task.role === EnterpriseLeadAgentRole.PromotionDataCleaning,
+    );
+    if (!controller || !scraping || !sellingPoint || !cleaning) {
+      throw new Error('Expected promotion graph tasks');
+    }
+
+    setup.store.updateWorkflowTaskStatus(controller.id, EnterpriseLeadTaskStatus.Completed);
+    setup.store.updateWorkflowTaskStatus(scraping.id, EnterpriseLeadTaskStatus.Completed);
+
+    await expect(setup.service.runTask(cleaning.id)).rejects.toThrow(
+      'Workflow task dependencies are not completed',
+    );
+
+    setup.store.updateWorkflowTaskStatus(sellingPoint.id, EnterpriseLeadTaskStatus.Completed);
+    setup.modelClient.enqueue({
+      role: EnterpriseLeadAgentRole.PromotionDataCleaning,
+      status: EnterpriseLeadTaskStatus.Completed,
+      summary: '线索清洗完成。',
+      outputs: {
+        records: [
+          {
+            id: 'lead-1',
+            companyName: '华南机械厂',
+            industry: '机械制造',
+            contactHint: '采购负责人',
+            fieldConfidence: { companyName: 'high' },
+          },
+        ],
+        duplicates: ['无重复记录'],
+        missingFields: ['联系电话'],
+      },
+      missingInfo: [],
+      todos: [],
+      risks: [],
+      handoffContext: {},
+    });
+
+    const updated = await setup.service.runTask(cleaning.id);
+
+    expect(updated.status).toBe(EnterpriseLeadTaskStatus.Completed);
+    expect(updated.artifactRefs).toEqual(
+      expect.arrayContaining([expect.objectContaining({ kind: 'promotion_data_cleaning_output' })]),
+    );
+    expect(setup.modelClient.prompts.at(-1)?.prompt).not.toContain('outputPayload');
+  });
+
+  test('rerunning a promotion node stales only graph descendants without deleting artifacts or events', async () => {
+    const setup = createService();
+    db = setup.db;
+    const workspace = setup.service.createWorkspace({
+      ...draftPayload(),
+      workspaceAgents: buildDefaultPromotionDepartmentWorkspaceAgents(),
+    });
+    const snapshot = setup.service.createRun(workspace.id, '重新清洗推广线索');
+    const tasksByRole = new Map(snapshot.tasks.map(task => [task.role, task]));
+    const cleaning = tasksByRole.get(EnterpriseLeadAgentRole.PromotionDataCleaning);
+    const competitor = tasksByRole.get(EnterpriseLeadAgentRole.PromotionCompetitorInsight);
+    const scoring = tasksByRole.get(EnterpriseLeadAgentRole.PromotionLeadScoring);
+    const assets = tasksByRole.get(EnterpriseLeadAgentRole.PromotionMultiPlatformAssets);
+    if (!cleaning || !competitor || !scoring || !assets || !snapshot.currentRun) {
+      throw new Error('Expected promotion graph tasks');
+    }
+
+    [
+      EnterpriseLeadAgentRole.PromotionController,
+      EnterpriseLeadAgentRole.PromotionDataScraping,
+      EnterpriseLeadAgentRole.ProductSellingPoint,
+      EnterpriseLeadAgentRole.PromotionDataCleaning,
+    ].forEach(role => {
+      const task = tasksByRole.get(role);
+      if (!task) throw new Error(`Expected ${role} task`);
+      setup.store.updateWorkflowTaskStatus(task.id, EnterpriseLeadTaskStatus.Completed);
+    });
+    [competitor, scoring, assets].forEach(task =>
+      setup.store.updateWorkflowTaskStatus(task.id, EnterpriseLeadTaskStatus.Completed),
+    );
+    const artifacts = new WorkflowArtifactStore(setup.db);
+    const preservedArtifact = artifacts.createArtifact({
+      runId: snapshot.currentRun.id,
+      taskId: assets.id,
+      kind: 'preserved_output',
+      schemaVersion: 1,
+      payload: { draft: 'existing material' },
+      evidenceIds: [],
+    });
+    const preservedEvent = artifacts.appendEvent({
+      runId: snapshot.currentRun.id,
+      type: 'task_completed',
+      taskId: assets.id,
+      role: assets.role,
+    });
+    setup.modelClient.enqueue({
+      role: EnterpriseLeadAgentRole.PromotionDataCleaning,
+      status: EnterpriseLeadTaskStatus.Completed,
+      summary: '线索重新清洗完成。',
+      outputs: {
+        records: [
+          {
+            id: 'lead-2',
+            companyName: '华东设备厂',
+            industry: '设备制造',
+            contactHint: '销售线索',
+            fieldConfidence: { companyName: 'high' },
+          },
+        ],
+        duplicates: ['重复记录已合并'],
+        missingFields: ['预算范围'],
+      },
+      missingInfo: [],
+      todos: [],
+      risks: [],
+      handoffContext: {},
+    });
+
+    await setup.service.rerunTask(cleaning.id);
+
+    [competitor, scoring, assets].forEach(task => {
+      expect(setup.store.getTask(task.id)).toMatchObject({
+        status: EnterpriseLeadTaskStatus.Stale,
+        stale: true,
+      });
+    });
+    expect(artifacts.getArtifact(preservedArtifact.id)).not.toBeNull();
+    expect(artifacts.listEvents(snapshot.currentRun.id).map(event => event.id)).toContain(preservedEvent.id);
   });
 
   test('archiveRun archives a workspace run and rejects foreign runs', () => {

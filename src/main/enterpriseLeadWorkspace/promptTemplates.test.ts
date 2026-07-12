@@ -11,6 +11,7 @@ import type {
   EnterpriseLeadWorkspace,
 } from '../../shared/enterpriseLeadWorkspace/types';
 import { buildDefaultEnterpriseLeadWorkspaceSettings } from '../../shared/enterpriseLeadWorkspace/validation';
+import { WorkflowExecutionMode } from '../../shared/enterpriseLeadWorkspace/workflowContracts';
 import {
   buildAgentChatPrompt,
   buildAgentTaskPrompt,
@@ -47,6 +48,7 @@ const task = (role: EnterpriseLeadAgentRole): EnterpriseLeadAgentTask => ({
   id: `${role}-task`,
   runId: 'run-1',
   role,
+  nodeId: role,
   artifactRefs: [
     {
       id: 'input-artifact',
@@ -73,6 +75,16 @@ const task = (role: EnterpriseLeadAgentRole): EnterpriseLeadAgentTask => ({
   updatedAt: '2026-07-12T00:00:00.000Z',
 });
 
+const executionContext = (role: EnterpriseLeadAgentRole) => ({
+  runId: 'run-1',
+  taskId: `${role}-task`,
+  role,
+  userGoal: '生成推广草稿',
+  inputArtifacts: [],
+  acceptanceCriteria: [],
+  executionMode: WorkflowExecutionMode.Inline,
+});
+
 describe('promotion task prompts', () => {
   test.each(PROMOTION_WORKFLOW_GRAPH.map(node => node.role))(
     'builds a non-empty safe output schema for every promotion graph role: %s',
@@ -85,20 +97,16 @@ describe('promotion task prompts', () => {
     const prompt = buildAgentTaskPrompt({
       workspace,
       task: task(EnterpriseLeadAgentRole.PromotionMultiPlatformAssets),
-      upstreamTasks: [
+      executionContext: executionContext(EnterpriseLeadAgentRole.PromotionMultiPlatformAssets),
+      inputArtifacts: [
+        ...(task(EnterpriseLeadAgentRole.PromotionMultiPlatformAssets).artifactRefs ?? []),
         {
-          ...task(EnterpriseLeadAgentRole.PromotionLeadScoring),
-          outputPayload: { unsafe: 'UNTRUSTED_RAW_UPSTREAM_OUTPUT' },
-          artifactRefs: [
-            {
-              id: 'upstream-artifact',
-              kind: 'scored_leads',
-              schemaVersion: 1,
-              summary: '高优先级线索 3 条',
-              producerTaskId: 'scoring-task',
-              evidenceIds: ['evidence-1'],
-            },
-          ],
+          id: 'upstream-artifact',
+          kind: 'scored_leads',
+          schemaVersion: 1,
+          summary: '高优先级线索 3 条',
+          producerTaskId: 'scoring-task',
+          evidenceIds: ['evidence-1'],
         },
       ],
     });
@@ -116,12 +124,8 @@ describe('promotion task prompts', () => {
     const prompt = buildAgentTaskPrompt({
       workspace,
       task: task(EnterpriseLeadAgentRole.ProductSellingPoint),
-      upstreamTasks: [
-        {
-          ...task(EnterpriseLeadAgentRole.PromotionController),
-          outputPayload: { unsafe: 'UNTRUSTED_RAW_UPSTREAM_OUTPUT' },
-        },
-      ],
+      executionContext: executionContext(EnterpriseLeadAgentRole.ProductSellingPoint),
+      inputArtifacts: task(EnterpriseLeadAgentRole.ProductSellingPoint).artifactRefs ?? [],
     });
 
     expect(prompt).toContain('sellingPoints');

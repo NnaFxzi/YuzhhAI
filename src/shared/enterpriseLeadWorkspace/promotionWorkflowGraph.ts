@@ -6,7 +6,7 @@ export const PROMOTION_WORKFLOW_GRAPH: PromotionWorkflowNode[] = [
   { role: EnterpriseLeadAgentRole.PromotionController, dependsOn: [], executionMode: WorkflowExecutionMode.Inline },
   { role: EnterpriseLeadAgentRole.PromotionDataScraping, dependsOn: [EnterpriseLeadAgentRole.PromotionController], executionMode: WorkflowExecutionMode.Inline },
   { role: EnterpriseLeadAgentRole.ProductSellingPoint, dependsOn: [EnterpriseLeadAgentRole.PromotionController], executionMode: WorkflowExecutionMode.Inline },
-  { role: EnterpriseLeadAgentRole.PromotionDataCleaning, dependsOn: [EnterpriseLeadAgentRole.PromotionDataScraping], executionMode: WorkflowExecutionMode.Inline },
+  { role: EnterpriseLeadAgentRole.PromotionDataCleaning, dependsOn: [EnterpriseLeadAgentRole.PromotionDataScraping, EnterpriseLeadAgentRole.ProductSellingPoint], executionMode: WorkflowExecutionMode.Inline },
   { role: EnterpriseLeadAgentRole.PromotionCompetitorInsight, dependsOn: [EnterpriseLeadAgentRole.PromotionDataCleaning], executionMode: WorkflowExecutionMode.Inline },
   { role: EnterpriseLeadAgentRole.PromotionLeadScoring, dependsOn: [EnterpriseLeadAgentRole.PromotionDataCleaning], executionMode: WorkflowExecutionMode.Inline },
   { role: EnterpriseLeadAgentRole.PromotionMultiPlatformAssets, dependsOn: [EnterpriseLeadAgentRole.ProductSellingPoint, EnterpriseLeadAgentRole.PromotionCompetitorInsight, EnterpriseLeadAgentRole.PromotionLeadScoring], executionMode: WorkflowExecutionMode.Inline },

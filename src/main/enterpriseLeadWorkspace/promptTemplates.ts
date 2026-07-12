@@ -13,7 +13,10 @@ import type {
   EnterpriseLeadWorkspaceContentPlatformConfig,
   EnterpriseLeadWorkspaceContentPlatformSettings,
 } from '../../shared/enterpriseLeadWorkspace/types';
-import type { WorkflowArtifactRef } from '../../shared/enterpriseLeadWorkspace/workflowContracts';
+import type {
+  WorkflowArtifactRef,
+  WorkflowTaskExecutionContext,
+} from '../../shared/enterpriseLeadWorkspace/workflowContracts';
 import {
   AiDialogueReplyLanguage,
   AiDialogueReplySurface,
@@ -41,13 +44,17 @@ interface WorkspaceChunkMergePromptInput {
   sourceLabel: string;
 }
 
-interface AgentTaskPromptInput {
+export interface AgentTaskPromptInput {
+  workspace: EnterpriseLeadWorkspace;
+  task: EnterpriseLeadAgentTask;
+  executionContext: WorkflowTaskExecutionContext;
+  inputArtifacts: WorkflowArtifactRef[];
+}
+
+interface AgentChatPromptInput {
   workspace: EnterpriseLeadWorkspace;
   task: EnterpriseLeadAgentTask;
   upstreamTasks: EnterpriseLeadAgentTask[];
-}
-
-interface AgentChatPromptInput extends AgentTaskPromptInput {
   userMessage: string;
 }
 
@@ -392,6 +399,21 @@ const isPromotionTask = (
 
 const buildPromotionTaskContext = (
   task: EnterpriseLeadAgentTask,
+  executionContext: WorkflowTaskExecutionContext,
+  inputArtifacts: WorkflowArtifactRef[],
+) => ({
+  taskId: task.id,
+  runId: task.runId,
+  role: task.role,
+  status: task.status,
+  userGoal: executionContext.userGoal,
+  acceptanceCriteria: executionContext.acceptanceCriteria,
+  executionMode: executionContext.executionMode,
+  inputArtifacts: inputArtifacts.map(toPromptArtifactSummary),
+});
+
+const buildPromotionChatTaskContext = (
+  task: EnterpriseLeadAgentTask,
   upstreamTasks: EnterpriseLeadAgentTask[],
 ) => ({
   taskId: task.id,
@@ -402,6 +424,24 @@ const buildPromotionTaskContext = (
   artifactSummaries: upstreamTasks.flatMap(upstream =>
     (upstream.artifactRefs ?? []).map(toPromptArtifactSummary),
   ),
+});
+
+const buildTaskPromptContext = (
+  task: EnterpriseLeadAgentTask,
+  executionContext: WorkflowTaskExecutionContext,
+  inputArtifacts: WorkflowArtifactRef[],
+) => ({
+  taskId: task.id,
+  runId: task.runId,
+  role: task.role,
+  nodeId: task.nodeId,
+  status: task.status,
+  workspaceAgentId: task.workspaceAgentId,
+  agentSnapshot: task.agentSnapshot,
+  userGoal: executionContext.userGoal,
+  acceptanceCriteria: executionContext.acceptanceCriteria,
+  executionMode: executionContext.executionMode,
+  inputArtifacts: inputArtifacts.map(toPromptArtifactSummary),
 });
 
 const toPromotionPromptWorkspace = (workspace: EnterpriseLeadWorkspace) => ({
@@ -580,10 +620,11 @@ export function buildWorkspaceChunkMergePrompt({
 export function buildAgentTaskPrompt({
   workspace,
   task,
-  upstreamTasks,
+  executionContext,
+  inputArtifacts,
 }: AgentTaskPromptInput): string {
   const metadata = getAgentTaskPromptMetadata(task);
-  const promotion = isPromotionTask(task, upstreamTasks);
+  const promotion = Boolean(task.nodeId) || isPromotionTaskContext(task.role, []);
   const agentConfigLines = [
     metadata.identity ? `Agent 身份：${metadata.identity}` : '',
     metadata.systemPrompt ? `Agent 系统提示词：${metadata.systemPrompt}` : '',
@@ -601,7 +642,7 @@ export function buildAgentTaskPrompt({
     '',
     promotion
       ? '请基于工作空间、输入 Artifact 和 Artifact 摘要生成本 Agent 的结构化 JSON 结果。'
-      : '请基于工作空间、当前任务和上游 Agent 结果生成本 Agent 的结构化 JSON 结果。',
+      : '请基于工作空间、当前任务和输入 Artifact 生成本 Agent 的结构化 JSON 结果。',
     '输出 JSON schema：',
     stringify(buildTaskResultSchema(task.role, promotion)),
     '',
@@ -609,8 +650,8 @@ export function buildAgentTaskPrompt({
     stringify(promotion ? toPromotionPromptWorkspace(workspace) : toPromptWorkspace(workspace)),
     '',
     ...(promotion
-      ? ['任务输入与 Artifact 摘要：', stringify(buildPromotionTaskContext(task, upstreamTasks))]
-      : ['当前任务：', stringify(task), '', '上游 Agent 结果：', buildUpstreamSection(upstreamTasks)]),
+      ? ['任务输入与 Artifact 摘要：', stringify(buildPromotionTaskContext(task, executionContext, inputArtifacts))]
+      : ['当前任务与 Artifact 摘要：', stringify(buildTaskPromptContext(task, executionContext, inputArtifacts))]),
   ].join('\n');
 }
 
@@ -646,7 +687,7 @@ export function buildAgentChatPrompt({
     stringify(promotion ? toPromotionPromptWorkspace(workspace) : toPromptWorkspace(workspace)),
     '',
     ...(promotion
-      ? ['任务输入与 Artifact 摘要：', stringify(buildPromotionTaskContext(task, upstreamTasks))]
+      ? ['任务输入与 Artifact 摘要：', stringify(buildPromotionChatTaskContext(task, upstreamTasks))]
       : ['当前任务：', stringify(task), '', '上游 Agent 结果：', buildUpstreamSection(upstreamTasks)]),
   ].join('\n');
 }

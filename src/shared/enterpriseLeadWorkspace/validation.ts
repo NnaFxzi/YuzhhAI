@@ -110,6 +110,7 @@ const normalizeWorkspaceAgentOverrides = (
   const systemPrompt = cleanOptionalText(record.systemPrompt);
   const icon = cleanOptionalText(record.icon);
   const model = cleanOptionalText(record.model);
+  const skillIds = Array.isArray(record.skillIds) ? cleanSkillIds(record.skillIds) : undefined;
 
   if (name) overrides.name = name;
   if (description) overrides.description = description;
@@ -117,6 +118,7 @@ const normalizeWorkspaceAgentOverrides = (
   if (systemPrompt) overrides.systemPrompt = systemPrompt;
   if (icon) overrides.icon = icon;
   if (model) overrides.model = model;
+  if (skillIds) overrides.skillIds = skillIds;
 
   return overrides;
 };

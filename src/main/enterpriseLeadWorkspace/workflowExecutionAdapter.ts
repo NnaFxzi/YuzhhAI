@@ -1,9 +1,5 @@
 import type { PromotionTaskResult } from '../../shared/enterpriseLeadWorkspace/promotionTaskContracts';
 import { parsePromotionTaskResult } from '../../shared/enterpriseLeadWorkspace/promotionTaskContracts';
-import type {
-  EnterpriseLeadAgentTask,
-  EnterpriseLeadWorkspace,
-} from '../../shared/enterpriseLeadWorkspace/types';
 import {
   WorkflowExecutionMode,
   type WorkflowTaskExecutionContext,
@@ -11,21 +7,15 @@ import {
 import type { ModelClientAdapter } from '../industryPack/modelClientAdapter';
 import { resolveRawApiConfigFromAppConfig } from '../libs/claudeSettings';
 import { parseModelJsonObject } from './modelJson';
-import { buildAgentTaskPrompt } from './promptTemplates';
+import { type AgentTaskPromptInput,buildAgentTaskPrompt } from './promptTemplates';
 
 export interface WorkflowExecutionAdapter {
   execute(context: WorkflowTaskExecutionContext): Promise<PromotionTaskResult>;
 }
 
-export interface InlineWorkflowPromptContext {
-  workspace: EnterpriseLeadWorkspace;
-  task: EnterpriseLeadAgentTask;
-  upstreamTasks: EnterpriseLeadAgentTask[];
-}
-
 export interface InlineWorkflowExecutionAdapterOptions {
   modelClient: ModelClientAdapter;
-  resolvePromptContext(context: WorkflowTaskExecutionContext): Promise<InlineWorkflowPromptContext>;
+  resolvePromptContext(context: WorkflowTaskExecutionContext): Promise<AgentTaskPromptInput>;
 }
 
 const resolveWorkspaceApiConfig = (workspace: EnterpriseLeadWorkspace) =>

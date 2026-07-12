@@ -193,7 +193,14 @@ export class EnterpriseLeadWorkflowOrchestrator {
       const tasks = this.options.store.listTasks(runId);
       this.markReadyTasks(runId, tasks);
       const refreshedTasks = this.options.store.listTasks(runId);
-      const runnable = refreshedTasks.filter(isRunnable).slice(0, startOptions.maxConcurrency);
+      const taskById = new Map(refreshedTasks.map(task => [task.id, task]));
+      const runnable = refreshedTasks
+        .filter(
+          task =>
+            isRunnable(task) &&
+            (task.dependsOnTaskIds ?? []).every(taskId => isCompleted(taskById.get(taskId) ?? task)),
+        )
+        .slice(0, startOptions.maxConcurrency);
 
       if (runnable.length === 0) {
         return this.finishRunIfSettled(workspaceId, runId, refreshedTasks);

@@ -47,6 +47,11 @@ import {
   normalizeAgentTaskResultInput,
   normalizeWorkspaceDraftInput,
 } from '../../shared/enterpriseLeadWorkspace/validation';
+import {
+  type WorkflowArtifactRef,
+  WorkflowExecutionMode,
+  type WorkflowTaskExecutionContext,
+} from '../../shared/enterpriseLeadWorkspace/workflowContracts';
 import type { ModelClientAdapter } from '../industryPack/modelClientAdapter';
 import { resolveRawApiConfigFromAppConfig } from '../libs/claudeSettings';
 import {
@@ -75,6 +80,7 @@ import type { CreateEnterpriseLeadTaskInput, EnterpriseLeadWorkspaceStore } from
 import {
   buildDefaultEnterpriseLeadWorkspaceAgents,
   getEnterpriseLeadAgentMetadata,
+  PROMOTION_WORKFLOW_VERSION,
 } from './workflow';
 import { WorkflowArtifactStore } from './workflowArtifactStore';
 import { InlineWorkflowExecutionAdapter } from './workflowExecutionAdapter';
@@ -115,6 +121,12 @@ interface ResolvedWorkspaceAgent {
   icon: string;
   model: string;
   skillIds: string[];
+}
+
+interface EnterpriseLeadTaskContext {
+  workspace: EnterpriseLeadWorkspace;
+  task: EnterpriseLeadAgentTask;
+  upstreamTasks: EnterpriseLeadAgentTask[];
 }
 
 interface WorkspaceExtractionProgressUpdate {
@@ -441,6 +453,12 @@ const getUpstreamTasks = (
   tasks: EnterpriseLeadAgentTask[],
   task: EnterpriseLeadAgentTask,
 ): EnterpriseLeadAgentTask[] => {
+  if (task.nodeId || (task.dependsOnTaskIds?.length ?? 0) > 0) {
+    const tasksById = new Map(tasks.map(candidate => [candidate.id, candidate]));
+    return (task.dependsOnTaskIds ?? [])
+      .map(taskId => tasksById.get(taskId))
+      .filter((candidate): candidate is EnterpriseLeadAgentTask => Boolean(candidate));
+  }
   const taskIndex = tasks.findIndex(item => item.id === task.id);
   if (taskIndex === -1) {
     return [];
@@ -448,6 +466,9 @@ const getUpstreamTasks = (
 
   return tasks.slice(0, taskIndex);
 };
+
+const dedupeWorkflowArtifactRefs = (artifactRefs: WorkflowArtifactRef[]): WorkflowArtifactRef[] =>
+  Array.from(new Map(artifactRefs.map(artifact => [artifact.id, artifact])).values());
 
 const getTaskTitle = (task: EnterpriseLeadAgentTask): string => {
   if (task.agentSnapshot?.name) {
@@ -644,6 +665,10 @@ export class EnterpriseLeadWorkspaceService {
 
   private readonly workflowOrchestrator: EnterpriseLeadWorkflowOrchestrator;
 
+  private readonly workflowArtifactStore: WorkflowArtifactStore;
+
+  private readonly workflowExecutionAdapter: InlineWorkflowExecutionAdapter;
+
   private documentProcessingQueue: Promise<void> = Promise.resolve();
 
   constructor(options: EnterpriseLeadWorkspaceServiceOptions) {
@@ -659,13 +684,23 @@ export class EnterpriseLeadWorkspaceService {
       options.staleDocumentProcessingMs,
       DEFAULT_STALE_DOCUMENT_PROCESSING_MS,
     );
+    this.workflowArtifactStore = new WorkflowArtifactStore(this.store.getDatabase());
+    this.workflowExecutionAdapter = new InlineWorkflowExecutionAdapter({
+      modelClient: this.modelClient,
+      resolvePromptContext: async context => {
+        const taskContext = this.getTaskContext(context.taskId);
+        return {
+          workspace: taskContext.workspace,
+          task: taskContext.task,
+          executionContext: context,
+          inputArtifacts: context.inputArtifacts,
+        };
+      },
+    });
     this.workflowOrchestrator = new EnterpriseLeadWorkflowOrchestrator({
       store: this.store,
-      artifactStore: new WorkflowArtifactStore(this.store.getDatabase()),
-      executionAdapter: new InlineWorkflowExecutionAdapter({
-        modelClient: this.modelClient,
-        resolvePromptContext: async context => this.getTaskContext(context.taskId),
-      }),
+      artifactStore: this.workflowArtifactStore,
+      executionAdapter: this.workflowExecutionAdapter,
     });
   }
 
@@ -1205,18 +1240,19 @@ export class EnterpriseLeadWorkspaceService {
     if (!workspace) {
       throw new Error('Enterprise lead workspace not found');
     }
-    const dynamicTasks = this.resolveRunTasksForWorkspace(workspace);
     const run =
       this.isPromotionWorkflowWorkspace(workspace)
         ? this.store.createRun({
             workspaceId,
             userGoal,
+            workflowVersion: PROMOTION_WORKFLOW_VERSION,
+            tasks: this.resolvePromotionRunTasks(workspace),
           })
-        : dynamicTasks.length > 0
+        : this.resolveRunTasksForWorkspace(workspace).length > 0
         ? this.store.createRun({
             workspaceId,
             userGoal,
-            tasks: dynamicTasks,
+            tasks: this.resolveRunTasksForWorkspace(workspace),
           })
         : this.store.createRun({
             workspaceId,
@@ -1224,14 +1260,38 @@ export class EnterpriseLeadWorkspaceService {
             roles: this.resolveLegacyRunRoles(workspace),
           });
 
+    if (run.workflowVersion) {
+      this.workflowArtifactStore.appendEvent({ runId: run.id, type: 'run_started' });
+    }
+
     return this.getSnapshot(workspaceId, run.id);
   }
 
   async runTask(taskId: string): Promise<EnterpriseLeadAgentTask> {
     const taskContext = this.getTaskContext(taskId);
+    const run = this.store.getRun(taskContext.task.runId);
+    if (!run) {
+      throw new Error('Enterprise lead workspace not found for task');
+    }
+    if (this.isPromotionWorkflowRun(run)) {
+      return this.runPromotionTask(taskContext);
+    }
     const taskModel = taskContext.task.agentSnapshot?.model.trim();
     const result = await this.modelClient.generate({
-      prompt: buildAgentTaskPrompt(taskContext),
+      prompt: buildAgentTaskPrompt({
+        workspace: taskContext.workspace,
+        task: taskContext.task,
+        executionContext: {
+          runId: run.id,
+          taskId: taskContext.task.id,
+          role: taskContext.task.role,
+          userGoal: run.userGoal,
+          inputArtifacts: [],
+          acceptanceCriteria: [],
+          executionMode: taskContext.task.executionMode ?? WorkflowExecutionMode.Inline,
+        },
+        inputArtifacts: [],
+      }),
       apiConfig: resolveWorkspaceApiConfig(taskContext.workspace),
       ...(taskModel ? { model: taskModel } : {}),
     });
@@ -1254,6 +1314,14 @@ export class EnterpriseLeadWorkspaceService {
   }
 
   async rerunTask(taskId: string): Promise<EnterpriseLeadAgentTask> {
+    const task = this.store.getTask(taskId);
+    if (!task) {
+      throw new Error('Enterprise lead Agent task not found');
+    }
+    const run = this.store.getRun(task.runId);
+    if (run && this.isPromotionWorkflowRun(run)) {
+      this.store.markWorkflowDownstreamTasksStale(taskId);
+    }
     return this.runTask(taskId);
   }
 
@@ -1261,12 +1329,8 @@ export class EnterpriseLeadWorkspaceService {
     const run = this.getRunForWorkspace(workspaceId, runId);
     const tasks = this.store.listTasks(run.id);
 
-    if (this.isPromotionWorkflowRun(workspaceId, tasks)) {
-      if (tasks.length === 0) {
-        await this.workflowOrchestrator.startRun(workspaceId, run.id);
-      } else {
-        await this.workflowOrchestrator.resumeRun(workspaceId, run.id);
-      }
+    if (this.isPromotionWorkflowRun(run)) {
+      await this.workflowOrchestrator.resumeRun(workspaceId, run.id);
       return this.getSnapshot(workspaceId, run.id);
     }
 
@@ -1304,6 +1368,128 @@ export class EnterpriseLeadWorkspaceService {
     });
 
     return this.getSnapshot(workspaceId, run.id);
+  }
+
+  async resumeRun(workspaceId: string, runId: string): Promise<EnterpriseLeadWorkspaceSnapshot> {
+    const run = this.getRunForWorkspace(workspaceId, runId);
+    if (this.isPromotionWorkflowRun(run)) {
+      await this.workflowOrchestrator.resumeRun(workspaceId, run.id);
+      return this.getSnapshot(workspaceId, run.id);
+    }
+    return this.runWorkflow(workspaceId, run.id);
+  }
+
+  async cancelRun(workspaceId: string, runId: string): Promise<EnterpriseLeadWorkspaceSnapshot> {
+    const run = this.getRunForWorkspace(workspaceId, runId);
+    if (this.isPromotionWorkflowRun(run)) {
+      await this.workflowOrchestrator.cancelRun(workspaceId, run.id);
+    } else {
+      this.store.cancelWorkflowRun(run.id);
+    }
+    return this.getSnapshot(workspaceId, run.id);
+  }
+
+  async approveTask(
+    workspaceId: string,
+    runId: string,
+    taskId: string,
+  ): Promise<EnterpriseLeadWorkspaceSnapshot> {
+    const run = this.getRunForWorkspace(workspaceId, runId);
+    if (this.isPromotionWorkflowRun(run)) {
+      await this.workflowOrchestrator.approveTask(workspaceId, run.id, taskId);
+      return this.getSnapshot(workspaceId, run.id);
+    }
+    this.updateLegacyApprovalTask(run.id, taskId, EnterpriseLeadTaskStatus.Completed);
+    return this.getSnapshot(workspaceId, run.id);
+  }
+
+  async rejectTask(
+    workspaceId: string,
+    runId: string,
+    taskId: string,
+  ): Promise<EnterpriseLeadWorkspaceSnapshot> {
+    const run = this.getRunForWorkspace(workspaceId, runId);
+    if (this.isPromotionWorkflowRun(run)) {
+      await this.workflowOrchestrator.rejectTask(workspaceId, run.id, taskId);
+      return this.getSnapshot(workspaceId, run.id);
+    }
+    this.updateLegacyApprovalTask(run.id, taskId, EnterpriseLeadTaskStatus.Stale);
+    return this.getSnapshot(workspaceId, run.id);
+  }
+
+  private async runPromotionTask(
+    taskContext: EnterpriseLeadTaskContext,
+  ): Promise<EnterpriseLeadAgentTask> {
+    if (
+      taskContext.upstreamTasks.some(
+        task => task.status !== EnterpriseLeadTaskStatus.Completed || task.stale,
+      )
+    ) {
+      throw new Error('Workflow task dependencies are not completed');
+    }
+    const run = this.store.getRun(taskContext.task.runId);
+    if (!run) {
+      throw new Error('Enterprise lead workspace not found for task');
+    }
+    const inputArtifacts = dedupeWorkflowArtifactRefs([
+      ...(taskContext.task.artifactRefs ?? []),
+      ...taskContext.upstreamTasks.flatMap(task => task.artifactRefs ?? []),
+    ]);
+    const executionContext: WorkflowTaskExecutionContext = {
+      runId: run.id,
+      taskId: taskContext.task.id,
+      role: taskContext.task.role,
+      userGoal: run.userGoal,
+      inputArtifacts,
+      acceptanceCriteria: [],
+      executionMode: taskContext.task.executionMode ?? WorkflowExecutionMode.Inline,
+    };
+    const result = await this.workflowExecutionAdapter.execute(executionContext);
+    const artifact = this.workflowArtifactStore.createArtifact({
+      runId: run.id,
+      taskId: taskContext.task.id,
+      kind: `${taskContext.task.role}_output`,
+      schemaVersion: 1,
+      payload: result.outputs,
+      evidenceIds: result.artifactRefs.flatMap(artifactRef => artifactRef.evidenceIds),
+    });
+    const outputArtifact: WorkflowArtifactRef = {
+      id: artifact.id,
+      kind: artifact.kind,
+      schemaVersion: artifact.schemaVersion,
+      summary: result.summary,
+      producerTaskId: taskContext.task.id,
+      evidenceIds: artifact.evidenceIds,
+    };
+    this.store.updateWorkflowTaskResult(
+      taskContext.task.id,
+      {
+        ...result,
+        artifactRefs: dedupeWorkflowArtifactRefs([
+          ...(taskContext.task.artifactRefs ?? []),
+          ...result.artifactRefs,
+          outputArtifact,
+        ]),
+      },
+      (taskContext.task.attempt ?? 0) + 1,
+    );
+    const updatedTask = this.store.getTask(taskContext.task.id);
+    if (!updatedTask) {
+      throw new Error('Enterprise lead Agent task disappeared after update');
+    }
+    return updatedTask;
+  }
+
+  private updateLegacyApprovalTask(
+    runId: string,
+    taskId: string,
+    status: EnterpriseLeadTaskStatus.Completed | EnterpriseLeadTaskStatus.Stale,
+  ): void {
+    const task = this.store.getTask(taskId);
+    if (!task || task.runId !== runId || task.status !== EnterpriseLeadTaskStatus.AwaitingApproval) {
+      throw new Error('Enterprise lead workflow task is not awaiting approval');
+    }
+    this.store.updateWorkflowTaskStatus(task.id, status);
   }
 
   async createPendingVersionFromChat(
@@ -1404,16 +1590,29 @@ export class EnterpriseLeadWorkspaceService {
     return configuredRoles.includes(EnterpriseLeadAgentRole.PromotionController);
   }
 
-  private isPromotionWorkflowRun(
-    workspaceId: string,
-    tasks: EnterpriseLeadAgentTask[],
-  ): boolean {
-    if (tasks.length === 0) {
-      const workspace = this.store.getWorkspace(workspaceId);
-      return workspace ? this.isPromotionWorkflowWorkspace(workspace) : false;
-    }
-    const promotionNodeIds = new Set(PROMOTION_WORKFLOW_GRAPH.map(node => node.role));
-    return tasks.every(task => task.nodeId && promotionNodeIds.has(task.nodeId));
+  private isPromotionWorkflowRun(run: EnterpriseLeadRun): boolean {
+    return Boolean(run.workflowVersion);
+  }
+
+  private resolvePromotionRunTasks(
+    workspace: EnterpriseLeadWorkspace,
+  ): CreateEnterpriseLeadTaskInput[] {
+    const agentsById = new Map(
+      this.resolveEffectiveWorkspaceAgents(workspace).map(agent => [agent.id, agent]),
+    );
+    return PROMOTION_WORKFLOW_GRAPH
+      .filter(node => !node.optional)
+      .map(node => {
+        const agent = agentsById.get(node.role);
+        return {
+          role: node.role,
+          nodeId: node.role,
+          dependsOnTaskIds: [...node.dependsOn],
+          executionMode: node.executionMode,
+          workspaceAgentId: agent?.id ?? null,
+          agentSnapshot: agent ? this.toRunAgentSnapshot(agent) : null,
+        };
+      });
   }
 
   private resolveRunTasksForWorkspace(
@@ -1457,7 +1656,9 @@ export class EnterpriseLeadWorkspaceService {
         agent
           ? {
               ...agent,
-              skillIds: [...workspace.settings.skillIds],
+              skillIds: Array.from(
+                new Set([...workspace.settings.skillIds, ...agent.skillIds]),
+              ),
             }
           : agent,
       )
