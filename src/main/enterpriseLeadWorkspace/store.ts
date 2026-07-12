@@ -127,6 +127,7 @@ type EnterpriseLeadRunRow = EnterpriseLeadRun;
 type EnterpriseLeadAgentTaskRow = Omit<
   EnterpriseLeadAgentTask,
   | 'agentSnapshot'
+  | 'artifactRefs'
   | 'inputPayload'
   | 'outputPayload'
   | 'missingInfo'
@@ -136,6 +137,7 @@ type EnterpriseLeadAgentTaskRow = Omit<
   | 'stale'
 > & {
   agentSnapshot: string | null;
+  artifactRefs: string;
   inputPayload: string;
   outputPayload: string;
   missingInfo: string;
@@ -215,6 +217,7 @@ const mapTaskRow = (row: EnterpriseLeadAgentTaskRow): EnterpriseLeadAgentTask =>
   agentSnapshot: row.agentSnapshot
     ? normalizeEnterpriseLeadRunAgentSnapshot(parseJsonValue(row.agentSnapshot, null))
     : null,
+  artifactRefs: parseJsonValue(row.artifactRefs, []),
   inputPayload: parseJsonValue(row.inputPayload, {}),
   outputPayload: parseJsonValue(row.outputPayload, {}),
   missingInfo: parseJsonValue(row.missingInfo, []),
@@ -274,6 +277,7 @@ export class EnterpriseLeadWorkspaceStore {
         role TEXT NOT NULL,
         workspace_agent_id TEXT,
         agent_snapshot TEXT,
+        artifact_refs TEXT NOT NULL DEFAULT '[]',
         sequence INTEGER NOT NULL,
         status TEXT NOT NULL,
         input_payload TEXT NOT NULL,
@@ -345,6 +349,7 @@ export class EnterpriseLeadWorkspaceStore {
     this.ensureRunArchiveColumns();
     this.ensureAgentTaskSequenceColumn();
     this.ensureAgentTaskAgentColumns();
+    this.ensureAgentTaskArtifactRefsColumn();
     this.ensureWorkspaceSettingsColumn();
     this.ensureWorkspaceAgentsColumn();
   }
@@ -357,6 +362,16 @@ export class EnterpriseLeadWorkspaceStore {
     }
     if (!columnNames.has('agent_snapshot')) {
       this.db.exec('ALTER TABLE enterprise_lead_agent_tasks ADD COLUMN agent_snapshot TEXT;');
+    }
+  }
+
+  private ensureAgentTaskArtifactRefsColumn(): void {
+    const columns = this.db.pragma('table_info(enterprise_lead_agent_tasks)') as Array<{ name: string }>;
+    const columnNames = new Set(columns.map(column => column.name));
+    if (!columnNames.has('artifact_refs')) {
+      this.db.exec(
+        "ALTER TABLE enterprise_lead_agent_tasks ADD COLUMN artifact_refs TEXT NOT NULL DEFAULT '[]';",
+      );
     }
   }
 
@@ -897,6 +912,7 @@ export class EnterpriseLeadWorkspaceStore {
           role,
           workspace_agent_id,
           agent_snapshot,
+          artifact_refs,
           sequence,
           status,
           input_payload,
@@ -911,7 +927,7 @@ export class EnterpriseLeadWorkspaceStore {
           created_at,
           updated_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
       const inputPayload = {
         workspaceId: workspace.id,
@@ -925,6 +941,7 @@ export class EnterpriseLeadWorkspaceStore {
           task.role,
           task.workspaceAgentId,
           task.agentSnapshot ? JSON.stringify(task.agentSnapshot) : null,
+          JSON.stringify([]),
           index,
           EnterpriseLeadTaskStatus.Waiting,
           JSON.stringify(inputPayload),
@@ -1089,6 +1106,7 @@ export class EnterpriseLeadWorkspaceStore {
         role,
         workspace_agent_id as workspaceAgentId,
         agent_snapshot as agentSnapshot,
+        artifact_refs as artifactRefs,
         status,
         input_payload as inputPayload,
         output_payload as outputPayload,
@@ -1117,6 +1135,7 @@ export class EnterpriseLeadWorkspaceStore {
         role,
         workspace_agent_id as workspaceAgentId,
         agent_snapshot as agentSnapshot,
+        artifact_refs as artifactRefs,
         status,
         input_payload as inputPayload,
         output_payload as outputPayload,
@@ -1149,12 +1168,14 @@ export class EnterpriseLeadWorkspaceStore {
     }
 
     const now = new Date().toISOString();
+    const artifactRefs = result.artifactRefs ?? task.artifactRefs ?? [];
     const updateTransaction = this.db.transaction(() => {
       this.db.prepare(`
         UPDATE enterprise_lead_agent_tasks
         SET
           status = ?,
           output_payload = ?,
+          artifact_refs = ?,
           summary = ?,
           missing_info = ?,
           todos = ?,
@@ -1167,6 +1188,7 @@ export class EnterpriseLeadWorkspaceStore {
       `).run(
         result.status,
         JSON.stringify(result.outputs),
+        JSON.stringify(artifactRefs),
         result.summary,
         JSON.stringify(result.missingInfo),
         JSON.stringify(result.todos),
@@ -1411,6 +1433,7 @@ export class EnterpriseLeadWorkspaceStore {
           status <> ?
           OR summary <> ''
           OR output_payload <> '{}'
+          OR artifact_refs <> '[]'
           OR todos <> '[]'
           OR risks <> '[]'
           OR handoff_context <> '{}'

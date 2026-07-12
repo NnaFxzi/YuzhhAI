@@ -173,6 +173,19 @@ describe('promotion workflow contracts', () => {
     ).toThrow('platform');
   });
 
+  test('requires structured product selling points in promotion contexts', () => {
+    const result = parsePromotionTaskResult(EnterpriseLeadAgentRole.ProductSellingPoint, {
+      ...taskResult({ sellingPoints: ['替代木箱，需人工确认客户适配性'] }),
+    });
+
+    expect(result.outputs).toEqual({ sellingPoints: ['替代木箱，需人工确认客户适配性'] });
+    expect(() =>
+      parsePromotionTaskResult(EnterpriseLeadAgentRole.ProductSellingPoint, {
+        ...taskResult({ sellingPoints: 'not-an-array' }),
+      }),
+    ).toThrow('sellingPoints');
+  });
+
   test('rejects invalid content quality risk levels and protects high-risk archives', () => {
     const result = parsePromotionTaskResult(EnterpriseLeadAgentRole.ContentQuality, {
       ...taskResult({

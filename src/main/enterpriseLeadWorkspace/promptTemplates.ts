@@ -3,6 +3,7 @@ import {
   EnterpriseLeadContentDeliveryMode,
   EnterpriseLeadContentOutputPlatformId,
 } from '../../shared/enterpriseLeadWorkspace/constants';
+import { isPromotionTaskContext } from '../../shared/enterpriseLeadWorkspace/promotionTaskContracts';
 import type {
   EnterpriseLeadAgentTask,
   EnterpriseLeadTaskAgentRole,
@@ -253,10 +254,12 @@ const taskResultSchema = {
   handoffContext: {},
 };
 
-const promotionRolePrefix = 'promotion_';
-
 export function buildPromotionTaskOutputSchema(role: EnterpriseLeadTaskAgentRole): Record<string, unknown> {
   switch (role) {
+    case EnterpriseLeadAgentRole.ProductSellingPoint:
+      return {
+        sellingPoints: ['基于工作空间资料、仅供人工确认的产品卖点'],
+      };
     case EnterpriseLeadAgentRole.PromotionDataScraping:
       return {
         items: [
@@ -342,10 +345,7 @@ const toPromptArtifactSummary = (artifact: WorkflowArtifactRef) => ({
 const isPromotionTask = (
   task: EnterpriseLeadAgentTask,
   upstreamTasks: EnterpriseLeadAgentTask[],
-): boolean =>
-  task.role.startsWith(promotionRolePrefix) ||
-  (task.role === EnterpriseLeadAgentRole.ContentQuality &&
-    upstreamTasks.some(upstream => upstream.role.startsWith(promotionRolePrefix)));
+): boolean => isPromotionTaskContext(task.role, upstreamTasks.map(upstream => upstream.role));
 
 const buildPromotionTaskContext = (
   task: EnterpriseLeadAgentTask,

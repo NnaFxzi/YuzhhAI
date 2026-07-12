@@ -295,6 +295,7 @@ export interface EnterpriseLeadAgentTaskResult {
   role: EnterpriseLeadTaskAgentRole;
   summary: string;
   outputs: Record<string, unknown>;
+  artifactRefs?: WorkflowArtifactRef[];
   missingInfo: string[];
   todos: EnterpriseLeadTodoInput[];
   risks: EnterpriseLeadRiskItem[];

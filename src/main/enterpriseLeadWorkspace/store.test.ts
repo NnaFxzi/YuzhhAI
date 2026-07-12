@@ -875,6 +875,48 @@ describe('EnterpriseLeadWorkspaceStore', () => {
     });
   });
 
+  test('persists artifact references across task-store reloads', () => {
+    setupStore();
+    const workspace = store.createWorkspace({
+      name: '华南重包获客工作台',
+      type: EnterpriseLeadWorkspaceType.EnterpriseLead,
+      profile,
+      extractionSources: [],
+      enabledAgentRoles: [],
+    });
+    const run = store.createRun({
+      workspaceId: workspace.id,
+      userGoal: '保存推广产物引用',
+      roles: [EnterpriseLeadAgentRole.PromotionDataScraping],
+    });
+    const task = store.listTasks(run.id)[0];
+    const artifactRefs = [
+      {
+        id: 'artifact-source-1',
+        kind: 'scraped_leads',
+        schemaVersion: 1,
+        summary: '已抓取的一条来源线索',
+        producerTaskId: task.id,
+        evidenceIds: ['source-1'],
+      },
+    ];
+
+    store.updateTaskResult(task.id, {
+      role: task.role,
+      status: EnterpriseLeadTaskStatus.Completed,
+      summary: '来源线索已保存。',
+      outputs: {},
+      missingInfo: [],
+      todos: [],
+      risks: [],
+      handoffContext: {},
+      artifactRefs,
+    });
+    const reloadedStore = new EnterpriseLeadWorkspaceStore(db!);
+
+    expect(reloadedStore.getTask(task.id)?.artifactRefs).toEqual(artifactRefs);
+  });
+
   test('creates and applies a pending agent version', () => {
     setupStore();
     const workspace = store.createWorkspace({

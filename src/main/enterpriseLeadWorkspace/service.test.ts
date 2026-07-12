@@ -1941,6 +1941,51 @@ describe('EnterpriseLeadWorkspaceService', () => {
     });
   });
 
+  test('downgrades malformed promotion results before they persist as completed', async () => {
+    const setup = createService();
+    db = setup.db;
+    const workspace = setup.service.createWorkspace({
+      ...draftPayload(),
+      workspaceAgents: buildDefaultPromotionDepartmentWorkspaceAgents(),
+    });
+    const snapshot = setup.service.createRun(workspace.id, '抓取有来源的推广线索');
+    const task = snapshot.tasks.find(
+      item => item.role === EnterpriseLeadAgentRole.PromotionDataScraping,
+    );
+    if (!task) throw new Error('Expected promotion scraping task');
+    setup.modelClient.enqueue({
+      role: EnterpriseLeadAgentRole.PromotionDataScraping,
+      status: EnterpriseLeadTaskStatus.Completed,
+      summary: '已抓取一条线索。',
+      outputs: {
+        items: [
+          {
+            sourceKind: 'search',
+            title: '缺少来源的线索',
+            content: '模型没有提供来源证据。',
+            capturedAt: '2026-07-12T00:00:00.000Z',
+            confidence: 'high',
+          },
+        ],
+      },
+      missingInfo: [],
+      todos: [],
+      risks: [],
+      handoffContext: {},
+    });
+
+    const updatedTask = await setup.service.runTask(task.id);
+
+    expect(updatedTask).toMatchObject({
+      status: EnterpriseLeadTaskStatus.NeedsInput,
+      outputPayload: {},
+    });
+    expect(setup.store.getTask(task.id)).toMatchObject({
+      status: EnterpriseLeadTaskStatus.NeedsInput,
+      outputPayload: {},
+    });
+  });
+
   test('parses fenced and extra text model JSON objects with clear errors', () => {
     expect(cleanModelJsonText('```json\n{"name":"A"}\n```')).toBe('{"name":"A"}');
     expect(parseModelJsonObject('prefix {"name":"B"} suffix')).toEqual({ name: 'B' });

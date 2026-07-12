@@ -39,6 +39,10 @@ export interface PromotionScrapingTaskOutputs {
   items: PromotionScrapingTaskItem[];
 }
 
+export interface PromotionProductSellingPointTaskOutputs {
+  sellingPoints: string[];
+}
+
 export interface PromotionCleaningTaskOutputs {
   records: PromotionCleanedRecord[];
   duplicates: string[];
@@ -76,6 +80,27 @@ const PromotionSourceKind = {
   Manual: 'manual',
   Unknown: 'unknown',
 } as const;
+
+const promotionRolePrefix = 'promotion_';
+
+export const isPromotionTaskContext = (
+  role: EnterpriseLeadTaskAgentRole,
+  upstreamRoles: EnterpriseLeadTaskAgentRole[],
+): boolean => {
+  if (role.startsWith(promotionRolePrefix)) {
+    return true;
+  }
+
+  const hasPromotionUpstream = upstreamRoles.some(upstreamRole =>
+    upstreamRole.startsWith(promotionRolePrefix),
+  );
+  return (
+    hasPromotionUpstream &&
+    (role === EnterpriseLeadAgentRole.ProductSellingPoint ||
+      role === EnterpriseLeadAgentRole.ContentQuality ||
+      role === EnterpriseLeadAgentRole.SalesHandoff)
+  );
+};
 
 const isRecord = (value: unknown): value is UnknownRecord =>
   Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -160,6 +185,12 @@ const normalizeScrapingOutputs = (outputs: UnknownRecord): PromotionScrapingTask
       confidence: normalizeConfidence(item.confidence, 'confidence'),
     };
   }),
+});
+
+const normalizeProductSellingPointOutputs = (
+  outputs: UnknownRecord,
+): PromotionProductSellingPointTaskOutputs => ({
+  sellingPoints: normalizeTextList(outputs.sellingPoints, 'sellingPoints'),
 });
 
 const normalizeFieldConfidence = (value: unknown): Record<string, PromotionConfidence> => {
@@ -254,6 +285,8 @@ const normalizeRoleOutputs = (
   switch (role) {
     case EnterpriseLeadAgentRole.PromotionDataScraping:
       return normalizeScrapingOutputs(outputs);
+    case EnterpriseLeadAgentRole.ProductSellingPoint:
+      return normalizeProductSellingPointOutputs(outputs);
     case EnterpriseLeadAgentRole.PromotionDataCleaning:
       return normalizeCleaningOutputs(outputs);
     case EnterpriseLeadAgentRole.PromotionLeadScoring:
@@ -290,6 +323,10 @@ export function parsePromotionTaskResult(
   role: typeof EnterpriseLeadAgentRole.PromotionDataScraping,
   value: unknown,
 ): PromotionTaskResult<PromotionScrapingTaskOutputs>;
+export function parsePromotionTaskResult(
+  role: typeof EnterpriseLeadAgentRole.ProductSellingPoint,
+  value: unknown,
+): PromotionTaskResult<PromotionProductSellingPointTaskOutputs>;
 export function parsePromotionTaskResult(
   role: typeof EnterpriseLeadAgentRole.PromotionDataCleaning,
   value: unknown,

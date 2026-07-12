@@ -16,6 +16,10 @@ import {
   EnterpriseLeadWorkspaceAgentSource,
   EnterpriseLeadWorkspaceType,
 } from '../../shared/enterpriseLeadWorkspace/constants';
+import {
+  isPromotionTaskContext,
+  parsePromotionTaskResult,
+} from '../../shared/enterpriseLeadWorkspace/promotionTaskContracts';
 import type {
   EnterpriseLeadAgentTask,
   EnterpriseLeadAgentTaskResult,
@@ -506,6 +510,50 @@ const sanitizeTaskResult = (
     ? result.status
     : EnterpriseLeadTaskStatus.NeedsInput,
 });
+
+const buildPromotionContractNeedsInputResult = (
+  task: EnterpriseLeadAgentTask,
+  modelResult: unknown,
+): EnterpriseLeadAgentTaskResult => {
+  try {
+    const result = normalizeAgentTaskResultInput(modelResult);
+    return {
+      ...result,
+      role: task.role,
+      status: EnterpriseLeadTaskStatus.NeedsInput,
+      outputs: {},
+      artifactRefs: [],
+    };
+  } catch {
+    return {
+      role: task.role,
+      status: EnterpriseLeadTaskStatus.NeedsInput,
+      summary: task.summary,
+      outputs: {},
+      artifactRefs: [],
+      missingInfo: [],
+      todos: [],
+      risks: [],
+      handoffContext: {},
+    };
+  }
+};
+
+const normalizeLiveTaskResult = (
+  modelResult: unknown,
+  task: EnterpriseLeadAgentTask,
+  upstreamTasks: EnterpriseLeadAgentTask[],
+): EnterpriseLeadAgentTaskResult => {
+  if (!isPromotionTaskContext(task.role, upstreamTasks.map(upstream => upstream.role))) {
+    return normalizeAgentTaskResultInput(modelResult);
+  }
+
+  try {
+    return parsePromotionTaskResult(task.role, modelResult);
+  } catch {
+    return buildPromotionContractNeedsInputResult(task, modelResult);
+  }
+};
 
 const resolveWorkspaceApiConfig = (workspace: EnterpriseLeadWorkspace) =>
   resolveRawApiConfigFromAppConfig({
@@ -1136,7 +1184,11 @@ export class EnterpriseLeadWorkspaceService {
       ...(taskModel ? { model: taskModel } : {}),
     });
     const normalizedResult = sanitizeTaskResult(
-      normalizeAgentTaskResultInput(parseModelJsonObject(result.text)),
+      normalizeLiveTaskResult(
+        parseModelJsonObject(result.text),
+        taskContext.task,
+        taskContext.upstreamTasks,
+      ),
       taskContext.task,
     );
 

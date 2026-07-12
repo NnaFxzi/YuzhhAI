@@ -103,6 +103,24 @@ describe('promotion task prompts', () => {
     expect(prompt).not.toContain('UNTRUSTED_RAW_UPSTREAM_OUTPUT');
   });
 
+  test('uses the promotion-safe contract path for product selling points in the promotion DAG', () => {
+    const prompt = buildAgentTaskPrompt({
+      workspace,
+      task: task(EnterpriseLeadAgentRole.ProductSellingPoint),
+      upstreamTasks: [
+        {
+          ...task(EnterpriseLeadAgentRole.PromotionController),
+          outputPayload: { unsafe: 'UNTRUSTED_RAW_UPSTREAM_OUTPUT' },
+        },
+      ],
+    });
+
+    expect(prompt).toContain('sellingPoints');
+    expect(prompt).toContain('inputArtifacts');
+    expect(prompt).not.toContain('CURRENT_TASK_RAW_PAYLOAD');
+    expect(prompt).not.toContain('UNTRUSTED_RAW_UPSTREAM_OUTPUT');
+  });
+
   test('builds the fixed role schema for promotion monitoring output', () => {
     expect(buildPromotionTaskOutputSchema(EnterpriseLeadAgentRole.PromotionAccountMonitoring)).toEqual({
       metrics: ['渠道指标对象'],
