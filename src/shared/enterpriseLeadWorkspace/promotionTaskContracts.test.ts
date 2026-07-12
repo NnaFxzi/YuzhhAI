@@ -28,7 +28,7 @@ describe('promotion workflow contracts', () => {
     },
   );
 
-  test('keeps cleaning behind scraping and fans out insight tasks', () => {
+  test('waits for scraping and product selling points before cleaning', () => {
     const cleaning = PROMOTION_WORKFLOW_GRAPH.find(
       node => node.role === EnterpriseLeadAgentRole.PromotionDataCleaning,
     );
@@ -41,6 +41,7 @@ describe('promotion workflow contracts', () => {
 
     expect(cleaning?.dependsOn).toEqual([
       EnterpriseLeadAgentRole.PromotionDataScraping,
+      EnterpriseLeadAgentRole.ProductSellingPoint,
     ]);
     expect(insight?.dependsOn).toEqual([
       EnterpriseLeadAgentRole.PromotionDataCleaning,

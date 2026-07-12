@@ -549,6 +549,7 @@ describe('enterprise lead workspace validation', () => {
           systemPrompt: 'Workspace prompt',
           icon: 'briefcase',
           model: 'deepseek/deepseek-chat',
+          skillIds: ['docx', 'web-search'],
         },
       },
     ]);
@@ -647,6 +648,7 @@ describe('enterprise lead workspace validation', () => {
           systemPrompt: '先抽取产品能力，再标记缺失信息',
           icon: '产',
           model: 'deepseek/deepseek-v4-pro',
+          skillIds: ['product-profile', 'source-check'],
         },
       },
     ]);
