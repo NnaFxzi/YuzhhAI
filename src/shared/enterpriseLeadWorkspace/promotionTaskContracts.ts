@@ -220,7 +220,7 @@ const normalizeSourceUrl = (record: UnknownRecord): string => {
 };
 
 const normalizeScrapingOutputs = (outputs: UnknownRecord): PromotionScrapingTaskOutputs => ({
-  items: normalizeRecordArray(outputs.items, 'items').map(item => {
+  items: requireNonEmpty(normalizeRecordArray(outputs.items, 'items').map(item => {
     const sourceKind = readRequiredText(item, 'sourceKind');
     if (!Object.values(PromotionSourceKind).includes(sourceKind as PromotionScrapingTaskItem['sourceKind'])) {
       throw new Error('promotion task output sourceKind is invalid');
@@ -237,7 +237,7 @@ const normalizeScrapingOutputs = (outputs: UnknownRecord): PromotionScrapingTask
       capturedAt: new Date(capturedAt).toISOString(),
       confidence: normalizeConfidence(item.confidence, 'confidence'),
     };
-  }),
+  }), 'items'),
 });
 
 const normalizeProductSellingPointOutputs = (
@@ -267,13 +267,13 @@ const normalizeFieldConfidence = (value: unknown): Record<string, PromotionConfi
 };
 
 const normalizeCleaningOutputs = (outputs: UnknownRecord): PromotionCleaningTaskOutputs => ({
-  records: normalizeRecordArray(outputs.records, 'records').map(record => ({
+  records: requireNonEmpty(normalizeRecordArray(outputs.records, 'records').map(record => ({
     id: readRequiredText(record, 'id'),
     companyName: readRequiredText(record, 'companyName'),
     industry: readRequiredText(record, 'industry'),
     contactHint: readOptionalText(record, 'contactHint'),
     fieldConfidence: normalizeFieldConfidence(record.fieldConfidence),
-  })),
+  })), 'records'),
   duplicates: normalizeTextList(outputs.duplicates, 'duplicates'),
   missingFields: normalizeTextList(outputs.missingFields, 'missingFields'),
 });
@@ -292,7 +292,7 @@ const normalizeCompetitorInsightOutputs = (
 });
 
 const normalizeLeadScoringOutputs = (outputs: UnknownRecord): PromotionLeadScoringTaskOutputs => ({
-  leads: normalizeRecordArray(outputs.leads, 'leads').map(lead => {
+  leads: requireNonEmpty(normalizeRecordArray(outputs.leads, 'leads').map(lead => {
     const score = lead.score;
     if (typeof score !== 'number' || !Number.isFinite(score) || score < 0 || score > 100) {
       throw new Error('promotion task output score must be between 0 and 100');
@@ -309,18 +309,18 @@ const normalizeLeadScoringOutputs = (outputs: UnknownRecord): PromotionLeadScori
       missingFields: normalizeTextList(lead.missingFields, 'missingFields'),
       nextAction: readRequiredText(lead, 'nextAction'),
     };
-  }),
+  }), 'leads'),
 });
 
 const normalizeAssetsOutputs = (outputs: UnknownRecord): PromotionMultiPlatformAssetsTaskOutputs => ({
-  assets: normalizeRecordArray(outputs.assets, 'assets').map(asset => ({
+  assets: requireNonEmpty(normalizeRecordArray(outputs.assets, 'assets').map(asset => ({
     platform: readRequiredText(asset, 'platform'),
     title: readRequiredText(asset, 'title'),
     body: readRequiredText(asset, 'body'),
     tags: normalizeTextList(asset.tags, 'tags'),
     callToAction: readRequiredText(asset, 'callToAction'),
     manualReviewRequired: true,
-  })),
+  })), 'assets'),
 });
 
 const normalizeQualityOutputs = (outputs: UnknownRecord): PromotionContentQualityTaskOutputs => {
@@ -344,10 +344,13 @@ const normalizeMonitoringRecordList = (value: unknown, key: string): Array<Recor
   normalizeRecordArray(value, key).map(record => ({ ...record }));
 
 const normalizeMonitoringOutputs = (outputs: UnknownRecord): PromotionAccountMonitoringTaskOutputs => ({
-  metrics: normalizeMonitoringRecordList(outputs.metrics, 'metrics'),
-  anomalies: normalizeMonitoringRecordList(outputs.anomalies, 'anomalies'),
-  hypotheses: normalizeTextList(outputs.hypotheses, 'hypotheses'),
-  adjustmentActions: normalizeTextList(outputs.adjustmentActions, 'adjustmentActions'),
+  metrics: requireNonEmpty(normalizeMonitoringRecordList(outputs.metrics, 'metrics'), 'metrics'),
+  anomalies: requireNonEmpty(normalizeMonitoringRecordList(outputs.anomalies, 'anomalies'), 'anomalies'),
+  hypotheses: requireNonEmpty(normalizeTextList(outputs.hypotheses, 'hypotheses'), 'hypotheses'),
+  adjustmentActions: requireNonEmpty(
+    normalizeTextList(outputs.adjustmentActions, 'adjustmentActions'),
+    'adjustmentActions',
+  ),
 });
 
 const normalizeScheduledFor = (value: unknown): string => {

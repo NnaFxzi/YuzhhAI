@@ -76,6 +76,42 @@ describe('promotion workflow contracts', () => {
     ).toThrow('sourceUrl');
   });
 
+  test.each([
+    [EnterpriseLeadAgentRole.PromotionDataScraping, { items: [] }, 'items'],
+    [
+      EnterpriseLeadAgentRole.PromotionDataCleaning,
+      { records: [], duplicates: [], missingFields: [] },
+      'records',
+    ],
+    [EnterpriseLeadAgentRole.PromotionLeadScoring, { leads: [] }, 'leads'],
+    [EnterpriseLeadAgentRole.PromotionMultiPlatformAssets, { assets: [] }, 'assets'],
+    [
+      EnterpriseLeadAgentRole.PromotionAccountMonitoring,
+      { metrics: [], anomalies: [], hypotheses: [], adjustmentActions: [] },
+      'metrics',
+    ],
+  ])('rejects empty primary deliverables for %s', (role, outputs, key) => {
+    expect(() => parsePromotionTaskResult(role, { ...taskResult(outputs) })).toThrow(
+      `${key} must not be empty`,
+    );
+  });
+
+  test.each(['anomalies', 'hypotheses', 'adjustmentActions'])(
+    'rejects empty monitoring %s',
+    key => {
+      expect(() =>
+        parsePromotionTaskResult(EnterpriseLeadAgentRole.PromotionAccountMonitoring, {
+          ...taskResult({
+            metrics: [{}],
+            anomalies: key === 'anomalies' ? [] : [{}],
+            hypotheses: key === 'hypotheses' ? [] : ['暂无明确原因'],
+            adjustmentActions: key === 'adjustmentActions' ? [] : ['人工确认数据'],
+          }),
+        }),
+      ).toThrow(`${key} must not be empty`);
+    },
+  );
+
   test('normalizes data cleaning records and rejects non-array role outputs', () => {
     const result = parsePromotionTaskResult(EnterpriseLeadAgentRole.PromotionDataCleaning, {
       ...taskResult({
@@ -279,7 +315,19 @@ describe('promotion workflow contracts', () => {
     {
       role: EnterpriseLeadAgentRole.PromotionDataCleaning,
       key: 'duplicates',
-      outputs: { records: [], duplicates: [123], missingFields: [] },
+      outputs: {
+        records: [
+          {
+            id: 'lead-1',
+            companyName: '某包装厂',
+            industry: '机械制造',
+            contactHint: '',
+            fieldConfidence: { companyName: 'high' },
+          },
+        ],
+        duplicates: [123],
+        missingFields: [],
+      },
     },
     {
       role: EnterpriseLeadAgentRole.PromotionLeadScoring,
@@ -327,9 +375,9 @@ describe('promotion workflow contracts', () => {
       role: EnterpriseLeadAgentRole.PromotionAccountMonitoring,
       key: 'adjustmentActions',
       outputs: {
-        metrics: [],
-        anomalies: [],
-        hypotheses: [],
+        metrics: [{}],
+        anomalies: [{}],
+        hypotheses: ['暂无明确原因'],
         adjustmentActions: [123],
       },
     },
@@ -368,9 +416,9 @@ describe('promotion workflow contracts', () => {
     const result = parsePromotionTaskResult(EnterpriseLeadAgentRole.PromotionAccountMonitoring, {
       ...taskResult({
         metrics: [{ channel: 'xiaohongshu', value: 42 }],
-        anomalies: [],
-        hypotheses: [],
-        adjustmentActions: [],
+        anomalies: [{}],
+        hypotheses: ['暂无明确原因'],
+        adjustmentActions: ['人工确认数据'],
       }),
       status: 'published',
     });
@@ -378,7 +426,7 @@ describe('promotion workflow contracts', () => {
     expect(result.status).toBe(EnterpriseLeadTaskStatus.NeedsInput);
     expect(() =>
       parsePromotionTaskResult(EnterpriseLeadAgentRole.PromotionAccountMonitoring, {
-        ...taskResult({ metrics: {}, anomalies: [], hypotheses: [], adjustmentActions: [] }),
+          ...taskResult({ metrics: {}, anomalies: [{}], hypotheses: ['暂无明确原因'], adjustmentActions: ['人工确认数据'] }),
       }),
     ).toThrow('metrics');
   });

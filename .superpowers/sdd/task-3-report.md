@@ -126,3 +126,105 @@ SHA: `acfa6da0` (`fix(workflow): enforce promotion task contracts`)
 - `npm test -- promptTemplates` — 1 file / 5 tests passed.
 - `npx tsc --noEmit --pretty false` and changed-file ESLint with `--max-warnings 0` — passed.
 - `git diff --check` and cached `git diff --check` — passed.
+
+## Review-fix 3
+
+### Red / Green
+
+- RED: unit and service regressions showed non-text elements in promotion text
+  arrays were filtered out, allowing malformed completed results to persist.
+- GREEN: role-matrix unit coverage and the service-path regression now reject
+  malformed array elements and downgrade the result to `needs_input` with empty
+  output before persistence.
+
+### Repair
+
+- `normalizeTextList` now rejects non-string or blank elements with an indexed
+  contract error instead of filtering them. Valid empty arrays remain valid.
+- Existing promotion parser error handling remains unchanged, so contract
+  failures continue through the safe `needs_input` runtime path.
+
+### Verification
+
+- Focused promotion contract and service regressions passed.
+- Full requested verification is recorded with this repair commit.
+
+### Files
+
+- `src/shared/enterpriseLeadWorkspace/promotionTaskContracts.ts`
+- `src/shared/enterpriseLeadWorkspace/promotionTaskContracts.test.ts`
+- `src/main/enterpriseLeadWorkspace/service.test.ts`
+
+## Review-fix 4
+
+### Red / Green
+
+- RED: the new graph-role contract and prompt-schema matrices showed that
+  PromotionController, PromotionCompetitorInsight, PromotionPublishingSchedule,
+  PromotionPerformanceReview, and promotion-upstream SalesHandoff accepted
+  completed `{}` outputs through the fallback path. Service regressions also
+  persisted malformed publishing, competitor-insight, and pending SalesHandoff
+  outputs as completed.
+- GREEN: explicit contracts now reject malformed, empty, and unsupported
+  promotion-role outputs. The focused contract, prompt, and service suite passes
+  3 files / 111 tests, and the required filtered suite passes 36 files / 388
+  tests.
+
+### Repair
+
+- Added explicit contracts for every graph role: controller plans, competitor
+  insights, publishing drafts, performance reviews, and sales handoff drafts.
+  The parser now rejects any remaining unmodeled promotion role instead of
+  returning its arbitrary outputs.
+- Publishing schedules and sales handoffs retain only draft fields and always
+  normalize `manualReviewRequired` to `true`; model-supplied completion flags
+  such as `published` and `contacted` cannot survive the normalized output.
+- Every graph role now receives a non-empty promotion-safe prompt schema.
+  Legacy non-promotion prompts and results continue to use their existing path.
+
+### Verification
+
+- `npx vitest run src/shared/enterpriseLeadWorkspace/promotionTaskContracts.test.ts src/main/enterpriseLeadWorkspace/promptTemplates.test.ts src/main/enterpriseLeadWorkspace/service.test.ts` — 3 files / 111 tests passed.
+- `npm test -- promotionTaskContracts service agentOutputSanitizer agentResponseContractPrompt` — 36 files / 388 tests passed.
+- TypeScript, changed-file ESLint, and final diff checks are recorded with this repair commit.
+
+### Files
+
+- `src/shared/enterpriseLeadWorkspace/promotionTaskContracts.ts`
+- `src/shared/enterpriseLeadWorkspace/promotionTaskContracts.test.ts`
+- `src/main/enterpriseLeadWorkspace/promptTemplates.ts`
+- `src/main/enterpriseLeadWorkspace/promptTemplates.test.ts`
+- `src/main/enterpriseLeadWorkspace/service.test.ts`
+
+## Review-fix 5
+
+### Red / Green
+
+- RED: parser regressions showed empty scraping items, cleaning records,
+  scoring leads, asset packages, and monitoring metrics/anomalies/hypotheses/
+  adjustment actions were accepted as completed outputs.
+- GREEN: parser and live service regressions now reject those empty primary
+  deliverables and persist the task as `needs_input` with empty output.
+
+### Repair
+
+- Required non-empty primary deliverable arrays for scraping, cleaning,
+  scoring, multi-platform assets, and all four monitoring output categories.
+- Kept auxiliary cleaning lists and other optional/supporting arrays allowed
+  to be empty.
+- Reused the existing service parser-failure fallback; no service behavior
+  change was needed beyond regression coverage.
+
+### Verification
+
+- `npm test -- promotionTaskContracts service` — 34 files / 393 tests passed.
+- `npx tsc --noEmit --pretty false` — passed.
+- Changed-file ESLint with `--max-warnings 0` — passed.
+- `git diff --check` — passed.
+
+### Files
+
+- `src/shared/enterpriseLeadWorkspace/promotionTaskContracts.ts`
+- `src/shared/enterpriseLeadWorkspace/promotionTaskContracts.test.ts`
+- `src/main/enterpriseLeadWorkspace/service.test.ts`
+- `.superpowers/sdd/task-3-report.md`

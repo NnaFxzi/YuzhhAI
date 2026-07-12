@@ -1989,6 +1989,60 @@ describe('EnterpriseLeadWorkspaceService', () => {
     });
   });
 
+  test.each([
+    {
+      role: EnterpriseLeadAgentRole.PromotionDataScraping,
+      outputs: { items: [] },
+    },
+    {
+      role: EnterpriseLeadAgentRole.PromotionDataCleaning,
+      outputs: { records: [], duplicates: [], missingFields: [] },
+    },
+    {
+      role: EnterpriseLeadAgentRole.PromotionLeadScoring,
+      outputs: { leads: [] },
+    },
+    {
+      role: EnterpriseLeadAgentRole.PromotionMultiPlatformAssets,
+      outputs: { assets: [] },
+    },
+    {
+      role: EnterpriseLeadAgentRole.PromotionAccountMonitoring,
+      outputs: { metrics: [], anomalies: [], hypotheses: [], adjustmentActions: [] },
+    },
+  ])('downgrades empty $role deliverables before persisting as completed', async ({ role, outputs }) => {
+    const setup = createService();
+    db = setup.db;
+    const workspace = setup.service.createWorkspace({
+      ...draftPayload(),
+      workspaceAgents: buildDefaultPromotionDepartmentWorkspaceAgents(),
+    });
+    const snapshot = setup.service.createRun(workspace.id, '验证推广交付物');
+    const task = snapshot.tasks.find(item => item.role === role);
+    if (!task) throw new Error(`Expected promotion task for ${role}`);
+    setup.modelClient.enqueue({
+      role,
+      status: EnterpriseLeadTaskStatus.Completed,
+      summary: '模型声称已完成。',
+      outputs,
+      missingInfo: [],
+      todos: [],
+      risks: [],
+      handoffContext: {},
+    });
+
+    const updatedTask = await setup.service.runTask(task.id);
+
+    expect(updatedTask).toMatchObject({
+      status: EnterpriseLeadTaskStatus.NeedsInput,
+      outputPayload: {},
+    });
+    expect(setup.store.getTask(task.id)).toMatchObject({
+      status: EnterpriseLeadTaskStatus.NeedsInput,
+      outputPayload: {},
+    });
+  });
+
   test('downgrades malformed promotion text arrays before they persist as completed', async () => {
     const setup = createService();
     db = setup.db;
