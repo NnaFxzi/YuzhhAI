@@ -21,6 +21,13 @@ const taskResult = (outputs: Record<string, unknown>): PromotionTaskResult => ({
 });
 
 describe('promotion workflow contracts', () => {
+  test.each(PROMOTION_WORKFLOW_GRAPH.map(node => node.role))(
+    'rejects empty outputs for every promotion graph role: %s',
+    role => {
+      expect(() => parsePromotionTaskResult(role, { ...taskResult({}) })).toThrow();
+    },
+  );
+
   test('keeps cleaning behind scraping and fans out insight tasks', () => {
     const cleaning = PROMOTION_WORKFLOW_GRAPH.find(
       node => node.role === EnterpriseLeadAgentRole.PromotionDataCleaning,
@@ -184,6 +191,83 @@ describe('promotion workflow contracts', () => {
         ...taskResult({ sellingPoints: 'not-an-array' }),
       }),
     ).toThrow('sellingPoints');
+  });
+
+  test('normalizes publishing and sales handoff results into review-required drafts', () => {
+    const publishing = parsePromotionTaskResult(
+      EnterpriseLeadAgentRole.PromotionPublishingSchedule,
+      {
+        ...taskResult({
+          publicationDrafts: [
+            {
+              platform: 'xiaohongshu',
+              scheduledFor: '2026-07-13T09:00:00.000Z',
+              draftSummary: '人工审核后发布的产品卖点草稿。',
+              manualReviewRequired: false,
+              published: true,
+            },
+          ],
+        }),
+      },
+    );
+    const salesHandoff = parsePromotionTaskResult(EnterpriseLeadAgentRole.SalesHandoff, {
+      ...taskResult({
+        handoffDraft: {
+          summary: '销售人工确认后跟进高意向线索。',
+          followUpTasks: ['人工核验联系人后发送跟进草稿。'],
+          manualReviewRequired: false,
+          contacted: true,
+        },
+      }),
+    });
+
+    expect(publishing.outputs).toEqual({
+      publicationDrafts: [
+        {
+          platform: 'xiaohongshu',
+          scheduledFor: '2026-07-13T09:00:00.000Z',
+          draftSummary: '人工审核后发布的产品卖点草稿。',
+          manualReviewRequired: true,
+        },
+      ],
+    });
+    expect(salesHandoff.outputs).toEqual({
+      handoffDraft: {
+        summary: '销售人工确认后跟进高意向线索。',
+        followUpTasks: ['人工核验联系人后发送跟进草稿。'],
+        manualReviewRequired: true,
+      },
+    });
+  });
+
+  test('requires meaningful structured competitor insight outputs', () => {
+    expect(() =>
+      parsePromotionTaskResult(EnterpriseLeadAgentRole.PromotionCompetitorInsight, {
+        ...taskResult({ competitorInsights: [] }),
+      }),
+    ).toThrow('competitorInsights');
+
+    expect(
+      parsePromotionTaskResult(EnterpriseLeadAgentRole.PromotionCompetitorInsight, {
+        ...taskResult({
+          competitorInsights: [
+            {
+              competitor: '竞品 A',
+              finding: '官网强调交期保障。',
+              implication: '需人工验证后调整卖点表达。',
+            },
+          ],
+        }),
+      }).outputs,
+    ).toEqual({
+      competitorInsights: [
+        {
+          competitor: '竞品 A',
+          finding: '官网强调交期保障。',
+          implication: '需人工验证后调整卖点表达。',
+        },
+      ],
+    });
   });
 
   test.each([

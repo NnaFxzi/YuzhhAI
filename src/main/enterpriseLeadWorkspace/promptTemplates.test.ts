@@ -5,6 +5,7 @@ import {
   EnterpriseLeadTaskStatus,
   EnterpriseLeadWorkspaceType,
 } from '../../shared/enterpriseLeadWorkspace/constants';
+import { PROMOTION_WORKFLOW_GRAPH } from '../../shared/enterpriseLeadWorkspace/promotionWorkflowGraph';
 import type {
   EnterpriseLeadAgentTask,
   EnterpriseLeadWorkspace,
@@ -73,6 +74,13 @@ const task = (role: EnterpriseLeadAgentRole): EnterpriseLeadAgentTask => ({
 });
 
 describe('promotion task prompts', () => {
+  test.each(PROMOTION_WORKFLOW_GRAPH.map(node => node.role))(
+    'builds a non-empty safe output schema for every promotion graph role: %s',
+    role => {
+      expect(buildPromotionTaskOutputSchema(role)).not.toEqual({});
+    },
+  );
+
   test('uses artifact summaries and role contracts instead of raw upstream payloads', () => {
     const prompt = buildAgentTaskPrompt({
       workspace,
@@ -165,6 +173,15 @@ describe('promotion task prompts', () => {
       anomalies: ['异常对象'],
       hypotheses: ['异常假设'],
       adjustmentActions: ['人工确认后的调整建议'],
+    });
+  });
+
+  test('marks publishing and sales schemas as manual-review-only drafts', () => {
+    expect(buildPromotionTaskOutputSchema(EnterpriseLeadAgentRole.PromotionPublishingSchedule)).toMatchObject({
+      publicationDrafts: [{ manualReviewRequired: true }],
+    });
+    expect(buildPromotionTaskOutputSchema(EnterpriseLeadAgentRole.SalesHandoff)).toMatchObject({
+      handoffDraft: { manualReviewRequired: true },
     });
   });
 });

@@ -43,10 +43,26 @@ export interface PromotionProductSellingPointTaskOutputs {
   sellingPoints: string[];
 }
 
+export interface PromotionControllerTaskOutputs {
+  controlPlan: string;
+  priorityTasks: string[];
+  riskNotes: string[];
+}
+
 export interface PromotionCleaningTaskOutputs {
   records: PromotionCleanedRecord[];
   duplicates: string[];
   missingFields: string[];
+}
+
+export interface PromotionCompetitorInsightItem {
+  competitor: string;
+  finding: string;
+  implication: string;
+}
+
+export interface PromotionCompetitorInsightTaskOutputs {
+  competitorInsights: PromotionCompetitorInsightItem[];
 }
 
 export interface PromotionLeadScoringTaskOutputs {
@@ -60,6 +76,33 @@ export interface PromotionMultiPlatformAssetsTaskOutputs {
 export type PromotionContentQualityTaskOutputs = PromotionContentQualityOutput;
 
 export type PromotionAccountMonitoringTaskOutputs = PromotionMonitoringOutput;
+
+export interface PromotionPublishingScheduleDraft {
+  platform: string;
+  scheduledFor: string;
+  draftSummary: string;
+  manualReviewRequired: true;
+}
+
+export interface PromotionPublishingScheduleTaskOutputs {
+  publicationDrafts: PromotionPublishingScheduleDraft[];
+}
+
+export interface PromotionPerformanceReviewTaskOutputs {
+  reviewSummary: string;
+  effectiveStrategies: string[];
+  improvementActions: string[];
+}
+
+export interface PromotionSalesHandoffDraft {
+  summary: string;
+  followUpTasks: string[];
+  manualReviewRequired: true;
+}
+
+export interface PromotionSalesHandoffTaskOutputs {
+  handoffDraft: PromotionSalesHandoffDraft;
+}
 
 export interface PromotionTaskResult<TOutputs extends object = object> {
   role: EnterpriseLeadTaskAgentRole;
@@ -139,6 +182,13 @@ const normalizeRecordArray = (value: unknown, key: string): UnknownRecord[] =>
     return item;
   });
 
+const requireNonEmpty = <T>(items: T[], key: string): T[] => {
+  if (items.length === 0) {
+    throw new Error(`promotion task output ${key} must not be empty`);
+  }
+  return items;
+};
+
 const normalizeConfidence = (value: unknown, key: string): PromotionConfidence => {
   const confidence = typeof value === 'string' ? value.trim() : '';
   if (!Object.values(PromotionConfidence).includes(confidence as PromotionConfidence)) {
@@ -196,6 +246,12 @@ const normalizeProductSellingPointOutputs = (
   sellingPoints: normalizeTextList(outputs.sellingPoints, 'sellingPoints'),
 });
 
+const normalizeControllerOutputs = (outputs: UnknownRecord): PromotionControllerTaskOutputs => ({
+  controlPlan: readRequiredText(outputs, 'controlPlan'),
+  priorityTasks: normalizeTextList(outputs.priorityTasks, 'priorityTasks'),
+  riskNotes: normalizeTextList(outputs.riskNotes, 'riskNotes'),
+});
+
 const normalizeFieldConfidence = (value: unknown): Record<string, PromotionConfidence> => {
   if (!isRecord(value)) {
     throw new Error('promotion task output fieldConfidence must be an object');
@@ -220,6 +276,19 @@ const normalizeCleaningOutputs = (outputs: UnknownRecord): PromotionCleaningTask
   })),
   duplicates: normalizeTextList(outputs.duplicates, 'duplicates'),
   missingFields: normalizeTextList(outputs.missingFields, 'missingFields'),
+});
+
+const normalizeCompetitorInsightOutputs = (
+  outputs: UnknownRecord,
+): PromotionCompetitorInsightTaskOutputs => ({
+  competitorInsights: requireNonEmpty(
+    normalizeRecordArray(outputs.competitorInsights, 'competitorInsights').map(insight => ({
+      competitor: readRequiredText(insight, 'competitor'),
+      finding: readRequiredText(insight, 'finding'),
+      implication: readRequiredText(insight, 'implication'),
+    })),
+    'competitorInsights',
+  ),
 });
 
 const normalizeLeadScoringOutputs = (outputs: UnknownRecord): PromotionLeadScoringTaskOutputs => ({
@@ -281,17 +350,67 @@ const normalizeMonitoringOutputs = (outputs: UnknownRecord): PromotionAccountMon
   adjustmentActions: normalizeTextList(outputs.adjustmentActions, 'adjustmentActions'),
 });
 
+const normalizeScheduledFor = (value: unknown): string => {
+  const scheduledFor = typeof value === 'string' ? value.trim() : '';
+  if (!scheduledFor || Number.isNaN(Date.parse(scheduledFor))) {
+    throw new Error('promotion task output scheduledFor is invalid');
+  }
+  return new Date(scheduledFor).toISOString();
+};
+
+const normalizePublishingScheduleOutputs = (
+  outputs: UnknownRecord,
+): PromotionPublishingScheduleTaskOutputs => ({
+  publicationDrafts: requireNonEmpty(
+    normalizeRecordArray(outputs.publicationDrafts, 'publicationDrafts').map(draft => ({
+      platform: readRequiredText(draft, 'platform'),
+      scheduledFor: normalizeScheduledFor(draft.scheduledFor),
+      draftSummary: readRequiredText(draft, 'draftSummary'),
+      manualReviewRequired: true,
+    })),
+    'publicationDrafts',
+  ),
+});
+
+const normalizePerformanceReviewOutputs = (
+  outputs: UnknownRecord,
+): PromotionPerformanceReviewTaskOutputs => ({
+  reviewSummary: readRequiredText(outputs, 'reviewSummary'),
+  effectiveStrategies: normalizeTextList(outputs.effectiveStrategies, 'effectiveStrategies'),
+  improvementActions: normalizeTextList(outputs.improvementActions, 'improvementActions'),
+});
+
+const normalizeSalesHandoffOutputs = (outputs: UnknownRecord): PromotionSalesHandoffTaskOutputs => {
+  if (!isRecord(outputs.handoffDraft)) {
+    throw new Error('promotion task output handoffDraft must be an object');
+  }
+  return {
+    handoffDraft: {
+      summary: readRequiredText(outputs.handoffDraft, 'summary'),
+      followUpTasks: requireNonEmpty(
+        normalizeTextList(outputs.handoffDraft.followUpTasks, 'followUpTasks'),
+        'followUpTasks',
+      ),
+      manualReviewRequired: true,
+    },
+  };
+};
+
 const normalizeRoleOutputs = (
   role: EnterpriseLeadTaskAgentRole,
   outputs: UnknownRecord,
 ): object => {
   switch (role) {
+    case EnterpriseLeadAgentRole.PromotionController:
+      return normalizeControllerOutputs(outputs);
     case EnterpriseLeadAgentRole.PromotionDataScraping:
       return normalizeScrapingOutputs(outputs);
     case EnterpriseLeadAgentRole.ProductSellingPoint:
       return normalizeProductSellingPointOutputs(outputs);
     case EnterpriseLeadAgentRole.PromotionDataCleaning:
       return normalizeCleaningOutputs(outputs);
+    case EnterpriseLeadAgentRole.PromotionCompetitorInsight:
+      return normalizeCompetitorInsightOutputs(outputs);
     case EnterpriseLeadAgentRole.PromotionLeadScoring:
       return normalizeLeadScoringOutputs(outputs);
     case EnterpriseLeadAgentRole.PromotionMultiPlatformAssets:
@@ -300,8 +419,14 @@ const normalizeRoleOutputs = (
       return normalizeQualityOutputs(outputs);
     case EnterpriseLeadAgentRole.PromotionAccountMonitoring:
       return normalizeMonitoringOutputs(outputs);
+    case EnterpriseLeadAgentRole.PromotionPublishingSchedule:
+      return normalizePublishingScheduleOutputs(outputs);
+    case EnterpriseLeadAgentRole.PromotionPerformanceReview:
+      return normalizePerformanceReviewOutputs(outputs);
+    case EnterpriseLeadAgentRole.SalesHandoff:
+      return normalizeSalesHandoffOutputs(outputs);
     default:
-      return outputs;
+      throw new Error(`promotion task role ${role} does not have an output contract`);
   }
 };
 
@@ -323,9 +448,17 @@ const toPromotionTaskResult = <TOutputs extends object>(
 });
 
 export function parsePromotionTaskResult(
+  role: typeof EnterpriseLeadAgentRole.PromotionController,
+  value: unknown,
+): PromotionTaskResult<PromotionControllerTaskOutputs>;
+export function parsePromotionTaskResult(
   role: typeof EnterpriseLeadAgentRole.PromotionDataScraping,
   value: unknown,
 ): PromotionTaskResult<PromotionScrapingTaskOutputs>;
+export function parsePromotionTaskResult(
+  role: typeof EnterpriseLeadAgentRole.PromotionCompetitorInsight,
+  value: unknown,
+): PromotionTaskResult<PromotionCompetitorInsightTaskOutputs>;
 export function parsePromotionTaskResult(
   role: typeof EnterpriseLeadAgentRole.ProductSellingPoint,
   value: unknown,
@@ -350,6 +483,18 @@ export function parsePromotionTaskResult(
   role: typeof EnterpriseLeadAgentRole.PromotionAccountMonitoring,
   value: unknown,
 ): PromotionTaskResult<PromotionAccountMonitoringTaskOutputs>;
+export function parsePromotionTaskResult(
+  role: typeof EnterpriseLeadAgentRole.PromotionPublishingSchedule,
+  value: unknown,
+): PromotionTaskResult<PromotionPublishingScheduleTaskOutputs>;
+export function parsePromotionTaskResult(
+  role: typeof EnterpriseLeadAgentRole.PromotionPerformanceReview,
+  value: unknown,
+): PromotionTaskResult<PromotionPerformanceReviewTaskOutputs>;
+export function parsePromotionTaskResult(
+  role: typeof EnterpriseLeadAgentRole.SalesHandoff,
+  value: unknown,
+): PromotionTaskResult<PromotionSalesHandoffTaskOutputs>;
 export function parsePromotionTaskResult(
   role: EnterpriseLeadTaskAgentRole,
   value: unknown,

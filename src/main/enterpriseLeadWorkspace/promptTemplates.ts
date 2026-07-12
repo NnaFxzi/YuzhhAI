@@ -256,6 +256,12 @@ const taskResultSchema = {
 
 export function buildPromotionTaskOutputSchema(role: EnterpriseLeadTaskAgentRole): Record<string, unknown> {
   switch (role) {
+    case EnterpriseLeadAgentRole.PromotionController:
+      return {
+        controlPlan: '推广总控计划与阶段安排',
+        priorityTasks: ['按优先级排列的任务'],
+        riskNotes: ['需人工确认的风险或约束'],
+      };
     case EnterpriseLeadAgentRole.ProductSellingPoint:
       return {
         sellingPoints: ['基于工作空间资料、仅供人工确认的产品卖点'],
@@ -286,6 +292,16 @@ export function buildPromotionTaskOutputSchema(role: EnterpriseLeadTaskAgentRole
         ],
         duplicates: ['重复线索 ID'],
         missingFields: ['缺失字段'],
+      };
+    case EnterpriseLeadAgentRole.PromotionCompetitorInsight:
+      return {
+        competitorInsights: [
+          {
+            competitor: '竞品或竞品集合',
+            finding: '有证据支持的渠道、内容或卖点观察',
+            implication: '仅供人工确认的推广启示',
+          },
+        ],
       };
     case EnterpriseLeadAgentRole.PromotionLeadScoring:
       return {
@@ -328,8 +344,35 @@ export function buildPromotionTaskOutputSchema(role: EnterpriseLeadTaskAgentRole
         hypotheses: ['异常假设'],
         adjustmentActions: ['人工确认后的调整建议'],
       };
+    case EnterpriseLeadAgentRole.PromotionPublishingSchedule:
+      return {
+        publicationDrafts: [
+          {
+            platform: '目标平台',
+            scheduledFor: 'ISO timestamp',
+            draftSummary: '仅供人工审核和发布的排期草稿',
+            manualReviewRequired: true,
+          },
+        ],
+      };
+    case EnterpriseLeadAgentRole.PromotionPerformanceReview:
+      return {
+        reviewSummary: '有证据支持的推广复盘结论',
+        effectiveStrategies: ['已验证或待人工验证的有效做法'],
+        improvementActions: ['仅供人工确认的下一轮改进建议'],
+      };
+    case EnterpriseLeadAgentRole.SalesHandoff:
+      return {
+        handoffDraft: {
+          summary: '仅供人工审核的销售交接草稿',
+          followUpTasks: ['仅供人工执行的跟进建议'],
+          manualReviewRequired: true,
+        },
+      };
     default:
-      return {};
+      return {
+        contractError: '此角色没有推广输出合同，必须请求人工处理。',
+      };
   }
 }
 

@@ -2024,6 +2024,72 @@ describe('EnterpriseLeadWorkspaceService', () => {
     });
   });
 
+  test('downgrades malformed publishing schedule results before they persist as completed', async () => {
+    const setup = createService();
+    db = setup.db;
+    const workspace = setup.service.createWorkspace({
+      ...draftPayload(),
+      workspaceAgents: buildDefaultPromotionDepartmentWorkspaceAgents(),
+    });
+    const snapshot = setup.service.createRun(workspace.id, '生成发布排期草稿');
+    const task = snapshot.tasks.find(
+      item => item.role === EnterpriseLeadAgentRole.PromotionPublishingSchedule,
+    );
+    if (!task) throw new Error('Expected promotion publishing schedule task');
+    setup.modelClient.enqueue({
+      role: EnterpriseLeadAgentRole.PromotionPublishingSchedule,
+      status: EnterpriseLeadTaskStatus.Completed,
+      summary: '已经完成发布。',
+      outputs: {},
+      missingInfo: [],
+      todos: [],
+      risks: [],
+      handoffContext: {},
+    });
+
+    const updatedTask = await setup.service.runTask(task.id);
+
+    expect(updatedTask).toMatchObject({
+      status: EnterpriseLeadTaskStatus.NeedsInput,
+      outputPayload: {},
+    });
+    expect(setup.store.getTask(task.id)).toMatchObject({
+      status: EnterpriseLeadTaskStatus.NeedsInput,
+      outputPayload: {},
+    });
+  });
+
+  test('downgrades malformed competitor insight results before they persist as completed', async () => {
+    const setup = createService();
+    db = setup.db;
+    const workspace = setup.service.createWorkspace({
+      ...draftPayload(),
+      workspaceAgents: buildDefaultPromotionDepartmentWorkspaceAgents(),
+    });
+    const snapshot = setup.service.createRun(workspace.id, '分析竞品推广机会');
+    const task = snapshot.tasks.find(
+      item => item.role === EnterpriseLeadAgentRole.PromotionCompetitorInsight,
+    );
+    if (!task) throw new Error('Expected promotion competitor insight task');
+    setup.modelClient.enqueue({
+      role: EnterpriseLeadAgentRole.PromotionCompetitorInsight,
+      status: EnterpriseLeadTaskStatus.Completed,
+      summary: '竞品分析完成。',
+      outputs: {},
+      missingInfo: [],
+      todos: [],
+      risks: [],
+      handoffContext: {},
+    });
+
+    const updatedTask = await setup.service.runTask(task.id);
+
+    expect(updatedTask).toMatchObject({
+      status: EnterpriseLeadTaskStatus.NeedsInput,
+      outputPayload: {},
+    });
+  });
+
   test('applies malformed promotion chat revisions as needs-input instead of completed', async () => {
     const setup = createService();
     db = setup.db;
@@ -2071,6 +2137,46 @@ describe('EnterpriseLeadWorkspaceService', () => {
       status: EnterpriseLeadTaskStatus.NeedsInput,
       outputPayload: {},
       artifactRefs: [],
+    });
+  });
+
+  test('applies malformed promotion sales handoff revisions as needs-input instead of completed', async () => {
+    const setup = createService();
+    db = setup.db;
+    const workspace = setup.service.createWorkspace({
+      ...draftPayload(),
+      workspaceAgents: [
+        ...buildDefaultPromotionDepartmentWorkspaceAgents(),
+        ...buildDefaultEnterpriseLeadWorkspaceAgents([EnterpriseLeadAgentRole.SalesHandoff]),
+      ],
+    });
+    const snapshot = setup.service.createRun(workspace.id, '生成销售交接草稿');
+    const task = snapshot.tasks.find(item => item.role === EnterpriseLeadAgentRole.SalesHandoff);
+    if (!task) throw new Error('Expected promotion sales handoff task');
+    setup.modelClient.enqueue({
+      role: EnterpriseLeadAgentRole.SalesHandoff,
+      status: EnterpriseLeadTaskStatus.Completed,
+      summary: '已联系客户并完成交接。',
+      outputs: {},
+      missingInfo: [],
+      todos: [],
+      risks: [],
+      handoffContext: {},
+    });
+
+    const pendingVersion = await setup.service.createPendingVersionFromChat(
+      task.id,
+      '生成仅供人工审核的销售交接草稿。',
+    );
+    const appliedSnapshot = setup.service.applyPendingVersion(pendingVersion.id);
+
+    expect(pendingVersion).toMatchObject({
+      taskStatus: EnterpriseLeadTaskStatus.NeedsInput,
+      outputPayload: {},
+    });
+    expect(appliedSnapshot.tasks.find(item => item.id === task.id)).toMatchObject({
+      status: EnterpriseLeadTaskStatus.NeedsInput,
+      outputPayload: {},
     });
   });
 
