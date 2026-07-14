@@ -24,7 +24,11 @@ import {
   normalizeEnterpriseLeadExtractionSources,
   normalizeWorkspaceProfile,
 } from '../../shared/enterpriseLeadWorkspace/validation';
-import type { WorkflowStartOptions } from '../../shared/enterpriseLeadWorkspace/workflowContracts';
+import {
+  WorkflowOptionalNode,
+  type WorkflowOptionalNode as WorkflowOptionalNodeType,
+  type WorkflowStartOptions,
+} from '../../shared/enterpriseLeadWorkspace/workflowContracts';
 import type { AppendWorkflowEventInput } from './workflowArtifactStore';
 
 export interface EnterpriseLeadWorkspaceHandlerDeps {
@@ -98,6 +102,11 @@ export interface EnterpriseLeadWorkspaceHandlerDeps {
       runId: string,
       options: WorkflowStartOptions,
     ) => EnterpriseLeadWorkspaceSnapshot | Promise<EnterpriseLeadWorkspaceSnapshot>;
+    markRunError: (
+      workspaceId: string,
+      runId: string,
+      error: string,
+    ) => EnterpriseLeadWorkspaceSnapshot | Promise<EnterpriseLeadWorkspaceSnapshot>;
     resumeRun: (
       workspaceId: string,
       runId: string,
@@ -165,13 +174,25 @@ const readWorkflowStartOptions = (value: unknown): WorkflowStartOptions => {
   if (!Array.isArray(value.enabledOptionalNodes)) {
     throw new Error('Workflow optional nodes are required');
   }
-  if (typeof value.maxConcurrency !== 'number' || !Number.isFinite(value.maxConcurrency)) {
-    throw new Error('Workflow max concurrency is required');
+  const allowedNodes = new Set<string>(Object.values(WorkflowOptionalNode));
+  if (
+    !value.enabledOptionalNodes.every(
+      (node): node is WorkflowOptionalNodeType =>
+        typeof node === 'string' && allowedNodes.has(node),
+    )
+  ) {
+    throw new Error('Workflow optional node is invalid');
+  }
+  if (
+    typeof value.maxConcurrency !== 'number' ||
+    !Number.isInteger(value.maxConcurrency) ||
+    value.maxConcurrency < 1 ||
+    value.maxConcurrency > 3
+  ) {
+    throw new Error('Workflow max concurrency must be an integer from 1 to 3');
   }
   return {
-    enabledOptionalNodes: value.enabledOptionalNodes.filter(
-      (node): node is string => typeof node === 'string',
-    ),
+    enabledOptionalNodes: Array.from(new Set(value.enabledOptionalNodes)),
     maxConcurrency: value.maxConcurrency,
   };
 };
@@ -238,11 +259,91 @@ const fail = <T>(error: unknown): EnterpriseLeadIpcResult<T> => ({
   error: toErrorMessage(error),
 });
 
-const sendWorkflowEvents = (
-  sender: { send: (channel: string, payload: EnterpriseLeadWorkflowEvent) => void },
-  events: EnterpriseLeadWorkflowEvent[],
+type WorkflowEventSender = {
+  send: (channel: string, payload: EnterpriseLeadWorkflowEvent) => void;
+};
+
+const workflowEventCursors = new WeakMap<WorkflowEventSender, Map<string, number>>();
+
+const getWorkflowEventCursor = (sender: WorkflowEventSender, runId: string): number | undefined =>
+  workflowEventCursors.get(sender)?.get(runId);
+
+const setWorkflowEventCursor = (sender: WorkflowEventSender, runId: string, sequence: number): void => {
+  const cursors = workflowEventCursors.get(sender) ?? new Map<string, number>();
+  cursors.set(runId, sequence);
+  workflowEventCursors.set(sender, cursors);
+};
+
+const primeWorkflowEventCursor = (
+  sender: WorkflowEventSender,
+  runId: string,
+  listWorkflowEvents: (runId: string) => EnterpriseLeadWorkflowEvent[],
 ): void => {
-  events.forEach(workflowEvent => sender.send(EnterpriseLeadWorkflowIpc.Event, workflowEvent));
+  if (getWorkflowEventCursor(sender, runId) !== undefined) return;
+  const latestSequence = listWorkflowEvents(runId).reduce(
+    (sequence, workflowEvent) => Math.max(sequence, workflowEvent.sequence),
+    0,
+  );
+  setWorkflowEventCursor(sender, runId, latestSequence);
+};
+
+const sendNewWorkflowEvents = (
+  sender: WorkflowEventSender,
+  runId: string,
+  listWorkflowEvents: (runId: string) => EnterpriseLeadWorkflowEvent[],
+): void => {
+  const cursor = getWorkflowEventCursor(sender, runId) ?? 0;
+  const events = listWorkflowEvents(runId)
+    .filter(workflowEvent => workflowEvent.sequence > cursor)
+    .sort((left, right) => left.sequence - right.sequence);
+  events.forEach(workflowEvent => {
+    sender.send(EnterpriseLeadWorkflowIpc.Event, workflowEvent);
+    setWorkflowEventCursor(sender, runId, workflowEvent.sequence);
+  });
+};
+
+const sendWorkflowEvent = (
+  sender: WorkflowEventSender,
+  workflowEvent: EnterpriseLeadWorkflowEvent,
+): void => {
+  sender.send(EnterpriseLeadWorkflowIpc.Event, workflowEvent);
+  setWorkflowEventCursor(sender, workflowEvent.runId, workflowEvent.sequence);
+};
+
+const streamWorkflowExecution = (
+  deps: EnterpriseLeadWorkspaceHandlerDeps,
+  sender: WorkflowEventSender,
+  workspaceId: string,
+  runId: string,
+  options: WorkflowStartOptions,
+): void => {
+  let execution: Promise<EnterpriseLeadWorkspaceSnapshot>;
+  try {
+    execution = Promise.resolve(deps.service.startWorkflow(workspaceId, runId, options));
+  } catch (error) {
+    execution = Promise.reject(error);
+  }
+  sendNewWorkflowEvents(sender, runId, deps.listWorkflowEvents);
+
+  const interval = setInterval(
+    () => sendNewWorkflowEvents(sender, runId, deps.listWorkflowEvents),
+    50,
+  );
+  void (async () => {
+    try {
+      await execution;
+    } catch (error) {
+      const message = toErrorMessage(error);
+      await deps.service.markRunError(workspaceId, runId, message);
+      sendWorkflowEvent(
+        sender,
+        deps.appendWorkflowEvent({ runId, type: 'run_error', summary: message }),
+      );
+    } finally {
+      clearInterval(interval);
+      sendNewWorkflowEvents(sender, runId, deps.listWorkflowEvents);
+    }
+  })();
 };
 
 export function registerEnterpriseLeadWorkspaceHandlers(
@@ -515,20 +616,8 @@ export function registerEnterpriseLeadWorkspaceHandlers(
         const runId = requireNonEmptyString(input?.runId, 'Run id');
         const options = readWorkflowStartOptions(input?.options);
         const snapshot = await deps.service.getSnapshot(workspaceId, runId);
-
-        void (async () => {
-          try {
-            await deps.service.startWorkflow(workspaceId, runId, options);
-            sendWorkflowEvents(event.sender, deps.listWorkflowEvents(runId));
-          } catch (error) {
-            const workflowEvent = deps.appendWorkflowEvent({
-              runId,
-              type: 'run_error',
-              summary: toErrorMessage(error),
-            });
-            event.sender.send(EnterpriseLeadWorkflowIpc.Event, workflowEvent);
-          }
-        })();
+        primeWorkflowEventCursor(event.sender, runId, deps.listWorkflowEvents);
+        streamWorkflowExecution(deps, event.sender, workspaceId, runId, options);
 
         return ok(snapshot);
       } catch (error) {
@@ -543,8 +632,9 @@ export function registerEnterpriseLeadWorkspaceHandlers(
       try {
         const workspaceId = requireNonEmptyString(input?.workspaceId, 'Workspace id');
         const runId = requireNonEmptyString(input?.runId, 'Run id');
+        primeWorkflowEventCursor(event.sender, runId, deps.listWorkflowEvents);
         const snapshot = await deps.service.resumeRun(workspaceId, runId);
-        sendWorkflowEvents(event.sender, deps.listWorkflowEvents(runId));
+        sendNewWorkflowEvents(event.sender, runId, deps.listWorkflowEvents);
         return ok(snapshot);
       } catch (error) {
         return fail<EnterpriseLeadWorkspaceSnapshot>(error);
@@ -558,8 +648,9 @@ export function registerEnterpriseLeadWorkspaceHandlers(
       try {
         const workspaceId = requireNonEmptyString(input?.workspaceId, 'Workspace id');
         const runId = requireNonEmptyString(input?.runId, 'Run id');
+        primeWorkflowEventCursor(event.sender, runId, deps.listWorkflowEvents);
         const snapshot = await deps.service.cancelRun(workspaceId, runId);
-        sendWorkflowEvents(event.sender, deps.listWorkflowEvents(runId));
+        sendNewWorkflowEvents(event.sender, runId, deps.listWorkflowEvents);
         return ok(snapshot);
       } catch (error) {
         return fail<EnterpriseLeadWorkspaceSnapshot>(error);
@@ -574,8 +665,9 @@ export function registerEnterpriseLeadWorkspaceHandlers(
         const workspaceId = requireNonEmptyString(input?.workspaceId, 'Workspace id');
         const runId = requireNonEmptyString(input?.runId, 'Run id');
         const taskId = requireNonEmptyString(input?.taskId, 'Task id');
+        primeWorkflowEventCursor(event.sender, runId, deps.listWorkflowEvents);
         const snapshot = await deps.service.approveTask(workspaceId, runId, taskId);
-        sendWorkflowEvents(event.sender, deps.listWorkflowEvents(runId));
+        sendNewWorkflowEvents(event.sender, runId, deps.listWorkflowEvents);
         return ok(snapshot);
       } catch (error) {
         return fail<EnterpriseLeadWorkspaceSnapshot>(error);
@@ -590,8 +682,9 @@ export function registerEnterpriseLeadWorkspaceHandlers(
         const workspaceId = requireNonEmptyString(input?.workspaceId, 'Workspace id');
         const runId = requireNonEmptyString(input?.runId, 'Run id');
         const taskId = requireNonEmptyString(input?.taskId, 'Task id');
+        primeWorkflowEventCursor(event.sender, runId, deps.listWorkflowEvents);
         const snapshot = await deps.service.rejectTask(workspaceId, runId, taskId);
-        sendWorkflowEvents(event.sender, deps.listWorkflowEvents(runId));
+        sendNewWorkflowEvents(event.sender, runId, deps.listWorkflowEvents);
         return ok(snapshot);
       } catch (error) {
         return fail<EnterpriseLeadWorkspaceSnapshot>(error);

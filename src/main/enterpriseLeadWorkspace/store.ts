@@ -1171,6 +1171,20 @@ export class EnterpriseLeadWorkspaceStore {
     initialize();
   }
 
+  replaceUnstartedWorkflowRun(
+    runId: string,
+    tasks: CreateEnterpriseLeadTaskInput[],
+    options: WorkflowStartOptions,
+    workflowVersion?: string,
+  ): void {
+    const existingTasks = this.listTasks(runId);
+    if (existingTasks.some(task => task.status !== EnterpriseLeadTaskStatus.Waiting)) {
+      throw new Error('Enterprise lead workflow has already started');
+    }
+    this.db.prepare('DELETE FROM enterprise_lead_agent_tasks WHERE run_id = ?').run(runId);
+    this.initializeWorkflowRun(runId, tasks, options, workflowVersion);
+  }
+
   getWorkflowStartOptions(runId: string): WorkflowStartOptions {
     const row = this.db.prepare(`
       SELECT workflow_start_options as workflowStartOptions

@@ -2560,6 +2560,69 @@ describe('EnterpriseLeadWorkspaceService', () => {
     );
   });
 
+  test('starts an untouched promotion draft with the requested optional graph nodes', async () => {
+    const setup = createService();
+    db = setup.db;
+    const workspace = setup.service.createWorkspace({
+      ...draftPayload(),
+      workspaceAgents: buildDefaultPromotionDepartmentWorkspaceAgents(),
+    });
+    const created = setup.service.createRun(workspace.id, '启动销售交接推广流程');
+    const runId = created.currentRun?.id;
+    if (!runId) throw new Error('Expected a promotion run');
+    setup.modelClient.enqueue({
+      role: EnterpriseLeadAgentRole.PromotionController,
+      status: EnterpriseLeadTaskStatus.NeedsInput,
+      summary: '需要确认推广范围。',
+      outputs: {
+        controlPlan: '先确认范围。',
+        priorityTasks: ['确认范围'],
+        riskNotes: [],
+      },
+      missingInfo: [],
+      todos: [],
+      risks: [],
+      handoffContext: {},
+    });
+
+    const started = await setup.service.startWorkflow(workspace.id, runId, {
+      enabledOptionalNodes: ['sales_handoff_requested'],
+      maxConcurrency: 2,
+    });
+
+    expect(started.tasks.map(task => task.nodeId)).toContain(EnterpriseLeadAgentRole.SalesHandoff);
+    expect(started.tasks.map(task => task.nodeId)).not.toContain(
+      EnterpriseLeadAgentRole.PromotionAccountMonitoring,
+    );
+    expect(setup.store.getWorkflowStartOptions(runId)).toEqual({
+      enabledOptionalNodes: ['sales_handoff_requested'],
+      maxConcurrency: 2,
+    });
+  });
+
+  test('persists a workflow error state on the run before it is reported to the renderer', () => {
+    const setup = createService();
+    db = setup.db;
+    const workspace = setup.service.createWorkspace({
+      ...draftPayload(),
+      workspaceAgents: buildDefaultPromotionDepartmentWorkspaceAgents(),
+    });
+    const created = setup.service.createRun(workspace.id, '记录流程错误');
+    const runId = created.currentRun?.id;
+    if (!runId) throw new Error('Expected a promotion run');
+
+    const snapshot = setup.service.markRunError(workspace.id, runId, 'gateway unavailable');
+
+    expect(snapshot.currentRun).toMatchObject({
+      status: EnterpriseLeadRunStatus.Error,
+      controllerSummary: 'gateway unavailable',
+    });
+    expect(setup.store.getRun(runId)).toMatchObject({
+      status: EnterpriseLeadRunStatus.Error,
+      controllerSummary: 'gateway unavailable',
+    });
+  });
+
   test('recovers a legacy zero-task promotion run into an executing DAG', async () => {
     const setup = createService();
     db = setup.db;

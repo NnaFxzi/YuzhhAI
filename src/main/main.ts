@@ -128,6 +128,7 @@ import {
 import { buildDevServerUnavailableDataUrl } from './devServerErrorPage';
 import { buildCoworkWorkspaceAgentTeamPrompt } from './enterpriseLeadWorkspace/coworkAgentTeamBridge';
 import { registerEnterpriseLeadWorkspaceHandlers } from './enterpriseLeadWorkspace/ipcHandlers';
+import { createEnterpriseLeadWorkflowHandlerDeps } from './enterpriseLeadWorkspace/mainBridge';
 import { EnterpriseLeadWorkspaceService } from './enterpriseLeadWorkspace/service';
 import { EnterpriseLeadWorkspaceStore } from './enterpriseLeadWorkspace/store';
 import { WorkflowArtifactStore } from './enterpriseLeadWorkspace/workflowArtifactStore';
@@ -6339,8 +6340,7 @@ if (!gotTheLock) {
         getEnterpriseLeadWorkspaceService().applyPendingVersion(pendingVersionId),
       archiveRun: (workspaceId, runId) =>
         getEnterpriseLeadWorkspaceService().archiveRun(workspaceId, runId),
-      startWorkflow: (workspaceId, runId, _options) =>
-        getEnterpriseLeadWorkspaceService().runWorkflow(workspaceId, runId),
+      ...createEnterpriseLeadWorkflowHandlerDeps(getEnterpriseLeadWorkspaceService),
       resumeRun: (workspaceId, runId) =>
         getEnterpriseLeadWorkspaceService().resumeRun(workspaceId, runId),
       cancelRun: (workspaceId, runId) =>

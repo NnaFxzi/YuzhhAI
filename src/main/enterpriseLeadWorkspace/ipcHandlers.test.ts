@@ -62,6 +62,7 @@ const makeDeps = (): {
     applyPendingVersion: vi.fn(),
     archiveRun: vi.fn(),
     startWorkflow: vi.fn(),
+    markRunError: vi.fn(),
     resumeRun: vi.fn(),
     cancelRun: vi.fn(),
     approveTask: vi.fn(),
@@ -223,7 +224,45 @@ describe('registerEnterpriseLeadWorkspaceHandlers', () => {
     });
   });
 
-  test('starts a workflow in the background and returns the current run snapshot', async () => {
+  test('rejects workflow options outside the supported promotion graph and concurrency range', async () => {
+    const { deps, service } = makeDeps();
+    registerEnterpriseLeadWorkspaceHandlers(deps);
+
+    const handler = registeredHandlers.get(EnterpriseLeadWorkflowIpc.Start);
+    const event = { sender: { send: vi.fn() } };
+
+    const unsupportedNode = await handler?.(event, {
+      workspaceId: 'workspace-1',
+      runId: 'run-1',
+      options: { enabledOptionalNodes: ['any_node'], maxConcurrency: 1 },
+    });
+    const fractionalConcurrency = await handler?.(event, {
+      workspaceId: 'workspace-1',
+      runId: 'run-1',
+      options: { enabledOptionalNodes: [], maxConcurrency: 1.5 },
+    });
+    const excessiveConcurrency = await handler?.(event, {
+      workspaceId: 'workspace-1',
+      runId: 'run-1',
+      options: { enabledOptionalNodes: [], maxConcurrency: 4 },
+    });
+
+    expect(unsupportedNode).toEqual({
+      success: false,
+      error: 'Workflow optional node is invalid',
+    });
+    expect(fractionalConcurrency).toEqual({
+      success: false,
+      error: 'Workflow max concurrency must be an integer from 1 to 3',
+    });
+    expect(excessiveConcurrency).toEqual({
+      success: false,
+      error: 'Workflow max concurrency must be an integer from 1 to 3',
+    });
+    expect(service.startWorkflow).not.toHaveBeenCalled();
+  });
+
+  test('streams each new workflow event before background execution settles', async () => {
     const { deps, service } = makeDeps();
     const snapshot = {
       workspace: { id: 'workspace-1' },
@@ -236,16 +275,21 @@ describe('registerEnterpriseLeadWorkspaceHandlers', () => {
     } as EnterpriseLeadWorkspaceSnapshot;
     const options: WorkflowStartOptions = { enabledOptionalNodes: [], maxConcurrency: 2 };
     service.getSnapshot = vi.fn(() => snapshot);
-    service.startWorkflow = vi.fn(async () => snapshot);
-    const listWorkflowEvents = vi.fn(() => [
-      {
+    let resolveWorkflow: (() => void) | undefined;
+    const events: EnterpriseLeadWorkflowEvent[] = [];
+    service.startWorkflow = vi.fn(() => {
+      events.push({
         runId: 'run-1',
         sequence: 1,
         type: 'run_started',
         payload: {},
         createdAt: '2026-07-12T00:00:00.000Z',
-      } satisfies EnterpriseLeadWorkflowEvent,
-    ]);
+      });
+      return new Promise<EnterpriseLeadWorkspaceSnapshot>(resolve => {
+        resolveWorkflow = () => resolve(snapshot);
+      });
+    });
+    const listWorkflowEvents = vi.fn(() => events);
     deps.listWorkflowEvents = listWorkflowEvents;
     const send = vi.fn();
     registerEnterpriseLeadWorkspaceHandlers(deps);
@@ -256,18 +300,22 @@ describe('registerEnterpriseLeadWorkspaceHandlers', () => {
       runId: 'run-1',
       options,
     });
-    await Promise.resolve();
 
     expect(result).toEqual({ success: true, data: snapshot });
     expect(service.startWorkflow).toHaveBeenCalledWith('workspace-1', 'run-1', options);
-    expect(listWorkflowEvents).toHaveBeenCalledWith('run-1');
     expect(send).toHaveBeenCalledWith(
       EnterpriseLeadWorkflowIpc.Event,
       expect.objectContaining({ runId: 'run-1', type: 'run_started' }),
     );
+
+    resolveWorkflow?.();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(send).toHaveBeenCalledTimes(1);
   });
 
-  test('dispatches cancel, approval, and rejection controls to the workflow service', async () => {
+  test('dispatches only newly produced control events without replaying run history', async () => {
     const { deps, service } = makeDeps();
     const snapshot = {
       workspace: { id: 'workspace-1' },
@@ -281,6 +329,26 @@ describe('registerEnterpriseLeadWorkspaceHandlers', () => {
     service.cancelRun = vi.fn(async () => snapshot);
     service.approveTask = vi.fn(async () => snapshot);
     service.rejectTask = vi.fn(async () => snapshot);
+    const events: EnterpriseLeadWorkflowEvent[] = [
+      {
+        runId: 'run-1',
+        sequence: 1,
+        type: 'run_started',
+        payload: {},
+        createdAt: '2026-07-12T00:00:00.000Z',
+      },
+    ];
+    service.cancelRun = vi.fn(async () => {
+      events.push({
+        runId: 'run-1',
+        sequence: 2,
+        type: 'run_cancelled',
+        payload: {},
+        createdAt: '2026-07-12T00:00:01.000Z',
+      });
+      return snapshot;
+    });
+    deps.listWorkflowEvents = vi.fn(() => events);
     registerEnterpriseLeadWorkspaceHandlers(deps);
 
     const event = { sender: { send: vi.fn() } };
@@ -293,6 +361,11 @@ describe('registerEnterpriseLeadWorkspaceHandlers', () => {
     expect(service.cancelRun).toHaveBeenCalledWith('workspace-1', 'run-1');
     expect(service.approveTask).toHaveBeenCalledWith('workspace-1', 'run-1', 'task-1');
     expect(service.rejectTask).toHaveBeenCalledWith('workspace-1', 'run-1', 'task-1');
+    expect(event.sender.send).toHaveBeenCalledTimes(1);
+    expect(event.sender.send).toHaveBeenCalledWith(
+      EnterpriseLeadWorkflowIpc.Event,
+      expect.objectContaining({ sequence: 2, type: 'run_cancelled' }),
+    );
   });
 
   test('persists and sends a run error when background workflow execution rejects', async () => {
@@ -318,7 +391,15 @@ describe('registerEnterpriseLeadWorkspaceHandlers', () => {
     service.startWorkflow = vi.fn(async () => {
       throw new Error('gateway unavailable');
     });
-    deps.appendWorkflowEvent = vi.fn(() => runErrorEvent);
+    const callOrder: string[] = [];
+    service.markRunError = vi.fn(() => {
+      callOrder.push('persist');
+      return snapshot;
+    });
+    deps.appendWorkflowEvent = vi.fn(() => {
+      callOrder.push('event');
+      return runErrorEvent;
+    });
     const send = vi.fn();
     registerEnterpriseLeadWorkspaceHandlers(deps);
 
@@ -331,11 +412,13 @@ describe('registerEnterpriseLeadWorkspaceHandlers', () => {
     await Promise.resolve();
     await Promise.resolve();
 
+    expect(service.markRunError).toHaveBeenCalledWith('workspace-1', 'run-1', 'gateway unavailable');
     expect(deps.appendWorkflowEvent).toHaveBeenCalledWith({
       runId: 'run-1',
       type: 'run_error',
       summary: 'gateway unavailable',
     });
+    expect(callOrder).toEqual(['persist', 'event']);
     expect(send).toHaveBeenCalledWith(EnterpriseLeadWorkflowIpc.Event, runErrorEvent);
   });
 });

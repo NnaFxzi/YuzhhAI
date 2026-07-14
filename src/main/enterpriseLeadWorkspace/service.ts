@@ -53,6 +53,7 @@ import {
   normalizeWorkflowStartOptions,
   type WorkflowArtifactRef,
   WorkflowExecutionMode,
+  type WorkflowStartOptions,
   type WorkflowTaskExecutionContext,
 } from '../../shared/enterpriseLeadWorkspace/workflowContracts';
 import type { ModelClientAdapter } from '../industryPack/modelClientAdapter';
@@ -723,6 +724,13 @@ export class EnterpriseLeadWorkspaceService {
       store: this.store,
       artifactStore: this.workflowArtifactStore,
       executionAdapter: this.workflowExecutionAdapter,
+      buildWorkflowTasks: (workspaceId, startOptions) => {
+        const workspace = this.store.getWorkspace(workspaceId);
+        if (!workspace) {
+          throw new Error('Enterprise lead workspace not found');
+        }
+        return this.resolvePromotionRunTasks(workspace, startOptions);
+      },
     });
   }
 
@@ -1406,6 +1414,37 @@ export class EnterpriseLeadWorkspaceService {
     return this.getSnapshot(workspaceId, run.id);
   }
 
+  async startWorkflow(
+    workspaceId: string,
+    runId: string,
+    options: WorkflowStartOptions,
+  ): Promise<EnterpriseLeadWorkspaceSnapshot> {
+    const run = this.getRunForWorkspace(workspaceId, runId);
+    const workspace = this.store.getWorkspace(workspaceId);
+    if (!workspace) {
+      throw new Error('Enterprise lead workspace not found');
+    }
+    if (this.isPromotionWorkflowWorkspace(workspace) || this.isPromotionWorkflowRun(run)) {
+      return this.workflowOrchestrator.startRun(workspaceId, run.id, options);
+    }
+    return this.runWorkflow(workspaceId, run.id);
+  }
+
+  markRunError(
+    workspaceId: string,
+    runId: string,
+    error: string,
+  ): EnterpriseLeadWorkspaceSnapshot {
+    const run = this.getRunForWorkspace(workspaceId, runId);
+    this.store.updateRunProgress({
+      runId: run.id,
+      status: EnterpriseLeadRunStatus.Error,
+      currentRole: run.currentRole,
+      controllerSummary: error,
+    });
+    return this.getSnapshot(workspaceId, run.id);
+  }
+
   async resumeRun(workspaceId: string, runId: string): Promise<EnterpriseLeadWorkspaceSnapshot> {
     const run = this.getRunForWorkspace(workspaceId, runId);
     if (this.isPromotionWorkflowRun(run)) {
@@ -1634,12 +1673,14 @@ export class EnterpriseLeadWorkspaceService {
 
   private resolvePromotionRunTasks(
     workspace: EnterpriseLeadWorkspace,
+    startOptions = normalizeWorkflowStartOptions(),
   ): CreateEnterpriseLeadTaskInput[] {
     const agentsById = new Map(
       this.resolveEffectiveWorkspaceAgents(workspace).map(agent => [agent.id, agent]),
     );
+    const enabledOptionalNodes = new Set(startOptions.enabledOptionalNodes);
     return PROMOTION_WORKFLOW_GRAPH
-      .filter(node => !node.optional)
+      .filter(node => !node.optional || Boolean(node.enableWhen && enabledOptionalNodes.has(node.enableWhen)))
       .map(node => {
         const agent = agentsById.get(node.role);
         return {

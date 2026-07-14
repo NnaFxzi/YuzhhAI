@@ -23,6 +23,10 @@ export interface EnterpriseLeadWorkflowOrchestratorOptions {
   store: EnterpriseLeadWorkspaceStore;
   artifactStore: WorkflowArtifactStore;
   executionAdapter: WorkflowExecutionAdapter;
+  buildWorkflowTasks?: (
+    workspaceId: string,
+    options: WorkflowStartOptions,
+  ) => CreateEnterpriseLeadTaskInput[];
 }
 
 const isCompleted = (task: EnterpriseLeadAgentTask): boolean =>
@@ -51,13 +55,25 @@ export class EnterpriseLeadWorkflowOrchestrator {
     if (active) return active;
 
     this.assertRunWorkspace(workspaceId, runId);
+    const startOptions = normalizeWorkflowStartOptions(options);
     const existingTasks = this.options.store.listTasks(runId);
     if (existingTasks.length > 0) {
+      if (existingTasks.every(task => task.status === EnterpriseLeadTaskStatus.Waiting)) {
+        this.options.store.replaceUnstartedWorkflowRun(
+          runId,
+          this.resolveWorkflowTasks(workspaceId, startOptions),
+          startOptions,
+        );
+        return this.schedule(workspaceId, runId);
+      }
       return this.getSnapshot(workspaceId, runId);
     }
 
-    const startOptions = normalizeWorkflowStartOptions(options);
-    this.options.store.initializeWorkflowRun(runId, this.buildWorkflowTasks(startOptions), startOptions);
+    this.options.store.initializeWorkflowRun(
+      runId,
+      this.resolveWorkflowTasks(workspaceId, startOptions),
+      startOptions,
+    );
     this.options.artifactStore.appendEvent({ runId, type: 'run_started' });
     return this.schedule(workspaceId, runId);
   }
@@ -173,6 +189,16 @@ export class EnterpriseLeadWorkflowOrchestrator {
         .filter((taskId): taskId is string => Boolean(taskId)),
       executionMode: node.executionMode,
     }));
+  }
+
+  private resolveWorkflowTasks(
+    workspaceId: string,
+    startOptions: WorkflowStartOptions,
+  ): CreateEnterpriseLeadTaskInput[] {
+    return (
+      this.options.buildWorkflowTasks?.(workspaceId, startOptions) ??
+      this.buildWorkflowTasks(startOptions)
+    );
   }
 
   private schedule(workspaceId: string, runId: string): Promise<EnterpriseLeadWorkspaceSnapshot> {
