@@ -76,3 +76,11 @@ Feature commit: `6e8bf3c9 feat(workflow): expose promotion run control IPC`
 - Resume is a no-op for completed/cancelled runs (and rejected for archived service runs); it cannot append duplicate terminal events. Cancellation and late-failure predicates remain terminal-safe.
 - Sender/run cursor entries now clear when a stream settles normally and when its renderer is destroyed, while a new subscription primes at the current event tail to preserve real-time-only delivery.
 - Updated legacy tests that had reopened completed runs before archive, and added direct store, retry, terminal-resume, archive, and cursor-cleanup coverage.
+
+## Review-fix6
+
+- Guarded promotion artifact persistence with an authoritative SQLite active-run predicate. The legacy `RunTask` service path and orchestrator now reject a cancelled, completed, errored, or archived run before an output artifact can be inserted; the subsequent task result and event writes cannot occur after that rejection.
+- Made workflow initialization and all-waiting workflow replacement transactional. Both paths first conditionally update only active, non-archived runs, then insert/replace tasks inside the same transaction; terminal zero-task or all-waiting runs cannot gain tasks, workflow options, or `run_started` events.
+- Start and Resume IPC handlers now reject archived snapshots before priming a cursor or opening a background event stream. Background failure persistence is contained so a concurrent terminal transition cannot leave a detached promise rejection, while the existing single durable `run_error` flow remains intact.
+- Added regressions for cancellation during a promotion `RunTask` model call, direct terminal initialization/replacement, orchestrator Start against terminal zero/all-waiting runs, archived Start/Resume IPC, and concurrent-terminal failure persistence.
+- Verification: `npx vitest run --pool=forks` for `store`, `service`, `ipcHandlers`, `workflowOrchestrator`, and `workflowArtifactStore` (5 files, 147 tests) passed; `npm run compile:electron`, changed-file ESLint with `--max-warnings 0`, and `git diff --check` passed. `npx tsc --noEmit` remains blocked by the existing unrelated renderer mock type error in `src/renderer/services/enterpriseLeadWorkspace.test.ts:212`.

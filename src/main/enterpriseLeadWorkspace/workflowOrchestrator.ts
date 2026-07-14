@@ -400,7 +400,7 @@ export class EnterpriseLeadWorkflowOrchestrator {
     result: PromotionTaskResult,
   ): EnterpriseLeadAgentTaskResult {
     const evidenceIds = result.artifactRefs.flatMap(artifact => artifact.evidenceIds);
-    const artifact = this.options.artifactStore.createArtifact({
+    const artifact = this.options.artifactStore.createArtifactIfRunActive({
       runId,
       taskId: task.id,
       kind: `${task.role}_output`,

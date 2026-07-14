@@ -1,6 +1,7 @@
 import { ipcMain } from 'electron';
 
 import {
+  EnterpriseLeadRunStatus,
   EnterpriseLeadWorkflowIpc,
   EnterpriseLeadWorkspaceIpc,
 } from '../../shared/enterpriseLeadWorkspace/constants';
@@ -259,6 +260,16 @@ const fail = <T>(error: unknown): EnterpriseLeadIpcResult<T> => ({
   error: toErrorMessage(error),
 });
 
+const assertWorkflowSnapshotIsNotArchived = (snapshot: EnterpriseLeadWorkspaceSnapshot): void => {
+  const run = snapshot.currentRun;
+  if (
+    run?.status === EnterpriseLeadRunStatus.Archived ||
+    run?.archiveStatus === 'archived'
+  ) {
+    throw new Error('Enterprise lead run is archived');
+  }
+};
+
 type WorkflowEventSender = {
   send: (channel: string, payload: EnterpriseLeadWorkflowEvent) => void;
   isDestroyed?: () => boolean;
@@ -407,11 +418,15 @@ const settleWorkflowRunExecution = async (
     await runExecution.execution;
   } catch (error) {
     const message = toErrorMessage(error);
-    const result = await deps.service.markRunErrorOnce(workspaceId, runId, message);
-    if (result.transitioned && result.event) {
-      runExecution.streams.forEach(stream => {
-        if (!stream.disposed) sendWorkflowEvent(stream.sender, result.event!);
-      });
+    try {
+      const result = await deps.service.markRunErrorOnce(workspaceId, runId, message);
+      if (result.transitioned && result.event) {
+        runExecution.streams.forEach(stream => {
+          if (!stream.disposed) sendWorkflowEvent(stream.sender, result.event!);
+        });
+      }
+    } catch {
+      // A concurrent terminal transition makes failure persistence a no-op.
     }
   } finally {
     [...runExecution.streams].forEach(stream => {
@@ -758,6 +773,7 @@ export function registerEnterpriseLeadWorkspaceHandlers(
         const runId = requireNonEmptyString(input?.runId, 'Run id');
         const options = readWorkflowStartOptions(input?.options);
         const snapshot = await deps.service.getSnapshot(workspaceId, runId);
+        assertWorkflowSnapshotIsNotArchived(snapshot);
         primeWorkflowEventCursor(event.sender, runId, deps.listWorkflowEvents);
         startWorkflowEventStream(deps, event.sender, workspaceId, runId, () =>
           deps.service.startWorkflow(workspaceId, runId, options),
@@ -777,6 +793,7 @@ export function registerEnterpriseLeadWorkspaceHandlers(
         const workspaceId = requireNonEmptyString(input?.workspaceId, 'Workspace id');
         const runId = requireNonEmptyString(input?.runId, 'Run id');
         const snapshot = await deps.service.getSnapshot(workspaceId, runId);
+        assertWorkflowSnapshotIsNotArchived(snapshot);
         primeWorkflowEventCursor(event.sender, runId, deps.listWorkflowEvents);
         startWorkflowEventStream(deps, event.sender, workspaceId, runId, () =>
           deps.service.resumeRun(workspaceId, runId),

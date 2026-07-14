@@ -361,6 +361,47 @@ describe('registerEnterpriseLeadWorkspaceHandlers', () => {
     resolveWorkflow?.();
   });
 
+  test('rejects archived Start and Resume snapshots before opening workflow streams', async () => {
+    const { deps, service } = makeDeps();
+    const archivedSnapshot = {
+      workspace: { id: 'workspace-1' },
+      currentRun: {
+        id: 'run-1',
+        status: EnterpriseLeadRunStatus.Archived,
+        archiveStatus: 'archived',
+      },
+      tasks: [],
+      pendingVersions: [],
+      deliverables: [],
+      todos: [],
+      archives: [],
+    } as EnterpriseLeadWorkspaceSnapshot;
+    service.getSnapshot = vi.fn(() => archivedSnapshot);
+    const startSend = vi.fn();
+    const resumeSend = vi.fn();
+    registerEnterpriseLeadWorkspaceHandlers(deps);
+
+    const start = await registeredHandlers.get(EnterpriseLeadWorkflowIpc.Start)?.(
+      { sender: { send: startSend } },
+      {
+        workspaceId: 'workspace-1',
+        runId: 'run-1',
+        options: { enabledOptionalNodes: [], maxConcurrency: 1 },
+      },
+    );
+    const resume = await registeredHandlers.get(EnterpriseLeadWorkflowIpc.Resume)?.(
+      { sender: { send: resumeSend } },
+      { workspaceId: 'workspace-1', runId: 'run-1' },
+    );
+
+    expect(start).toEqual({ success: false, error: 'Enterprise lead run is archived' });
+    expect(resume).toEqual({ success: false, error: 'Enterprise lead run is archived' });
+    expect(service.startWorkflow).not.toHaveBeenCalled();
+    expect(service.resumeRun).not.toHaveBeenCalled();
+    expect(startSend).not.toHaveBeenCalled();
+    expect(resumeSend).not.toHaveBeenCalled();
+  });
+
   test('deduplicates Start streams for one sender and reports one rejected run error', async () => {
     const { deps, service } = makeDeps();
     const snapshot = {
@@ -408,6 +449,50 @@ describe('registerEnterpriseLeadWorkspaceHandlers', () => {
     expect(service.markRunErrorOnce).toHaveBeenCalledTimes(1);
     expect(send).toHaveBeenCalledTimes(1);
     expect(send).toHaveBeenCalledWith(EnterpriseLeadWorkflowIpc.Event, runErrorEvent);
+  });
+
+  test('contains failure persistence errors after a concurrent terminal transition', async () => {
+    const { deps, service } = makeDeps();
+    const snapshot = {
+      workspace: { id: 'workspace-1' },
+      currentRun: { id: 'run-1' },
+      tasks: [],
+      pendingVersions: [],
+      deliverables: [],
+      todos: [],
+      archives: [],
+    } as EnterpriseLeadWorkspaceSnapshot;
+    let rejectWorkflow: ((error: Error) => void) | undefined;
+    service.getSnapshot = vi.fn(() => snapshot);
+    service.startWorkflow = vi.fn(
+      () =>
+        new Promise<EnterpriseLeadWorkspaceSnapshot>((_resolve, reject) => {
+          rejectWorkflow = reject;
+        }),
+    );
+    service.markRunErrorOnce = vi.fn(() => {
+      throw new Error('Enterprise lead run is archived');
+    });
+    registerEnterpriseLeadWorkspaceHandlers(deps);
+
+    const response = await registeredHandlers.get(EnterpriseLeadWorkflowIpc.Start)?.(
+      { sender: { send: vi.fn() } },
+      {
+        workspaceId: 'workspace-1',
+        runId: 'run-1',
+        options: { enabledOptionalNodes: [], maxConcurrency: 1 },
+      },
+    );
+    rejectWorkflow?.(new Error('gateway unavailable'));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(response).toEqual({ success: true, data: snapshot });
+    expect(service.markRunErrorOnce).toHaveBeenCalledWith(
+      'workspace-1',
+      'run-1',
+      'gateway unavailable',
+    );
   });
 
   test('persists one rejected run error and notifies each live sender stream', async () => {

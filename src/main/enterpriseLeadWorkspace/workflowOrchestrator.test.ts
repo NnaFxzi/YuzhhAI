@@ -226,6 +226,45 @@ describe('EnterpriseLeadWorkflowOrchestrator', () => {
     expect(archivedSetup.artifacts.listEvents(archivedSetup.run.id)).toEqual(archivedEvents);
   });
 
+  test('does not initialize or replace terminal runs when Start is requested', async () => {
+    const zeroTaskSetup = setup();
+    const waitingTaskSetup = setup();
+    databases.push(zeroTaskSetup.database, waitingTaskSetup.database);
+
+    zeroTaskSetup.store.updateRunProgress({
+      runId: zeroTaskSetup.run.id,
+      status: EnterpriseLeadRunStatus.Completed,
+      currentRole: null,
+      controllerSummary: 'Completed before workflow initialization.',
+    });
+    waitingTaskSetup.store.initializeWorkflowRun(
+      waitingTaskSetup.run.id,
+      [{ role: EnterpriseLeadAgentRole.PromotionController, nodeId: 'controller' }],
+      { enabledOptionalNodes: [], maxConcurrency: 1 },
+    );
+    const waitingTask = waitingTaskSetup.store.listTasks(waitingTaskSetup.run.id)[0];
+    waitingTaskSetup.store.updateRunProgress({
+      runId: waitingTaskSetup.run.id,
+      status: EnterpriseLeadRunStatus.Completed,
+      currentRole: null,
+      controllerSummary: 'Completed before workflow replacement.',
+    });
+
+    await expect(
+      zeroTaskSetup.orchestrator.startRun(zeroTaskSetup.workspace.id, zeroTaskSetup.run.id),
+    ).rejects.toThrow('Enterprise lead run is terminal');
+    await expect(
+      waitingTaskSetup.orchestrator.startRun(waitingTaskSetup.workspace.id, waitingTaskSetup.run.id),
+    ).rejects.toThrow('Enterprise lead run is terminal');
+
+    expect(zeroTaskSetup.store.listTasks(zeroTaskSetup.run.id)).toEqual([]);
+    expect(zeroTaskSetup.artifacts.listEvents(zeroTaskSetup.run.id)).toEqual([]);
+    expect(waitingTaskSetup.store.listTasks(waitingTaskSetup.run.id)).toEqual([
+      expect.objectContaining({ id: waitingTask.id, status: EnterpriseLeadTaskStatus.Waiting }),
+    ]);
+    expect(waitingTaskSetup.artifacts.listEvents(waitingTaskSetup.run.id)).toEqual([]);
+  });
+
   test('retains own task artifacts after result persistence and on retry without model echo', async () => {
     const taskArtifact = {
       id: 'task-artifact',

@@ -131,6 +131,28 @@ export class WorkflowArtifactStore {
   }
 
   createArtifact(input: CreateWorkflowArtifactInput): EnterpriseLeadWorkflowArtifact {
+    return this.createArtifactUnsafe(input);
+  }
+
+  createArtifactIfRunActive(input: CreateWorkflowArtifactInput): EnterpriseLeadWorkflowArtifact {
+    const create = this.db.transaction(() => {
+      const activeRun = this.db.prepare(`
+        SELECT 1
+        FROM enterprise_lead_runs
+        WHERE id = ?
+          AND archive_status <> 'archived'
+          AND status IN (?, ?, ?, ?, ?)
+        LIMIT 1
+      `).get(input.runId, ...WorkflowRunActiveStatuses);
+      if (!activeRun) {
+        this.throwInactiveRunError(input.runId);
+      }
+      return this.createArtifactUnsafe(input);
+    });
+    return create();
+  }
+
+  private createArtifactUnsafe(input: CreateWorkflowArtifactInput): EnterpriseLeadWorkflowArtifact {
     const artifact: EnterpriseLeadWorkflowArtifact = {
       id: randomUUID(),
       runId: input.runId,
@@ -315,6 +337,22 @@ export class WorkflowArtifactStore {
       LIMIT 1
     `).get(taskId, attempt) as { id: string } | undefined;
     return row ? this.finishAttempt(row.id, { status: 'error', error }) : null;
+  }
+
+  private throwInactiveRunError(runId: string): never {
+    const run = this.db.prepare(`
+      SELECT status, archive_status as archiveStatus
+      FROM enterprise_lead_runs
+      WHERE id = ?
+      LIMIT 1
+    `).get(runId) as { status: EnterpriseLeadRunStatus; archiveStatus: string } | undefined;
+    if (!run) {
+      throw new Error('Enterprise lead run not found');
+    }
+    if (run.archiveStatus === 'archived' || run.status === EnterpriseLeadRunStatus.Archived) {
+      throw new Error('Enterprise lead run is archived');
+    }
+    throw new Error('Enterprise lead run is terminal');
   }
 
   private appendEventUnsafe(input: AppendWorkflowEventInput): EnterpriseLeadWorkflowEvent {

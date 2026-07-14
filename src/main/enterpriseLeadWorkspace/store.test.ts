@@ -1547,6 +1547,50 @@ describe('EnterpriseLeadWorkspaceStore', () => {
     });
   });
 
+  test('does not initialize or replace workflow tasks on terminal runs', () => {
+    setupStore();
+    const workspace = store.createWorkspace({
+      name: 'Workflow transition guard',
+      type: EnterpriseLeadWorkspaceType.EnterpriseLead,
+      profile,
+      extractionSources: [],
+      enabledAgentRoles: [],
+    });
+    const zeroTaskRun = store.createRun({
+      workspaceId: workspace.id,
+      userGoal: 'Do not initialize after cancellation',
+    });
+    const waitingTaskRun = store.createRun({
+      workspaceId: workspace.id,
+      userGoal: 'Do not replace after cancellation',
+      tasks: [{ role: EnterpriseLeadAgentRole.PromotionController, nodeId: 'controller' }],
+    });
+    const waitingTask = store.listTasks(waitingTaskRun.id)[0];
+
+    store.cancelWorkflowRun(zeroTaskRun.id);
+    store.cancelWorkflowRun(waitingTaskRun.id);
+
+    expect(() =>
+      store.initializeWorkflowRun(
+        zeroTaskRun.id,
+        [{ role: EnterpriseLeadAgentRole.PromotionController, nodeId: 'controller' }],
+        { enabledOptionalNodes: [], maxConcurrency: 1 },
+      ),
+    ).toThrow('Enterprise lead run is terminal');
+    expect(() =>
+      store.replaceUnstartedWorkflowRun(
+        waitingTaskRun.id,
+        [{ role: EnterpriseLeadAgentRole.PromotionDataScraping, nodeId: 'scraping' }],
+        { enabledOptionalNodes: [], maxConcurrency: 1 },
+      ),
+    ).toThrow('Enterprise lead run is terminal');
+
+    expect(store.listTasks(zeroTaskRun.id)).toEqual([]);
+    expect(store.listTasks(waitingTaskRun.id)).toEqual([
+      expect.objectContaining({ id: waitingTask.id, status: EnterpriseLeadTaskStatus.Cancelled }),
+    ]);
+  });
+
   test('migrates legacy run tables without archive columns', () => {
     db = new Database(':memory:');
     db.exec(`

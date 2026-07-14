@@ -3109,6 +3109,53 @@ describe('EnterpriseLeadWorkspaceService', () => {
     });
   });
 
+  test('promotion RunTask leaves no output artifact after cancellation during model generation', async () => {
+    const setup = createService();
+    db = setup.db;
+    const workspace = setup.service.createWorkspace({
+      ...draftPayload(),
+      workspaceAgents: buildDefaultPromotionDepartmentWorkspaceAgents(),
+    });
+    const snapshot = setup.service.createRun(workspace.id, '取消时不保存推广产物');
+    const task = snapshot.tasks.find(
+      item => item.role === EnterpriseLeadAgentRole.PromotionController,
+    );
+    if (!task || !snapshot.currentRun) {
+      throw new Error('Expected promotion controller task and current run');
+    }
+    const artifacts = new WorkflowArtifactStore(setup.db);
+    const eventsBeforeCancellation = artifacts.listEvents(snapshot.currentRun.id);
+    const pendingGeneration = setup.modelClient.enqueuePending();
+
+    const runTaskPromise = setup.service.runTask(task.id);
+    await setup.service.cancelRun(workspace.id, snapshot.currentRun.id);
+    const eventsAfterCancellation = artifacts.listEvents(snapshot.currentRun.id);
+    pendingGeneration.resolve({
+      role: EnterpriseLeadAgentRole.PromotionController,
+      status: EnterpriseLeadTaskStatus.Completed,
+      summary: 'Cancelled result must not persist.',
+      outputs: {
+        controlPlan: 'must-not-land',
+        priorityTasks: ['Do not persist'],
+        riskNotes: [],
+      },
+      missingInfo: [],
+      todos: [],
+      risks: [],
+      handoffContext: {},
+    });
+
+    await expect(runTaskPromise).rejects.toThrow('Enterprise lead run is terminal');
+    expect(artifacts.listRunArtifacts(snapshot.currentRun.id)).toEqual([]);
+    expect(artifacts.listEvents(snapshot.currentRun.id)).toEqual(eventsAfterCancellation);
+    expect(eventsAfterCancellation).not.toEqual(eventsBeforeCancellation);
+    expect(setup.store.getTask(task.id)).toMatchObject({
+      status: EnterpriseLeadTaskStatus.Cancelled,
+      outputPayload: {},
+      artifactRefs: [],
+    });
+  });
+
   test('createPendingVersionFromChat rejects if run is archived while model generation is pending', async () => {
     const setup = createService();
     db = setup.db;

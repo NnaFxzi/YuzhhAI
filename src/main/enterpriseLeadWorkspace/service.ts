@@ -1545,7 +1545,7 @@ export class EnterpriseLeadWorkspaceService {
     const result = normalizePromotionTaskResult(
       await this.workflowExecutionAdapter.execute(executionContext),
     );
-    const artifact = this.workflowArtifactStore.createArtifact({
+    const artifact = this.workflowArtifactStore.createArtifactIfRunActive({
       runId: run.id,
       taskId: taskContext.task.id,
       kind: `${taskContext.task.role}_output`,
