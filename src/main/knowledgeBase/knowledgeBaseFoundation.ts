@@ -30,6 +30,10 @@ import {
 } from './knowledgeEnrichmentService';
 import type { KnowledgeEnrichmentWorkspaceRouteSource } from './knowledgeEnrichmentTypes';
 import { KnowledgeExtractionAuthorizationStore } from './knowledgeExtractionAuthorizationStore';
+import {
+  createKnowledgeFactBatchReviewService,
+  type KnowledgeFactBatchReviewService,
+} from './knowledgeFactBatchReviewService';
 import { KnowledgeFactProjectionStore } from './knowledgeFactProjectionStore';
 import { KnowledgeFactQueryService } from './knowledgeFactQueryService';
 import { KnowledgeFactStore } from './knowledgeFactStore';
@@ -69,6 +73,7 @@ export interface KnowledgeBaseFoundation {
   factStore: KnowledgeFactStore;
   factQueryService: KnowledgeFactQueryService;
   factProjector: EnterpriseLeadKnowledgeFactProjector;
+  batchReviewService: KnowledgeFactBatchReviewService;
   authorizationStore: KnowledgeExtractionAuthorizationStore;
   trustedIndexStore: KnowledgeTrustedProfileIndexStore;
   trustedIndexingService: KnowledgeTrustedProfileIndexService;
@@ -306,6 +311,10 @@ export const createKnowledgeBaseFoundation = (
     { onTrustedRefreshCommitted: notifyTrustedRefresh },
   );
   const factQueryService = new KnowledgeFactQueryService(factStore);
+  const batchReviewService = createKnowledgeFactBatchReviewService({
+    queryService: factQueryService,
+    projector: factProjector,
+  });
   const replaceWorkspaceDocumentSource = options.replaceWorkspaceDocumentSource
     ?? ((workspaceId: string, documentId: string) =>
       contentKnowledgeVectorStore.replaceWorkspaceDocumentSource(workspaceId, documentId));
@@ -476,6 +485,7 @@ export const createKnowledgeBaseFoundation = (
     factStore,
     factQueryService,
     factProjector,
+    batchReviewService,
     authorizationStore,
     trustedIndexStore,
     trustedIndexingService,
@@ -543,6 +553,10 @@ export const createKnowledgeBaseFoundation = (
       if (shutdownPromise) return shutdownPromise;
       closing = true;
       ready = false;
+      const batchReviewShutdown = sealWorker(
+        'fact_batch_review_shutdown_failed',
+        () => batchReviewService.shutdown(),
+      );
       const enrichmentShutdown = sealWorker(
         'enrichment_shutdown_failed',
         () => enrichmentService.shutdown(),
@@ -564,6 +578,7 @@ export const createKnowledgeBaseFoundation = (
         () => documentService.shutdown(),
       );
       shutdownPromise = (async () => {
+        await batchReviewShutdown;
         await enrichmentShutdown;
         await ingestionShutdown;
         await trustedShutdown;

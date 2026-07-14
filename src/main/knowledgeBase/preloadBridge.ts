@@ -47,4 +47,8 @@ export const createKnowledgeBasePreloadBridge = (
   archiveFact: input => invokeMethod<'archiveFact'>(invoke, KnowledgeBaseIpc.ArchiveFact, input),
   getFactEvidence: input =>
     invokeMethod<'getFactEvidence'>(invoke, KnowledgeBaseIpc.GetFactEvidence, input),
+  startBatchReview: input =>
+    invokeMethod<'startBatchReview'>(invoke, KnowledgeBaseIpc.StartBatchReview, input),
+  getBatchReviewStatus: input =>
+    invokeMethod<'getBatchReviewStatus'>(invoke, KnowledgeBaseIpc.GetBatchReviewStatus, input),
 });

@@ -13,6 +13,8 @@ import type {
   KnowledgeEnrichmentSummary,
   KnowledgeExtractionAuthorizationPreparation,
   KnowledgeFactArchiveResult,
+  KnowledgeFactBatchReviewRequest,
+  KnowledgeFactBatchReviewTask,
   KnowledgeFactEvidencePageRequest,
   KnowledgeFactEvidencePageResult,
   KnowledgeFactListResult,
@@ -140,6 +142,13 @@ export const knowledgeBaseService = {
   ): Promise<KnowledgeEnrichmentSummary> => request(api => api.cancelExtraction(input)),
   listFacts: (input: KnowledgeListFactsRequest): Promise<KnowledgeFactListResult> =>
     request(api => api.listFacts(input)),
+  startBatchReview: (
+    input: KnowledgeFactBatchReviewRequest,
+  ): Promise<KnowledgeFactBatchReviewTask> => request(api => api.startBatchReview(input)),
+  getBatchReviewStatus: (
+    taskId: string,
+  ): Promise<KnowledgeFactBatchReviewTask | null> =>
+    request(api => api.getBatchReviewStatus({ taskId })),
   reviewFact: (input: KnowledgeReviewFactRequest): Promise<KnowledgeFactReviewResult> =>
     request(api => api.reviewFact(input)),
   archiveFact: (input: KnowledgeArchiveFactRequest): Promise<KnowledgeFactArchiveResult> =>

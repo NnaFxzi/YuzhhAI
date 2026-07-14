@@ -21,7 +21,7 @@ const reviewStatusKeys: Record<KnowledgeFactReviewStatusValue, string> = {
 const reviewStatuses = Object.values(KnowledgeFactReviewStatus);
 
 const controlClassName =
-  'h-9 w-full min-w-[160px] rounded-lg border border-border bg-background px-3 text-sm text-foreground shadow-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20';
+  'h-10 w-full min-w-[160px] rounded-lg border border-border bg-background px-3 text-sm text-foreground shadow-sm outline-none transition-[border-color,box-shadow,background-color] focus:border-primary focus:ring-2 focus:ring-primary/20';
 
 const labelClassName =
   'flex min-w-[160px] flex-1 flex-col gap-1.5 text-xs font-medium text-secondary';
@@ -117,6 +117,16 @@ export const WorkspaceAiKnowledgeFilters = ({
         .filter(status => selectedStatuses.has(status))
         .map(status => i18nService.t(reviewStatusKeys[status]))
         .join(', ');
+  const hasActiveFilters =
+    filters.view !== KnowledgeFactListView.Active ||
+    filters.reviewStatuses.length > 0 ||
+    filters.evidenceState !== KnowledgeFactEvidenceState.Any;
+
+  const clearFilters = (): void => {
+    onViewChange(KnowledgeFactListView.Active);
+    onReviewStatusesChange([]);
+    onEvidenceStateChange(KnowledgeFactEvidenceState.Any);
+  };
 
   const toggleReviewStatus = (status: KnowledgeFactReviewStatusValue): void => {
     const nextStatuses = new Set(filters.reviewStatuses);
@@ -143,106 +153,119 @@ export const WorkspaceAiKnowledgeFilters = ({
   return (
     <div
       data-ai-knowledge-filters
-      className="flex flex-wrap items-end gap-3"
+      className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-surface/70 p-3"
     >
-      <label className={labelClassName}>
-        <span>{i18nService.t('enterpriseAiKnowledgeViewLabel')}</span>
-        <select
-          aria-label={i18nService.t('enterpriseAiKnowledgeViewLabel')}
-          className={controlClassName}
-          value={filters.view}
-          onChange={event =>
-            onViewChange(event.currentTarget.value as KnowledgeFactListViewValue)
-          }
-        >
-          <option value={KnowledgeFactListView.Active}>
-            {i18nService.t('enterpriseAiKnowledgeViewActive')}
-          </option>
-          <option value={KnowledgeFactListView.History}>
-            {i18nService.t('enterpriseAiKnowledgeViewHistory')}
-          </option>
-        </select>
-      </label>
-
-      <div ref={reviewControlRef} className={`${labelClassName} relative`}>
-        <span id={labelId}>
-          {i18nService.t('enterpriseAiKnowledgeReviewFilterLabel')}
-        </span>
-        <button
-          ref={triggerRef}
-          type="button"
-          data-review-status-trigger
-          aria-labelledby={`${labelId} ${summaryId}`}
-          aria-haspopup="menu"
-          aria-expanded={isReviewMenuOpen}
-          aria-controls={menuId}
-          className={`${controlClassName} inline-flex items-center justify-between gap-2 text-left font-normal`}
-          onClick={toggleReviewMenu}
-        >
-          <span id={summaryId} className="truncate">
-            {reviewSummary}
-          </span>
-          <ChevronDownIcon className="h-4 w-4 shrink-0" aria-hidden="true" />
-        </button>
-        {isReviewMenuOpen ? (
-          <div
-            id={menuId}
-            role="menu"
-            aria-labelledby={labelId}
-            className="absolute left-0 top-full z-20 mt-1 min-w-full space-y-1 rounded-lg border border-border bg-surface p-1.5 shadow-lg"
+      <div className="flex min-w-0 flex-1 flex-wrap items-end gap-2">
+        <label className={labelClassName}>
+          <span>{i18nService.t('enterpriseAiKnowledgeViewLabel')}</span>
+          <select
+            aria-label={i18nService.t('enterpriseAiKnowledgeViewLabel')}
+            className={controlClassName}
+            value={filters.view}
+            onChange={event =>
+              onViewChange(event.currentTarget.value as KnowledgeFactListViewValue)
+            }
           >
-            {reviewStatuses.map((status, index) => (
-              <button
-                key={status}
-                ref={element => {
-                  menuItemRefs.current[index] = element;
-                }}
-                type="button"
-                role="menuitemcheckbox"
-                aria-checked={selectedStatuses.has(status)}
-                tabIndex={-1}
-                value={status}
-                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm font-normal text-foreground hover:bg-surface-raised focus:outline-none focus:ring-2 focus:ring-primary/20"
-                onClick={() => toggleReviewStatus(status)}
-              >
-                <span
-                  aria-hidden="true"
-                  className="grid h-4 w-4 shrink-0 place-items-center rounded border border-border bg-background text-primary"
+            <option value={KnowledgeFactListView.Active}>
+              {i18nService.t('enterpriseAiKnowledgeViewActive')}
+            </option>
+            <option value={KnowledgeFactListView.History}>
+              {i18nService.t('enterpriseAiKnowledgeViewHistory')}
+            </option>
+          </select>
+        </label>
+
+        <div ref={reviewControlRef} className={`${labelClassName} relative`}>
+          <span id={labelId}>
+            {i18nService.t('enterpriseAiKnowledgeReviewFilterLabel')}
+          </span>
+          <button
+            ref={triggerRef}
+            type="button"
+            data-review-status-trigger
+            aria-labelledby={`${labelId} ${summaryId}`}
+            aria-haspopup="menu"
+            aria-expanded={isReviewMenuOpen}
+            aria-controls={menuId}
+            className={`${controlClassName} inline-flex items-center justify-between gap-2 text-left font-normal`}
+            onClick={toggleReviewMenu}
+          >
+            <span id={summaryId} className="truncate">
+              {reviewSummary}
+            </span>
+            <ChevronDownIcon className="h-4 w-4 shrink-0" aria-hidden="true" />
+          </button>
+          {isReviewMenuOpen ? (
+            <div
+              id={menuId}
+              role="menu"
+              aria-labelledby={labelId}
+              className="absolute left-0 top-full z-20 mt-1 min-w-full space-y-1 rounded-lg border border-border bg-surface p-1.5 shadow-lg"
+            >
+              {reviewStatuses.map((status, index) => (
+                <button
+                  key={status}
+                  ref={element => {
+                    menuItemRefs.current[index] = element;
+                  }}
+                  type="button"
+                  role="menuitemcheckbox"
+                  aria-checked={selectedStatuses.has(status)}
+                  tabIndex={-1}
+                  value={status}
+                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm font-normal text-foreground hover:bg-surface-raised focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  onClick={() => toggleReviewStatus(status)}
                 >
-                  {selectedStatuses.has(status) ? (
-                    <CheckIcon className="h-3 w-3" />
-                  ) : null}
-                </span>
-                <span>{i18nService.t(reviewStatusKeys[status])}</span>
-              </button>
-            ))}
-          </div>
-        ) : null}
+                  <span
+                    aria-hidden="true"
+                    className="grid h-4 w-4 shrink-0 place-items-center rounded border border-border bg-background text-primary"
+                  >
+                    {selectedStatuses.has(status) ? (
+                      <CheckIcon className="h-3 w-3" />
+                    ) : null}
+                  </span>
+                  <span>{i18nService.t(reviewStatusKeys[status])}</span>
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </div>
+
+        <label className={labelClassName}>
+          <span>{i18nService.t('enterpriseAiKnowledgeEvidenceFilterLabel')}</span>
+          <select
+            aria-label={i18nService.t('enterpriseAiKnowledgeEvidenceFilterLabel')}
+            className={controlClassName}
+            value={filters.evidenceState}
+            onChange={event =>
+              onEvidenceStateChange(
+                event.currentTarget.value as KnowledgeFactEvidenceStateValue,
+              )
+            }
+          >
+            <option value={KnowledgeFactEvidenceState.Any}>
+              {i18nService.t('enterpriseAiKnowledgeEvidenceAny')}
+            </option>
+            <option value={KnowledgeFactEvidenceState.Active}>
+              {i18nService.t('enterpriseAiKnowledgeEvidenceActive')}
+            </option>
+            <option value={KnowledgeFactEvidenceState.Stale}>
+              {i18nService.t('enterpriseAiKnowledgeEvidenceStale')}
+            </option>
+          </select>
+        </label>
       </div>
 
-      <label className={labelClassName}>
-        <span>{i18nService.t('enterpriseAiKnowledgeEvidenceFilterLabel')}</span>
-        <select
-          aria-label={i18nService.t('enterpriseAiKnowledgeEvidenceFilterLabel')}
-          className={controlClassName}
-          value={filters.evidenceState}
-          onChange={event =>
-            onEvidenceStateChange(
-              event.currentTarget.value as KnowledgeFactEvidenceStateValue,
-            )
-          }
+      {hasActiveFilters ? (
+        <button
+          type="button"
+          data-ai-knowledge-clear-filters
+          className="h-9 shrink-0 rounded-lg px-3 text-sm font-medium text-secondary transition-colors hover:bg-surface-raised hover:text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+          onClick={clearFilters}
         >
-          <option value={KnowledgeFactEvidenceState.Any}>
-            {i18nService.t('enterpriseAiKnowledgeEvidenceAny')}
-          </option>
-          <option value={KnowledgeFactEvidenceState.Active}>
-            {i18nService.t('enterpriseAiKnowledgeEvidenceActive')}
-          </option>
-          <option value={KnowledgeFactEvidenceState.Stale}>
-            {i18nService.t('enterpriseAiKnowledgeEvidenceStale')}
-          </option>
-        </select>
-      </label>
+          {i18nService.t('clear')}
+        </button>
+      ) : null}
     </div>
   );
 };

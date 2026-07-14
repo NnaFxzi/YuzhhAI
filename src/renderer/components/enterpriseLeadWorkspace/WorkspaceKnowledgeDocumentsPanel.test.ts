@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, test, vi } from 'vitest';
@@ -25,6 +27,7 @@ import type { WorkspaceKnowledgeDocumentsState } from './useWorkspaceKnowledgeDo
 import {
   createWorkspaceKnowledgeDocumentsPanelActions,
   createWorkspaceKnowledgeExtractionDialogActions,
+  getKnowledgeDocumentStatusPopoverPlacement,
   getWorkspaceKnowledgeDocumentCount,
   WorkspaceKnowledgeDocumentsPanelView,
   WorkspaceKnowledgeExtractionIntentKind,
@@ -139,13 +142,9 @@ const renderView = (
     React.createElement(WorkspaceKnowledgeDocumentsPanelView, {
       state,
       visibility,
-      query: '',
-      statusFilter: 'all',
       pendingDeleteId: null,
       detailsOpen: true,
       onVisibilityChange: vi.fn(),
-      onQueryChange: vi.fn(),
-      onStatusFilterChange: vi.fn(),
       onUpload: vi.fn(),
       onOpen: vi.fn(),
       onDeleteRequest: vi.fn(),
@@ -372,9 +371,16 @@ describe('WorkspaceKnowledgeDocumentsPanel', () => {
     });
     const activeHtml = renderView(createState({ documents: [failed, noFailedJob, cancelled] }));
 
-    expect(activeHtml).toContain('data-retry-document-id="document-failed"');
-    expect(activeHtml).toContain('data-retry-document-id="document-cancelled"');
-    expect(activeHtml).not.toContain('data-retry-document-id="document-without-failed-job"');
+    expect(activeHtml).toContain('data-status-popover-trigger="document-parsing"');
+    expect(getDocumentRowMarkup(activeHtml, failed.id)).toContain(
+      i18nService.t('enterpriseKnowledgeDocumentStatusFailed'),
+    );
+    expect(getDocumentRowMarkup(activeHtml, cancelled.id)).toContain(
+      i18nService.t('enterpriseKnowledgeDocumentStatusPending'),
+    );
+    expect(getDocumentRowMarkup(activeHtml, noFailedJob.id)).not.toContain(
+      'data-retry-document-id=',
+    );
     expect(activeHtml).not.toContain('data-restore-document-id=');
 
     const deletedHtml = renderView(
@@ -415,10 +421,109 @@ describe('WorkspaceKnowledgeDocumentsPanel', () => {
       }),
     );
 
-    expect(html).toContain('value="64"');
+    expect(html).not.toContain('value="64"');
+    expect(html).toContain('data-status-popover-trigger="document-parsing"');
     expect(html).toContain('这是按需加载的安全正文。');
     expect(html).not.toContain('/Users/');
     expect(html).not.toContain('filePath');
+  });
+
+  test('renders compact document rows with closed status popovers', () => {
+    const running = createDocument({
+      status: KnowledgeDocumentStatus.Processing,
+      currentJob: {
+        id: 'job-running',
+        documentVersionId: 'version-a',
+        stage: KnowledgeIngestionStage.Chunking,
+        status: KnowledgeIngestionJobStatus.Running,
+        progress: 0.64,
+        errorCode: null,
+        updatedAt: '2026-07-11T02:00:00.000Z',
+      },
+      localIndex: createIndexSummary(KnowledgeDocumentIndexStatus.Indexing),
+      enrichment: createEnrichmentSummary(KnowledgeEnrichmentStatus.Running),
+    });
+    const html = renderView(createState({ documents: [running] }));
+    const row = getDocumentRowMarkup(html, running.id);
+
+    expect(html).toContain('data-testid="knowledge-document-list"');
+    expect(row).toContain('data-document-row-density="compact"');
+    expect(row).toContain('data-status-popover-trigger="document-parsing"');
+    expect(row).toContain('data-status-popover-trigger="local-index"');
+    expect(row).toContain('data-status-popover-trigger="ai-extraction"');
+    expect(row).toContain('data-extraction-icon="running"');
+    expect(row).not.toContain('data-status-popover-content');
+    expect(row).not.toContain('data-extraction-indeterminate');
+    expect(row).not.toContain(
+      i18nService.t('enterpriseKnowledgeAiExtractionRunningDescription'),
+    );
+  });
+
+  test('keeps upload as the primary document action without a status filter', () => {
+    const html = renderView(createState({ documents: [createDocument()] }));
+
+    expect(html).toContain('data-testid="knowledge-upload"');
+    expect(html).not.toContain('<select');
+    expect(html).not.toContain(i18nService.t('enterpriseKnowledgeStatusFilter'));
+  });
+
+  test('renders a compact document list body with bottom trash entry', () => {
+    const html = renderView(createState({ documents: [createDocument()] }));
+
+    expect(html).toContain('data-testid="knowledge-upload"');
+    expect(html).toContain('data-testid="knowledge-trash-entry"');
+    expect(html).not.toContain(i18nService.t('enterpriseKnowledgeFileListTitle'));
+    expect(html).not.toContain('data-document-count="1"');
+    expect(html).not.toContain('data-testid="knowledge-search-toggle"');
+    expect(html).not.toContain('data-testid="knowledge-search-input"');
+    expect(html).not.toContain(i18nService.t('enterpriseKnowledgeActiveDocuments'));
+  });
+
+  test('keeps the toolbar search-free for larger document lists', () => {
+    const html = renderView(
+      createState({
+        documents: Array.from({ length: 8 }, (_, index) =>
+          createDocument({ id: `document-${index}` }),
+        ),
+      }),
+    );
+
+    expect(html).toContain('data-testid="knowledge-upload"');
+    expect(html).not.toContain('data-testid="knowledge-search-toggle"');
+    expect(html).not.toContain('data-testid="knowledge-search-input"');
+  });
+
+  test('places an open status popover above a trigger near the viewport bottom', () => {
+    expect(
+      getKnowledgeDocumentStatusPopoverPlacement(
+        { top: 740, bottom: 772, left: 1180, right: 1212, width: 32, height: 32 },
+        { width: 320, height: 240 },
+        { width: 1280, height: 800 },
+      ),
+    ).toEqual({ placement: 'above', top: 492, left: 892 });
+  });
+
+  test('keeps the status details outside the scrolling document row', () => {
+    const source = fs.readFileSync(
+      new URL('./WorkspaceKnowledgeDocumentsPanel.tsx', import.meta.url),
+      'utf8',
+    );
+
+    expect(source).toContain('createPortal');
+    expect(source).toContain('data-status-popover-portal');
+    expect(source).toContain('position: \'fixed\'');
+  });
+
+  test('keeps the initial AI extraction action visible beside the closed status popover', () => {
+    const document = createDocument({
+      localIndex: createIndexSummary(KnowledgeDocumentIndexStatus.Indexed),
+    });
+    const html = renderView(createState({ documents: [document] }));
+    const row = getDocumentRowMarkup(html, document.id);
+
+    expect(row).toContain(`data-prepare-extraction-document-id="${document.id}"`);
+    expect(row).toContain(i18nService.t('enterpriseKnowledgeExtractAiKnowledge'));
+    expect(row).not.toContain('data-status-popover-content="ai-extraction"');
   });
 
   test.each([
@@ -478,56 +583,35 @@ describe('WorkspaceKnowledgeDocumentsPanel', () => {
     });
     const html = renderView(createState({ documents: [document] }));
 
-    expect(html).toContain(`data-retry-local-index-document-id="${document.id}"`);
+    expect(html).toContain('data-status-popover-trigger="local-index"');
+    expect(html).toContain(i18nService.t('enterpriseKnowledgeLocalIndexStatusFailed'));
+    expect(html).not.toContain(`data-retry-local-index-document-id="${document.id}"`);
     expect(html).not.toContain(`data-retry-document-id="${document.id}"`);
     expect(html).not.toContain('/private/path');
     expect(html).not.toContain('SQLITE_BUSY');
   });
 
-  test('announces a failed local-index state while keeping retry outside the live region', () => {
+  test('keeps failed local-index details out of the compact row until opened', () => {
     const document = createDocument({
       localIndex: createIndexSummary(KnowledgeDocumentIndexStatus.Failed),
     });
     const html = renderView(createState({ documents: [document] }));
-    const liveRegionStart = html.indexOf('role="status"');
-    const liveRegionEnd = html.indexOf('</span><button', liveRegionStart);
-    const failedStatusStart = html.indexOf(
-      i18nService.t('enterpriseKnowledgeLocalIndexStatusFailed'),
-      liveRegionStart,
-    );
-    const retryButtonStart = html.indexOf('data-retry-local-index-document-id');
-
-    expect(liveRegionStart).toBeGreaterThanOrEqual(0);
-    expect(html).toContain('aria-live="polite"');
-    expect(html).toContain('aria-atomic="true"');
-    expect(failedStatusStart).toBeGreaterThan(liveRegionStart);
-    expect(failedStatusStart).toBeLessThan(liveRegionEnd);
-    expect(liveRegionEnd).toBeGreaterThan(liveRegionStart);
-    expect(retryButtonStart).toBeGreaterThan(liveRegionEnd);
+    expect(html).toContain('data-status-popover-trigger="local-index"');
+    expect(html).toContain('aria-label="本地搜索索引 · 建立失败"');
+    expect(html).not.toContain('data-status-popover-content="local-index"');
+    expect(html).not.toContain('data-retry-local-index-document-id');
   });
 
-  test('keeps indexed status and chunk count inside the live region', () => {
+  test('keeps indexed status and chunk count in the closed local-index popover', () => {
     const document = createDocument({
       localIndex: createIndexSummary(KnowledgeDocumentIndexStatus.Indexed, { chunkCount: 7 }),
     });
     const html = renderView(createState({ documents: [document] }));
-    const liveRegionStart = html.indexOf('role="status"');
-    const liveRegionEnd = html.indexOf('</span></span>', liveRegionStart);
-    const indexedStatusStart = html.indexOf(
-      i18nService.t('enterpriseKnowledgeLocalIndexStatusIndexed'),
-      liveRegionStart,
-    );
-    const chunkCountStart = html.indexOf(
+    expect(html).toContain('aria-label="本地搜索索引 · 已就绪"');
+    expect(html).not.toContain(
       i18nService.t('enterpriseKnowledgeLocalIndexChunkCount').replace('{count}', '7'),
-      liveRegionStart,
     );
-
-    expect(liveRegionStart).toBeGreaterThanOrEqual(0);
-    expect(liveRegionEnd).toBeGreaterThan(liveRegionStart);
-    expect(indexedStatusStart).toBeGreaterThan(liveRegionStart);
-    expect(indexedStatusStart).toBeLessThan(liveRegionEnd);
-    expect(chunkCountStart).toBeGreaterThan(indexedStatusStart);
-    expect(chunkCountStart).toBeLessThan(liveRegionEnd);
+    expect(html).not.toContain('data-status-popover-content="local-index"');
   });
 
   test('local-index retry does not report a workspace projection change', async () => {
@@ -654,29 +738,28 @@ describe('WorkspaceKnowledgeDocumentsPanel', () => {
     expect(html.match(/data-knowledge-state="document-parsing"/g)).toHaveLength(5);
     expect(html.match(/data-knowledge-state="local-index"/g)).toHaveLength(5);
     expect(html.match(/data-knowledge-state="ai-extraction"/g)).toHaveLength(5);
-    expect(html).toContain('data-prepare-extraction-document-id="document-a"');
+    expect(html).toContain('data-status-popover-trigger="ai-extraction"');
     expect(getDocumentRowMarkup(html, 'document-failed-extraction')).toContain(
-      'data-extraction-action="retry"',
+      'data-extraction-icon="attention"',
     );
     expect(getDocumentRowMarkup(html, 'document-cancelled-extraction')).toContain(
-      'data-extraction-action="retry"',
+      'data-extraction-icon="attention"',
     );
     expect(getDocumentRowMarkup(html, 'document-running')).toContain(
-      'data-extraction-action="cancel"',
+      'data-extraction-icon="running"',
     );
     expect(getDocumentRowMarkup(html, 'document-queued')).toContain(
-      'data-extraction-action="cancel"',
+      'data-extraction-icon="queued"',
     );
     const runningHtml = getDocumentRowMarkup(html, 'document-running');
     expect(runningHtml).toContain(
-      i18nService.t('enterpriseKnowledgeAiExtractionRunningTitle'),
+      i18nService.t('enterpriseKnowledgeAiExtractionStatusRunning'),
     );
-    expect(runningHtml).toContain(
+    expect(runningHtml).not.toContain(
       i18nService.t('enterpriseKnowledgeAiExtractionRunningDescription'),
     );
     expect(runningHtml).not.toContain('data-extraction-status-label');
-    expect(html).not.toContain('data-prepare-extraction-document-id="document-running"');
-    expect(html).not.toContain('data-retry-extraction-document-id="document-running"');
+    expect(html).not.toContain('data-status-popover-content="ai-extraction"');
   });
 
   test('keeps terminal AI state visible beside parsing failure and hides AI controls in trash', () => {
@@ -716,7 +799,7 @@ describe('WorkspaceKnowledgeDocumentsPanel', () => {
     const html = renderView(createState({ documents: [createDocument()] }));
 
     expect(html).toContain('[content-visibility:auto]');
-    expect(html).toContain('[contain-intrinsic-size:auto_160px]');
+    expect(html).toContain('[contain-intrinsic-size:auto_72px]');
   });
 
   test.each([
@@ -728,7 +811,9 @@ describe('WorkspaceKnowledgeDocumentsPanel', () => {
       localIndex: createIndexSummary(KnowledgeDocumentIndexStatus.Indexed, { chunkCount: 7 }),
     });
 
-    expect(renderView(createState({ documents: [document] }))).toContain(expected);
+    const html = renderView(createState({ documents: [document] }));
+    expect(html).not.toContain(expected);
+    expect(html).toContain('data-status-popover-trigger="local-index"');
   });
 
   test('clears old detail content and shows a loading state for the next document', () => {

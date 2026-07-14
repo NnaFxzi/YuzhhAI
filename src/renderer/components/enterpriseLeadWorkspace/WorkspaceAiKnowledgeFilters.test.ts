@@ -567,7 +567,7 @@ describe('WorkspaceAiKnowledgeFilters', () => {
     expect(html).toContain('data-review-status-trigger');
     expect(html).not.toContain('<select multiple');
     expect((html.match(/<select/g) ?? [])).toHaveLength(2);
-    expect((html.match(/<select[^>]*class="[^"]*h-9/g) ?? [])).toHaveLength(2);
+    expect((html.match(/<select[^>]*class="[^"]*h-10/g) ?? [])).toHaveLength(2);
     expect(html).toContain('enterpriseAiKnowledgeReviewFilterAll');
     expect(html).toContain('aria-haspopup="menu"');
     expect(html).toContain('aria-expanded="false"');
@@ -594,6 +594,69 @@ describe('WorkspaceAiKnowledgeFilters', () => {
     expect(selectedHtml.indexOf('enterpriseAiKnowledgeStatusPending')).toBeLessThan(
       selectedHtml.indexOf('enterpriseAiKnowledgeStatusConfirmed'),
     );
+  });
+
+  test('shows clear filters only when a non-default filter is active', () => {
+    expect(renderFilters()).not.toContain('data-ai-knowledge-clear-filters');
+    expect(
+      renderFilters({
+        filters: {
+          ...defaultProps.filters,
+          view: KnowledgeFactListView.History,
+          evidenceState: KnowledgeFactEvidenceState.Stale,
+        },
+      }),
+    ).toContain('data-ai-knowledge-clear-filters');
+  });
+
+  test('clears the view, review status, and evidence filters together', async () => {
+    vi.spyOn(i18nService, 't').mockImplementation(key => key);
+    const { restore } = installFakeDom();
+    const { createRoot } = await import('react-dom/client');
+    const container = document.createElement('div');
+    const root = createRoot(container);
+    const onViewChange = vi.fn();
+    const onReviewStatusesChange = vi.fn();
+    const onEvidenceStateChange = vi.fn();
+
+    try {
+      await React.act(async () => {
+        root.render(
+          React.createElement(WorkspaceAiKnowledgeFilters, {
+            ...defaultProps,
+            filters: {
+              view: KnowledgeFactListView.History,
+              reviewStatuses: [KnowledgeFactReviewStatus.Pending],
+              evidenceState: KnowledgeFactEvidenceState.Stale,
+            },
+            onViewChange,
+            onReviewStatusesChange,
+            onEvidenceStateChange,
+          }),
+        );
+        await Promise.resolve();
+      });
+
+      const clearButton = findByAttribute(
+        container as unknown as FakeDomNode,
+        'data-ai-knowledge-clear-filters',
+      );
+      expect(clearButton).not.toBeNull();
+
+      await React.act(async () => {
+        clearButton?.click();
+        await Promise.resolve();
+      });
+
+      expect(onViewChange).toHaveBeenCalledWith(KnowledgeFactListView.Active);
+      expect(onReviewStatusesChange).toHaveBeenCalledWith([]);
+      expect(onEvidenceStateChange).toHaveBeenCalledWith(
+        KnowledgeFactEvidenceState.Any,
+      );
+    } finally {
+      root.unmount();
+      restore();
+    }
   });
 
   test('emits explicitly selected review statuses in enum order', async () => {

@@ -4,6 +4,7 @@ import {
   KnowledgeBaseIpc,
   KnowledgeDocumentVisibility,
   KnowledgeFactArchiveProjectionDecision,
+  KnowledgeFactBatchAction,
   KnowledgeFactEvidenceState,
   KnowledgeFactListView,
   KnowledgeFactReviewDecision,
@@ -112,6 +113,20 @@ describe('createKnowledgeBasePreloadBridge', () => {
       cursor: 'cursor-b',
       limit: 10,
     };
+    const startBatchReviewInput = {
+      workspaceId: 'workspace-a',
+      action: KnowledgeFactBatchAction.Reject,
+      selection: {
+        kind: 'matching_filters' as const,
+        filters: {
+          view: KnowledgeFactListView.Active,
+          reviewStatuses: [KnowledgeFactReviewStatus.Pending],
+          evidenceState: KnowledgeFactEvidenceState.Active,
+        },
+      },
+      reason: 'Needs correction',
+    };
+    const getBatchReviewStatusInput = { taskId: 'task-a' };
     const cases = [
       {
         channel: KnowledgeBaseIpc.RetryLocalIndex,
@@ -185,6 +200,18 @@ describe('createKnowledgeBasePreloadBridge', () => {
         input: getFactEvidenceInput,
         call: () => bridge.getFactEvidence(getFactEvidenceInput),
       },
+      {
+        channel: KnowledgeBaseIpc.StartBatchReview,
+        expectedKeys: ['workspaceId', 'action', 'selection', 'reason'],
+        input: startBatchReviewInput,
+        call: () => bridge.startBatchReview(startBatchReviewInput),
+      },
+      {
+        channel: KnowledgeBaseIpc.GetBatchReviewStatus,
+        expectedKeys: ['taskId'],
+        input: getBatchReviewStatusInput,
+        call: () => bridge.getBatchReviewStatus(getBatchReviewStatusInput),
+      },
     ];
 
     for (const testCase of cases) {
@@ -214,6 +241,7 @@ describe('createKnowledgeBasePreloadBridge', () => {
         'cancelExtraction',
         'deleteDocument',
         'getDocumentDetails',
+        'getBatchReviewStatus',
         'getFactEvidence',
         'importSelection',
         'listDocuments',
@@ -226,6 +254,7 @@ describe('createKnowledgeBasePreloadBridge', () => {
         'retryLocalIndex',
         'reviewFact',
         'selectFiles',
+        'startBatchReview',
       ].sort(),
     );
     expect(bridge).not.toHaveProperty('wake');

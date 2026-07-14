@@ -689,6 +689,50 @@ describe('WorkspaceAiKnowledgePanelView', () => {
     expect((html.match(/data-maintain-company/g) ?? [])).toHaveLength(1);
   });
 
+  test('renders review-workbench summary and semantic status treatments', () => {
+    vi.spyOn(i18nService, 't').mockImplementation(key => key);
+
+    const html = renderView({
+      rows: [
+        {
+          kind: 'normalized_fact',
+          fact: fact({ reviewStatus: KnowledgeFactReviewStatus.Pending }),
+        },
+        {
+          kind: 'normalized_fact',
+          fact: fact({
+            id: 'confirmed-fact',
+            reviewStatus: KnowledgeFactReviewStatus.Confirmed,
+          }),
+        },
+        {
+          kind: 'normalized_fact',
+          fact: fact({
+            id: 'rejected-fact',
+            reviewStatus: KnowledgeFactReviewStatus.Rejected,
+          }),
+        },
+        {
+          kind: 'normalized_fact',
+          fact: fact({
+            id: 'archived-fact',
+            reviewStatus: KnowledgeFactReviewStatus.Confirmed,
+            archivedAt: '2026-07-13T01:00:00.000Z',
+          }),
+        },
+      ],
+    });
+
+    expect(html).toContain('data-ai-knowledge-review-summary');
+    expect(html).toContain('data-ai-knowledge-pending-count="1"');
+    expect(html).toContain('sticky');
+    expect(html).toContain('border-l-amber-400');
+    expect(html).toContain('border-amber-200');
+    expect(html).toContain('border-emerald-200');
+    expect(html).toContain('border-red-200');
+    expect(html).toContain('bg-slate-100');
+  });
+
   test('renders normalized-only and legacy-only tables with textual status, source, and evidence meaning', () => {
     vi.spyOn(i18nService, 't').mockImplementation(key => key);
     const archived = fact({

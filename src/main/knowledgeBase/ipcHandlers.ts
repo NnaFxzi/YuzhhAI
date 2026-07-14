@@ -4,6 +4,7 @@ import type { IpcMainInvokeEvent } from 'electron';
 import { ipcMain } from 'electron';
 
 import {
+  KNOWLEDGE_FACT_BATCH_REJECT_REASON_MAX_CHARS,
   KNOWLEDGE_FACT_EVIDENCE_PAGE_MAX_LIMIT,
   KNOWLEDGE_FACT_LIST_MAX_LIMIT,
   KNOWLEDGE_MAX_SELECTION_FILES,
@@ -11,6 +12,7 @@ import {
   KnowledgeBaseIpc,
   KnowledgeDocumentVisibility,
   KnowledgeFactArchiveProjectionDecision,
+  KnowledgeFactBatchAction,
   KnowledgeFactEvidenceState,
   KnowledgeFactListView,
   KnowledgeFactReviewDecision,
@@ -23,6 +25,8 @@ import type {
   KnowledgeCancelExtractionRequest,
   KnowledgeDocumentDetailsRequest,
   KnowledgeDocumentRevisionRequest,
+  KnowledgeFactBatchReviewRequest,
+  KnowledgeFactBatchReviewStatusRequest,
   KnowledgeFactEvidencePageRequest,
   KnowledgeImportSelectionRequest,
   KnowledgeListDocumentsRequest,
@@ -72,6 +76,7 @@ export interface KnowledgeBaseHandlerDeps {
     | 'authorizationStore'
     | 'documentService'
     | 'enrichmentService'
+    | 'batchReviewService'
     | 'factProjector'
     | 'factQueryService'
     | 'selectionTokenStore'
@@ -244,6 +249,21 @@ const requireFactReviewStatuses = (value: unknown): KnowledgeFactReviewStatus[] 
     return invalidRequest();
   }
   return statuses;
+};
+
+const canonicalizeFactReviewStatuses = (
+  value: unknown,
+): KnowledgeFactReviewStatus[] => {
+  const statuses = requireDenseOwnDataArray(value, 0, 3, requireFactReviewStatus);
+  if (new Set(statuses).size !== statuses.length) {
+    return invalidRequest();
+  }
+  const requested = new Set(statuses);
+  return [
+    KnowledgeFactReviewStatus.Pending,
+    KnowledgeFactReviewStatus.Confirmed,
+    KnowledgeFactReviewStatus.Rejected,
+  ].filter(status => requested.has(status));
 };
 
 const requireBoolean = (value: unknown): boolean => {
@@ -478,6 +498,100 @@ const readFactEvidenceInput = (value: unknown): KnowledgeFactEvidencePageRequest
   };
 };
 
+const readBatchReviewFactIds = (
+  value: unknown,
+): KnowledgeFactBatchReviewRequest['selection'] => {
+  const items = requireDenseOwnDataArray(value, 1, 10_000, item => {
+    const input = requireRecord(item, ['factId', 'expectedRevision']);
+    return {
+      factId: requireString(input.factId),
+      expectedRevision: requireRevision(input.expectedRevision),
+    };
+  });
+  return { kind: 'fact_ids', items };
+};
+
+const readBatchReviewFilters = (
+  value: unknown,
+): Extract<KnowledgeFactBatchReviewRequest['selection'], { kind: 'matching_filters' }>['filters'] => {
+  const input = requireRecord(value, ['view', 'reviewStatuses', 'evidenceState']);
+  const view = hasOwn(input, 'view') ? requireFactListView(input.view) : undefined;
+  const reviewStatuses = hasOwn(input, 'reviewStatuses')
+    ? canonicalizeFactReviewStatuses(input.reviewStatuses)
+    : undefined;
+  const evidenceState = hasOwn(input, 'evidenceState')
+    ? requireFactEvidenceState(input.evidenceState)
+    : undefined;
+  return {
+    ...(view === undefined ? {} : { view }),
+    ...(reviewStatuses === undefined ? {} : { reviewStatuses }),
+    ...(evidenceState === undefined ? {} : { evidenceState }),
+  };
+};
+
+const readBatchReviewSelection = (
+  value: unknown,
+): KnowledgeFactBatchReviewRequest['selection'] => {
+  const input = requireRecord(value, ['kind', 'items', 'filters']);
+  if (input.kind === 'fact_ids') {
+    if (hasOwn(input, 'filters')) {
+      return invalidRequest();
+    }
+    return readBatchReviewFactIds(input.items);
+  }
+  if (input.kind === 'matching_filters') {
+    if (hasOwn(input, 'items')) {
+      return invalidRequest();
+    }
+    return {
+      kind: 'matching_filters',
+      filters: readBatchReviewFilters(input.filters),
+    };
+  }
+  return invalidRequest();
+};
+
+const readBatchReviewInput = (value: unknown): KnowledgeFactBatchReviewRequest => {
+  const input = requireRecord(value, ['workspaceId', 'action', 'selection', 'reason']);
+  const workspaceId = requireString(input.workspaceId);
+  const selection = readBatchReviewSelection(input.selection);
+
+  if (input.action === KnowledgeFactBatchAction.Reject) {
+    if (!hasOwn(input, 'reason')) {
+      return invalidRequest();
+    }
+    const reason = requireString(input.reason);
+    if (reason.length > KNOWLEDGE_FACT_BATCH_REJECT_REASON_MAX_CHARS) {
+      return invalidRequest();
+    }
+    return {
+      workspaceId,
+      action: input.action,
+      selection,
+      reason,
+    };
+  }
+  if (
+    input.action !== KnowledgeFactBatchAction.Confirm
+    && input.action !== KnowledgeFactBatchAction.Archive
+  ) {
+    return invalidRequest();
+  }
+  if (hasOwn(input, 'reason')) {
+    return invalidRequest();
+  }
+  return {
+    workspaceId,
+    action: input.action,
+    selection,
+  };
+};
+
+const readBatchReviewStatusInput = (value: unknown): KnowledgeFactBatchReviewStatusRequest => {
+  const input = requireRecord(value, ['taskId']);
+  return { taskId: requireString(input.taskId) };
+};
+
 const persistenceFailureIpcError = (): KnowledgeBaseIpcError => {
   console.error('[KnowledgeBase]', { code: 'ipc_operation_failed' });
   return { code: KnowledgeBaseErrorCodes.PersistenceFailed };
@@ -667,6 +781,14 @@ export const registerKnowledgeBaseHandlers = (deps: KnowledgeBaseHandlerDeps): v
   ipcMain.handle(KnowledgeBaseIpc.GetFactEvidence, async (_event, input: unknown) =>
     invokeWhenReady(() => deps.foundation.factQueryService.getFactEvidence(
       readFactEvidenceInput(input),
+    )),
+  );
+  ipcMain.handle(KnowledgeBaseIpc.StartBatchReview, async (_event, input: unknown) =>
+    invokeWhenReady(() => deps.foundation.batchReviewService.start(readBatchReviewInput(input))),
+  );
+  ipcMain.handle(KnowledgeBaseIpc.GetBatchReviewStatus, async (_event, input: unknown) =>
+    invokeWhenReady(() => deps.foundation.batchReviewService.getStatus(
+      readBatchReviewStatusInput(input).taskId,
     )),
   );
 };

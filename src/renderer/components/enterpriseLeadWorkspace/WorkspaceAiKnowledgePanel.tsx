@@ -52,6 +52,18 @@ const reviewStatusKeys: Record<KnowledgeFactReviewStatusValue, string> = {
   [KnowledgeFactReviewStatus.Rejected]: 'enterpriseAiKnowledgeStatusRejected',
 };
 
+const reviewStatusClassNames: Record<KnowledgeFactReviewStatusValue, string> = {
+  [KnowledgeFactReviewStatus.Pending]:
+    'border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-400/30 dark:bg-amber-400/10 dark:text-amber-200',
+  [KnowledgeFactReviewStatus.Confirmed]:
+    'border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-400/30 dark:bg-emerald-400/10 dark:text-emerald-200',
+  [KnowledgeFactReviewStatus.Rejected]:
+    'border-red-200 bg-red-50 text-red-800 dark:border-red-400/30 dark:bg-red-400/10 dark:text-red-200',
+};
+
+const archivedStatusClassName =
+  'border-slate-200 bg-slate-100 text-slate-600 dark:border-slate-600 dark:bg-slate-700/50 dark:text-slate-300';
+
 const sourceKindKeys: Record<KnowledgeFactSourceKindValue, string> = {
   [KnowledgeFactSourceKind.Extracted]: 'enterpriseAiKnowledgeSourceExtracted',
   [KnowledgeFactSourceKind.Manual]: 'enterpriseAiKnowledgeSourceManual',
@@ -239,7 +251,7 @@ export const WorkspaceAiKnowledgePanelView = (
   const table = props.rows.length > 0 ? (
     <div
       data-ai-knowledge-table-scroll
-      className="overflow-x-auto rounded-xl border border-border"
+      className="overflow-x-auto rounded-xl border border-border bg-background shadow-sm"
     >
       <table className="w-full min-w-[1040px] table-fixed border-collapse text-left text-sm">
         <caption className="sr-only">
@@ -247,13 +259,13 @@ export const WorkspaceAiKnowledgePanelView = (
         </caption>
         <colgroup>
           <col className="w-[150px]" />
-          <col className="w-[300px]" />
+          <col className="w-[360px]" />
           <col className="w-[120px]" />
           <col className="w-[120px]" />
-          <col className="w-[190px]" />
+          <col className="w-[210px]" />
           <col className="w-[260px]" />
         </colgroup>
-        <thead className="bg-surface-raised text-xs font-medium text-secondary">
+        <thead className="sticky top-0 z-10 bg-surface-raised/95 text-xs font-semibold text-secondary backdrop-blur">
           <tr>
             <th scope="col" className="px-4 py-3">
               {i18nService.t('enterpriseAiKnowledgeColumnDomain')}
@@ -299,7 +311,9 @@ export const WorkspaceAiKnowledgePanelView = (
                 data-normalized-fact-id={row.fact.id}
                 className="align-top transition-colors hover:bg-surface-raised/50"
               >
-                <td className="px-4 py-3">
+                <td
+                  className={`border-l-2 px-4 py-3 ${isPending ? 'border-l-amber-400' : 'border-l-transparent'}`}
+                >
                   <span className="inline-flex rounded-full bg-surface-raised px-2.5 py-1 text-xs font-medium text-secondary">
                     {i18nService.t(domainKeys[row.fact.domain])}
                   </span>
@@ -331,7 +345,14 @@ export const WorkspaceAiKnowledgePanelView = (
                 <td className="px-4 py-3">
                   <span
                     data-knowledge-status-pill
-                    className="inline-flex rounded-full border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground"
+                    data-knowledge-review-status={
+                      row.fact.archivedAt ? 'archived' : row.fact.reviewStatus
+                    }
+                    className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-medium ${
+                      row.fact.archivedAt
+                        ? archivedStatusClassName
+                        : reviewStatusClassNames[row.fact.reviewStatus]
+                    }`}
                   >
                     {i18nService.t(getReviewStatusKey(row.fact))}
                   </span>
@@ -341,12 +362,12 @@ export const WorkspaceAiKnowledgePanelView = (
                 </td>
                 <td className="px-4 py-3">
                   <div className="space-y-2">
-                    <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-secondary">
-                      <span>
+                    <div className="flex flex-wrap gap-1.5 text-xs text-secondary">
+                      <span className="rounded-md bg-surface-raised/70 px-2 py-1">
                         {i18nService.t('enterpriseAiKnowledgeEvidenceActive')}{' '}
                         {row.fact.activeEvidenceCount}
                       </span>
-                      <span>
+                      <span className="rounded-md bg-surface-raised/70 px-2 py-1">
                         {i18nService.t('enterpriseAiKnowledgeEvidenceStale')}{' '}
                         {row.fact.staleEvidenceCount}
                       </span>
@@ -367,7 +388,7 @@ export const WorkspaceAiKnowledgePanelView = (
                   </div>
                 </td>
                 <td className="px-4 py-3">
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex flex-wrap gap-2 lg:justify-end">
                     {isPending ? (
                       <>
                         <button
@@ -438,7 +459,7 @@ export const WorkspaceAiKnowledgePanelView = (
                 data-legacy-profile-id={row.item.id}
                 className="align-top transition-colors hover:bg-surface-raised/50"
               >
-                <td className="px-4 py-3">
+                <td className="border-l-2 border-l-transparent px-4 py-3">
                   <span className="inline-flex rounded-full bg-surface-raised px-2.5 py-1 text-xs font-medium text-secondary">
                     {i18nService.t(domainKeys[row.item.domain])}
                   </span>
@@ -470,7 +491,8 @@ export const WorkspaceAiKnowledgePanelView = (
                 <td className="px-4 py-3">
                   <span
                     data-knowledge-status-pill
-                    className="inline-flex rounded-full border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground"
+                    data-knowledge-review-status="confirmed"
+                    className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-medium ${reviewStatusClassNames[KnowledgeFactReviewStatus.Confirmed]}`}
                   >
                     {i18nService.t('enterpriseAiKnowledgeStatusConfirmed')}{' '}
                     {i18nService.t('enterpriseAiKnowledgeLegacyReadOnly')}
@@ -517,8 +539,25 @@ export const WorkspaceAiKnowledgePanelView = (
         data-ai-knowledge-panel-scroll
         aria-hidden={isBackgroundInert ? true : undefined}
         {...(isBackgroundInert ? { inert: '' } : {})}
-        className={`min-h-0 flex-1 space-y-4 overflow-y-auto ${isBackgroundInert ? 'pointer-events-none' : ''}`}
+        className={`min-h-0 flex-1 space-y-4 overflow-y-auto p-4 sm:p-5 ${isBackgroundInert ? 'pointer-events-none' : ''}`}
       >
+      <div
+        data-ai-knowledge-review-summary
+        className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200/70 bg-amber-50/70 px-4 py-3 dark:border-amber-400/20 dark:bg-amber-400/5"
+      >
+        <div className="flex items-center gap-2">
+          <span aria-hidden="true" className="h-2 w-2 rounded-full bg-amber-500" />
+          <span className="text-sm font-semibold text-foreground">
+            {i18nService.t('enterpriseAiKnowledgeStatusPending')}
+          </span>
+          <span
+            data-ai-knowledge-pending-count={props.metrics.activePendingCount}
+            className="rounded-full bg-amber-500 px-2 py-0.5 text-xs font-semibold text-white"
+          >
+            {props.metrics.activePendingCount}
+          </span>
+        </div>
+      </div>
       <WorkspaceAiKnowledgeFilters
         filters={props.filters}
         onViewChange={props.onViewChange}
@@ -530,12 +569,16 @@ export const WorkspaceAiKnowledgePanelView = (
           role="status"
           aria-live="polite"
           aria-label={i18nService.t('enterpriseAiKnowledgeLoadingStatus')}
+          className="rounded-xl border border-dashed border-border bg-surface/50 px-4 py-8 text-center text-sm text-secondary"
         >
           {i18nService.t('enterpriseAiKnowledgeLoading')}
         </p>
       ) : null}
       {props.errorCode ? (
-        <div role="alert" className="space-y-2">
+        <div
+          role="alert"
+          className="rounded-xl border border-dashed border-red-200 bg-red-50/60 px-4 py-6 text-center text-sm text-red-700 dark:border-red-400/30 dark:bg-red-400/5 dark:text-red-300"
+        >
           <p>{i18nService.t('enterpriseAiKnowledgeLoadFailed')}</p>
           <button
             type="button"
@@ -548,7 +591,7 @@ export const WorkspaceAiKnowledgePanelView = (
         </div>
       ) : null}
       {!props.isInitialLoading && !props.errorCode && props.rows.length === 0 ? (
-        <p>
+        <p className="rounded-xl border border-dashed border-border bg-surface/50 px-4 py-8 text-center text-sm text-secondary">
           {i18nService.t(
             props.filters.view === KnowledgeFactListView.Active
               ? 'enterpriseAiKnowledgeEmptyActive'
@@ -570,12 +613,18 @@ export const WorkspaceAiKnowledgePanelView = (
         </p>
       ) : null}
       {props.evidenceErrorCode && props.evidence.expandedFactId === null ? (
-        <p role="alert">
+        <p
+          role="alert"
+          className="rounded-lg border border-amber-200 bg-amber-50/60 px-3 py-2 text-sm text-amber-800 dark:border-amber-400/30 dark:bg-amber-400/5 dark:text-amber-200"
+        >
           {i18nService.t('enterpriseAiKnowledgeEvidenceStateConflict')}
         </p>
       ) : null}
       {props.partialErrorCode ? (
-        <div role="alert" className="space-y-2">
+        <div
+          role="alert"
+          className="rounded-xl border border-dashed border-amber-200 bg-amber-50/60 px-4 py-6 text-center text-sm text-amber-800 dark:border-amber-400/30 dark:bg-amber-400/5 dark:text-amber-200"
+        >
           <p>{i18nService.t('enterpriseAiKnowledgePartialLoadFailed')}</p>
           <button
             type="button"
@@ -593,6 +642,7 @@ export const WorkspaceAiKnowledgePanelView = (
           data-load-more
           disabled={props.isInitialLoading || props.isLoadingMore}
           aria-label={i18nService.t('enterpriseAiKnowledgeLoadMore')}
+          className="mx-auto block rounded-lg border border-border bg-background px-4 py-2 text-sm font-medium text-secondary transition-colors hover:bg-surface-raised hover:text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-50"
           onClick={props.onLoadMore}
         >
           {i18nService.t(
@@ -603,7 +653,9 @@ export const WorkspaceAiKnowledgePanelView = (
         </button>
       ) : null}
       {props.rows.length > 0 && props.nextCursor === null ? (
-        <p>{i18nService.t('enterpriseAiKnowledgeEndOfList')}</p>
+        <p className="text-center text-xs text-tertiary">
+          {i18nService.t('enterpriseAiKnowledgeEndOfList')}
+        </p>
       ) : null}
       </div>
       <WorkspaceKnowledgeFactEvidenceDrawer

@@ -138,6 +138,35 @@ export const KnowledgeFactReviewDecision = {
 export type KnowledgeFactReviewDecision =
   (typeof KnowledgeFactReviewDecision)[keyof typeof KnowledgeFactReviewDecision];
 
+export const KnowledgeFactBatchAction = {
+  Confirm: 'confirm',
+  Reject: 'reject',
+  Archive: 'archive',
+} as const;
+export type KnowledgeFactBatchAction =
+  (typeof KnowledgeFactBatchAction)[keyof typeof KnowledgeFactBatchAction];
+
+export const KnowledgeFactBatchTaskStatus = {
+  Queued: 'queued',
+  Running: 'running',
+  Completed: 'completed',
+  Failed: 'failed',
+} as const;
+export type KnowledgeFactBatchTaskStatus =
+  (typeof KnowledgeFactBatchTaskStatus)[keyof typeof KnowledgeFactBatchTaskStatus];
+
+export const KnowledgeFactBatchSkipReason = {
+  NoActiveEvidence: 'no_active_evidence',
+  RevisionConflict: 'revision_conflict',
+  ProjectionConflict: 'projection_conflict',
+  AlreadyProcessed: 'already_processed',
+  NotFound: 'not_found',
+} as const;
+export type KnowledgeFactBatchSkipReason =
+  (typeof KnowledgeFactBatchSkipReason)[keyof typeof KnowledgeFactBatchSkipReason];
+
+export const KNOWLEDGE_FACT_BATCH_REJECT_REASON_MAX_CHARS = 240;
+
 export const KnowledgeFactArchiveProjectionDecision = {
   KeepCurrent: 'keep_current',
   RemoveCurrent: 'remove_current',
@@ -296,6 +325,8 @@ export const KnowledgeBaseIpc = {
   ReviewFact: 'knowledgeBase:facts:review',
   ArchiveFact: 'knowledgeBase:facts:archive',
   GetFactEvidence: 'knowledgeBase:facts:getEvidence',
+  StartBatchReview: 'knowledgeBase:facts:batchReview:start',
+  GetBatchReviewStatus: 'knowledgeBase:facts:batchReview:getStatus',
 } as const;
 export type KnowledgeBaseIpc = (typeof KnowledgeBaseIpc)[keyof typeof KnowledgeBaseIpc];
 

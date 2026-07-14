@@ -544,7 +544,7 @@ export interface WorkspaceAiKnowledgeController {
   retryInitial: () => Promise<void>;
   loadMore: () => Promise<void>;
   retryPartial: () => Promise<void>;
-  refreshAfterMutation: () => Promise<void>;
+  refreshAfterMutation: () => Promise<WorkspaceAiKnowledgeRow[]>;
   reviewFact: (
     fact: KnowledgeFactSummary,
     decision: KnowledgeFactReviewDecisionValue,
@@ -1249,13 +1249,14 @@ export const createWorkspaceAiKnowledgeController = ({
     );
   };
 
-  const requestRefresh = async (): Promise<void> => {
+  const requestRefresh = async (): Promise<WorkspaceAiKnowledgeRow[]> => {
     if (disposed) {
-      return;
+      return [];
     }
     dispatch({ type: WorkspaceAiKnowledgeActionType.RefreshRequested });
     void drainTrailingRefresh();
     await waitForFactIdle();
+    return snapshot.rows;
   };
 
   const isOwnedWorkspaceContext = (
@@ -2283,7 +2284,9 @@ export const createWorkspaceAiKnowledgeController = ({
         metricsListeners.delete(listener);
       };
     },
-    retryInitial: requestRefresh,
+    retryInitial: async () => {
+      await requestRefresh();
+    },
     loadMore: async () => {
       const cursor = state.nextCursor;
       await startAppendRequest(cursor);

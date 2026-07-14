@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 import {
+  KNOWLEDGE_FACT_BATCH_REJECT_REASON_MAX_CHARS,
   KNOWLEDGE_FACT_EVIDENCE_PAGE_MAX_LIMIT,
   KNOWLEDGE_FACT_LIST_MAX_LIMIT,
   KnowledgeBaseErrorCode,
@@ -10,6 +11,8 @@ import {
   KnowledgeDocumentVisibility,
   KnowledgeEnrichmentStatus,
   KnowledgeFactArchiveProjectionDecision,
+  KnowledgeFactBatchAction,
+  KnowledgeFactBatchTaskStatus,
   KnowledgeFactDomain,
   KnowledgeFactEvidenceState,
   KnowledgeFactListView,
@@ -252,6 +255,26 @@ const makeDeps = () => {
       rejectFact: vi.fn(),
       archiveFact: vi.fn(),
     },
+    batchReviewService: {
+      start: vi.fn(() => ({
+        taskId: 'batch-task-1',
+        workspaceId: 'workspace-a',
+        action: KnowledgeFactBatchAction.Confirm,
+        status: KnowledgeFactBatchTaskStatus.Queued,
+        totalCount: 0,
+        processedCount: 0,
+        successCount: 0,
+        skippedCount: 0,
+        failedCount: 0,
+        skippedByReason: {},
+        details: [],
+        createdAt: '2026-07-14T00:00:00.000Z',
+        startedAt: null,
+        updatedAt: '2026-07-14T00:00:00.000Z',
+        completedAt: null,
+      })),
+      getStatus: vi.fn(() => null),
+    },
   };
   const showOpenDialog = vi.fn(async () => ({
     canceled: false,
@@ -363,6 +386,17 @@ describe('registerKnowledgeBaseHandlers', () => {
         factId: 'fact-1',
         expectedRevision: 1,
       }),
+      invoke(KnowledgeBaseIpc.StartBatchReview, event, {
+        workspaceId: 'workspace-a',
+        action: KnowledgeFactBatchAction.Confirm,
+        selection: {
+          kind: 'fact_ids',
+          items: [{ factId: 'fact-1', expectedRevision: 1 }],
+        },
+      }),
+      invoke(KnowledgeBaseIpc.GetBatchReviewStatus, event, {
+        taskId: 'task-1',
+      }),
     ];
     const backendOperations = [
       deps.showOpenDialog,
@@ -381,13 +415,15 @@ describe('registerKnowledgeBaseHandlers', () => {
       foundation.factProjector.confirmFact,
       foundation.factProjector.archiveFact,
       foundation.factQueryService.getFactEvidence,
+      foundation.batchReviewService.start,
+      foundation.batchReviewService.getStatus,
     ];
 
     backendOperations.forEach(operation => expect(operation).not.toHaveBeenCalled());
     ready.resolve();
-    await expect(Promise.all(invocations)).resolves.toHaveLength(16);
+    await expect(Promise.all(invocations)).resolves.toHaveLength(18);
     backendOperations.forEach(operation => expect(operation).toHaveBeenCalledTimes(1));
-    expect(foundation.whenReady).toHaveBeenCalledTimes(16);
+    expect(foundation.whenReady).toHaveBeenCalledTimes(18);
   });
   test('selects files in main, binds the token to sender id, and returns no paths', async () => {
     const { deps, selectionTokenStore } = makeDeps();
@@ -817,6 +853,16 @@ describe('registerKnowledgeBaseHandlers', () => {
     [KnowledgeBaseIpc.GetFactEvidence, {
       factId: 'fact-1', expectedRevision: 1, limit: undefined,
     }],
+    [KnowledgeBaseIpc.StartBatchReview, {
+      workspaceId: 'workspace-a',
+      action: KnowledgeFactBatchAction.Confirm,
+      selection: {
+        kind: 'fact_ids',
+        items: [{ factId: 'fact-1', expectedRevision: 1 }],
+      },
+      reason: undefined,
+    }],
+    [KnowledgeBaseIpc.GetBatchReviewStatus, { taskId: undefined }],
   ])('rejects explicit undefined optional properties on %s', async (channel, input) => {
     const { deps } = makeDeps();
     registerKnowledgeBaseHandlers(deps);
@@ -1074,6 +1120,218 @@ describe('registerKnowledgeBaseHandlers', () => {
       error: { code: KnowledgeBaseErrorCode.InvalidRequest },
     });
     expect(foundation.factQueryService.getFactEvidence).not.toHaveBeenCalled();
+  });
+
+  test('routes valid batch-review fact ids input to the batch review service unchanged', async () => {
+    const { deps, foundation } = makeDeps();
+    registerKnowledgeBaseHandlers(deps);
+    const input = {
+      workspaceId: ' workspace-a ',
+      action: KnowledgeFactBatchAction.Reject,
+      selection: {
+        kind: 'fact_ids' as const,
+        items: [{ factId: ' fact-1 ', expectedRevision: Number.MAX_SAFE_INTEGER }],
+      },
+      reason: ' Needs correction ',
+    };
+
+    await expect(
+      invoke(KnowledgeBaseIpc.StartBatchReview, createEvent().event, input),
+    ).resolves.toMatchObject({ success: true });
+    expect(foundation.batchReviewService.start).toHaveBeenCalledWith({
+      workspaceId: 'workspace-a',
+      action: KnowledgeFactBatchAction.Reject,
+      selection: {
+        kind: 'fact_ids',
+        items: [{ factId: 'fact-1', expectedRevision: Number.MAX_SAFE_INTEGER }],
+      },
+      reason: 'Needs correction',
+    });
+  });
+
+  test('canonicalizes matching-filter batch review statuses using shared enum order', async () => {
+    const { deps, foundation } = makeDeps();
+    registerKnowledgeBaseHandlers(deps);
+
+    await expect(invoke(KnowledgeBaseIpc.StartBatchReview, createEvent().event, {
+      workspaceId: 'workspace-a',
+      action: KnowledgeFactBatchAction.Confirm,
+      selection: {
+        kind: 'matching_filters',
+        filters: {
+          view: KnowledgeFactListView.Active,
+          reviewStatuses: [
+            KnowledgeFactReviewStatus.Rejected,
+            KnowledgeFactReviewStatus.Pending,
+            KnowledgeFactReviewStatus.Confirmed,
+          ],
+          evidenceState: KnowledgeFactEvidenceState.Any,
+        },
+      },
+    })).resolves.toMatchObject({ success: true });
+
+    expect(foundation.batchReviewService.start).toHaveBeenCalledWith({
+      workspaceId: 'workspace-a',
+      action: KnowledgeFactBatchAction.Confirm,
+      selection: {
+        kind: 'matching_filters',
+        filters: {
+          view: KnowledgeFactListView.Active,
+          reviewStatuses: [
+            KnowledgeFactReviewStatus.Pending,
+            KnowledgeFactReviewStatus.Confirmed,
+            KnowledgeFactReviewStatus.Rejected,
+          ],
+          evidenceState: KnowledgeFactEvidenceState.Any,
+        },
+      },
+    });
+  });
+
+  test('routes valid batch-review status input to getStatus', async () => {
+    const { deps, foundation } = makeDeps();
+    registerKnowledgeBaseHandlers(deps);
+
+    await expect(invoke(KnowledgeBaseIpc.GetBatchReviewStatus, createEvent().event, {
+      taskId: ' task-1 ',
+    })).resolves.toEqual({
+      success: true,
+      data: null,
+    });
+    expect(foundation.batchReviewService.getStatus).toHaveBeenCalledWith('task-1');
+  });
+
+  test('returns a successful null status for unknown batch-review task ids', async () => {
+    const { deps, foundation } = makeDeps();
+    foundation.batchReviewService.getStatus.mockReturnValueOnce(null);
+    registerKnowledgeBaseHandlers(deps);
+
+    await expect(invoke(KnowledgeBaseIpc.GetBatchReviewStatus, createEvent().event, {
+      taskId: 'missing-task',
+    })).resolves.toEqual({
+      success: true,
+      data: null,
+    });
+  });
+
+  test.each([
+    [
+      'empty fact ids',
+      {
+        workspaceId: 'workspace-a',
+        action: KnowledgeFactBatchAction.Confirm,
+        selection: { kind: 'fact_ids', items: [] },
+      },
+    ],
+    [
+      'more than 10000 fact ids',
+      {
+        workspaceId: 'workspace-a',
+        action: KnowledgeFactBatchAction.Confirm,
+        selection: {
+          kind: 'fact_ids',
+          items: Array.from({ length: 10_001 }, (_, index) => ({
+            factId: `fact-${index + 1}`,
+            expectedRevision: 1,
+          })),
+        },
+      },
+    ],
+    [
+      'invalid revision',
+      {
+        workspaceId: 'workspace-a',
+        action: KnowledgeFactBatchAction.Confirm,
+        selection: {
+          kind: 'fact_ids',
+          items: [{ factId: 'fact-1', expectedRevision: 0 }],
+        },
+      },
+    ],
+    [
+      'unknown action',
+      {
+        workspaceId: 'workspace-a',
+        action: 'merge',
+        selection: {
+          kind: 'fact_ids',
+          items: [{ factId: 'fact-1', expectedRevision: 1 }],
+        },
+      },
+    ],
+    [
+      'unknown selection kind',
+      {
+        workspaceId: 'workspace-a',
+        action: KnowledgeFactBatchAction.Confirm,
+        selection: {
+          kind: 'all_facts',
+        },
+      },
+    ],
+    [
+      'duplicate matching-filter review statuses',
+      {
+        workspaceId: 'workspace-a',
+        action: KnowledgeFactBatchAction.Confirm,
+        selection: {
+          kind: 'matching_filters',
+          filters: {
+            reviewStatuses: [
+              KnowledgeFactReviewStatus.Pending,
+              KnowledgeFactReviewStatus.Pending,
+            ],
+          },
+        },
+      },
+    ],
+    [
+      'reject reason above maximum',
+      {
+        workspaceId: 'workspace-a',
+        action: KnowledgeFactBatchAction.Reject,
+        selection: {
+          kind: 'fact_ids',
+          items: [{ factId: 'fact-1', expectedRevision: 1 }],
+        },
+        reason: 'a'.repeat(KNOWLEDGE_FACT_BATCH_REJECT_REASON_MAX_CHARS + 1),
+      },
+    ],
+    [
+      'confirm reason is not allowed',
+      {
+        workspaceId: 'workspace-a',
+        action: KnowledgeFactBatchAction.Confirm,
+        selection: {
+          kind: 'fact_ids',
+          items: [{ factId: 'fact-1', expectedRevision: 1 }],
+        },
+        reason: 'Not allowed',
+      },
+    ],
+    [
+      'archive reason is not allowed',
+      {
+        workspaceId: 'workspace-a',
+        action: KnowledgeFactBatchAction.Archive,
+        selection: {
+          kind: 'fact_ids',
+          items: [{ factId: 'fact-1', expectedRevision: 1 }],
+        },
+        reason: 'Not allowed',
+      },
+    ],
+  ])('rejects batch-review input with %s', async (_name, input) => {
+    const { deps, foundation } = makeDeps();
+    registerKnowledgeBaseHandlers(deps);
+
+    await expect(
+      invoke(KnowledgeBaseIpc.StartBatchReview, createEvent().event, input),
+    ).resolves.toEqual({
+      success: false,
+      error: { code: KnowledgeBaseErrorCode.InvalidRequest },
+    });
+    expect(foundation.batchReviewService.start).not.toHaveBeenCalled();
   });
 
   test.each([
@@ -1602,6 +1860,18 @@ describe('registerKnowledgeBaseHandlers', () => {
     [KnowledgeBaseIpc.GetFactEvidence, {
       factId: 'fact-1', expectedRevision: 1, ownerId: 99,
     }],
+    [KnowledgeBaseIpc.StartBatchReview, {
+      workspaceId: 'workspace-a',
+      action: KnowledgeFactBatchAction.Confirm,
+      selection: {
+        kind: 'fact_ids',
+        items: [{ factId: 'fact-1', expectedRevision: 1 }],
+      },
+      ownerId: 99,
+    }],
+    [KnowledgeBaseIpc.GetBatchReviewStatus, {
+      taskId: 'task-1', ownerId: 99,
+    }],
   ])('rejects renderer owner spoofing on %s', async (channel, input) => {
     const { deps, documentService, foundation } = makeDeps();
     registerKnowledgeBaseHandlers(deps);
@@ -1620,5 +1890,7 @@ describe('registerKnowledgeBaseHandlers', () => {
     expect(foundation.factProjector.confirmFact).not.toHaveBeenCalled();
     expect(foundation.factProjector.rejectFact).not.toHaveBeenCalled();
     expect(foundation.factProjector.archiveFact).not.toHaveBeenCalled();
+    expect(foundation.batchReviewService.start).not.toHaveBeenCalled();
+    expect(foundation.batchReviewService.getStatus).not.toHaveBeenCalled();
   });
 });

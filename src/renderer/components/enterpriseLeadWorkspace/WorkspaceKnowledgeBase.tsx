@@ -49,7 +49,9 @@ import {
   type WorkspaceKnowledgeItem,
 } from './enterpriseLeadWorkspaceUi';
 import WorkspaceAiKnowledgePanel from './WorkspaceAiKnowledgePanel';
-import WorkspaceKnowledgeDocumentsPanel from './WorkspaceKnowledgeDocumentsPanel';
+import WorkspaceKnowledgeDocumentsPanel, {
+  workspaceKnowledgeUploadButtonSlotId,
+} from './WorkspaceKnowledgeDocumentsPanel';
 
 interface WorkspaceKnowledgeBaseProps {
   workspace: EnterpriseLeadWorkspace;
@@ -1622,6 +1624,7 @@ export const WorkspaceKnowledgeBase: React.FC<WorkspaceKnowledgeBaseProps> = ({
   const activeCompanyFieldConfig = getCompanyDraftFieldConfig(activeCompanyField);
   const activeCompanyValue = companyDraft[activeCompanyField];
   const activeCompanyValueCount = getCompanyDraftValueCount(activeCompanyValue);
+  const documentCount = normalizedDocumentCount ?? documentRows.length;
 
   const saveProfile = async (
     nextProfile: EnterpriseLeadWorkspaceProfile,
@@ -1920,6 +1923,7 @@ export const WorkspaceKnowledgeBase: React.FC<WorkspaceKnowledgeBaseProps> = ({
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <span id={workspaceKnowledgeUploadButtonSlotId} className="inline-flex shrink-0" />
             <button
               type="button"
               className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-background px-3 text-sm font-medium text-secondary shadow-sm transition-colors hover:bg-surface-raised hover:text-foreground"
@@ -1987,11 +1991,24 @@ export const WorkspaceKnowledgeBase: React.FC<WorkspaceKnowledgeBaseProps> = ({
         <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-border bg-background shadow-sm">
           <div className="flex flex-wrap items-start justify-between gap-4 border-b border-border px-5 py-4">
             <div className="min-w-0">
-              <h2 className="text-base font-semibold text-foreground">
-                {activeView === 'documents'
-                  ? i18nService.t('enterpriseLeadKnowledgeDocumentLibraryTitle')
-                  : i18nService.t('enterpriseLeadKnowledgeAiKnowledgeTitle')}
-              </h2>
+              <div className="flex items-center gap-2">
+                <h2 className="text-base font-semibold text-foreground">
+                  {activeView === 'documents'
+                    ? i18nService.t('enterpriseLeadKnowledgeDocumentLibraryTitle')
+                    : i18nService.t('enterpriseLeadKnowledgeAiKnowledgeTitle')}
+                </h2>
+                {activeView === 'documents' ? (
+                  <span
+                    data-document-count={documentCount}
+                    aria-label={i18nService
+                      .t('enterpriseKnowledgeFileCount')
+                      .replace('{count}', String(documentCount))}
+                    className="inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-surface-raised px-2 text-xs font-semibold text-secondary"
+                  >
+                    {documentCount}
+                  </span>
+                ) : null}
+              </div>
               <p className="mt-1 text-sm leading-6 text-secondary">
                 {activeView === 'documents'
                   ? i18nService.t('enterpriseLeadKnowledgeDocumentLibrarySubtitle')
@@ -2026,17 +2043,20 @@ export const WorkspaceKnowledgeBase: React.FC<WorkspaceKnowledgeBaseProps> = ({
             </div>
           </div>
 
-          {activeView === 'documents' ? (
-            <div className="min-h-0 flex-1">
-              <WorkspaceKnowledgeDocumentsPanel
-                workspaceId={currentWorkspace.id}
-                initialImportResult={pendingInitialImportResult}
-                onDocumentCountChange={setNormalizedDocumentCount}
-                onWorkspaceProjectionChange={handleWorkspaceProjectionChange}
-                onAiKnowledgeMetricsRefresh={handleAiKnowledgeMetricsRefresh}
-              />
-            </div>
-          ) : (
+          <div
+            className={`min-h-0 flex-1 ${activeView === 'documents' ? '' : 'hidden'}`}
+            aria-hidden={activeView !== 'documents'}
+          >
+            <WorkspaceKnowledgeDocumentsPanel
+              workspaceId={currentWorkspace.id}
+              initialImportResult={pendingInitialImportResult}
+              uploadButtonSlotId={workspaceKnowledgeUploadButtonSlotId}
+              onDocumentCountChange={setNormalizedDocumentCount}
+              onWorkspaceProjectionChange={handleWorkspaceProjectionChange}
+              onAiKnowledgeMetricsRefresh={handleAiKnowledgeMetricsRefresh}
+            />
+          </div>
+          {activeView === 'knowledge' ? (
             <div className="min-h-0 flex-1 overflow-auto">
               <WorkspaceAiKnowledgePanel
                 workspaceId={currentWorkspace.id}
@@ -2047,7 +2067,7 @@ export const WorkspaceKnowledgeBase: React.FC<WorkspaceKnowledgeBaseProps> = ({
                 onProjectionRefresh={handleAiKnowledgeProjectionRefresh}
               />
             </div>
-          )}
+          ) : null}
         </section>
       </div>
 

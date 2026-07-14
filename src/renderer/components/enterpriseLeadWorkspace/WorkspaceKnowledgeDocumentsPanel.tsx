@@ -2,20 +2,26 @@ import {
   ArrowPathIcon,
   ArrowUpTrayIcon,
   ArrowUturnLeftIcon,
+  CheckCircleIcon,
+  ClockIcon,
   DocumentTextIcon,
-  MagnifyingGlassIcon,
+  ExclamationTriangleIcon,
+  MinusCircleIcon,
+  SparklesIcon,
   TrashIcon,
   XMarkIcon,
 } from '@heroicons/react/24/outline';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 
 import {
   KnowledgeBaseErrorCode,
+  type KnowledgeDocumentIndexStatus,
   KnowledgeDocumentIndexStatus as KnowledgeDocumentIndexStatuses,
-  type KnowledgeDocumentStatus,
   KnowledgeDocumentStatus as KnowledgeDocumentStatuses,
   KnowledgeDocumentVisibility as KnowledgeDocumentVisibilities,
   type KnowledgeDocumentVisibility,
+  KnowledgeEnrichmentStatus,
   KnowledgeIngestionJobStatus,
   type KnowledgeIngestionStage,
   KnowledgeIngestionStage as KnowledgeIngestionStages,
@@ -30,12 +36,10 @@ import { i18nService } from '../../services/i18n';
 import { KnowledgeBaseServiceError } from '../../services/knowledgeBase';
 import {
   canRetryKnowledgeDocumentIndex,
-  filterKnowledgeDocuments,
   getKnowledgeDocumentErrorKey,
   getKnowledgeDocumentExtractionPresentation,
   getKnowledgeDocumentIndexStatusKey,
   getKnowledgeDocumentStatusKey,
-  type KnowledgeDocumentStatusFilter,
   summarizeKnowledgeImportBatch,
 } from './knowledgeDocumentPresentation';
 import {
@@ -50,10 +54,13 @@ export type WorkspaceProjectionChangeHandler = () => Promise<void> | void;
 export interface WorkspaceKnowledgeDocumentsPanelProps {
   workspaceId: string;
   initialImportResult?: KnowledgeImportBatchResult;
+  uploadButtonSlotId?: string;
   onDocumentCountChange?: (count: number) => void;
   onWorkspaceProjectionChange?: WorkspaceProjectionChangeHandler;
   onAiKnowledgeMetricsRefresh?: WorkspaceProjectionChangeHandler;
 }
+
+export const workspaceKnowledgeUploadButtonSlotId = 'enterprise-knowledge-upload-slot';
 
 export interface WorkspaceKnowledgeDocumentsPanelActions {
   importFiles: () => Promise<void>;
@@ -183,15 +190,6 @@ const formatUpdatedAt = (updatedAt: string): string => {
   }).format(timestamp);
 };
 
-const statusClassNames: Record<KnowledgeDocumentStatus, string> = {
-  [KnowledgeDocumentStatuses.Pending]: 'bg-slate-500/10 text-slate-700 dark:text-slate-300',
-  [KnowledgeDocumentStatuses.Processing]: 'bg-blue-500/10 text-blue-700 dark:text-blue-300',
-  [KnowledgeDocumentStatuses.Ready]: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
-  [KnowledgeDocumentStatuses.CompletedWithoutText]:
-    'bg-amber-500/10 text-amber-700 dark:text-amber-300',
-  [KnowledgeDocumentStatuses.Failed]: 'bg-red-500/10 text-red-700 dark:text-red-300',
-};
-
 const stageKeys: Record<KnowledgeIngestionStage, string> = {
   [KnowledgeIngestionStages.Queued]: 'enterpriseKnowledgeStageQueued',
   [KnowledgeIngestionStages.Parsing]: 'enterpriseKnowledgeStageParsing',
@@ -201,13 +199,336 @@ const stageKeys: Record<KnowledgeIngestionStage, string> = {
   [KnowledgeIngestionStages.FactExtraction]: 'enterpriseKnowledgeStageFactExtraction',
 };
 
-const documentStatusOptions = Object.values(KnowledgeDocumentStatuses);
 type KnowledgeFailedImportItem = Extract<KnowledgeImportItemResult, { success: false }>;
 
 const canRetryDocument = (document: KnowledgeDocumentListItem): boolean =>
   document.currentJob?.status === KnowledgeIngestionJobStatus.Cancelled ||
   (document.status === KnowledgeDocumentStatuses.Failed &&
     document.currentJob?.status === KnowledgeIngestionJobStatus.Failed);
+
+type KnowledgeDocumentStatusPopoverKind =
+  | 'document-parsing'
+  | 'local-index'
+  | 'ai-extraction';
+
+export interface KnowledgeDocumentStatusPopoverRect {
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
+  width: number;
+  height: number;
+}
+
+export interface KnowledgeDocumentStatusPopoverSize {
+  width: number;
+  height: number;
+}
+
+export interface KnowledgeDocumentStatusPopoverViewport {
+  width: number;
+  height: number;
+}
+
+export interface KnowledgeDocumentStatusPopoverPlacement {
+  placement: 'above' | 'below';
+  top: number;
+  left: number;
+}
+
+export const getKnowledgeDocumentStatusPopoverPlacement = (
+  trigger: KnowledgeDocumentStatusPopoverRect,
+  popover: KnowledgeDocumentStatusPopoverSize,
+  viewport: KnowledgeDocumentStatusPopoverViewport,
+): KnowledgeDocumentStatusPopoverPlacement => {
+  const gap = 8;
+  const margin = 12;
+  const fitsBelow = trigger.bottom + gap + popover.height <= viewport.height - margin;
+  const placement = fitsBelow ? 'below' : 'above';
+  const rawTop = fitsBelow ? trigger.bottom + gap : trigger.top - gap - popover.height;
+  const rawLeft = trigger.right - popover.width;
+  return {
+    placement,
+    top: Math.max(margin, Math.min(rawTop, viewport.height - popover.height - margin)),
+    left: Math.max(margin, Math.min(rawLeft, viewport.width - popover.width - margin)),
+  };
+};
+
+interface KnowledgeDocumentStatusPopoverProps {
+  kind: KnowledgeDocumentStatusPopoverKind;
+  label: string;
+  disabled: boolean;
+  open: boolean;
+  icon: React.ReactNode;
+  onToggle: () => void;
+  onClose: () => void;
+  children: React.ReactNode;
+}
+
+const KnowledgeDocumentStatusPopover = ({
+  kind,
+  label,
+  disabled,
+  open,
+  icon,
+  onToggle,
+  onClose,
+  children,
+}: KnowledgeDocumentStatusPopoverProps): React.ReactElement => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
+  const popoverId = `knowledge-document-status-${useId()}`;
+  const [popoverPosition, setPopoverPosition] =
+    useState<KnowledgeDocumentStatusPopoverPlacement | null>(null);
+
+  useEffect(() => {
+    if (!open) {
+      setPopoverPosition(null);
+      return undefined;
+    }
+
+    if (typeof window === 'undefined' || typeof document === 'undefined') {
+      return undefined;
+    }
+
+    const updatePosition = (): void => {
+      const trigger = triggerRef.current;
+      const popover = popoverRef.current;
+      if (!trigger || !popover) {
+        return;
+      }
+      const triggerRect = trigger.getBoundingClientRect();
+      const popoverRect = popover.getBoundingClientRect();
+      setPopoverPosition(
+        getKnowledgeDocumentStatusPopoverPlacement(
+          {
+            top: triggerRect.top,
+            right: triggerRect.right,
+            bottom: triggerRect.bottom,
+            left: triggerRect.left,
+            width: triggerRect.width,
+            height: triggerRect.height,
+          },
+          { width: popoverRect.width, height: popoverRect.height },
+          { width: window.innerWidth, height: window.innerHeight },
+        ),
+      );
+    };
+
+    updatePosition();
+    window.addEventListener('resize', updatePosition);
+    window.addEventListener('scroll', updatePosition, true);
+
+    const handlePointerDown = (event: PointerEvent): void => {
+      const target = event.target as Node;
+      if (
+        !containerRef.current?.contains(target) &&
+        !popoverRef.current?.contains(target)
+      ) {
+        onClose();
+      }
+    };
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      if (event.key !== 'Escape') {
+        return;
+      }
+      event.preventDefault();
+      onClose();
+      triggerRef.current?.focus();
+    };
+
+    document.addEventListener('pointerdown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('resize', updatePosition);
+      window.removeEventListener('scroll', updatePosition, true);
+      document.removeEventListener('pointerdown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [onClose, open]);
+
+  const portalContent =
+    open && typeof document !== 'undefined'
+      ? createPortal(
+          <div
+            ref={popoverRef}
+            id={popoverId}
+            role="dialog"
+            data-status-popover-content={kind}
+            data-status-popover-portal="true"
+            className="fixed z-[70] max-h-[min(480px,calc(100vh-24px))] w-[min(320px,calc(100vw-24px))] overflow-auto rounded-xl border border-border bg-background p-3 text-left shadow-2xl"
+            style={{
+              position: 'fixed',
+              top: popoverPosition?.top ?? 0,
+              left: popoverPosition?.left ?? 0,
+              visibility: popoverPosition ? 'visible' : 'hidden',
+            }}
+          >
+            {children}
+          </div>,
+          document.body,
+        )
+      : null;
+
+  return (
+    <div ref={containerRef} className="relative" data-knowledge-state={kind}>
+      <button
+        ref={triggerRef}
+        type="button"
+        disabled={disabled}
+        data-status-popover-trigger={kind}
+        aria-label={label}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        aria-controls={open ? popoverId : undefined}
+        title={label}
+        className={`grid h-8 w-8 place-items-center rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-primary/25 disabled:cursor-not-allowed disabled:opacity-45 ${
+          open
+            ? 'bg-primary/10 text-primary ring-1 ring-primary/30'
+            : 'text-secondary hover:bg-surface-raised hover:text-foreground'
+        }`}
+        onClick={onToggle}
+      >
+        {icon}
+        <span className="sr-only">{label}</span>
+      </button>
+      {portalContent}
+    </div>
+  );
+};
+
+const statusIconClassName = 'h-4 w-4';
+const statusIconToneClassNames = {
+  neutral: 'text-secondary',
+  info: 'text-primary',
+  success: 'text-emerald-500',
+  warning: 'text-amber-500',
+  danger: 'text-red-500',
+} as const;
+
+const getDocumentParsingIcon = (
+  document: KnowledgeDocumentListItem,
+  jobIsActive: boolean,
+): React.ReactElement => {
+  if (jobIsActive) {
+    return (
+      <ArrowPathIcon
+        aria-hidden="true"
+        className={`${statusIconClassName} animate-spin text-primary motion-reduce:animate-none`}
+      />
+    );
+  }
+  if (document.status === KnowledgeDocumentStatuses.Ready) {
+    return <CheckCircleIcon aria-hidden="true" className={`${statusIconClassName} text-emerald-500`} />;
+  }
+  if (document.status === KnowledgeDocumentStatuses.Failed) {
+    return (
+      <ExclamationTriangleIcon
+        aria-hidden="true"
+        className={`${statusIconClassName} text-red-500`}
+      />
+    );
+  }
+  if (document.status === KnowledgeDocumentStatuses.CompletedWithoutText) {
+    return (
+      <MinusCircleIcon
+        aria-hidden="true"
+        className={`${statusIconClassName} text-amber-500`}
+      />
+    );
+  }
+  return <ClockIcon aria-hidden="true" className={`${statusIconClassName} text-secondary`} />;
+};
+
+const getLocalIndexIcon = (
+  status: KnowledgeDocumentIndexStatus | null,
+): React.ReactElement => {
+  if (status === KnowledgeDocumentIndexStatuses.Indexed) {
+    return <CheckCircleIcon aria-hidden="true" className={`${statusIconClassName} text-emerald-500`} />;
+  }
+  if (status === KnowledgeDocumentIndexStatuses.Indexing) {
+    return (
+      <ArrowPathIcon
+        aria-hidden="true"
+        className={`${statusIconClassName} animate-spin text-primary motion-reduce:animate-none`}
+      />
+    );
+  }
+  if (status === KnowledgeDocumentIndexStatuses.Failed) {
+    return (
+      <ExclamationTriangleIcon
+        aria-hidden="true"
+        className={`${statusIconClassName} text-red-500`}
+      />
+    );
+  }
+  if (status === KnowledgeDocumentIndexStatuses.NotApplicable) {
+    return <MinusCircleIcon aria-hidden="true" className={`${statusIconClassName} text-secondary`} />;
+  }
+  return <ClockIcon aria-hidden="true" className={`${statusIconClassName} text-secondary`} />;
+};
+
+const getAiExtractionIcon = (
+  status: KnowledgeEnrichmentStatus | null,
+): React.ReactElement => {
+  if (status === KnowledgeEnrichmentStatus.Running) {
+    return (
+      <ArrowPathIcon
+        aria-hidden="true"
+        data-extraction-icon="running"
+        className={`${statusIconClassName} animate-spin text-primary motion-reduce:animate-none`}
+      />
+    );
+  }
+  if (status === KnowledgeEnrichmentStatus.Queued) {
+    return (
+      <ClockIcon
+        aria-hidden="true"
+        data-extraction-icon="queued"
+        className={`${statusIconClassName} text-primary`}
+      />
+    );
+  }
+  if (status === KnowledgeEnrichmentStatus.Completed) {
+    return (
+      <CheckCircleIcon
+        aria-hidden="true"
+        data-extraction-icon="completed"
+        className={`${statusIconClassName} text-emerald-500`}
+      />
+    );
+  }
+  if (status === KnowledgeEnrichmentStatus.ReviewRequired) {
+    return (
+      <ExclamationTriangleIcon
+        aria-hidden="true"
+        data-extraction-icon="review-required"
+        className={`${statusIconClassName} text-amber-500`}
+      />
+    );
+  }
+  if (
+    status === KnowledgeEnrichmentStatus.Failed ||
+    status === KnowledgeEnrichmentStatus.Cancelled ||
+    status === KnowledgeEnrichmentStatus.Stale
+  ) {
+    return (
+      <ExclamationTriangleIcon
+        aria-hidden="true"
+        data-extraction-icon="attention"
+        className={`${statusIconClassName} text-red-500`}
+      />
+    );
+  }
+  return (
+    <SparklesIcon
+      aria-hidden="true"
+      data-extraction-icon="not-started"
+      className={`${statusIconClassName} ${statusIconToneClassNames.info}`}
+    />
+  );
+};
 
 interface KnowledgeDocumentRowProps {
   document: KnowledgeDocumentListItem;
@@ -245,27 +566,45 @@ const KnowledgeDocumentRow = ({
   const progress = Math.round(Math.min(100, Math.max(0, (currentJob?.progress ?? 0) * 100)));
   const isDeleted = visibility === KnowledgeDocumentVisibilities.Deleted;
   const extraction = getKnowledgeDocumentExtractionPresentation(document);
+  const [openPopover, setOpenPopover] = useState<KnowledgeDocumentStatusPopoverKind | null>(null);
+  const parsingStatusLabel = i18nService.t(
+    isDeleted
+      ? 'enterpriseKnowledgeDocumentStatusDeleted'
+      : getKnowledgeDocumentStatusKey(document.status),
+  );
+  const parsingLabel = `${i18nService.t('enterpriseKnowledgeDocumentParsing')} · ${parsingStatusLabel}`;
+  const localIndexStatusLabel = document.localIndex
+    ? i18nService.t(getKnowledgeDocumentIndexStatusKey(document.localIndex.status))
+    : i18nService.t('enterpriseKnowledgeLocalIndexStatusNotStarted');
+  const localIndexLabel = `${i18nService.t('enterpriseKnowledgeLocalIndex')} · ${localIndexStatusLabel}`;
+  const extractionStatusLabel = i18nService.t(extraction.statusKey);
+  const extractionLabel = `${i18nService.t('enterpriseKnowledgeAiExtraction')} · ${extractionStatusLabel}`;
+  const closePopover = (): void => setOpenPopover(null);
+  const togglePopover = (kind: KnowledgeDocumentStatusPopoverKind): void => {
+    setOpenPopover(current => (current === kind ? null : kind));
+  };
 
   return (
     <article
       data-document-id={document.id}
-      className="rounded-lg border border-border bg-background p-4 shadow-sm transition-colors hover:border-primary/25 [content-visibility:auto] [contain-intrinsic-size:auto_160px]"
+      data-document-row-density="compact"
+      className="group border-b border-border/80 bg-background transition-colors last:border-b-0 hover:bg-surface-raised/45 [content-visibility:auto] [contain-intrinsic-size:auto_72px]"
     >
-      <div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
+      <div className="flex min-w-0 items-center gap-3 px-3 py-2.5 sm:px-4">
         <button
           type="button"
           disabled={disabled}
-          className="flex min-w-0 flex-1 items-start gap-3 text-left"
+          className="flex min-w-0 flex-1 items-center gap-3 text-left focus:outline-none focus:ring-2 focus:ring-primary/20"
           onClick={onOpen}
         >
-          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
             <DocumentTextIcon className="h-5 w-5" />
           </span>
           <span className="min-w-0">
-            <span className="block truncate text-sm font-semibold text-foreground">
+            <span className="block truncate text-sm font-medium text-foreground">
               {document.displayName}
             </span>
-            <span className="mt-1 block truncate text-xs text-secondary">
+            <span className="mt-0.5 block truncate text-xs text-secondary">
               {[
                 document.mimeType ?? i18nService.t('enterpriseKnowledgeFileTypeUnknown'),
                 formatFileSize(document.fileSize),
@@ -275,34 +614,154 @@ const KnowledgeDocumentRow = ({
           </span>
         </button>
 
-        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-          <span
-            data-knowledge-state="document-parsing"
-            className={`inline-flex rounded-md px-2 py-1 text-xs font-semibold ${
-              isDeleted
-                ? 'bg-slate-500/10 text-slate-700 dark:text-slate-300'
-                : statusClassNames[document.status]
-            }`}
+        <div className="flex shrink-0 items-center gap-0.5">
+          <KnowledgeDocumentStatusPopover
+            kind="document-parsing"
+            label={parsingLabel}
+            disabled={disabled}
+            open={openPopover === 'document-parsing'}
+            icon={getDocumentParsingIcon(document, jobIsActive)}
+            onToggle={() => togglePopover('document-parsing')}
+            onClose={closePopover}
           >
-            {!isDeleted ? (
-              <span className="mr-1">{i18nService.t('enterpriseKnowledgeDocumentParsing')}</span>
-            ) : null}
-            {i18nService.t(
-              isDeleted
-                ? 'enterpriseKnowledgeDocumentStatusDeleted'
-                : getKnowledgeDocumentStatusKey(document.status),
-            )}
-          </span>
+            <div className="space-y-3">
+              <div>
+                <p className="text-sm font-semibold text-foreground">
+                  {i18nService.t('enterpriseKnowledgeDocumentParsing')}
+                </p>
+                <p className="mt-1 text-xs text-secondary">{parsingStatusLabel}</p>
+              </div>
+              {currentJob ? (
+                <div className="space-y-2 rounded-lg bg-surface-raised/60 p-2.5">
+                  <div className="flex items-center justify-between gap-3 text-xs text-secondary">
+                    <span>{i18nService.t(stageKeys[currentJob.stage])}</span>
+                    <span>{formatTranslation('enterpriseKnowledgeProgress', { progress })}</span>
+                  </div>
+                  {jobIsActive ? (
+                    <progress
+                      className="h-1.5 w-full overflow-hidden rounded-full accent-primary"
+                      max={100}
+                      value={progress}
+                      aria-label={i18nService.t('enterpriseKnowledgeProcessingProgress')}
+                    />
+                  ) : null}
+                </div>
+              ) : null}
+              {canRetryDocument(document) ? (
+                <button
+                  type="button"
+                  data-retry-document-id={document.id}
+                  disabled={disabled}
+                  className="inline-flex h-8 items-center gap-1.5 rounded-md border border-primary/20 bg-primary/10 px-2.5 text-xs font-semibold text-primary disabled:opacity-45"
+                  onClick={onRetry}
+                >
+                  <ArrowPathIcon className="h-4 w-4" />
+                  {i18nService.t('enterpriseKnowledgeRetryDocument')}
+                </button>
+              ) : null}
+            </div>
+          </KnowledgeDocumentStatusPopover>
+
+          {!isDeleted ? (
+            <KnowledgeDocumentStatusPopover
+              kind="local-index"
+              label={localIndexLabel}
+              disabled={disabled}
+              open={openPopover === 'local-index'}
+              icon={getLocalIndexIcon(document.localIndex?.status ?? null)}
+              onToggle={() => togglePopover('local-index')}
+              onClose={closePopover}
+            >
+              <div className="space-y-3">
+                <div>
+                  <p className="text-sm font-semibold text-foreground">
+                    {i18nService.t('enterpriseKnowledgeLocalIndex')}
+                  </p>
+                  <p className="mt-1 text-xs text-secondary">{localIndexStatusLabel}</p>
+                </div>
+                {document.localIndex?.status === KnowledgeDocumentIndexStatuses.Indexed ? (
+                  <p className="rounded-lg bg-surface-raised/60 p-2.5 text-xs text-secondary">
+                    {formatTranslation('enterpriseKnowledgeLocalIndexChunkCount', {
+                      count: document.localIndex.chunkCount,
+                    })}
+                  </p>
+                ) : null}
+                {canRetryKnowledgeDocumentIndex(document) ? (
+                  <button
+                    type="button"
+                    data-retry-local-index-document-id={document.id}
+                    disabled={disabled}
+                    className="inline-flex h-8 items-center gap-1.5 rounded-md border border-primary/20 bg-primary/10 px-2.5 text-xs font-semibold text-primary disabled:opacity-45"
+                    onClick={onRetryLocalIndex}
+                  >
+                    <ArrowPathIcon className="h-4 w-4" />
+                    {i18nService.t('enterpriseKnowledgeRetryLocalIndex')}
+                  </button>
+                ) : null}
+              </div>
+            </KnowledgeDocumentStatusPopover>
+          ) : null}
+
+          {!isDeleted ? (
+            <KnowledgeDocumentStatusPopover
+              kind="ai-extraction"
+              label={extractionLabel}
+              disabled={isExtractionMutating}
+              open={openPopover === 'ai-extraction'}
+              icon={getAiExtractionIcon(extraction.status)}
+              onToggle={() => togglePopover('ai-extraction')}
+              onClose={closePopover}
+            >
+              <div className="space-y-3">
+                <div>
+                  <p className="text-sm font-semibold text-foreground">
+                    {i18nService.t('enterpriseKnowledgeAiExtraction')}
+                  </p>
+                  <p className="mt-1 text-xs text-secondary">{extractionStatusLabel}</p>
+                </div>
+                <WorkspaceKnowledgeExtractionStatus
+                  presentation={extraction}
+                  isMutating={isExtractionMutating}
+                  onCancel={onCancelExtraction}
+                  onRetry={onRetryExtraction}
+                />
+              </div>
+            </KnowledgeDocumentStatusPopover>
+          ) : null}
+          {!isDeleted && extraction.canPrepare ? (
+            <button
+              type="button"
+              data-prepare-extraction-document-id={document.id}
+              disabled={isExtractionMutating}
+              className="inline-flex h-8 items-center gap-1.5 rounded-md border border-primary/20 bg-primary/10 px-2.5 text-xs font-semibold text-primary transition-colors hover:bg-primary/15 disabled:cursor-not-allowed disabled:opacity-45"
+              onClick={onPrepareExtraction}
+            >
+              <SparklesIcon className="h-4 w-4" />
+              {i18nService.t(
+                extraction.showsStalePriorVersion
+                  ? 'enterpriseKnowledgeExtractCurrentVersion'
+                  : 'enterpriseKnowledgeExtractAiKnowledge',
+              )}
+            </button>
+          ) : null}
+        </div>
+
+        <div className="hidden shrink-0 text-right text-xs text-secondary md:block">
+          {formatUpdatedAt(document.updatedAt)}
+        </div>
+
+        <div className="flex shrink-0 items-center gap-1">
           {isDeleted ? (
             <button
               type="button"
               data-restore-document-id={document.id}
               disabled={disabled}
-              className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border px-2.5 text-xs font-semibold text-secondary transition-colors hover:bg-surface-raised hover:text-foreground disabled:cursor-not-allowed disabled:opacity-45"
+              aria-label={i18nService.t('enterpriseKnowledgeRestoreDocument')}
+              title={i18nService.t('enterpriseKnowledgeRestoreDocument')}
+              className="grid h-8 w-8 place-items-center rounded-md text-secondary transition-colors hover:bg-surface-raised hover:text-foreground disabled:cursor-not-allowed disabled:opacity-45"
               onClick={onRestore}
             >
               <ArrowUturnLeftIcon className="h-4 w-4" />
-              {i18nService.t('enterpriseKnowledgeRestoreDocument')}
             </button>
           ) : (
             <>
@@ -311,122 +770,29 @@ const KnowledgeDocumentRow = ({
                   type="button"
                   data-retry-document-id={document.id}
                   disabled={disabled}
-                  className="inline-flex h-8 items-center gap-1.5 rounded-md border border-primary/20 bg-primary/10 px-2.5 text-xs font-semibold text-primary transition-colors hover:bg-primary/15 disabled:cursor-not-allowed disabled:opacity-45"
+                  aria-label={i18nService.t('enterpriseKnowledgeRetryDocument')}
+                  title={i18nService.t('enterpriseKnowledgeRetryDocument')}
+                  className="grid h-8 w-8 place-items-center rounded-md text-primary transition-colors hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-45"
                   onClick={onRetry}
                 >
                   <ArrowPathIcon className="h-4 w-4" />
-                  {i18nService.t('enterpriseKnowledgeRetryDocument')}
                 </button>
               ) : null}
               <button
                 type="button"
                 data-delete-document-id={document.id}
                 disabled={disabled}
-                className="inline-flex h-8 items-center gap-1.5 rounded-md border border-red-500/20 px-2.5 text-xs font-semibold text-red-600 transition-colors hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-45 dark:text-red-300"
+                aria-label={i18nService.t('enterpriseKnowledgeDeleteDocument')}
+                title={i18nService.t('enterpriseKnowledgeDeleteDocument')}
+                className="grid h-8 w-8 place-items-center rounded-md text-red-600 transition-colors hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-45 dark:text-red-300"
                 onClick={onDeleteRequest}
               >
                 <TrashIcon className="h-4 w-4" />
-                {i18nService.t('enterpriseKnowledgeDeleteDocument')}
               </button>
             </>
           )}
         </div>
       </div>
-
-      {currentJob ? (
-        <div className="mt-3 border-t border-border/70 pt-3">
-          <div className="flex items-center justify-between gap-3 text-xs text-secondary">
-            <span>{i18nService.t(stageKeys[currentJob.stage])}</span>
-            <span>{formatTranslation('enterpriseKnowledgeProgress', { progress })}</span>
-          </div>
-          {jobIsActive ? (
-            <progress
-              className="mt-2 h-1.5 w-full overflow-hidden rounded-full accent-primary"
-              max={100}
-              value={progress}
-              aria-label={i18nService.t('enterpriseKnowledgeProcessingProgress')}
-            />
-          ) : null}
-        </div>
-      ) : null}
-
-      {!isDeleted ? (
-        <div
-          data-knowledge-state="local-index"
-          className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border/70 pt-3 text-xs"
-        >
-          <span className="font-medium text-secondary">
-            {i18nService.t('enterpriseKnowledgeLocalIndex')}
-          </span>
-          <span className="flex items-center gap-2 text-secondary">
-            <span
-              role="status"
-              aria-live="polite"
-              aria-atomic="true"
-              className="flex items-center gap-2"
-            >
-              <span>
-                {document.localIndex
-                  ? i18nService.t(getKnowledgeDocumentIndexStatusKey(document.localIndex.status))
-                  : i18nService.t('enterpriseKnowledgeLocalIndexStatusNotStarted')}
-              </span>
-              {document.localIndex?.status === KnowledgeDocumentIndexStatuses.Indexed ? (
-                <span>
-                  {formatTranslation('enterpriseKnowledgeLocalIndexChunkCount', {
-                    count: document.localIndex.chunkCount,
-                  })}
-                </span>
-              ) : null}
-            </span>
-            {canRetryKnowledgeDocumentIndex(document) ? (
-              <button
-                type="button"
-                data-retry-local-index-document-id={document.id}
-                disabled={disabled}
-                className="inline-flex h-8 items-center gap-1.5 rounded-md border border-primary/20 bg-primary/10 px-2.5 font-semibold text-primary disabled:opacity-45"
-                onClick={onRetryLocalIndex}
-              >
-                <ArrowPathIcon className="h-4 w-4" />
-                {i18nService.t('enterpriseKnowledgeRetryLocalIndex')}
-              </button>
-            ) : null}
-          </span>
-        </div>
-      ) : null}
-
-      {!isDeleted ? (
-        <div
-          data-knowledge-state="ai-extraction"
-          className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border/70 pt-3 text-xs"
-        >
-          <span className="font-medium text-secondary">
-            {i18nService.t('enterpriseKnowledgeAiExtraction')}
-          </span>
-          <div className="flex flex-wrap items-center justify-end gap-2 text-secondary">
-            <WorkspaceKnowledgeExtractionStatus
-              presentation={extraction}
-              isMutating={isExtractionMutating}
-              onCancel={onCancelExtraction}
-              onRetry={onRetryExtraction}
-            />
-            {extraction.canPrepare ? (
-              <button
-                type="button"
-                data-prepare-extraction-document-id={document.id}
-                disabled={isExtractionMutating}
-                className="h-8 rounded-md border border-primary/20 bg-primary/10 px-2.5 font-semibold text-primary disabled:opacity-45"
-                onClick={onPrepareExtraction}
-              >
-                {i18nService.t(
-                  extraction.showsStalePriorVersion
-                    ? 'enterpriseKnowledgeExtractCurrentVersion'
-                    : 'enterpriseKnowledgeExtractAiKnowledge',
-                )}
-              </button>
-            ) : null}
-          </div>
-        </div>
-      ) : null}
     </article>
   );
 };
@@ -434,13 +800,10 @@ const KnowledgeDocumentRow = ({
 export interface WorkspaceKnowledgeDocumentsPanelViewProps {
   state: WorkspaceKnowledgeDocumentsState;
   visibility: KnowledgeDocumentVisibility;
-  query: string;
-  statusFilter: KnowledgeDocumentStatusFilter;
+  uploadButtonSlotId?: string;
   pendingDeleteId: string | null;
   detailsOpen: boolean;
   onVisibilityChange: (visibility: KnowledgeDocumentVisibility) => void;
-  onQueryChange: (query: string) => void;
-  onStatusFilterChange: (status: KnowledgeDocumentStatusFilter) => void;
   onUpload: () => void;
   onOpen: (documentId: string) => void;
   onDeleteRequest: (documentId: string) => void;
@@ -459,13 +822,10 @@ export interface WorkspaceKnowledgeDocumentsPanelViewProps {
 export const WorkspaceKnowledgeDocumentsPanelView = ({
   state,
   visibility,
-  query,
-  statusFilter,
+  uploadButtonSlotId,
   pendingDeleteId,
   detailsOpen,
   onVisibilityChange,
-  onQueryChange,
-  onStatusFilterChange,
   onUpload,
   onOpen,
   onDeleteRequest,
@@ -482,7 +842,7 @@ export const WorkspaceKnowledgeDocumentsPanelView = ({
 }: WorkspaceKnowledgeDocumentsPanelViewProps): React.ReactElement => {
   const sourceRows =
     visibility === KnowledgeDocumentVisibilities.Active ? state.documents : state.deletedDocuments;
-  const rows = filterKnowledgeDocuments(sourceRows, query, statusFilter);
+  const rows = sourceRows;
   const pendingDeleteDocument = state.documents.find(document => document.id === pendingDeleteId);
   const batchSummary = state.lastImportResult
     ? summarizeKnowledgeImportBatch(state.lastImportResult)
@@ -495,86 +855,35 @@ export const WorkspaceKnowledgeDocumentsPanelView = ({
   const selectedDocument = [...state.documents, ...state.deletedDocuments].find(
     document => document.id === state.selectedDocumentId,
   );
+  const [uploadButtonSlot, setUploadButtonSlot] = useState<HTMLElement | null>(null);
+
+  useEffect(() => {
+    if (!uploadButtonSlotId || typeof document === 'undefined') {
+      setUploadButtonSlot(null);
+      return;
+    }
+    setUploadButtonSlot(document.getElementById(uploadButtonSlotId));
+  }, [uploadButtonSlotId]);
+
+  const uploadButton = (
+    <button
+      type="button"
+      data-testid="knowledge-upload"
+      disabled={state.isMutating}
+      className="inline-flex h-9 items-center gap-2 rounded-lg bg-primary px-3 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+      onClick={onUpload}
+    >
+      <ArrowUpTrayIcon className="h-4 w-4" />
+      {i18nService.t('enterpriseKnowledgeUploadFiles')}
+    </button>
+  );
+  const uploadButtonContent = uploadButtonSlot
+    ? createPortal(uploadButton, uploadButtonSlot)
+    : uploadButton;
 
   return (
     <section className="relative flex h-full min-h-0 flex-col overflow-hidden bg-background">
-      <header className="shrink-0 border-b border-border px-5 py-4">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h2 className="text-base font-semibold text-foreground">
-              {i18nService.t('enterpriseKnowledgeDocumentsTitle')}
-            </h2>
-            <p className="mt-1 text-sm leading-6 text-secondary">
-              {i18nService.t('enterpriseKnowledgeDocumentsSubtitle')}
-            </p>
-          </div>
-          <button
-            type="button"
-            data-testid="knowledge-upload"
-            disabled={state.isMutating}
-            className="inline-flex h-9 items-center gap-2 rounded-lg bg-primary px-3 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
-            onClick={onUpload}
-          >
-            <ArrowUpTrayIcon className="h-4 w-4" />
-            {i18nService.t('enterpriseKnowledgeUploadFiles')}
-          </button>
-        </div>
-
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-          <div className="inline-flex rounded-lg border border-border bg-surface p-1">
-            <button
-              type="button"
-              className={`h-8 rounded-md px-3 text-sm font-semibold transition-colors ${
-                visibility === KnowledgeDocumentVisibilities.Active
-                  ? 'bg-background text-primary shadow-sm'
-                  : 'text-secondary hover:text-foreground'
-              }`}
-              onClick={() => onVisibilityChange(KnowledgeDocumentVisibilities.Active)}
-            >
-              {i18nService.t('enterpriseKnowledgeActiveDocuments')} ({state.documents.length})
-            </button>
-            <button
-              type="button"
-              className={`h-8 rounded-md px-3 text-sm font-semibold transition-colors ${
-                visibility === KnowledgeDocumentVisibilities.Deleted
-                  ? 'bg-background text-primary shadow-sm'
-                  : 'text-secondary hover:text-foreground'
-              }`}
-              onClick={() => onVisibilityChange(KnowledgeDocumentVisibilities.Deleted)}
-            >
-              {i18nService.t('enterpriseKnowledgeDeletedDocuments')} (
-              {state.deletedDocuments.length})
-            </button>
-          </div>
-          <div className="flex min-w-[280px] flex-1 flex-wrap justify-end gap-2 sm:flex-nowrap">
-            <label className="flex h-9 min-w-[220px] flex-1 items-center gap-2 rounded-lg border border-border bg-surface px-3 text-secondary sm:max-w-md">
-              <MagnifyingGlassIcon className="h-4 w-4 shrink-0" />
-              <input
-                type="search"
-                value={query}
-                className="min-w-0 flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-tertiary"
-                placeholder={i18nService.t('enterpriseKnowledgeSearchPlaceholder')}
-                onChange={event => onQueryChange(event.target.value)}
-              />
-            </label>
-            <select
-              value={statusFilter}
-              aria-label={i18nService.t('enterpriseKnowledgeStatusFilter')}
-              className="h-9 rounded-lg border border-border bg-background px-3 text-sm text-secondary outline-none"
-              onChange={event =>
-                onStatusFilterChange(event.target.value as KnowledgeDocumentStatusFilter)
-              }
-            >
-              <option value="all">{i18nService.t('enterpriseKnowledgeStatusAll')}</option>
-              {documentStatusOptions.map(status => (
-                <option key={status} value={status}>
-                  {i18nService.t(getKnowledgeDocumentStatusKey(status))}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-      </header>
+      {uploadButtonContent}
 
       {state.error ? (
         <div
@@ -624,13 +933,16 @@ export const WorkspaceKnowledgeDocumentsPanelView = ({
         </div>
       ) : null}
 
-      <div className="min-h-0 flex-1 overflow-auto p-5">
+      <div className="min-h-0 flex-1 overflow-auto p-4 sm:p-5">
         {state.isLoading && rows.length === 0 ? (
           <div className="grid min-h-[240px] place-items-center text-sm text-secondary">
             {i18nService.t('enterpriseKnowledgeLoadingDocuments')}
           </div>
         ) : rows.length > 0 ? (
-          <div className="grid gap-3">
+          <div
+            data-testid="knowledge-document-list"
+            className="overflow-visible rounded-xl border border-border bg-background shadow-sm"
+          >
             {rows.map(document => (
               <KnowledgeDocumentRow
                 key={document.id}
@@ -664,6 +976,39 @@ export const WorkspaceKnowledgeDocumentsPanelView = ({
           </div>
         )}
       </div>
+
+      <footer className="shrink-0 border-t border-border px-5 py-2.5">
+        <button
+          type="button"
+          data-testid={
+            visibility === KnowledgeDocumentVisibilities.Active
+              ? 'knowledge-trash-entry'
+              : 'knowledge-documents-entry'
+          }
+          aria-current={visibility === KnowledgeDocumentVisibilities.Deleted ? 'page' : undefined}
+          className={`inline-flex h-8 items-center gap-2 rounded-md px-2 text-xs font-medium transition-colors ${
+            visibility === KnowledgeDocumentVisibilities.Deleted
+              ? 'bg-surface-raised text-foreground'
+              : 'text-secondary hover:bg-surface-raised hover:text-foreground'
+          }`}
+          onClick={() =>
+            onVisibilityChange(
+              visibility === KnowledgeDocumentVisibilities.Active
+                ? KnowledgeDocumentVisibilities.Deleted
+                : KnowledgeDocumentVisibilities.Active,
+            )
+          }
+        >
+          {visibility === KnowledgeDocumentVisibilities.Active ? (
+            <TrashIcon className="h-4 w-4" />
+          ) : (
+            <ArrowUturnLeftIcon className="h-4 w-4" />
+          )}
+          {visibility === KnowledgeDocumentVisibilities.Active
+            ? `${i18nService.t('enterpriseKnowledgeDeletedDocuments')} (${state.deletedDocuments.length})`
+            : i18nService.t('enterpriseKnowledgeFileListTitle')}
+        </button>
+      </footer>
 
       {details || detailsLoading ? (
         <aside
@@ -761,6 +1106,7 @@ const ignoreRejectedAction = (action: Promise<void>): void => {
 export default function WorkspaceKnowledgeDocumentsPanel({
   workspaceId,
   initialImportResult,
+  uploadButtonSlotId,
   onDocumentCountChange,
   onWorkspaceProjectionChange,
   onAiKnowledgeMetricsRefresh,
@@ -771,8 +1117,6 @@ export default function WorkspaceKnowledgeDocumentsPanel({
   const [visibility, setVisibility] = useState<KnowledgeDocumentVisibility>(
     KnowledgeDocumentVisibilities.Active,
   );
-  const [query, setQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<KnowledgeDocumentStatusFilter>('all');
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [extractionIntent, setExtractionIntent] =
@@ -805,8 +1149,6 @@ export default function WorkspaceKnowledgeDocumentsPanel({
 
   useEffect(() => {
     setVisibility(KnowledgeDocumentVisibilities.Active);
-    setQuery('');
-    setStatusFilter('all');
     setPendingDeleteId(null);
     setDetailsOpen(false);
     setExtractionIntent(null);
@@ -822,17 +1164,13 @@ export default function WorkspaceKnowledgeDocumentsPanel({
     <WorkspaceKnowledgeDocumentsPanelView
       state={state}
       visibility={visibility}
-      query={query}
-      statusFilter={statusFilter}
+      uploadButtonSlotId={uploadButtonSlotId}
       pendingDeleteId={pendingDeleteId}
       detailsOpen={detailsOpen}
       onVisibilityChange={nextVisibility => {
         setVisibility(nextVisibility);
-        setStatusFilter('all');
         setPendingDeleteId(null);
       }}
-      onQueryChange={setQuery}
-      onStatusFilterChange={setStatusFilter}
       onUpload={() => ignoreRejectedAction(actions.importFiles())}
       onOpen={documentId => {
         setDetailsOpen(true);

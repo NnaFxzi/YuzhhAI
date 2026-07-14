@@ -7,6 +7,9 @@ import type {
   KnowledgeEnrichmentPartialReason,
   KnowledgeEnrichmentStatus,
   KnowledgeFactArchiveProjectionDecision,
+  KnowledgeFactBatchAction,
+  KnowledgeFactBatchSkipReason,
+  KnowledgeFactBatchTaskStatus,
   KnowledgeFactDomain,
   KnowledgeFactEvidenceState,
   KnowledgeFactListView,
@@ -345,6 +348,55 @@ export interface KnowledgeListFactsRequest {
   limit?: number;
 }
 
+export interface KnowledgeFactBatchReviewDetail {
+  factId: string;
+  valuePreview: string | null;
+  code: string;
+  retryable: boolean;
+}
+
+export type KnowledgeFactBatchReviewSelection =
+  | {
+      kind: 'fact_ids';
+      items: Array<{ factId: string; expectedRevision: number }>;
+    }
+  | {
+      kind: 'matching_filters';
+      filters: Pick<
+        KnowledgeListFactsRequest,
+        'view' | 'reviewStatuses' | 'evidenceState'
+      >;
+    };
+
+export interface KnowledgeFactBatchReviewRequest {
+  workspaceId: string;
+  action: KnowledgeFactBatchAction;
+  selection: KnowledgeFactBatchReviewSelection;
+  reason?: string;
+}
+
+export interface KnowledgeFactBatchReviewStatusRequest {
+  taskId: string;
+}
+
+export interface KnowledgeFactBatchReviewTask {
+  taskId: string;
+  workspaceId: string;
+  action: KnowledgeFactBatchAction;
+  status: KnowledgeFactBatchTaskStatus;
+  totalCount: number;
+  processedCount: number;
+  successCount: number;
+  skippedCount: number;
+  failedCount: number;
+  skippedByReason: Partial<Record<KnowledgeFactBatchSkipReason, number>>;
+  details: KnowledgeFactBatchReviewDetail[];
+  createdAt: string;
+  startedAt: string | null;
+  updatedAt: string;
+  completedAt: string | null;
+}
+
 export interface KnowledgeFactListResult {
   items: KnowledgeFactSummary[];
   nextCursor: string | null;
@@ -437,4 +489,10 @@ export interface KnowledgeBaseRendererApi {
   getFactEvidence(
     input: KnowledgeFactEvidencePageRequest,
   ): Promise<KnowledgeBaseIpcResult<KnowledgeFactEvidencePageResult>>;
+  startBatchReview(
+    input: KnowledgeFactBatchReviewRequest,
+  ): Promise<KnowledgeBaseIpcResult<KnowledgeFactBatchReviewTask>>;
+  getBatchReviewStatus(
+    input: KnowledgeFactBatchReviewStatusRequest,
+  ): Promise<KnowledgeBaseIpcResult<KnowledgeFactBatchReviewTask | null>>;
 }

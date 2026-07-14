@@ -16,6 +16,7 @@ import {
   KNOWLEDGE_EVIDENCE_MAX_QUOTE_CHARS,
   KNOWLEDGE_EVIDENCE_PREVIEW_MAX_CHARS,
   KNOWLEDGE_EXTRACTION_AUTHORIZATION_TTL_MS,
+  KNOWLEDGE_FACT_BATCH_REJECT_REASON_MAX_CHARS,
   KNOWLEDGE_FACT_EVIDENCE_PAGE_DEFAULT_LIMIT,
   KNOWLEDGE_FACT_EVIDENCE_PAGE_MAX_LIMIT,
   KNOWLEDGE_FACT_LIST_DEFAULT_LIMIT,
@@ -46,6 +47,9 @@ import {
   KnowledgeEnrichmentPartialReason,
   KnowledgeEnrichmentStatus,
   KnowledgeFactArchiveProjectionDecision,
+  KnowledgeFactBatchAction,
+  KnowledgeFactBatchSkipReason,
+  KnowledgeFactBatchTaskStatus,
   KnowledgeFactDomain,
   KnowledgeFactDomains,
   KnowledgeFactEvidenceState,
@@ -79,6 +83,11 @@ import type {
   KnowledgeExtractionAuthorizationDescriptor,
   KnowledgeExtractionAuthorizationPreparation,
   KnowledgeFactArchiveResult,
+  KnowledgeFactBatchReviewDetail,
+  KnowledgeFactBatchReviewRequest,
+  KnowledgeFactBatchReviewSelection,
+  KnowledgeFactBatchReviewStatusRequest,
+  KnowledgeFactBatchReviewTask,
   KnowledgeFactEvidencePageRequest,
   KnowledgeFactEvidencePageResult,
   KnowledgeFactEvidenceSummary,
@@ -232,6 +241,42 @@ const reviewFactRequestKeys = {
   expectedFieldRevision: true,
 } satisfies Record<keyof KnowledgeReviewFactRequest, true>;
 
+const batchReviewDetailKeys = {
+  factId: true,
+  valuePreview: true,
+  code: true,
+  retryable: true,
+} satisfies Record<keyof KnowledgeFactBatchReviewDetail, true>;
+
+const batchReviewRequestKeys = {
+  workspaceId: true,
+  action: true,
+  selection: true,
+  reason: true,
+} satisfies Record<keyof KnowledgeFactBatchReviewRequest, true>;
+
+const batchReviewStatusRequestKeys = {
+  taskId: true,
+} satisfies Record<keyof KnowledgeFactBatchReviewStatusRequest, true>;
+
+const batchReviewTaskKeys = {
+  taskId: true,
+  workspaceId: true,
+  action: true,
+  status: true,
+  totalCount: true,
+  processedCount: true,
+  successCount: true,
+  skippedCount: true,
+  failedCount: true,
+  skippedByReason: true,
+  details: true,
+  createdAt: true,
+  startedAt: true,
+  updatedAt: true,
+  completedAt: true,
+} satisfies Record<keyof KnowledgeFactBatchReviewTask, true>;
+
 const factProjectionConflictKeys = {
   operation: true,
   kind: true,
@@ -331,6 +376,14 @@ const rendererApiFixture = {
     void input;
     return failedRendererResult<KnowledgeFactEvidencePageResult>();
   },
+  startBatchReview: (input: KnowledgeFactBatchReviewRequest) => {
+    void input;
+    return failedRendererResult<KnowledgeFactBatchReviewTask>();
+  },
+  getBatchReviewStatus: (input: KnowledgeFactBatchReviewStatusRequest) => {
+    void input;
+    return failedRendererResult<KnowledgeFactBatchReviewTask | null>();
+  },
 } satisfies KnowledgeBaseRendererApi;
 
 const expectExactDtoKeys = <T extends object>(
@@ -354,6 +407,25 @@ describe('knowledge base contracts', () => {
     expect(KnowledgeIngestionAttemptOutcome.Abandoned).toBe('abandoned');
     expect(KnowledgeIngestionStage.FactExtraction).toBe('fact_extraction');
     expect(KnowledgeMigrationStatus.Completed).toBe('completed');
+    expect(KnowledgeFactBatchAction).toEqual({
+      Confirm: 'confirm',
+      Reject: 'reject',
+      Archive: 'archive',
+    });
+    expect(KnowledgeFactBatchTaskStatus).toEqual({
+      Queued: 'queued',
+      Running: 'running',
+      Completed: 'completed',
+      Failed: 'failed',
+    });
+    expect(KnowledgeFactBatchSkipReason).toEqual({
+      NoActiveEvidence: 'no_active_evidence',
+      RevisionConflict: 'revision_conflict',
+      ProjectionConflict: 'projection_conflict',
+      AlreadyProcessed: 'already_processed',
+      NotFound: 'not_found',
+    });
+    expect(KNOWLEDGE_FACT_BATCH_REJECT_REASON_MAX_CHARS).toBe(240);
   });
 
   test('publishes the approved capacity defaults', () => {
@@ -383,6 +455,8 @@ describe('knowledge base contracts', () => {
       ReviewFact: 'knowledgeBase:facts:review',
       ArchiveFact: 'knowledgeBase:facts:archive',
       GetFactEvidence: 'knowledgeBase:facts:getEvidence',
+      StartBatchReview: 'knowledgeBase:facts:batchReview:start',
+      GetBatchReviewStatus: 'knowledgeBase:facts:batchReview:getStatus',
     });
     expect(KnowledgeDocumentVisibility).toEqual({ Active: 'active', Deleted: 'deleted' });
     expect(KNOWLEDGE_SELECTION_TOKEN_TTL_MS).toBe(5 * 60_000);
@@ -436,6 +510,8 @@ describe('knowledge base contracts', () => {
       'reviewFact',
       'archiveFact',
       'getFactEvidence',
+      'startBatchReview',
+      'getBatchReviewStatus',
     ]);
     expectExactDtoKeys(prepareRequest, prepareExtractionAuthorizationRequestKeys);
     expectExactDtoKeys(requestExtraction, requestExtractionRequestKeys);
@@ -464,6 +540,105 @@ describe('knowledge base contracts', () => {
       },
     });
     expectExactDtoKeys(error.projectionConflict!, factProjectionConflictKeys);
+  });
+
+  test('publishes the batch-review DTO contract', () => {
+    const batchReviewDetail: KnowledgeFactBatchReviewDetail = {
+      factId: 'fact-1',
+      valuePreview: 'A'.repeat(240),
+      code: 'revision_conflict',
+      retryable: true,
+    };
+    const batchReviewSelectionByIds: KnowledgeFactBatchReviewSelection = {
+      kind: 'fact_ids',
+      items: [
+        {
+          factId: 'fact-1',
+          expectedRevision: 1,
+        },
+      ],
+    };
+    const batchReviewSelectionByFilters: KnowledgeFactBatchReviewSelection = {
+      kind: 'matching_filters',
+      filters: {
+        view: KnowledgeFactListView.Active,
+        reviewStatuses: [KnowledgeFactReviewStatus.Pending],
+        evidenceState: KnowledgeFactEvidenceState.Active,
+      },
+    };
+    const batchReviewRequest: KnowledgeFactBatchReviewRequest = {
+      workspaceId: 'workspace-1',
+      action: KnowledgeFactBatchAction.Confirm,
+      selection: batchReviewSelectionByIds,
+      reason: 'Batch review request',
+    };
+    const batchReviewStatusRequest: KnowledgeFactBatchReviewStatusRequest = {
+      taskId: 'task-1',
+    };
+    const batchReviewTask: KnowledgeFactBatchReviewTask = {
+      taskId: 'task-1',
+      workspaceId: 'workspace-1',
+      action: KnowledgeFactBatchAction.Confirm,
+      status: KnowledgeFactBatchTaskStatus.Running,
+      totalCount: 3,
+      processedCount: 1,
+      successCount: 1,
+      skippedCount: 1,
+      failedCount: 0,
+      skippedByReason: {
+        [KnowledgeFactBatchSkipReason.AlreadyProcessed]: 1,
+      },
+      details: [batchReviewDetail],
+      createdAt: '2026-07-12T00:00:00.000Z',
+      startedAt: '2026-07-12T00:00:01.000Z',
+      updatedAt: '2026-07-12T00:00:02.000Z',
+      completedAt: null,
+    };
+
+    expectExactDtoKeys(batchReviewDetail, batchReviewDetailKeys);
+    expectExactDtoKeys(batchReviewRequest, batchReviewRequestKeys);
+    expectExactDtoKeys(batchReviewStatusRequest, batchReviewStatusRequestKeys);
+    expectExactDtoKeys(batchReviewTask, batchReviewTaskKeys);
+    expect(Object.keys(batchReviewSelectionByIds).sort()).toEqual(['items', 'kind']);
+    expect(Object.keys(batchReviewSelectionByFilters).sort()).toEqual(['filters', 'kind']);
+    expect(JSON.parse(JSON.stringify(batchReviewSelectionByIds))).toEqual({
+      kind: 'fact_ids',
+      items: [{ factId: 'fact-1', expectedRevision: 1 }],
+    });
+    expect(JSON.parse(JSON.stringify(batchReviewSelectionByFilters))).toEqual({
+      kind: 'matching_filters',
+      filters: {
+        view: 'active',
+        reviewStatuses: ['pending'],
+        evidenceState: 'active',
+      },
+    });
+    expect(JSON.parse(JSON.stringify(batchReviewTask))).toEqual({
+      taskId: 'task-1',
+      workspaceId: 'workspace-1',
+      action: 'confirm',
+      status: 'running',
+      totalCount: 3,
+      processedCount: 1,
+      successCount: 1,
+      skippedCount: 1,
+      failedCount: 0,
+      skippedByReason: {
+        already_processed: 1,
+      },
+      details: [
+        {
+          factId: 'fact-1',
+          valuePreview: 'A'.repeat(240),
+          code: 'revision_conflict',
+          retryable: true,
+        },
+      ],
+      createdAt: '2026-07-12T00:00:00.000Z',
+      startedAt: '2026-07-12T00:00:01.000Z',
+      updatedAt: '2026-07-12T00:00:02.000Z',
+      completedAt: null,
+    });
   });
 
   test('keeps renderer document DTOs display-safe', () => {
