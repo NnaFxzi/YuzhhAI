@@ -1,3 +1,6 @@
+import type { EnterpriseLeadWorkspaceSnapshot } from '../../../shared/enterpriseLeadWorkspace/types';
+import type { WorkflowRunState } from './workflowRunState';
+
 export interface WorkflowSnapshotRefreshRequest {
   generation: number;
   runId: string;
@@ -12,6 +15,11 @@ export interface WorkflowSnapshotRefreshOptions {
   reportError?: boolean;
 }
 
+export interface WorkflowRunSnapshotIdentity {
+  workspaceId: string;
+  runId: string;
+}
+
 export interface WorkflowSnapshotRefreshGate {
   isCurrentGeneration: (generation: number) => boolean;
   requestRefresh: (runId: string, options?: WorkflowSnapshotRefreshOptions) => void;
@@ -22,6 +30,26 @@ export interface WorkflowSnapshotRefreshGate {
   ) => void;
   reset: () => void;
 }
+
+export const getWorkflowActionSnapshotRecoverySequence = (
+  state: WorkflowRunState,
+  snapshot: EnterpriseLeadWorkspaceSnapshot | null,
+): number | undefined => {
+  const snapshotSequence = snapshot?.workflowHistory?.events.reduce(
+    (highestSequence, event) => Number.isInteger(event.sequence)
+      ? Math.max(highestSequence, event.sequence)
+      : highestSequence,
+    0,
+  ) ?? 0;
+
+  return snapshotSequence < state.lastSequence ? state.lastSequence : undefined;
+};
+
+export const isWorkflowRunSnapshotIdentityCurrent = (
+  current: WorkflowRunSnapshotIdentity,
+  action: WorkflowRunSnapshotIdentity,
+): boolean =>
+  current.workspaceId === action.workspaceId && current.runId === action.runId;
 
 export const createWorkflowSnapshotRefreshGate = (): WorkflowSnapshotRefreshGate => {
   let latestGeneration = 0;

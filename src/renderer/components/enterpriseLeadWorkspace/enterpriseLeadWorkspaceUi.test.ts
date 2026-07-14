@@ -1638,7 +1638,7 @@ describe('enterprise lead workspace UI helpers', () => {
     expect(messages[1]).toMatchObject({
       id: 'run:run-1:controller',
       labelKey: 'enterpriseLeadCreationConversationController',
-      content: '总控已完成本次 UI 巡检。',
+      content: '推广工作流正在处理任务。',
     });
     expect(messages[2]).toMatchObject({
       id: 'task-content_planning:reply',
@@ -1649,6 +1649,58 @@ describe('enterprise lead workspace UI helpers', () => {
         { key: 'passed', value: 'true' },
       ],
     });
+  });
+
+  test('uses safe localized controller status summaries in creation history', () => {
+    const previousLanguage = i18nService.getLanguage();
+    const workspace = createWorkspace('workspace-1');
+    const snapshot = createSnapshot(workspace);
+    snapshot.currentRun = {
+      ...createRun(workspace.id),
+      controllerSummary: 'Provider request failed: api-key=secret',
+    };
+
+    try {
+      i18nService.setLanguage('zh', { persist: false });
+      expect(buildCreationRecordConversationMessages(snapshot)[1]?.content).toBe('推广工作流正在处理任务。');
+
+      i18nService.setLanguage('en', { persist: false });
+      expect(buildCreationRecordConversationMessages(snapshot)[1]?.content).toBe('Promotion workflow is processing tasks.');
+    } finally {
+      i18nService.setLanguage(previousLanguage, { persist: false });
+    }
+  });
+
+  test('uses a generic safe status when persisted controller data has an unknown status', () => {
+    const workspace = createWorkspace('workspace-1');
+    const snapshot = createSnapshot(workspace);
+    snapshot.currentRun = {
+      ...createRun(workspace.id),
+      status: 'provider_failure' as EnterpriseLeadRunStatus,
+      controllerSummary: 'Provider request failed: api-key=secret',
+    };
+
+    const messages = buildCreationRecordConversationMessages(snapshot);
+
+    expect(messages[1]?.content).toBe(i18nService.t('enterpriseLeadWorkflowSummaryManualAttention'));
+    expect(messages[1]?.content).not.toContain('api-key=secret');
+  });
+
+  test('never includes persisted task errors in creation history', () => {
+    const workspace = createWorkspace('workspace-1');
+    const snapshot = createSnapshot(workspace);
+    snapshot.tasks = [{
+      ...createTask(workspace.id),
+      summary: '',
+      error: 'Provider request failed: api-key=secret',
+      status: EnterpriseLeadTaskStatus.Error,
+    }];
+
+    const messages = buildCreationRecordConversationMessages(snapshot);
+    const taskMessage = messages.find(message => message.id === 'task-content_planning:reply');
+
+    expect(taskMessage?.content).toBe(i18nService.t('enterpriseLeadAgentStatusError'));
+    expect(taskMessage?.content).not.toContain('api-key=secret');
   });
 
   test('returns localized label metadata for known agent roles', () => {

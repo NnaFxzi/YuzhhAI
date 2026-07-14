@@ -10,6 +10,7 @@ import WorkflowApprovalPanel from './WorkflowApprovalPanel';
 interface WorkflowTaskCardProps {
   task: EnterpriseLeadAgentTask;
   disabled?: boolean;
+  readOnly?: boolean;
   onApprove: (task: EnterpriseLeadAgentTask) => void;
   onReject: (task: EnterpriseLeadAgentTask, feedback: string) => void;
   onOpenChildSession?: (sessionId: string) => void;
@@ -37,6 +38,7 @@ const getChildSessionId = (task: EnterpriseLeadAgentTask): string => {
 export const WorkflowTaskCard: React.FC<WorkflowTaskCardProps> = ({
   task,
   disabled = false,
+  readOnly = false,
   onApprove,
   onReject,
   onOpenChildSession,
@@ -77,7 +79,7 @@ export const WorkflowTaskCard: React.FC<WorkflowTaskCardProps> = ({
         <div><p className="font-semibold text-foreground">{i18nService.t('enterpriseLeadWorkflowOutputArtifacts')}</p>{outputArtifacts.map(item => <p key={item.id} className="mt-1 truncate">{item.summary || item.kind}</p>)}</div>
       </div>
       {childSessionId && onOpenChildSession ? <button type="button" onClick={() => onOpenChildSession(childSessionId)} className="mt-3 text-xs font-semibold text-primary">{i18nService.t('enterpriseLeadWorkflowOpenChildSession')}</button> : null}
-      {needsApproval ? <WorkflowApprovalPanel task={task} disabled={disabled} onApprove={onApprove} onReject={onReject} /> : null}
+      {needsApproval && !readOnly ? <WorkflowApprovalPanel task={task} disabled={disabled} onApprove={onApprove} onReject={onReject} /> : null}
     </article>
   );
 };

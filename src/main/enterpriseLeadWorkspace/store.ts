@@ -1525,7 +1525,7 @@ export class EnterpriseLeadWorkspaceStore {
           AND status NOT IN (?, ?, ?, ?)
       `).run(
         EnterpriseLeadRunStatus.Cancelled,
-        'Workflow cancelled.',
+        '',
         now,
         runId,
         EnterpriseLeadRunStatus.Completed,

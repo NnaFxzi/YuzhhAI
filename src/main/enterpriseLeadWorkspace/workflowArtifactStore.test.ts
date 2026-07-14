@@ -183,7 +183,7 @@ describe('WorkflowArtifactStore', () => {
     expect(result).toEqual({ transitioned: false });
     expect(workspaceStore.getRun(run.id)).toMatchObject({
       status: EnterpriseLeadRunStatus.Cancelled,
-      controllerSummary: 'Workflow cancelled.',
+      controllerSummary: '',
     });
     expect(store.listEvents(run.id).filter(event => event.type === 'run_error')).toEqual([]);
   });

@@ -39,6 +39,36 @@ describe('workflowRunState', () => {
     expect(afterGap.needsSnapshotRecovery).toBe(true);
   });
 
+  test('keeps recovery pending through a later terminal event until a snapshot reaches its sequence', () => {
+    const started = reduceWorkflowRunState(createWorkflowRunState('run-1'), createEvent());
+    const afterGap = reduceWorkflowRunState(started, createEvent({ sequence: 3 }));
+    const afterTerminal = reduceWorkflowRunState(
+      afterGap,
+      createEvent({ sequence: 4, type: 'run_completed' }),
+    );
+    const firstGapSnapshot = {
+      workflowHistory: {
+        events: [createEvent({ sequence: 3 })],
+        attempts: [],
+      },
+    } as unknown as EnterpriseLeadWorkspaceSnapshot;
+    const finalSnapshot = {
+      workflowHistory: {
+        events: [createEvent({ sequence: 4, type: 'run_completed' })],
+        attempts: [],
+      },
+    } as unknown as EnterpriseLeadWorkspaceSnapshot;
+
+    const afterFirstRefresh = recoverWorkflowRunState(afterTerminal, firstGapSnapshot, 3);
+    const finalRefresh = recoverWorkflowRunState(afterFirstRefresh, finalSnapshot, 4);
+
+    expect(afterTerminal.recoverySequence).toBe(4);
+    expect(afterFirstRefresh.needsSnapshotRecovery).toBe(true);
+    expect(afterFirstRefresh.recoverySequence).toBe(4);
+    expect(finalRefresh.needsSnapshotRecovery).toBe(false);
+    expect(finalRefresh.lastSequence).toBe(4);
+  });
+
   test('uses a recovered snapshot as the authoritative state after a sequence gap', () => {
     const afterGap = reduceWorkflowRunState(
       createWorkflowRunState('run-1'),

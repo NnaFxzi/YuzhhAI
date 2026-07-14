@@ -31,8 +31,15 @@ export const reduceWorkflowRunState = (
     return state;
   }
 
-  if (event.sequence <= state.lastSequence || state.needsSnapshotRecovery) {
+  if (event.sequence <= state.lastSequence) {
     return state;
+  }
+
+  if (state.needsSnapshotRecovery) {
+    return {
+      ...state,
+      recoverySequence: Math.max(state.recoverySequence, event.sequence),
+    };
   }
 
   if (event.sequence !== state.lastSequence + 1) {

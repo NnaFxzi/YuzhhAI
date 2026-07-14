@@ -38,6 +38,12 @@ describe('workflow run presentation', () => {
     )).toBe('enterpriseLeadWorkflowSummaryManualAttention');
   });
 
+  test('uses the generic attention summary for an unknown persisted status', () => {
+    expect(getWorkflowControllerSummaryKey('provider_failure' as EnterpriseLeadRunStatus)).toBe(
+      'enterpriseLeadWorkflowSummaryManualAttention',
+    );
+  });
+
   test('localizes controller summary keys and every legacy controller summary in both supported languages', () => {
     const previousLanguage = i18nService.getLanguage();
     const summaryKey = getWorkflowControllerSummaryKey(EnterpriseLeadRunStatus.AwaitingApproval);

@@ -24,6 +24,8 @@ import type {
   EnterpriseLeadWorkspaceSettings,
   EnterpriseLeadWorkspaceSnapshot,
 } from '../../../shared/enterpriseLeadWorkspace/types';
+import { i18nService } from '../../services/i18n';
+import { getWorkflowControllerSummaryKey } from './workflowRunPresentation';
 
 export const EnterpriseLeadWorkspaceLaunchMode = {
   FirstLaunch: 'first_launch',
@@ -1431,6 +1433,24 @@ const getTaskConversationLabel = (
   };
 };
 
+const creationRecordControllerSummaryFallbackKey = 'enterpriseLeadWorkflowSummaryManualAttention';
+
+export const getCreationRecordControllerSummary = (
+  status: NonNullable<EnterpriseLeadWorkspaceSnapshot['currentRun']>['status'],
+  persistedControllerSummary?: string,
+): string => {
+  const summaryKey = getWorkflowControllerSummaryKey(status, persistedControllerSummary);
+  return i18nService.t(summaryKey || creationRecordControllerSummaryFallbackKey);
+};
+
+const getCreationRecordTaskContent = (task: EnterpriseLeadAgentTask): string => {
+  if (cleanText(task.error) || task.status === EnterpriseLeadTaskStatus.Error) {
+    return i18nService.t(getAgentStatusLabelKey(EnterpriseLeadTaskStatus.Error));
+  }
+
+  return cleanText(task.summary) || cleanText(task.missingInfo.join('\n'));
+};
+
 export const buildCreationRecordConversationMessages = (
   snapshot: EnterpriseLeadWorkspaceSnapshot,
 ): CreationRecordConversationMessage[] => {
@@ -1451,13 +1471,13 @@ export const buildCreationRecordConversationMessages = (
     },
   ];
 
-  const controllerSummary = cleanText(run.controllerSummary);
-  if (controllerSummary) {
+  const persistedControllerSummary = cleanText(run.controllerSummary);
+  if (persistedControllerSummary) {
     messages.push({
       id: `run:${run.id}:controller`,
       role: CreationRecordConversationRole.Assistant,
       labelKey: 'enterpriseLeadCreationConversationController',
-      content: controllerSummary,
+      content: getCreationRecordControllerSummary(run.status, persistedControllerSummary),
       createdAt: run.updatedAt,
       status: run.status,
       details: [],
@@ -1473,8 +1493,7 @@ export const buildCreationRecordConversationMessages = (
           value: stringifyConversationDetailValue(value),
         }))
         .filter(detail => detail.value.length > 0);
-      const content =
-        cleanText(task.summary) || cleanText(task.error) || cleanText(task.missingInfo.join('\n'));
+      const content = getCreationRecordTaskContent(task);
 
       messages.push({
         id: `${task.id}:reply`,

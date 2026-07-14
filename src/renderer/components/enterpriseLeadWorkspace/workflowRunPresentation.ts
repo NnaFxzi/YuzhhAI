@@ -1,6 +1,8 @@
 import {
   EnterpriseLeadRunStatus,
   type EnterpriseLeadRunStatus as EnterpriseLeadRunStatusValue,
+  EnterpriseLeadTaskStatus,
+  type EnterpriseLeadTaskStatus as EnterpriseLeadTaskStatusValue,
 } from '../../../shared/enterpriseLeadWorkspace/constants';
 import {
   DEFAULT_WORKFLOW_START_OPTIONS,
@@ -65,10 +67,32 @@ const legacyWorkflowControllerSummaryKeys: Record<string, string> = {
   'Promotion workflow completed with draft-only outputs.': 'enterpriseLeadWorkflowSummaryCompleted',
 };
 
+const workflowControllerSummaryFallbackKey = 'enterpriseLeadWorkflowSummaryManualAttention';
+
+const workflowAttemptStatusLabelKeys: Record<EnterpriseLeadTaskStatusValue, string> = {
+  [EnterpriseLeadTaskStatus.Waiting]: 'enterpriseLeadAgentStatusWaiting',
+  [EnterpriseLeadTaskStatus.Ready]: 'enterpriseLeadAgentStatusReady',
+  [EnterpriseLeadTaskStatus.Running]: 'enterpriseLeadAgentStatusRunning',
+  [EnterpriseLeadTaskStatus.NeedsInput]: 'enterpriseLeadAgentStatusNeedsInput',
+  [EnterpriseLeadTaskStatus.AwaitingApproval]: 'enterpriseLeadAgentStatusAwaitingApproval',
+  [EnterpriseLeadTaskStatus.Completed]: 'enterpriseLeadAgentStatusCompleted',
+  [EnterpriseLeadTaskStatus.Stale]: 'enterpriseLeadAgentStatusStale',
+  [EnterpriseLeadTaskStatus.Blocked]: 'enterpriseLeadAgentStatusBlocked',
+  [EnterpriseLeadTaskStatus.Cancelled]: 'enterpriseLeadAgentStatusCancelled',
+  [EnterpriseLeadTaskStatus.Error]: 'enterpriseLeadAgentStatusError',
+};
+
 export const getWorkflowEventLabelKey = (type: string): string =>
   workflowEventLabelKeys[type as WorkflowEventTypeValue] ?? 'enterpriseLeadWorkflowEventUnknown';
 
 export const getWorkflowControllerSummaryKey = (
   status: EnterpriseLeadRunStatusValue,
   legacyControllerSummary?: string,
-): string => legacyWorkflowControllerSummaryKeys[legacyControllerSummary ?? ''] ?? workflowControllerSummaryKeys[status];
+): string =>
+  legacyWorkflowControllerSummaryKeys[legacyControllerSummary ?? ''] ??
+  workflowControllerSummaryKeys[status] ??
+  workflowControllerSummaryFallbackKey;
+
+export const getWorkflowAttemptStatusLabelKey = (status: string): string =>
+  workflowAttemptStatusLabelKeys[status as EnterpriseLeadTaskStatusValue] ??
+  workflowControllerSummaryFallbackKey;
