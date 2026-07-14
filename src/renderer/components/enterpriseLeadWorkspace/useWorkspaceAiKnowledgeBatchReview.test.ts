@@ -284,6 +284,7 @@ const task = (
   successCount: 0,
   skippedCount: 0,
   failedCount: 0,
+  retryableCount: 0,
   skippedByReason: {},
   details: [],
   createdAt: '2026-07-14T00:00:00.000Z',
@@ -357,6 +358,8 @@ describe('useWorkspaceAiKnowledgeBatchReview', () => {
       expect(latest.current?.selectedCount).toBe(0);
       expect(latest.current?.allVisibleSelected).toBe(false);
       expect(latest.current?.someVisibleSelected).toBe(false);
+      expect(latest.current?.canSelectAllMatching).toBe(true);
+      expect(latest.current?.canExpandToMatching).toBe(false);
 
       await React.act(async () => {
         latest.current?.toggleFact(pendingA);
@@ -368,7 +371,8 @@ describe('useWorkspaceAiKnowledgeBatchReview', () => {
       expect(latest.current?.selectedCount).toBe(1);
       expect(latest.current?.allVisibleSelected).toBe(false);
       expect(latest.current?.someVisibleSelected).toBe(true);
-      expect(latest.current?.canSelectAllMatching).toBe(false);
+      expect(latest.current?.canSelectAllMatching).toBe(true);
+      expect(latest.current?.canExpandToMatching).toBe(false);
 
       await React.act(async () => {
         latest.current?.toggleVisible();
@@ -380,6 +384,7 @@ describe('useWorkspaceAiKnowledgeBatchReview', () => {
       expect(latest.current?.allVisibleSelected).toBe(true);
       expect(latest.current?.someVisibleSelected).toBe(false);
       expect(latest.current?.canSelectAllMatching).toBe(true);
+      expect(latest.current?.canExpandToMatching).toBe(true);
 
       await React.act(async () => {
         latest.current?.selectMatching();
@@ -390,13 +395,14 @@ describe('useWorkspaceAiKnowledgeBatchReview', () => {
       expect(latest.current?.selectedCount).toBe(2);
       expect([...latest.current!.selectedFacts.keys()]).toEqual(['fact-a', 'fact-b']);
       expect(latest.current?.canSelectAllMatching).toBe(false);
+      expect(latest.current?.canExpandToMatching).toBe(false);
     } finally {
       root.unmount();
       restore();
     }
   });
 
-  test('does not widen a partial page selection into matching filters', async () => {
+  test('allows the summary entry to widen a partial page selection into matching filters', async () => {
     const { restore } = installFakeDom();
     const { createRoot } = await import('react-dom/client');
     const container = document.createElement('div');
@@ -435,16 +441,78 @@ describe('useWorkspaceAiKnowledgeBatchReview', () => {
 
       expect(latest.current?.selectionMode).toBe('page');
       expect(latest.current?.selectedCount).toBe(1);
-      expect(latest.current?.canSelectAllMatching).toBe(false);
+      expect(latest.current?.canSelectAllMatching).toBe(true);
+      expect(latest.current?.canExpandToMatching).toBe(false);
 
       await React.act(async () => {
         latest.current?.selectMatching();
         await flushMicrotasks();
       });
 
-      expect(latest.current?.selectionMode).toBe('page');
-      expect([...latest.current!.selectedFacts.keys()]).toEqual(['fact-a']);
-      expect(latest.current?.selectedCount).toBe(1);
+      expect(latest.current?.selectionMode).toBe('matching');
+      expect([...latest.current!.selectedFacts.keys()]).toEqual(['fact-a', 'fact-b']);
+      expect(latest.current?.selectedCount).toBe(2);
+    } finally {
+      root.unmount();
+      restore();
+    }
+  });
+
+  test('forces matching batch review scope to pending facts when all statuses are visible', async () => {
+    const { restore } = installFakeDom();
+    const { createRoot } = await import('react-dom/client');
+    const container = document.createElement('div');
+    const root = createRoot(container);
+    const pending = fact('fact-pending');
+    const startBatchReview = vi
+      .spyOn(knowledgeBaseService, 'startBatchReview')
+      .mockResolvedValue(task());
+    vi.spyOn(knowledgeBaseService, 'getBatchReviewStatus').mockResolvedValue(null);
+    const latest: { current: ReturnType<typeof useWorkspaceAiKnowledgeBatchReview> | null } = {
+      current: null,
+    };
+
+    const Harness = (): React.ReactElement | null => {
+      latest.current = useWorkspaceAiKnowledgeBatchReview({
+        workspaceId: 'workspace-a',
+        rows: [row(pending)],
+        filters: {
+          view: KnowledgeFactListView.Active,
+          evidenceState: KnowledgeFactEvidenceState.Any,
+          reviewStatuses: [],
+        },
+        nextCursor: 'cursor-1',
+        onRefresh: vi.fn().mockResolvedValue([]),
+      });
+      return null;
+    };
+
+    try {
+      await React.act(async () => {
+        root.render(React.createElement(Harness));
+        await flushMicrotasks();
+      });
+      await React.act(async () => {
+        latest.current?.selectMatching();
+        await flushMicrotasks();
+      });
+      await React.act(async () => {
+        await latest.current?.start(KnowledgeFactBatchAction.Confirm);
+        await flushMicrotasks();
+      });
+
+      expect(startBatchReview).toHaveBeenCalledWith({
+        workspaceId: 'workspace-a',
+        action: KnowledgeFactBatchAction.Confirm,
+        selection: {
+          kind: 'matching_filters',
+          filters: {
+            view: KnowledgeFactListView.Active,
+            reviewStatuses: [KnowledgeFactReviewStatus.Pending],
+            evidenceState: KnowledgeFactEvidenceState.Any,
+          },
+        },
+      });
     } finally {
       root.unmount();
       restore();
@@ -625,6 +693,162 @@ describe('useWorkspaceAiKnowledgeBatchReview', () => {
     }
   });
 
+  test('retries restore after a transient first status failure and keeps the stored handle until it succeeds', async () => {
+    vi.useFakeTimers();
+    const { restore } = installFakeDom();
+    window.sessionStorage.setItem('ai-knowledge-batch-review:workspace-a', 'task-1');
+    const { createRoot } = await import('react-dom/client');
+    const container = document.createElement('div');
+    const root = createRoot(container);
+    const onRefresh = vi.fn().mockResolvedValue(undefined);
+    const getBatchReviewStatus = vi
+      .spyOn(knowledgeBaseService, 'getBatchReviewStatus')
+      .mockRejectedValueOnce(new Error('transient restore failure'))
+      .mockResolvedValueOnce(task({
+        status: KnowledgeFactBatchTaskStatus.Running,
+        startedAt: '2026-07-14T00:00:01.000Z',
+      }))
+      .mockResolvedValueOnce(task({
+        status: KnowledgeFactBatchTaskStatus.Completed,
+        processedCount: 2,
+        successCount: 2,
+        startedAt: '2026-07-14T00:00:01.000Z',
+        completedAt: '2026-07-14T00:00:05.000Z',
+      }));
+    const latest: { current: ReturnType<typeof useWorkspaceAiKnowledgeBatchReview> | null } = {
+      current: null,
+    };
+
+    const Harness = (): React.ReactElement | null => {
+      latest.current = useWorkspaceAiKnowledgeBatchReview({
+        workspaceId: 'workspace-a',
+        rows: [row(fact('fact-a')), row(fact('fact-b'))],
+        filters: {
+          view: KnowledgeFactListView.Active,
+          reviewStatuses: [KnowledgeFactReviewStatus.Pending],
+          evidenceState: KnowledgeFactEvidenceState.Any,
+        },
+        nextCursor: null,
+        onRefresh,
+      });
+      return null;
+    };
+
+    try {
+      await React.act(async () => {
+        root.render(React.createElement(Harness));
+        await flushMicrotasks();
+      });
+
+      expect(getBatchReviewStatus).toHaveBeenCalledTimes(1);
+      expect(latest.current?.task).toBeNull();
+      expect(window.sessionStorage.getItem('ai-knowledge-batch-review:workspace-a')).toBe('task-1');
+
+      await React.act(async () => {
+        await vi.advanceTimersByTimeAsync(749);
+        await flushMicrotasks();
+      });
+
+      expect(getBatchReviewStatus).toHaveBeenCalledTimes(1);
+      expect(window.sessionStorage.getItem('ai-knowledge-batch-review:workspace-a')).toBe('task-1');
+
+      await React.act(async () => {
+        await vi.advanceTimersByTimeAsync(1);
+        await flushMicrotasks();
+      });
+
+      expect(getBatchReviewStatus).toHaveBeenCalledTimes(2);
+      expect(latest.current?.task?.status).toBe(KnowledgeFactBatchTaskStatus.Running);
+      expect(window.sessionStorage.getItem('ai-knowledge-batch-review:workspace-a')).not.toBeNull();
+
+      await React.act(async () => {
+        await vi.advanceTimersByTimeAsync(750);
+        await flushMicrotasks();
+      });
+
+      expect(getBatchReviewStatus).toHaveBeenCalledTimes(3);
+      expect(latest.current?.task?.status).toBe(KnowledgeFactBatchTaskStatus.Completed);
+      expect(onRefresh).toHaveBeenCalledTimes(1);
+    } finally {
+      root.unmount();
+      restore();
+    }
+  });
+
+  test('keeps polling after a transient active-status failure and eventually refreshes on completion', async () => {
+    vi.useFakeTimers();
+    const { restore } = installFakeDom();
+    window.sessionStorage.setItem('ai-knowledge-batch-review:workspace-a', 'task-1');
+    const { createRoot } = await import('react-dom/client');
+    const container = document.createElement('div');
+    const root = createRoot(container);
+    const onRefresh = vi.fn().mockResolvedValue(undefined);
+    const getBatchReviewStatus = vi
+      .spyOn(knowledgeBaseService, 'getBatchReviewStatus')
+      .mockResolvedValueOnce(task({
+        status: KnowledgeFactBatchTaskStatus.Running,
+        startedAt: '2026-07-14T00:00:01.000Z',
+      }))
+      .mockRejectedValueOnce(new Error('transient IPC failure'))
+      .mockResolvedValueOnce(task({
+        status: KnowledgeFactBatchTaskStatus.Completed,
+        processedCount: 2,
+        successCount: 2,
+        startedAt: '2026-07-14T00:00:01.000Z',
+        completedAt: '2026-07-14T00:00:05.000Z',
+      }));
+    const latest: { current: ReturnType<typeof useWorkspaceAiKnowledgeBatchReview> | null } = {
+      current: null,
+    };
+
+    const Harness = (): React.ReactElement | null => {
+      latest.current = useWorkspaceAiKnowledgeBatchReview({
+        workspaceId: 'workspace-a',
+        rows: [row(fact('fact-a')), row(fact('fact-b'))],
+        filters: {
+          view: KnowledgeFactListView.Active,
+          reviewStatuses: [KnowledgeFactReviewStatus.Pending],
+          evidenceState: KnowledgeFactEvidenceState.Any,
+        },
+        nextCursor: null,
+        onRefresh,
+      });
+      return null;
+    };
+
+    try {
+      await React.act(async () => {
+        root.render(React.createElement(Harness));
+        await flushMicrotasks();
+      });
+
+      expect(getBatchReviewStatus).toHaveBeenCalledTimes(1);
+      expect(latest.current?.task?.status).toBe(KnowledgeFactBatchTaskStatus.Running);
+
+      await React.act(async () => {
+        await vi.advanceTimersByTimeAsync(750);
+        await flushMicrotasks();
+      });
+
+      expect(getBatchReviewStatus).toHaveBeenCalledTimes(2);
+      expect(latest.current?.task?.status).toBe(KnowledgeFactBatchTaskStatus.Running);
+      expect(window.sessionStorage.getItem('ai-knowledge-batch-review:workspace-a')).not.toBeNull();
+      expect(onRefresh).not.toHaveBeenCalled();
+
+      await React.act(async () => {
+        await vi.advanceTimersByTimeAsync(750);
+        await flushMicrotasks();
+      });
+
+      expect(getBatchReviewStatus).toHaveBeenCalledTimes(3);
+      expect(latest.current?.task?.status).toBe(KnowledgeFactBatchTaskStatus.Completed);
+      expect(onRefresh).toHaveBeenCalledTimes(1);
+    } finally {
+      root.unmount();
+      restore();
+    }
+  });
+
   test('clears a restored storage entry when the task no longer exists', async () => {
     const { restore } = installFakeDom();
     window.sessionStorage.setItem('ai-knowledge-batch-review:workspace-a', 'missing-task');
@@ -665,26 +889,19 @@ describe('useWorkspaceAiKnowledgeBatchReview', () => {
     }
   });
 
-  test('retries only refreshed rows whose ids were previously marked retryable', async () => {
+  test('retries the whole server-owned retryable set without re-reading rows or detail samples', async () => {
     const { restore } = installFakeDom();
     window.sessionStorage.setItem('ai-knowledge-batch-review:workspace-a', 'task-2');
     const { createRoot } = await import('react-dom/client');
     const container = document.createElement('div');
     const root = createRoot(container);
-    const currentRows: WorkspaceAiKnowledgeRow[] = [
-      row(fact('stale-a', { revision: 1 })),
-      row(fact('stale-b', { revision: 2 })),
-    ];
-    const onRefresh = vi.fn().mockImplementation(async () => {
-      return [
-        row(fact('retryable-a', { revision: 5 })),
-        row(fact('not-retryable', { revision: 8 })),
-        row(fact('retryable-missing-evidence', {
-          revision: 9,
-          activeEvidenceCount: 0,
-        })),
-      ];
-    });
+    const currentRows: WorkspaceAiKnowledgeRow[] = [];
+    const onRefresh = vi.fn().mockResolvedValue(currentRows);
+    const retryBatchReview = vi.fn().mockResolvedValue(task({
+      taskId: 'task-3',
+      status: KnowledgeFactBatchTaskStatus.Queued,
+    }));
+    Object.assign(knowledgeBaseService, { retryBatchReview });
     const startBatchReview = vi
       .spyOn(knowledgeBaseService, 'startBatchReview')
       .mockResolvedValue(task({
@@ -699,6 +916,7 @@ describe('useWorkspaceAiKnowledgeBatchReview', () => {
         processedCount: 3,
         successCount: 1,
         skippedCount: 2,
+        retryableCount: 205,
         details: [
           {
             factId: 'retryable-a',
@@ -752,26 +970,21 @@ describe('useWorkspaceAiKnowledgeBatchReview', () => {
 
       await React.act(async () => {
         startBatchReview.mockClear();
+        retryBatchReview.mockClear();
         await latest.current?.retryFailed();
         await flushMicrotasks();
       });
 
-      expect(onRefresh).toHaveBeenCalledTimes(2);
-      expect(startBatchReview).toHaveBeenCalledWith({
-        workspaceId: 'workspace-a',
-        action: KnowledgeFactBatchAction.Confirm,
-        selection: {
-          kind: 'fact_ids',
-          items: [{ factId: 'retryable-a', expectedRevision: 5 }],
-        },
-      });
+      expect(onRefresh).toHaveBeenCalledTimes(1);
+      expect(startBatchReview).not.toHaveBeenCalled();
+      expect(retryBatchReview).toHaveBeenCalledWith('task-2');
     } finally {
       root.unmount();
       restore();
     }
   });
 
-  test('restores reject task metadata across remount and retries with the saved reason', async () => {
+  test('retries a restored reject task by task id after remount', async () => {
     const { restore } = installFakeDom();
     window.sessionStorage.setItem('ai-knowledge-batch-review:workspace-a', JSON.stringify({
       taskId: 'task-reject',
@@ -781,16 +994,13 @@ describe('useWorkspaceAiKnowledgeBatchReview', () => {
     const { createRoot } = await import('react-dom/client');
     const container = document.createElement('div');
     const root = createRoot(container);
-    const startBatchReview = vi
-      .spyOn(knowledgeBaseService, 'startBatchReview')
-      .mockResolvedValue(task({
-        taskId: 'task-reject-retry',
-        action: KnowledgeFactBatchAction.Reject,
-        status: KnowledgeFactBatchTaskStatus.Queued,
-      }));
-    const onRefresh = vi.fn().mockResolvedValue([
-      row(fact('retryable-reject', { revision: 4 })),
-    ] satisfies WorkspaceAiKnowledgeRow[]);
+    const retryBatchReview = vi.fn().mockResolvedValue(task({
+      taskId: 'task-reject-retry',
+      action: KnowledgeFactBatchAction.Reject,
+      status: KnowledgeFactBatchTaskStatus.Queued,
+    }));
+    Object.assign(knowledgeBaseService, { retryBatchReview });
+    const onRefresh = vi.fn().mockResolvedValue([] satisfies WorkspaceAiKnowledgeRow[]);
     vi.spyOn(knowledgeBaseService, 'getBatchReviewStatus')
       .mockResolvedValueOnce(task({
         taskId: 'task-reject',
@@ -799,6 +1009,7 @@ describe('useWorkspaceAiKnowledgeBatchReview', () => {
         processedCount: 1,
         skippedCount: 1,
         failedCount: 0,
+        retryableCount: 1,
         details: [
           {
             factId: 'retryable-reject',
@@ -843,15 +1054,7 @@ describe('useWorkspaceAiKnowledgeBatchReview', () => {
         await flushMicrotasks();
       });
 
-      expect(startBatchReview).toHaveBeenCalledWith({
-        workspaceId: 'workspace-a',
-        action: KnowledgeFactBatchAction.Reject,
-        selection: {
-          kind: 'fact_ids',
-          items: [{ factId: 'retryable-reject', expectedRevision: 4 }],
-        },
-        reason: 'Not supported by policy',
-      });
+      expect(retryBatchReview).toHaveBeenCalledWith('task-reject');
     } finally {
       root.unmount();
       restore();

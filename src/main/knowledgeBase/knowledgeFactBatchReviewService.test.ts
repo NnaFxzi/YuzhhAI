@@ -42,6 +42,12 @@ const createFactSummary = (
   archivedAt: null,
 });
 
+const createQueryService = (overrides: Record<string, unknown> = {}) => ({
+  listFacts: vi.fn(),
+  getFactCurrentRevision: vi.fn(() => null),
+  ...overrides,
+});
+
 describe('createKnowledgeFactBatchReviewService', () => {
   test('starts a queued task and processes matching-filter pages sequentially', async () => {
     const listFacts = vi
@@ -79,7 +85,7 @@ describe('createKnowledgeFactBatchReviewService', () => {
       fieldRevision: null,
     }));
     const service = createKnowledgeFactBatchReviewService({
-      queryService: { listFacts },
+      queryService: createQueryService({ listFacts }),
       projector: {
         confirmFact,
         rejectFact: vi.fn(),
@@ -148,7 +154,7 @@ describe('createKnowledgeFactBatchReviewService', () => {
 
   test('maps fact evidence stale to a non-retryable skipped detail', async () => {
     const service = createKnowledgeFactBatchReviewService({
-      queryService: { listFacts: vi.fn() },
+      queryService: createQueryService(),
       projector: {
         confirmFact: vi.fn(() => {
           throw new KnowledgeFactProjectorError(KnowledgeBaseErrorCode.FactEvidenceStale);
@@ -193,7 +199,7 @@ describe('createKnowledgeFactBatchReviewService', () => {
       throw new KnowledgeFactProjectorError(KnowledgeBaseErrorCode.FactRevisionConflict);
     });
     const service = createKnowledgeFactBatchReviewService({
-      queryService: { listFacts: vi.fn() },
+      queryService: createQueryService(),
       projector: {
         confirmFact: vi.fn(),
         rejectFact,
@@ -242,7 +248,7 @@ describe('createKnowledgeFactBatchReviewService', () => {
       });
     });
     const service = createKnowledgeFactBatchReviewService({
-      queryService: { listFacts: vi.fn() },
+      queryService: createQueryService(),
       projector: {
         confirmFact: vi.fn(),
         rejectFact: vi.fn(),
@@ -297,7 +303,7 @@ describe('createKnowledgeFactBatchReviewService', () => {
         fieldRevision: null,
       });
     const service = createKnowledgeFactBatchReviewService({
-      queryService: { listFacts: vi.fn() },
+      queryService: createQueryService(),
       projector: {
         confirmFact,
         rejectFact: vi.fn(),
@@ -343,7 +349,7 @@ describe('createKnowledgeFactBatchReviewService', () => {
 
   test('returns null for an unknown task id', () => {
     const service = createKnowledgeFactBatchReviewService({
-      queryService: { listFacts: vi.fn() },
+      queryService: createQueryService(),
       projector: {
         confirmFact: vi.fn(),
         rejectFact: vi.fn(),
@@ -352,5 +358,175 @@ describe('createKnowledgeFactBatchReviewService', () => {
     });
 
     expect(service.getStatus('missing-task')).toBeNull();
+  });
+
+  test('refreshes retryable fact revisions before retrying so a revision-conflict item can succeed', async () => {
+    const getFactCurrentRevision = vi.fn(() => 5);
+    const confirmFact = vi
+      .fn()
+      .mockImplementationOnce(() => {
+        throw new KnowledgeFactProjectorError(KnowledgeBaseErrorCode.FactRevisionConflict);
+      })
+      .mockReturnValueOnce({
+        fact: createFactSummary('fact-conflict', 5),
+        profileChanged: false,
+        profileRevision: null,
+        fieldRevision: null,
+      });
+    const service = createKnowledgeFactBatchReviewService({
+      queryService: createQueryService({ getFactCurrentRevision }),
+      projector: {
+        confirmFact,
+        rejectFact: vi.fn(),
+        archiveFact: vi.fn(),
+      },
+    });
+
+    const task = service.start({
+      workspaceId: 'workspace-a',
+      action: KnowledgeFactBatchAction.Confirm,
+      selection: {
+        kind: 'fact_ids',
+        items: [{ factId: 'fact-conflict', expectedRevision: 4 }],
+      },
+    });
+
+    await service.waitForIdle(task.taskId);
+
+    const retryTask = service.retry(task.taskId);
+
+    expect(retryTask).not.toBeNull();
+    expect(getFactCurrentRevision).toHaveBeenCalledWith('workspace-a', 'fact-conflict');
+
+    await service.waitForIdle(retryTask?.taskId ?? '');
+
+    expect(confirmFact.mock.calls).toEqual([
+      [{ factId: 'fact-conflict', expectedRevision: 4 }],
+      [{ factId: 'fact-conflict', expectedRevision: 5 }],
+    ]);
+    expect(service.getStatus(retryTask?.taskId ?? '')).toMatchObject({
+      status: KnowledgeFactBatchTaskStatus.Completed,
+      totalCount: 1,
+      processedCount: 1,
+      successCount: 1,
+      skippedCount: 0,
+      failedCount: 0,
+      retryableCount: 0,
+    });
+  });
+
+  test('keeps missing retryable facts visible as not-found results on retry', async () => {
+    const confirmFact = vi
+      .fn()
+      .mockImplementationOnce(() => {
+        throw new Error('temporary failure');
+      });
+    const service = createKnowledgeFactBatchReviewService({
+      queryService: createQueryService({
+        getFactCurrentRevision: vi.fn(() => null),
+      }),
+      projector: {
+        confirmFact,
+        rejectFact: vi.fn(),
+        archiveFact: vi.fn(),
+      },
+    });
+
+    const task = service.start({
+      workspaceId: 'workspace-a',
+      action: KnowledgeFactBatchAction.Confirm,
+      selection: {
+        kind: 'fact_ids',
+        items: [{ factId: 'fact-missing', expectedRevision: 2 }],
+      },
+    });
+
+    await service.waitForIdle(task.taskId);
+
+    const retryTask = service.retry(task.taskId);
+
+    expect(retryTask).not.toBeNull();
+
+    await service.waitForIdle(retryTask?.taskId ?? '');
+
+    expect(confirmFact).toHaveBeenCalledTimes(1);
+    expect(service.getStatus(retryTask?.taskId ?? '')).toMatchObject({
+      status: KnowledgeFactBatchTaskStatus.Completed,
+      totalCount: 1,
+      processedCount: 1,
+      successCount: 0,
+      skippedCount: 1,
+      failedCount: 0,
+      retryableCount: 0,
+      skippedByReason: {
+        [KnowledgeFactBatchSkipReason.NotFound]: 1,
+      },
+      details: [{
+        factId: 'fact-missing',
+        valuePreview: null,
+        code: KnowledgeFactBatchSkipReason.NotFound,
+        retryable: false,
+      }],
+    });
+  });
+
+  test('retains retryable items beyond the detail cap and retries the full original set', async () => {
+    const confirmFact = vi.fn(() => {
+      throw new KnowledgeFactProjectorError(KnowledgeBaseErrorCode.FactRevisionConflict);
+    });
+    const getFactCurrentRevision = vi.fn((_workspaceId: string, factId: string) => {
+      const suffix = Number.parseInt(factId.slice('fact-'.length), 10);
+      return Number.isSafeInteger(suffix) ? suffix : null;
+    });
+    const service = createKnowledgeFactBatchReviewService({
+      queryService: createQueryService({ getFactCurrentRevision }),
+      projector: {
+        confirmFact,
+        rejectFact: vi.fn(),
+        archiveFact: vi.fn(),
+      },
+    });
+    const items = Array.from({ length: 205 }, (_value, index) => ({
+      factId: `fact-${index + 1}`,
+      expectedRevision: index + 1,
+    }));
+
+    const task = service.start({
+      workspaceId: 'workspace-a',
+      action: KnowledgeFactBatchAction.Confirm,
+      selection: {
+        kind: 'fact_ids',
+        items,
+      },
+    });
+
+    await service.waitForIdle(task.taskId);
+
+    const completedTask = service.getStatus(task.taskId);
+    expect(completedTask).toMatchObject({
+      status: KnowledgeFactBatchTaskStatus.Completed,
+      totalCount: 205,
+      processedCount: 205,
+      skippedCount: 205,
+      retryableCount: 205,
+    });
+    expect(completedTask?.details).toHaveLength(200);
+
+    const retryTask = service.retry(task.taskId);
+
+    expect(retryTask).toMatchObject({
+      workspaceId: 'workspace-a',
+      action: KnowledgeFactBatchAction.Confirm,
+      status: KnowledgeFactBatchTaskStatus.Queued,
+      totalCount: 0,
+      retryableCount: 0,
+    });
+
+    await service.waitForIdle(retryTask?.taskId ?? '');
+
+    expect(confirmFact).toHaveBeenCalledTimes(410);
+    expect(confirmFact.mock.calls.slice(205, 410)).toEqual(
+      items.map(item => [{ factId: item.factId, expectedRevision: item.expectedRevision }]),
+    );
   });
 });

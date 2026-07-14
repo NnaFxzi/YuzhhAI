@@ -2252,7 +2252,9 @@ export const createWorkspaceAiKnowledgeController = ({
   documentPolling = createWorkspaceAiKnowledgeDocumentPollingController({
     workspaceId: currentWorkspaceId,
     listDocuments: service.listDocuments,
-    onReviewRequired: requestRefresh,
+    onReviewRequired: async (): Promise<void> => {
+      await requestRefresh();
+    },
   });
 
   return {

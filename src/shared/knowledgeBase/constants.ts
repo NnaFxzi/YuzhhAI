@@ -327,6 +327,7 @@ export const KnowledgeBaseIpc = {
   GetFactEvidence: 'knowledgeBase:facts:getEvidence',
   StartBatchReview: 'knowledgeBase:facts:batchReview:start',
   GetBatchReviewStatus: 'knowledgeBase:facts:batchReview:getStatus',
+  RetryBatchReview: 'knowledgeBase:facts:batchReview:retry',
 } as const;
 export type KnowledgeBaseIpc = (typeof KnowledgeBaseIpc)[keyof typeof KnowledgeBaseIpc];
 

@@ -48,7 +48,10 @@ export interface WorkspaceAiKnowledgeBatchReviewViewModel {
   visibleSelectableCount: number;
   allVisibleSelected: boolean;
   someVisibleSelected: boolean;
+  /** Whether the current filters can be submitted as a full matching selection. */
   canSelectAllMatching: boolean;
+  /** Whether a fully selected page can be expanded to all matching results. */
+  canExpandToMatching: boolean;
   task: KnowledgeFactBatchReviewTask | null;
   isStarting: boolean;
   toggleFact: (fact: KnowledgeFactSummary) => void;
@@ -141,7 +144,12 @@ const buildMatchingFiltersSelection = (
   filters: WorkspaceAiKnowledgeCanonicalFilters,
 ): Extract<KnowledgeFactBatchReviewRequest['selection'], { kind: 'matching_filters' }> => ({
   kind: 'matching_filters',
-  filters: cloneBatchReviewFilters(filters),
+  filters: {
+    ...cloneBatchReviewFilters(filters),
+    // Batch review only operates on pending facts. Keep the full-scope action
+    // from materializing confirmed rows when the list is showing all statuses.
+    reviewStatuses: [KnowledgeFactReviewStatus.Pending],
+  },
 });
 
 const updateSelectionForVisibleRows = (
@@ -297,9 +305,38 @@ export const useWorkspaceAiKnowledgeBatchReview = ({
       return;
     }
 
+    taskHandleRef.current = storedTaskHandle;
     let cancelled = false;
-    void knowledgeBaseService.getBatchReviewStatus(storedTaskHandle.taskId)
-      .then(restoredTask => {
+    let restoreTimer: ReturnType<typeof setTimeout> | null = null;
+    let restoreInFlight = false;
+
+    const clearRestoreTimer = (): void => {
+      if (restoreTimer !== null) {
+        clearTimeout(restoreTimer);
+        restoreTimer = null;
+      }
+    };
+
+    const scheduleRestoreRetry = (): void => {
+      if (cancelled || restoreTimer !== null) {
+        return;
+      }
+      restoreTimer = setTimeout(() => {
+        restoreTimer = null;
+        void restoreStoredTask();
+      }, BATCH_REVIEW_POLL_INTERVAL_MS);
+    };
+
+    const restoreStoredTask = async (): Promise<void> => {
+      if (cancelled || restoreInFlight) {
+        return;
+      }
+
+      restoreInFlight = true;
+      let shouldRetry = false;
+
+      try {
+        const restoredTask = await knowledgeBaseService.getBatchReviewStatus(storedTaskHandle.taskId);
         if (cancelled) {
           return;
         }
@@ -321,50 +358,85 @@ export const useWorkspaceAiKnowledgeBatchReview = ({
         taskHandleRef.current = restoredTaskHandle;
         writeSessionStorageTaskHandle(storageKey, restoredTaskHandle);
         setTask(restoredTask);
-      })
-      .catch(() => {
+      } catch {
         if (cancelled) {
           return;
         }
-        taskHandleRef.current = null;
-        setTask(null);
-      });
+        shouldRetry = true;
+      } finally {
+        restoreInFlight = false;
+        if (shouldRetry) {
+          scheduleRestoreRetry();
+        }
+      }
+    };
+
+    void restoreStoredTask();
 
     return () => {
       cancelled = true;
+      clearRestoreTimer();
     };
   }, [storageKey]);
 
   useEffect(() => {
-    if (!isBatchReviewTaskActive(task)) {
+    if (!task || !isBatchReviewTaskActive(task)) {
       return;
     }
 
+    const activeTaskId = task.taskId;
     let cancelled = false;
-    const timer = setTimeout(() => {
-      void knowledgeBaseService.getBatchReviewStatus(task.taskId)
-        .then(nextTask => {
-          if (cancelled) {
-            return;
-          }
-          if (!nextTask) {
-            clearSessionStorageTaskId(storageKey);
-            taskHandleRef.current = null;
-            setTask(current => (current?.taskId === task.taskId ? null : current));
-            return;
-          }
-          setTask(current => (current?.taskId === task.taskId || current === null ? nextTask : current));
-        })
-        .catch(() => {
-          if (cancelled) {
-            return;
-          }
-        });
-    }, BATCH_REVIEW_POLL_INTERVAL_MS);
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const clearPollTimer = (): void => {
+      if (timer !== null) {
+        clearTimeout(timer);
+        timer = null;
+      }
+    };
+
+    const scheduleNextPoll = (): void => {
+      clearPollTimer();
+      timer = setTimeout(() => {
+        timer = null;
+        void knowledgeBaseService.getBatchReviewStatus(activeTaskId)
+          .then(nextTask => {
+            if (cancelled) {
+              return;
+            }
+            if (!nextTask) {
+              clearSessionStorageTaskId(storageKey);
+              taskHandleRef.current = null;
+              setTask(current => (current?.taskId === activeTaskId ? null : current));
+              return;
+            }
+            setTask(current => (
+              current?.taskId === activeTaskId || current === null ? nextTask : current
+            ));
+          })
+          .catch(() => {
+            if (cancelled) {
+              return;
+            }
+          })
+          .finally(() => {
+            if (cancelled) {
+              return;
+            }
+            const currentTask = taskRef.current;
+            if (currentTask?.taskId !== activeTaskId || !isBatchReviewTaskActive(currentTask)) {
+              return;
+            }
+            scheduleNextPoll();
+          });
+      }, BATCH_REVIEW_POLL_INTERVAL_MS);
+    };
+
+    scheduleNextPoll();
 
     return () => {
       cancelled = true;
-      clearTimeout(timer);
+      clearPollTimer();
     };
   }, [storageKey, task]);
 
@@ -414,6 +486,10 @@ export const useWorkspaceAiKnowledgeBatchReview = ({
   );
 
   const canSelectAllMatching =
+    visibleSelectableFacts.size > 0
+    && selectionMode !== 'matching';
+
+  const canExpandToMatching =
     nextCursor !== null
     && selectionMode === 'page'
     && allVisibleSelected
@@ -462,22 +538,22 @@ export const useWorkspaceAiKnowledgeBatchReview = ({
     setSelectionMode('matching');
   };
 
+  const trackTask = (nextTask: KnowledgeFactBatchReviewTask): void => {
+    const nextTaskHandle: StoredBatchReviewTaskHandle = {
+      taskId: nextTask.taskId,
+      action: nextTask.action,
+    };
+    taskHandleRef.current = nextTaskHandle;
+    taskRefreshHandledRef.current = null;
+    writeSessionStorageTaskHandle(storageKey, nextTaskHandle);
+    setTask(nextTask);
+  };
+
   const startTask = async (request: KnowledgeFactBatchReviewRequest): Promise<void> => {
     setIsStarting(true);
     try {
       const nextTask = await knowledgeBaseService.startBatchReview(request);
-      const nextTaskHandle: StoredBatchReviewTaskHandle = {
-        taskId: nextTask.taskId,
-        action: request.action,
-        ...(request.action === KnowledgeFactBatchAction.Reject
-          && typeof request.reason === 'string'
-          ? { rejectReason: request.reason }
-          : {}),
-      };
-      taskHandleRef.current = nextTaskHandle;
-      taskRefreshHandledRef.current = null;
-      writeSessionStorageTaskHandle(storageKey, nextTaskHandle);
-      setTask(nextTask);
+      trackTask(nextTask);
       clearSelection();
     } finally {
       setIsStarting(false);
@@ -509,49 +585,20 @@ export const useWorkspaceAiKnowledgeBatchReview = ({
 
   const retryFailed = async (): Promise<void> => {
     const currentTask = taskRef.current;
-    if (!currentTask) {
+    if (!currentTask || currentTask.retryableCount === 0) {
       return;
     }
-    const retryableFactIds = new Set(
-      currentTask.details
-        .filter(detail => detail.retryable)
-        .map(detail => detail.factId),
-    );
-    if (retryableFactIds.size === 0) {
-      return;
-    }
-
-    const refreshedVisibleFacts = collectWorkspaceAiKnowledgeBatchVisibleSelectableFacts(
-      await Promise.resolve(onRefreshRef.current()),
-    );
-    const items = [...refreshedVisibleFacts.values()]
-      .filter(entry => retryableFactIds.has(entry.fact.id))
-      .map(entry => ({
-        factId: entry.fact.id,
-        expectedRevision: entry.expectedRevision,
-      }));
-
-    if (items.length === 0) {
-      return;
-    }
-
-    const request: KnowledgeFactBatchReviewRequest = {
-      workspaceId,
-      action: currentTask.action,
-      selection: {
-        kind: 'fact_ids',
-        items,
-      },
-    };
-
-    if (currentTask.action === KnowledgeFactBatchAction.Reject) {
-      if (typeof taskHandleRef.current?.rejectReason !== 'string') {
+    setIsStarting(true);
+    try {
+      const nextTask = await knowledgeBaseService.retryBatchReview(currentTask.taskId);
+      if (!nextTask) {
         return;
       }
-      request.reason = taskHandleRef.current.rejectReason;
+      trackTask(nextTask);
+      clearSelection();
+    } finally {
+      setIsStarting(false);
     }
-
-    await startTask(request);
   };
 
   const dismissTask = (): void => {
@@ -572,6 +619,7 @@ export const useWorkspaceAiKnowledgeBatchReview = ({
     allVisibleSelected,
     someVisibleSelected,
     canSelectAllMatching,
+    canExpandToMatching,
     task,
     isStarting,
     toggleFact,

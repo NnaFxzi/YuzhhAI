@@ -1221,6 +1221,7 @@ export const WorkspaceKnowledgeBase: React.FC<WorkspaceKnowledgeBaseProps> = ({
   const [activeView, setActiveView] = useState<KnowledgeView>('documents');
   const [pendingInitialImportResult, setPendingInitialImportResult] = useState(initialImportResult);
   const [normalizedDocumentCount, setNormalizedDocumentCount] = useState<number | null>(null);
+  const [knowledgeDocumentsRefreshToken, setKnowledgeDocumentsRefreshToken] = useState(0);
   const consumedInitialImportResultRef = useRef<KnowledgeImportBatchResult>();
   const workspaceProjectionRefreshRequestRef = useRef(0);
   const workspaceProjectionMountedRef = useRef(false);
@@ -1479,6 +1480,7 @@ export const WorkspaceKnowledgeBase: React.FC<WorkspaceKnowledgeBaseProps> = ({
     }
     aiMetricsRefreshRequestRef.current += 1;
     setAiMetricsOwner(owner);
+    setKnowledgeDocumentsRefreshToken(current => current + 1);
   };
 
   const handleAiKnowledgeMetricsRefresh = async (): Promise<void> => {
@@ -2050,6 +2052,7 @@ export const WorkspaceKnowledgeBase: React.FC<WorkspaceKnowledgeBaseProps> = ({
             <WorkspaceKnowledgeDocumentsPanel
               workspaceId={currentWorkspace.id}
               initialImportResult={pendingInitialImportResult}
+              refreshToken={knowledgeDocumentsRefreshToken}
               uploadButtonSlotId={workspaceKnowledgeUploadButtonSlotId}
               onDocumentCountChange={setNormalizedDocumentCount}
               onWorkspaceProjectionChange={handleWorkspaceProjectionChange}

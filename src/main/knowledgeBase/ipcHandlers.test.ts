@@ -266,6 +266,7 @@ const makeDeps = () => {
         successCount: 0,
         skippedCount: 0,
         failedCount: 0,
+        retryableCount: 0,
         skippedByReason: {},
         details: [],
         createdAt: '2026-07-14T00:00:00.000Z',
@@ -274,6 +275,7 @@ const makeDeps = () => {
         completedAt: null,
       })),
       getStatus: vi.fn(() => null),
+      retry: vi.fn(() => null),
     },
   };
   const showOpenDialog = vi.fn(async () => ({
@@ -397,6 +399,9 @@ describe('registerKnowledgeBaseHandlers', () => {
       invoke(KnowledgeBaseIpc.GetBatchReviewStatus, event, {
         taskId: 'task-1',
       }),
+      invoke(KnowledgeBaseIpc.RetryBatchReview, event, {
+        taskId: 'task-2',
+      }),
     ];
     const backendOperations = [
       deps.showOpenDialog,
@@ -417,13 +422,14 @@ describe('registerKnowledgeBaseHandlers', () => {
       foundation.factQueryService.getFactEvidence,
       foundation.batchReviewService.start,
       foundation.batchReviewService.getStatus,
+      foundation.batchReviewService.retry,
     ];
 
     backendOperations.forEach(operation => expect(operation).not.toHaveBeenCalled());
     ready.resolve();
-    await expect(Promise.all(invocations)).resolves.toHaveLength(18);
+    await expect(Promise.all(invocations)).resolves.toHaveLength(19);
     backendOperations.forEach(operation => expect(operation).toHaveBeenCalledTimes(1));
-    expect(foundation.whenReady).toHaveBeenCalledTimes(18);
+    expect(foundation.whenReady).toHaveBeenCalledTimes(19);
   });
   test('selects files in main, binds the token to sender id, and returns no paths', async () => {
     const { deps, selectionTokenStore } = makeDeps();
@@ -1214,6 +1220,19 @@ describe('registerKnowledgeBaseHandlers', () => {
     });
   });
 
+  test('routes valid batch-review retry input to retry with the trimmed task id', async () => {
+    const { deps, foundation } = makeDeps();
+    registerKnowledgeBaseHandlers(deps);
+
+    await expect(invoke(KnowledgeBaseIpc.RetryBatchReview, createEvent().event, {
+      taskId: ' task-2 ',
+    })).resolves.toEqual({
+      success: true,
+      data: null,
+    });
+    expect(foundation.batchReviewService.retry).toHaveBeenCalledWith('task-2');
+  });
+
   test.each([
     [
       'empty fact ids',
@@ -1245,6 +1264,20 @@ describe('registerKnowledgeBaseHandlers', () => {
         selection: {
           kind: 'fact_ids',
           items: [{ factId: 'fact-1', expectedRevision: 0 }],
+        },
+      },
+    ],
+    [
+      'duplicate fact ids',
+      {
+        workspaceId: 'workspace-a',
+        action: KnowledgeFactBatchAction.Confirm,
+        selection: {
+          kind: 'fact_ids',
+          items: [
+            { factId: ' fact-1 ', expectedRevision: 1 },
+            { factId: 'fact-1', expectedRevision: 2 },
+          ],
         },
       },
     ],

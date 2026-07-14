@@ -27,6 +27,12 @@ import {
   type WorkspaceAiKnowledgeProjectionRefreshHandler,
   type WorkspaceAiKnowledgeSnapshot,
 } from './useWorkspaceAiKnowledge';
+import {
+  isWorkspaceAiKnowledgeBatchSelectableFact,
+  useWorkspaceAiKnowledgeBatchReview,
+  type WorkspaceAiKnowledgeBatchReviewViewModel,
+} from './useWorkspaceAiKnowledgeBatchReview';
+import WorkspaceAiKnowledgeBulkToolbar from './WorkspaceAiKnowledgeBulkToolbar';
 import WorkspaceAiKnowledgeFilters from './WorkspaceAiKnowledgeFilters';
 import type { WorkspaceAiKnowledgeRow } from './workspaceAiKnowledgeRows';
 import type { WorkspaceAiKnowledgeState } from './workspaceAiKnowledgeState';
@@ -105,8 +111,29 @@ export interface WorkspaceAiKnowledgePanelViewProps {
   onResolveCompanyReplacement: () => Promise<void> | void;
   onResolveArchiveKeepCurrent: () => Promise<void> | void;
   onResolveArchiveRemoveCurrent: () => Promise<void> | void;
+  batchReview?: WorkspaceAiKnowledgeBatchReviewViewModel;
   focusAnchorRef?: React.RefObject<HTMLDivElement>;
 }
+
+const emptyWorkspaceAiKnowledgeBatchReviewViewModel: WorkspaceAiKnowledgeBatchReviewViewModel = {
+  selectedFacts: new Map(),
+  selectionMode: null,
+  selectedCount: 0,
+  visibleSelectableCount: 0,
+  allVisibleSelected: false,
+  someVisibleSelected: false,
+  canSelectAllMatching: false,
+  canExpandToMatching: false,
+  task: null,
+  isStarting: false,
+  toggleFact: () => undefined,
+  toggleVisible: () => undefined,
+  selectMatching: () => undefined,
+  clearSelection: () => undefined,
+  start: async () => undefined,
+  retryFailed: async () => undefined,
+  dismissTask: () => undefined,
+};
 
 const getReviewStatusKey = (fact: KnowledgeFactSummary): string =>
   fact.archivedAt
@@ -182,6 +209,9 @@ export const WorkspaceAiKnowledgePanelView = (
   const projectionDialog = props.projectionDialog;
   const onToggleEvidence = props.onToggleEvidence;
   const focusAnchorRef = props.focusAnchorRef;
+  const batchReview =
+    props.batchReview ?? emptyWorkspaceAiKnowledgeBatchReviewViewModel;
+  const selectionHeaderCheckboxRef = useRef<HTMLInputElement | null>(null);
   const toggleContent = (contentKey: string): void => {
     setExpandedContentKeys(currentKeys => {
       const nextKeys = new Set(currentKeys);
@@ -246,6 +276,14 @@ export const WorkspaceAiKnowledgePanelView = (
     projectionDialog,
   ]);
 
+  useEffect(() => {
+    if (!selectionHeaderCheckboxRef.current) {
+      return;
+    }
+    selectionHeaderCheckboxRef.current.indeterminate =
+      batchReview.someVisibleSelected && !batchReview.allVisibleSelected;
+  }, [batchReview.allVisibleSelected, batchReview.someVisibleSelected]);
+
   const isBackgroundInert =
     visibleDrawerFact !== null || projectionDialog !== null;
   const table = props.rows.length > 0 ? (
@@ -258,6 +296,7 @@ export const WorkspaceAiKnowledgePanelView = (
           {i18nService.t('enterpriseAiKnowledgeTableCaption')}
         </caption>
         <colgroup>
+          <col className="w-[52px]" />
           <col className="w-[150px]" />
           <col className="w-[360px]" />
           <col className="w-[120px]" />
@@ -267,6 +306,27 @@ export const WorkspaceAiKnowledgePanelView = (
         </colgroup>
         <thead className="sticky top-0 z-10 bg-surface-raised/95 text-xs font-semibold text-secondary backdrop-blur">
           <tr>
+            <th
+              scope="col"
+              className="sticky left-0 z-20 bg-surface-raised/95 px-3 py-3"
+            >
+              <input
+                ref={selectionHeaderCheckboxRef}
+                type="checkbox"
+                data-ai-knowledge-select-visible
+                aria-label={i18nService.t('enterpriseAiKnowledgeBatchToggleVisibleLabel')}
+                aria-checked={
+                  batchReview.someVisibleSelected
+                  && !batchReview.allVisibleSelected
+                    ? 'mixed'
+                    : batchReview.allVisibleSelected
+                }
+                checked={batchReview.allVisibleSelected}
+                disabled={batchReview.visibleSelectableCount === 0}
+                className="h-4 w-4 rounded border-border text-primary focus:ring-primary disabled:cursor-not-allowed disabled:opacity-50"
+                onClick={() => batchReview.toggleVisible()}
+              />
+            </th>
             <th scope="col" className="px-4 py-3">
               {i18nService.t('enterpriseAiKnowledgeColumnDomain')}
             </th>
@@ -292,6 +352,7 @@ export const WorkspaceAiKnowledgePanelView = (
             row.kind === 'normalized_fact' ? (() => {
             const contentKey = `normalized:${row.fact.id}:${row.fact.revision}`;
             const contentId = `${panelInstanceId}-content-${rowIndex}`;
+            const selectionCellId = `${panelInstanceId}-selection-${row.fact.id}`;
             const isContentExpanded = expandedContentKeys.has(contentKey);
             const mutation = props.mutations[row.fact.id];
             const feedback = props.mutationFeedback[row.fact.id];
@@ -305,12 +366,28 @@ export const WorkspaceAiKnowledgePanelView = (
             const isConfirmed =
               row.fact.reviewStatus === KnowledgeFactReviewStatus.Confirmed &&
               row.fact.archivedAt === null;
+            const isSelectable = isWorkspaceAiKnowledgeBatchSelectableFact(row.fact);
+            const isSelected = batchReview.selectedFacts.has(row.fact.id);
             return (
               <tr
                 key={row.fact.id}
                 data-normalized-fact-id={row.fact.id}
-                className="align-top transition-colors hover:bg-surface-raised/50"
+                className="group align-top transition-colors hover:bg-surface-raised/50"
               >
+                <td
+                  className="sticky left-0 z-[1] bg-background px-3 py-3 group-hover:bg-surface-raised/50"
+                >
+                  <input
+                    id={selectionCellId}
+                    type="checkbox"
+                    data-ai-knowledge-select-fact={row.fact.id}
+                    aria-labelledby={contentId}
+                    checked={isSelected}
+                    disabled={!isSelectable}
+                    className="h-4 w-4 rounded border-border text-primary focus:ring-primary disabled:cursor-not-allowed disabled:opacity-50"
+                    onClick={() => batchReview.toggleFact(row.fact)}
+                  />
+                </td>
                 <td
                   className={`border-l-2 px-4 py-3 ${isPending ? 'border-l-amber-400' : 'border-l-transparent'}`}
                 >
@@ -457,8 +534,12 @@ export const WorkspaceAiKnowledgePanelView = (
               <tr
                 key={row.item.id}
                 data-legacy-profile-id={row.item.id}
-                className="align-top transition-colors hover:bg-surface-raised/50"
+                className="group align-top transition-colors hover:bg-surface-raised/50"
               >
+                <td
+                  aria-hidden="true"
+                  className="sticky left-0 z-[1] bg-background px-3 py-3 group-hover:bg-surface-raised/50"
+                />
                 <td className="border-l-2 border-l-transparent px-4 py-3">
                   <span className="inline-flex rounded-full bg-surface-raised px-2.5 py-1 text-xs font-medium text-secondary">
                     {i18nService.t(domainKeys[row.item.domain])}
@@ -541,28 +622,46 @@ export const WorkspaceAiKnowledgePanelView = (
         {...(isBackgroundInert ? { inert: '' } : {})}
         className={`min-h-0 flex-1 space-y-4 overflow-y-auto p-4 sm:p-5 ${isBackgroundInert ? 'pointer-events-none' : ''}`}
       >
-      <div
-        data-ai-knowledge-review-summary
-        className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200/70 bg-amber-50/70 px-4 py-3 dark:border-amber-400/20 dark:bg-amber-400/5"
-      >
-        <div className="flex items-center gap-2">
-          <span aria-hidden="true" className="h-2 w-2 rounded-full bg-amber-500" />
-          <span className="text-sm font-semibold text-foreground">
-            {i18nService.t('enterpriseAiKnowledgeStatusPending')}
-          </span>
-          <span
-            data-ai-knowledge-pending-count={props.metrics.activePendingCount}
-            className="rounded-full bg-amber-500 px-2 py-0.5 text-xs font-semibold text-white"
-          >
-            {props.metrics.activePendingCount}
-          </span>
+      {props.metrics.activePendingCount > 0 ? (
+        <div
+          data-ai-knowledge-review-summary
+          className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200/70 bg-amber-50/70 px-4 py-3 dark:border-amber-400/20 dark:bg-amber-400/5"
+        >
+          <div className="flex items-center gap-2">
+            <span aria-hidden="true" className="h-2 w-2 rounded-full bg-amber-500" />
+            <span className="text-sm font-semibold text-foreground">
+              {i18nService.t('enterpriseAiKnowledgeStatusPending')}
+            </span>
+            <span
+              data-ai-knowledge-pending-count={props.metrics.activePendingCount}
+              className="rounded-full bg-amber-500 px-2 py-0.5 text-xs font-semibold text-white"
+            >
+              {props.metrics.activePendingCount}
+            </span>
+          </div>
+          {props.filters.view === KnowledgeFactListView.Active
+          && batchReview.canSelectAllMatching
+          && batchReview.task === null
+          && !batchReview.isStarting ? (
+            <button
+              type="button"
+              data-ai-knowledge-select-all-pending
+              className="rounded-md border border-amber-300 bg-background px-3 py-1.5 text-sm font-medium text-amber-800 shadow-sm transition-colors hover:bg-amber-100 focus:outline-none focus:ring-2 focus:ring-amber-500 dark:border-amber-400/40 dark:text-amber-200 dark:hover:bg-amber-400/10"
+              onClick={batchReview.selectMatching}
+            >
+              {i18nService.t('enterpriseAiKnowledgeBatchSelectAllPendingAction')}
+            </button>
+          ) : null}
         </div>
-      </div>
+      ) : null}
       <WorkspaceAiKnowledgeFilters
         filters={props.filters}
         onViewChange={props.onViewChange}
         onReviewStatusesChange={props.onReviewStatusesChange}
         onEvidenceStateChange={props.onEvidenceStateChange}
+      />
+      <WorkspaceAiKnowledgeBulkToolbar
+        viewModel={batchReview}
       />
       {props.isInitialLoading ? (
         <p
@@ -710,6 +809,13 @@ export const WorkspaceAiKnowledgePanel = ({
     profile,
     onProjectionRefresh,
   });
+  const batchReview = useWorkspaceAiKnowledgeBatchReview({
+    workspaceId,
+    rows: state.rows,
+    filters: state.filters,
+    nextCursor: state.nextCursor,
+    onRefresh: state.refreshAfterMutation,
+  });
   useWorkspaceAiKnowledgeMetricsSubscription(
     state.subscribeAcceptedMetrics,
     onMetricsChange,
@@ -778,6 +884,7 @@ export const WorkspaceAiKnowledgePanel = ({
       onResolveCompanyReplacement={state.resolveCompanyReplacement}
       onResolveArchiveKeepCurrent={state.resolveArchiveKeepCurrent}
       onResolveArchiveRemoveCurrent={state.resolveArchiveRemoveCurrent}
+      batchReview={batchReview}
       focusAnchorRef={focusAnchorRef}
     />
   );

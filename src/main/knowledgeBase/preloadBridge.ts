@@ -51,4 +51,6 @@ export const createKnowledgeBasePreloadBridge = (
     invokeMethod<'startBatchReview'>(invoke, KnowledgeBaseIpc.StartBatchReview, input),
   getBatchReviewStatus: input =>
     invokeMethod<'getBatchReviewStatus'>(invoke, KnowledgeBaseIpc.GetBatchReviewStatus, input),
+  retryBatchReview: input =>
+    invokeMethod<'retryBatchReview'>(invoke, KnowledgeBaseIpc.RetryBatchReview, input),
 });

@@ -54,6 +54,7 @@ const createTask = (
   successCount: 0,
   skippedCount: 0,
   failedCount: 0,
+  retryableCount: 0,
   skippedByReason: {},
   details: [],
   createdAt: '2026-07-14T00:00:00.000Z',
@@ -73,6 +74,7 @@ const createViewModel = (
   allVisibleSelected: false,
   someVisibleSelected: false,
   canSelectAllMatching: false,
+  canExpandToMatching: false,
   task: null,
   isStarting: false,
   toggleFact: vi.fn(),
@@ -98,7 +100,9 @@ const renderToolbar = (
   );
 
 const renderDialog = (
-  overrides: Partial<React.ComponentProps<typeof WorkspaceAiKnowledgeBulkReviewDialog>> = {},
+  overrides:
+    Partial<React.ComponentProps<typeof WorkspaceAiKnowledgeBulkReviewDialog>>
+    & Record<string, unknown> = {},
 ): string =>
   renderToStaticMarkup(
     React.createElement(WorkspaceAiKnowledgeBulkReviewDialog, {
@@ -312,6 +316,15 @@ class FakeDomElement extends FakeDomNode {
         entry => entry.listener !== listener || entry.capture !== capture,
       ),
     );
+  }
+
+  getEventListeners(
+    type: string,
+  ): ReadonlyArray<{
+    listener: EventListenerOrEventListenerObject;
+    capture: boolean;
+  }> {
+    return this.eventListeners.get(type) ?? [];
   }
 
   click(): void {
@@ -550,7 +563,7 @@ class FakeDomDocument extends FakeDomNode {
     } as unknown as Event;
     const invokeElement = (element: FakeDomElement, capture: boolean): void => {
       immediatePropagationStopped = false;
-      for (const entry of element.eventListeners.get(type) ?? []) {
+      for (const entry of element.getEventListeners(type)) {
         if (entry.capture !== capture || immediatePropagationStopped) {
           continue;
         }
@@ -709,7 +722,7 @@ describe('WorkspaceAiKnowledgeBulkToolbar', () => {
         selectedCount: 2,
         visibleSelectableCount: 4,
         someVisibleSelected: true,
-        canSelectAllMatching: true,
+        canExpandToMatching: true,
       }),
     );
 
@@ -717,6 +730,34 @@ describe('WorkspaceAiKnowledgeBulkToolbar', () => {
     expect(markup).toContain('2 selected');
     expect(markup).toContain('aria-checked="mixed"');
     expect(markup).toContain('Select all matching filters');
+  });
+
+  test('uses matching-scope copy instead of the visible-page count in matching mode', () => {
+    i18nService.setLanguage('en', { persist: false });
+    const toolbarMarkup = renderToolbar(
+      createViewModel({
+        selectionMode: 'matching',
+        selectedCount: 2,
+        visibleSelectableCount: 2,
+        allVisibleSelected: true,
+      }),
+      { showArchiveAction: false },
+    );
+    const dialogMarkup = renderDialog({
+      action: KnowledgeFactBatchAction.Confirm,
+      selectedCount: 2,
+      selectionMode: 'matching',
+    } as never);
+
+    expect(toolbarMarkup).toContain('All matching results selected');
+    expect(toolbarMarkup).toContain('The final count appears after the task starts.');
+    expect(toolbarMarkup).toContain('Confirm all matching results');
+    expect(toolbarMarkup).not.toContain('2 selected');
+    expect(toolbarMarkup).not.toContain('Confirm 2 selected');
+    expect(dialogMarkup).toContain('Confirm all matching results');
+    expect(dialogMarkup).toContain('This task applies to every item matching the current filters.');
+    expect(dialogMarkup).not.toContain('Confirm 2 knowledge items');
+    expect(dialogMarkup).not.toContain('Confirm these 2');
   });
 
   test('renders confirm as the primary action and reject/archive as secondary actions', () => {
@@ -782,7 +823,7 @@ describe('WorkspaceAiKnowledgeBulkToolbar', () => {
     expect(markup).toContain('data-bulk-review-clear-selection="true" disabled=""');
   });
 
-  test('renders completed summary, caps detail samples, and only shows retry when retryable details exist', () => {
+  test('renders completed summary, caps detail samples, and uses retryableCount for the retry action', () => {
     i18nService.setLanguage('en', { persist: false });
     const retryableMarkup = renderToolbar(
       createViewModel({
@@ -797,13 +838,14 @@ describe('WorkspaceAiKnowledgeBulkToolbar', () => {
             [KnowledgeFactBatchSkipReason.NoActiveEvidence]: 2,
             [KnowledgeFactBatchSkipReason.RevisionConflict]: 1,
           },
+          retryableCount: 7,
           details: [
             { factId: 'fact-1', valuePreview: 'Preview 1', code: 'no_active_evidence', retryable: false },
-            { factId: 'fact-2', valuePreview: 'Preview 2', code: 'revision_conflict', retryable: true },
+            { factId: 'fact-2', valuePreview: 'Preview 2', code: 'revision_conflict', retryable: false },
             { factId: 'fact-3', valuePreview: 'Preview 3', code: 'projection_conflict', retryable: false },
             { factId: 'fact-4', valuePreview: 'Preview 4', code: 'not_found', retryable: false },
-            { factId: 'fact-5', valuePreview: 'Preview 5', code: 'unknown_error', retryable: true },
-            { factId: 'fact-6', valuePreview: 'Preview 6', code: 'unknown_error', retryable: true },
+            { factId: 'fact-5', valuePreview: 'Preview 5', code: 'unknown_error', retryable: false },
+            { factId: 'fact-6', valuePreview: 'Preview 6', code: 'unknown_error', retryable: false },
           ],
         }),
       }),
@@ -830,6 +872,7 @@ describe('WorkspaceAiKnowledgeBulkToolbar', () => {
     expect(retryableMarkup).toContain('Preview 5');
     expect(retryableMarkup).not.toContain('Preview 6');
     expect(retryableMarkup).toContain('data-bulk-review-retry="true"');
+    expect(retryableMarkup).toContain('Retry retryable items (7)');
     expect(nonRetryableMarkup).not.toContain('data-bulk-review-retry="true"');
   });
 

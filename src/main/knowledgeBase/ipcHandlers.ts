@@ -26,6 +26,7 @@ import type {
   KnowledgeDocumentDetailsRequest,
   KnowledgeDocumentRevisionRequest,
   KnowledgeFactBatchReviewRequest,
+  KnowledgeFactBatchReviewRetryRequest,
   KnowledgeFactBatchReviewStatusRequest,
   KnowledgeFactEvidencePageRequest,
   KnowledgeImportSelectionRequest,
@@ -508,6 +509,13 @@ const readBatchReviewFactIds = (
       expectedRevision: requireRevision(input.expectedRevision),
     };
   });
+  const seenFactIds = new Set<string>();
+  for (const item of items) {
+    if (seenFactIds.has(item.factId)) {
+      return invalidRequest();
+    }
+    seenFactIds.add(item.factId);
+  }
   return { kind: 'fact_ids', items };
 };
 
@@ -588,6 +596,11 @@ const readBatchReviewInput = (value: unknown): KnowledgeFactBatchReviewRequest =
 };
 
 const readBatchReviewStatusInput = (value: unknown): KnowledgeFactBatchReviewStatusRequest => {
+  const input = requireRecord(value, ['taskId']);
+  return { taskId: requireString(input.taskId) };
+};
+
+const readBatchReviewRetryInput = (value: unknown): KnowledgeFactBatchReviewRetryRequest => {
   const input = requireRecord(value, ['taskId']);
   return { taskId: requireString(input.taskId) };
 };
@@ -789,6 +802,11 @@ export const registerKnowledgeBaseHandlers = (deps: KnowledgeBaseHandlerDeps): v
   ipcMain.handle(KnowledgeBaseIpc.GetBatchReviewStatus, async (_event, input: unknown) =>
     invokeWhenReady(() => deps.foundation.batchReviewService.getStatus(
       readBatchReviewStatusInput(input).taskId,
+    )),
+  );
+  ipcMain.handle(KnowledgeBaseIpc.RetryBatchReview, async (_event, input: unknown) =>
+    invokeWhenReady(() => deps.foundation.batchReviewService.retry(
+      readBatchReviewRetryInput(input).taskId,
     )),
   );
 };

@@ -523,6 +523,29 @@ const toEvidenceSummary = (
 export class KnowledgeFactQueryService {
   constructor(private readonly factStore: KnowledgeFactStore) {}
 
+  getFactCurrentRevision(workspaceId: string, factId: string): number | null {
+    try {
+      if (
+        typeof workspaceId !== 'string' ||
+        workspaceId.trim().length === 0 ||
+        typeof factId !== 'string' ||
+        factId.trim().length === 0
+      ) {
+        return invalidRequest();
+      }
+      const fact = this.factStore.getFact(factId.trim());
+      if (!fact || fact.workspaceId !== workspaceId.trim()) {
+        return null;
+      }
+      return fact.revision;
+    } catch (error) {
+      if (error instanceof KnowledgeFactStateError) {
+        throw error;
+      }
+      return invalidState();
+    }
+  }
+
   listFacts(input: KnowledgeListFactsRequest): KnowledgeFactListResult {
     const normalized = normalizeInput(input);
     try {

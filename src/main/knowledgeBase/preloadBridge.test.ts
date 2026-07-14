@@ -127,6 +127,7 @@ describe('createKnowledgeBasePreloadBridge', () => {
       reason: 'Needs correction',
     };
     const getBatchReviewStatusInput = { taskId: 'task-a' };
+    const retryBatchReviewInput = { taskId: 'task-b' };
     const cases = [
       {
         channel: KnowledgeBaseIpc.RetryLocalIndex,
@@ -212,6 +213,14 @@ describe('createKnowledgeBasePreloadBridge', () => {
         input: getBatchReviewStatusInput,
         call: () => bridge.getBatchReviewStatus(getBatchReviewStatusInput),
       },
+      {
+        channel: 'knowledgeBase:facts:batchReview:retry',
+        expectedKeys: ['taskId'],
+        input: retryBatchReviewInput,
+        call: () =>
+          (bridge as Record<string, (input: typeof retryBatchReviewInput) => Promise<unknown>>)
+            .retryBatchReview(retryBatchReviewInput),
+      },
     ];
 
     for (const testCase of cases) {
@@ -248,6 +257,7 @@ describe('createKnowledgeBasePreloadBridge', () => {
         'listFacts',
         'prepareExtractionAuthorization',
         'requestExtraction',
+        'retryBatchReview',
         'restoreDocument',
         'retryDocument',
         'retryExtraction',

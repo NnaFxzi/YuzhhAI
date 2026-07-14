@@ -6,6 +6,8 @@ import type { EnterpriseLeadWorkspaceProfile } from '../../../shared/enterpriseL
 import {
   KNOWLEDGE_FACT_EVIDENCE_PAGE_DEFAULT_LIMIT,
   KnowledgeBaseErrorCode,
+  KnowledgeFactBatchAction,
+  KnowledgeFactBatchTaskStatus,
   KnowledgeFactDomain,
   KnowledgeFactEvidenceState,
   KnowledgeFactListView,
@@ -15,6 +17,7 @@ import {
   KnowledgeFactSourceKind,
 } from '../../../shared/knowledgeBase/constants';
 import type {
+  KnowledgeFactBatchReviewTask,
   KnowledgeFactListResult,
   KnowledgeFactMetrics,
   KnowledgeFactSummary,
@@ -27,6 +30,7 @@ import {
   WorkspaceAiKnowledgeMutationFeedbackStatus,
   WorkspaceAiKnowledgeProjectionDialogKind,
 } from './useWorkspaceAiKnowledge';
+import type { WorkspaceAiKnowledgeBatchReviewViewModel } from './useWorkspaceAiKnowledgeBatchReview';
 import {
   subscribeWorkspaceAiKnowledgeMetrics,
   useWorkspaceAiKnowledgeMetricsSubscription,
@@ -125,14 +129,71 @@ const defaultViewProps: WorkspaceAiKnowledgePanelViewProps = {
   onResolveArchiveRemoveCurrent: vi.fn(),
 };
 
+const createBatchReviewViewModel = (
+  overrides: Partial<WorkspaceAiKnowledgeBatchReviewViewModel> = {},
+): WorkspaceAiKnowledgeBatchReviewViewModel => ({
+  selectedFacts: new Map<string, KnowledgeFactSummary>(),
+  selectionMode: null,
+  selectedCount: 0,
+  visibleSelectableCount: 0,
+  allVisibleSelected: false,
+  someVisibleSelected: false,
+  canSelectAllMatching: false,
+  canExpandToMatching: false,
+  task: null,
+  isStarting: false,
+  toggleFact: vi.fn(),
+  toggleVisible: vi.fn(),
+  selectMatching: vi.fn(),
+  clearSelection: vi.fn(),
+  start: vi.fn(async () => undefined),
+  retryFailed: vi.fn(async () => undefined),
+  dismissTask: vi.fn(),
+  ...overrides,
+});
+
+const createBatchReviewTask = (
+  overrides: Partial<KnowledgeFactBatchReviewTask> = {},
+): KnowledgeFactBatchReviewTask => ({
+  taskId: 'task-completed',
+  workspaceId: 'workspace-1',
+  action: KnowledgeFactBatchAction.Confirm,
+  status: KnowledgeFactBatchTaskStatus.Completed,
+  totalCount: 59,
+  processedCount: 59,
+  successCount: 59,
+  skippedCount: 0,
+  failedCount: 0,
+  retryableCount: 0,
+  skippedByReason: {},
+  details: [],
+  createdAt: '2026-07-14T00:00:00.000Z',
+  startedAt: '2026-07-14T00:00:00.000Z',
+  updatedAt: '2026-07-14T00:00:00.000Z',
+  completedAt: '2026-07-14T00:00:00.000Z',
+  ...overrides,
+});
+
 const renderView = (
-  overrides: Partial<WorkspaceAiKnowledgePanelViewProps> = {},
+  overrides: Partial<
+    WorkspaceAiKnowledgePanelViewProps & {
+      batchReview: WorkspaceAiKnowledgeBatchReviewViewModel;
+    }
+  > = {},
 ): string =>
   renderToStaticMarkup(
-    React.createElement(WorkspaceAiKnowledgePanelView, {
-      ...defaultViewProps,
-      ...overrides,
-    }),
+    React.createElement(
+      WorkspaceAiKnowledgePanelView as unknown as React.ComponentType<
+        WorkspaceAiKnowledgePanelViewProps & {
+          batchReview: WorkspaceAiKnowledgeBatchReviewViewModel;
+        }
+      >,
+      {
+        ...defaultViewProps,
+        batchReview: createBatchReviewViewModel(),
+        ...overrides,
+      },
+    ),
   );
 
 const emptyProfile = (): EnterpriseLeadWorkspaceProfile => ({
@@ -268,6 +329,9 @@ class FakeDomElement extends FakeDomNode {
   nodeName: string;
   selected = false;
   defaultSelected = false;
+  checked = false;
+  defaultChecked = false;
+  disabled = false;
   scrollTop = 0;
   private eventListeners = new Map<
     string,
@@ -313,6 +377,12 @@ class FakeDomElement extends FakeDomNode {
 
   setAttribute(name: string, value: string): void {
     this.attributes.set(name, value);
+    if (name === 'disabled') {
+      this.disabled = true;
+    }
+    if (name === 'checked') {
+      this.checked = true;
+    }
   }
 
   setAttributeNS(_namespace: string | null, name: string, value: string): void {
@@ -321,6 +391,12 @@ class FakeDomElement extends FakeDomNode {
 
   removeAttribute(name: string): void {
     this.attributes.delete(name);
+    if (name === 'disabled') {
+      this.disabled = false;
+    }
+    if (name === 'checked') {
+      this.checked = false;
+    }
   }
 
   addEventListener(
@@ -355,6 +431,9 @@ class FakeDomElement extends FakeDomNode {
   }
 
   click(): void {
+    if (this.disabled) {
+      return;
+    }
     const path: FakeDomElement[] = [this];
     let current: FakeDomNode | null = this.parentNode;
     while (current) {
@@ -369,38 +448,20 @@ class FakeDomElement extends FakeDomNode {
     let propagationStopped = false;
     let immediatePropagationStopped = false;
     let defaultPrevented = false;
-    const event = {
-      type: 'click',
-      target: this,
-      srcElement: this,
-      currentTarget: null,
-      bubbles: true,
-      cancelable: true,
-      get defaultPrevented(): boolean {
-        return defaultPrevented;
-      },
-      eventPhase: 0,
-      isTrusted: false,
-      timeStamp: Date.now(),
-      button: 0,
-      buttons: 0,
-      detail: 1,
-      view: window,
-      preventDefault(): void {
-        defaultPrevented = true;
-      },
-      stopPropagation(): void {
-        propagationStopped = true;
-      },
-      stopImmediatePropagation(): void {
-        propagationStopped = true;
-        immediatePropagationStopped = true;
-      },
-      composedPath: (): FakeDomElement[] => [...path],
-    } as unknown as MouseEvent;
-    const invoke = (element: FakeDomElement, capture: boolean): void => {
+    if (
+      this.tagName.toLowerCase() === 'input' &&
+      this.getAttribute('type') === 'checkbox'
+    ) {
+      this.checked = !this.checked;
+    }
+    const invoke = (
+      eventType: 'click' | 'change',
+      element: FakeDomElement,
+      capture: boolean,
+      event: MouseEvent | Event,
+    ): void => {
       immediatePropagationStopped = false;
-      for (const entry of element.eventListeners.get('click') ?? []) {
+      for (const entry of element.eventListeners.get(eventType) ?? []) {
         if (entry.capture !== capture || immediatePropagationStopped) {
           continue;
         }
@@ -412,17 +473,57 @@ class FakeDomElement extends FakeDomNode {
       }
     };
 
-    for (const element of [...path].reverse()) {
-      invoke(element, true);
-      if (propagationStopped) {
-        return;
+    const dispatch = (eventType: 'click' | 'change'): void => {
+      propagationStopped = false;
+      immediatePropagationStopped = false;
+      defaultPrevented = false;
+      const event = {
+        type: eventType,
+        target: this,
+        srcElement: this,
+        currentTarget: null,
+        bubbles: true,
+        cancelable: true,
+        get defaultPrevented(): boolean {
+          return defaultPrevented;
+        },
+        eventPhase: 0,
+        isTrusted: false,
+        timeStamp: Date.now(),
+        button: 0,
+        buttons: 0,
+        detail: 1,
+        view: window,
+        preventDefault(): void {
+          defaultPrevented = true;
+        },
+        stopPropagation(): void {
+          propagationStopped = true;
+        },
+        stopImmediatePropagation(): void {
+          propagationStopped = true;
+          immediatePropagationStopped = true;
+        },
+        composedPath: (): FakeDomElement[] => [...path],
+      } as unknown as MouseEvent | Event;
+
+      for (const element of [...path].reverse()) {
+        invoke(eventType, element, true, event);
+        if (propagationStopped) {
+          return;
+        }
       }
-    }
-    for (const element of path) {
-      invoke(element, false);
-      if (propagationStopped) {
-        return;
+      for (const element of path) {
+        invoke(eventType, element, false, event);
+        if (propagationStopped) {
+          return;
+        }
       }
+    };
+
+    dispatch('click');
+    if (this.tagName.toLowerCase() === 'input') {
+      dispatch('change');
     }
   }
 
@@ -666,21 +767,41 @@ describe('WorkspaceAiKnowledgePanelView', () => {
     vi.restoreAllMocks();
   });
 
-  test('renders normalized Task 7 actions while legacy rows remain maintain-only', () => {
+  test('renders table selection and places the bulk toolbar between filters and the table', () => {
     vi.spyOn(i18nService, 't').mockImplementation(key => key);
+    const selectableFact = fact();
+    const html = renderView({
+      rows: [
+        { kind: 'normalized_fact', fact: selectableFact },
+        rows[1],
+      ],
+      batchReview: createBatchReviewViewModel({
+        selectedFacts: new Map([[selectableFact.id, selectableFact]]),
+        selectedCount: 1,
+        visibleSelectableCount: 1,
+        allVisibleSelected: true,
+      }),
+    });
 
-    const html = renderView();
+    const filtersIndex = html.indexOf('data-ai-knowledge-filters');
+    const toolbarIndex = html.indexOf('data-ai-knowledge-bulk-toolbar');
+    const tableIndex = html.indexOf('data-ai-knowledge-table-scroll');
 
     expect(html).toContain('enterpriseAiKnowledgeTableCaption');
     expect(html).toContain('Normalized product');
     expect(html).toContain('Legacy product');
+    expect(html).toContain('data-ai-knowledge-select-visible');
+    expect(html).toContain(`data-ai-knowledge-select-fact="${selectableFact.id}"`);
+    expect(html).toContain('data-ai-knowledge-bulk-toolbar');
+    expect(filtersIndex).toBeGreaterThanOrEqual(0);
+    expect(toolbarIndex).toBeGreaterThan(filtersIndex);
+    expect(tableIndex).toBeGreaterThan(toolbarIndex);
     expect(html).toContain('enterpriseAiKnowledgeStatusPending');
     expect(html).toContain('enterpriseAiKnowledgeLegacyReadOnly');
     expect(html).toContain('enterpriseAiKnowledgeMaintainCompany');
     expect(html).toContain('enterpriseAiKnowledgeEvidenceActive');
     expect(html).toContain('enterpriseAiKnowledgeEvidenceStale');
     expect(html).not.toContain('type="search"');
-    expect(html).not.toContain('type="checkbox"');
     expect(html).toContain('data-confirm-fact');
     expect(html).toContain('data-reject-fact');
     expect(html).toContain('aria-expanded="false"');
@@ -689,10 +810,196 @@ describe('WorkspaceAiKnowledgePanelView', () => {
     expect((html.match(/data-maintain-company/g) ?? [])).toHaveLength(1);
   });
 
+  test('does not expose the bulk archive action in the production knowledge panel', () => {
+    vi.spyOn(i18nService, 't').mockImplementation(key => key);
+    const html = renderView({
+      filters: {
+        ...defaultViewProps.filters,
+        view: KnowledgeFactListView.History,
+      },
+      batchReview: createBatchReviewViewModel({
+        selectedFacts: new Map([['fact-a', fact({ id: 'fact-a' })]]),
+        selectionMode: 'page',
+        selectedCount: 1,
+        visibleSelectableCount: 1,
+        allVisibleSelected: true,
+      }),
+    });
+
+    expect(html).toContain('data-ai-knowledge-bulk-toolbar');
+    expect(html).not.toContain('data-bulk-review-trigger="archive"');
+  });
+
+  test('hides the pending review summary when there are no pending facts', () => {
+    vi.spyOn(i18nService, 't').mockImplementation(key => key);
+    const html = renderView({
+      metrics: {
+        ...metrics,
+        activePendingCount: 0,
+      },
+    });
+
+    expect(html).not.toContain('data-ai-knowledge-review-summary');
+    expect(html).not.toContain('data-ai-knowledge-pending-count');
+  });
+
+  test('keeps the pending review summary and bulk entry when pending facts exist', () => {
+    vi.spyOn(i18nService, 't').mockImplementation(key => key);
+    const html = renderView({
+      metrics: {
+        ...metrics,
+        activePendingCount: 2,
+      },
+      batchReview: createBatchReviewViewModel({
+        canSelectAllMatching: true,
+      }),
+    });
+
+    expect(html).toContain('data-ai-knowledge-review-summary');
+    expect(html).toContain('data-ai-knowledge-pending-count="2"');
+    expect(html).toContain('data-ai-knowledge-select-all-pending');
+  });
+
+  test('keeps a completed batch result card visible after the pending summary is hidden', () => {
+    vi.spyOn(i18nService, 't').mockImplementation(key => key);
+    const html = renderView({
+      metrics: {
+        ...metrics,
+        activePendingCount: 0,
+      },
+      batchReview: createBatchReviewViewModel({
+        task: createBatchReviewTask(),
+      }),
+    });
+
+    expect(html).not.toContain('data-ai-knowledge-review-summary');
+    expect(html).toContain('data-ai-knowledge-bulk-toolbar');
+    expect(html).toContain('enterpriseAiKnowledgeBatchCompletedTitle');
+  });
+
+  test('wires header and row selection callbacks while legacy rows stay non-selectable', async () => {
+    const restoreDom = installFakeDom();
+    const { createRoot } = await import('react-dom/client');
+    const container = document.createElement('div');
+    const root = createRoot(container);
+    const selectableFact = fact({ id: 'selectable-fact' });
+    const noActiveEvidenceFact = fact({
+      id: 'no-active-evidence-fact',
+      activeEvidenceCount: 0,
+    });
+    const conflictFact = fact({
+      id: 'conflict-fact',
+      projectionState: KnowledgeFactProjectionState.Conflict,
+    });
+    const confirmedFact = fact({
+      id: 'confirmed-fact',
+      reviewStatus: KnowledgeFactReviewStatus.Confirmed,
+    });
+    const rejectedFact = fact({
+      id: 'rejected-fact',
+      reviewStatus: KnowledgeFactReviewStatus.Rejected,
+    });
+    const archivedFact = fact({
+      id: 'archived-fact',
+      reviewStatus: KnowledgeFactReviewStatus.Confirmed,
+      archivedAt: '2026-07-14T01:00:00.000Z',
+    });
+    const toggleVisible = vi.fn();
+    const toggleFact = vi.fn();
+    let unmounted = false;
+
+    vi.spyOn(i18nService, 't').mockImplementation(key => key);
+
+    try {
+      document.body.appendChild(container);
+      await React.act(async () => {
+        root.render(
+          React.createElement(
+            WorkspaceAiKnowledgePanelView as unknown as React.ComponentType<
+              WorkspaceAiKnowledgePanelViewProps & {
+                batchReview: WorkspaceAiKnowledgeBatchReviewViewModel;
+              }
+            >,
+            {
+              ...defaultViewProps,
+              rows: [
+                { kind: 'normalized_fact', fact: selectableFact },
+                { kind: 'normalized_fact', fact: noActiveEvidenceFact },
+                { kind: 'normalized_fact', fact: conflictFact },
+                { kind: 'normalized_fact', fact: confirmedFact },
+                { kind: 'normalized_fact', fact: rejectedFact },
+                { kind: 'normalized_fact', fact: archivedFact },
+                rows[1],
+              ],
+              batchReview: createBatchReviewViewModel({
+                selectedFacts: new Map([[selectableFact.id, selectableFact]]),
+                selectedCount: 1,
+                visibleSelectableCount: 2,
+                allVisibleSelected: false,
+                someVisibleSelected: true,
+                toggleVisible,
+                toggleFact,
+              }),
+            },
+          ),
+        );
+        await Promise.resolve();
+      });
+
+      const headerCheckbox = findFakeDomElement(
+        container as unknown as FakeDomNode,
+        element =>
+          element.getAttribute('data-ai-knowledge-select-visible') !== null,
+      );
+      const rowCheckboxes = findFakeDomElements(
+        container as unknown as FakeDomNode,
+        element => element.getAttribute('data-ai-knowledge-select-fact') !== null,
+      );
+
+      expect(headerCheckbox).not.toBeNull();
+      expect(headerCheckbox?.getAttribute('aria-checked')).toBe('mixed');
+      expect(rowCheckboxes).toHaveLength(6);
+      expect(
+        rowCheckboxes.map(element => element.getAttribute('data-ai-knowledge-select-fact')),
+      ).toEqual([
+        selectableFact.id,
+        noActiveEvidenceFact.id,
+        conflictFact.id,
+        confirmedFact.id,
+        rejectedFact.id,
+        archivedFact.id,
+      ]);
+      expect(
+        rowCheckboxes.map(element => element.getAttribute('disabled') === null),
+      ).toEqual([true, false, false, false, false, false]);
+
+      await React.act(async () => {
+        headerCheckbox?.click();
+        rowCheckboxes[0]?.click();
+        await Promise.resolve();
+      });
+
+      expect(toggleVisible).toHaveBeenCalledTimes(1);
+      expect(toggleFact).toHaveBeenCalledTimes(1);
+      expect(toggleFact).toHaveBeenCalledWith(selectableFact);
+    } finally {
+      if (!unmounted) {
+        await React.act(async () => {
+          root.unmount();
+        });
+      }
+      unmounted = true;
+      restoreDom();
+    }
+  });
+
   test('renders review-workbench summary and semantic status treatments', () => {
     vi.spyOn(i18nService, 't').mockImplementation(key => key);
 
     const html = renderView({
+      batchReview: createBatchReviewViewModel({
+        canSelectAllMatching: true,
+      }),
       rows: [
         {
           kind: 'normalized_fact',
@@ -725,6 +1032,8 @@ describe('WorkspaceAiKnowledgePanelView', () => {
 
     expect(html).toContain('data-ai-knowledge-review-summary');
     expect(html).toContain('data-ai-knowledge-pending-count="1"');
+    expect(html).toContain('data-ai-knowledge-select-all-pending="true"');
+    expect(html).toContain('enterpriseAiKnowledgeBatchSelectAllPendingAction');
     expect(html).toContain('sticky');
     expect(html).toContain('border-l-amber-400');
     expect(html).toContain('border-amber-200');
@@ -893,7 +1202,7 @@ describe('WorkspaceAiKnowledgePanelView', () => {
 
     expect(readyHtml).toContain('data-load-more');
     expect(readyHtml).toContain('aria-label="enterpriseAiKnowledgeLoadMore"');
-    expect(readyHtml).not.toContain('disabled=""');
+    expect(readyHtml).toMatch(/data-load-more="true"(?![^>]*disabled="")/);
     expect(loadingHtml).toContain('data-load-more');
     expect(loadingHtml).toContain('disabled=""');
     expect(loadingHtml).toContain('enterpriseAiKnowledgeLoadingMore');

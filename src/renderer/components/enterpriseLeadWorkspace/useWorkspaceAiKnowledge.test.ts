@@ -43,6 +43,10 @@ import {
   useWorkspaceAiKnowledge,
 } from './useWorkspaceAiKnowledge';
 
+type WorkspaceAiKnowledgeRefreshPromise = ReturnType<
+  ReturnType<typeof createWorkspaceAiKnowledgeController>['refreshAfterMutation']
+>;
+
 const profile = (
   overrides: Partial<EnterpriseLeadWorkspaceProfile> = {},
 ): EnterpriseLeadWorkspaceProfile => ({
@@ -281,7 +285,7 @@ describe('workspace AI knowledge controller', () => {
   test('installs the fact-flight owner before the initial Started publish can synchronously refresh', async () => {
     let controller!: ReturnType<typeof createWorkspaceAiKnowledgeController>;
     let publishCount = 0;
-    let refresh: Promise<void> | null = null;
+    let refresh: WorkspaceAiKnowledgeRefreshPromise | null = null;
     let refreshSettled = false;
     const firstPage = deferred<KnowledgeFactListResult>();
     const secondPage = deferred<KnowledgeFactListResult>();
@@ -303,7 +307,7 @@ describe('workspace AI knowledge controller', () => {
     });
 
     const start = controller.start();
-    const pendingRefresh = refresh as unknown as Promise<void>;
+    const pendingRefresh = refresh!;
     void pendingRefresh.then(() => {
       refreshSettled = true;
     });
@@ -333,7 +337,7 @@ describe('workspace AI knowledge controller', () => {
   test('installs the fact-flight owner before the Append Started publish can synchronously refresh', async () => {
     let controller!: ReturnType<typeof createWorkspaceAiKnowledgeController>;
     let publishCount = 0;
-    let refresh: Promise<void> | null = null;
+    let refresh: WorkspaceAiKnowledgeRefreshPromise | null = null;
     let refreshSettled = false;
     const appendPage = deferred<KnowledgeFactListResult>();
     const trailingPage = deferred<KnowledgeFactListResult>();
@@ -357,7 +361,7 @@ describe('workspace AI knowledge controller', () => {
     });
 
     const loadMore = controller.loadMore();
-    const pendingRefresh = refresh as unknown as Promise<void>;
+    const pendingRefresh = refresh!;
     void pendingRefresh.then(() => {
       refreshSettled = true;
     });
@@ -387,7 +391,7 @@ describe('workspace AI knowledge controller', () => {
   test('installs the fact-flight owner before the Trailing Started publish can synchronously refresh', async () => {
     let controller!: ReturnType<typeof createWorkspaceAiKnowledgeController>;
     let requestedFromStartedPublish = false;
-    let nestedRefresh: Promise<void> | null = null;
+    let nestedRefresh: WorkspaceAiKnowledgeRefreshPromise | null = null;
     let nestedRefreshSettled = false;
     const firstRefreshPage = deferred<KnowledgeFactListResult>();
     const trailingRefreshPage = deferred<KnowledgeFactListResult>();
@@ -411,7 +415,7 @@ describe('workspace AI knowledge controller', () => {
     });
 
     const refresh = controller.refreshAfterMutation();
-    const pendingNestedRefresh = nestedRefresh as unknown as Promise<void>;
+    const pendingNestedRefresh = nestedRefresh!;
     void pendingNestedRefresh.then(() => {
       nestedRefreshSettled = true;
     });
@@ -482,7 +486,7 @@ describe('workspace AI knowledge controller', () => {
   test('keeps one owner when the error-clear publish synchronously requests refresh', async () => {
     let controller!: ReturnType<typeof createWorkspaceAiKnowledgeController>;
     let publishCount = 0;
-    let refresh: Promise<void> | null = null;
+    let refresh: WorkspaceAiKnowledgeRefreshPromise | null = null;
     let refreshSettled = false;
     const firstPage = deferred<KnowledgeFactListResult>();
     const secondPage = deferred<KnowledgeFactListResult>();
@@ -504,7 +508,7 @@ describe('workspace AI knowledge controller', () => {
     });
 
     const start = controller.start();
-    const pendingRefresh = refresh as unknown as Promise<void>;
+    const pendingRefresh = refresh!;
     void pendingRefresh.then(() => {
       refreshSettled = true;
     });

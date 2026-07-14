@@ -379,6 +379,10 @@ export interface KnowledgeFactBatchReviewStatusRequest {
   taskId: string;
 }
 
+export interface KnowledgeFactBatchReviewRetryRequest {
+  taskId: string;
+}
+
 export interface KnowledgeFactBatchReviewTask {
   taskId: string;
   workspaceId: string;
@@ -389,6 +393,7 @@ export interface KnowledgeFactBatchReviewTask {
   successCount: number;
   skippedCount: number;
   failedCount: number;
+  retryableCount: number;
   skippedByReason: Partial<Record<KnowledgeFactBatchSkipReason, number>>;
   details: KnowledgeFactBatchReviewDetail[];
   createdAt: string;
@@ -494,5 +499,8 @@ export interface KnowledgeBaseRendererApi {
   ): Promise<KnowledgeBaseIpcResult<KnowledgeFactBatchReviewTask>>;
   getBatchReviewStatus(
     input: KnowledgeFactBatchReviewStatusRequest,
+  ): Promise<KnowledgeBaseIpcResult<KnowledgeFactBatchReviewTask | null>>;
+  retryBatchReview(
+    input: KnowledgeFactBatchReviewRetryRequest,
   ): Promise<KnowledgeBaseIpcResult<KnowledgeFactBatchReviewTask | null>>;
 }

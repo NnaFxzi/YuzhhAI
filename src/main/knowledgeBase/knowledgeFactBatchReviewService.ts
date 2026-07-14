@@ -29,6 +29,7 @@ type MaterializedFact = {
   factId: string;
   expectedRevision: number;
   valuePreview: string | null;
+  missing: boolean;
 };
 
 type BatchReviewProjector = Pick<
@@ -36,11 +37,15 @@ type BatchReviewProjector = Pick<
   'confirmFact' | 'rejectFact' | 'archiveFact'
 >;
 
-type BatchReviewQueryService = Pick<KnowledgeFactQueryService, 'listFacts'>;
+type BatchReviewQueryService = Pick<
+  KnowledgeFactQueryService,
+  'getFactCurrentRevision' | 'listFacts'
+>;
 
 export interface KnowledgeFactBatchReviewService {
   start(request: KnowledgeFactBatchReviewRequest): KnowledgeFactBatchReviewTask;
   getStatus(taskId: string): KnowledgeFactBatchReviewTask | null;
+  retry(taskId: string): KnowledgeFactBatchReviewTask | null;
   waitForIdle(taskId: string): Promise<void>;
   shutdown(): Promise<void>;
 }
@@ -108,6 +113,7 @@ const toMaterializedFact = (summary: KnowledgeFactSummary): MaterializedFact => 
   factId: summary.id,
   expectedRevision: summary.revision,
   valuePreview: truncateValuePreview(summary.value),
+  missing: false,
 });
 
 const normalizeDetailCode = (error: unknown): string => {
@@ -144,9 +150,34 @@ export const createKnowledgeFactBatchReviewService = (
     ?? (() => new Promise<void>(resolve => setImmediate(resolve)));
   const tasks = new Map<string, KnowledgeFactBatchReviewTask>();
   const requests = new Map<string, KnowledgeFactBatchReviewRequest>();
+  const materializedFactsByTaskId = new Map<string, MaterializedFact[] | null>();
+  const retryableFactsByTaskId = new Map<string, MaterializedFact[]>();
   const idlePromises = new Map<string, Promise<void>>();
   let closed = false;
   let shutdownPromise: Promise<void> | null = null;
+
+  const createTaskRecord = (
+    taskId: string,
+    request: KnowledgeFactBatchReviewRequest,
+    createdAt: string,
+  ): KnowledgeFactBatchReviewTask => ({
+    taskId,
+    workspaceId: request.workspaceId,
+    action: request.action,
+    status: KnowledgeFactBatchTaskStatus.Queued,
+    totalCount: 0,
+    processedCount: 0,
+    successCount: 0,
+    skippedCount: 0,
+    failedCount: 0,
+    retryableCount: 0,
+    skippedByReason: {},
+    details: [],
+    createdAt,
+    startedAt: null,
+    updatedAt: createdAt,
+    completedAt: null,
+  });
 
   const updateTimestamps = (
     task: KnowledgeFactBatchReviewTask,
@@ -164,7 +195,8 @@ export const createKnowledgeFactBatchReviewService = (
       return request.selection.items.map(item => ({
         factId: item.factId,
         expectedRevision: item.expectedRevision,
-        valuePreview: null,
+        valuePreview: null as string | null,
+        missing: false,
       }));
     }
 
@@ -185,18 +217,42 @@ export const createKnowledgeFactBatchReviewService = (
     return facts;
   };
 
+  const refreshRetryableFacts = (
+    workspaceId: string,
+    retryableFacts: readonly MaterializedFact[],
+  ): MaterializedFact[] =>
+    retryableFacts.map(fact => {
+      const currentRevision = options.queryService.getFactCurrentRevision(
+        workspaceId,
+        fact.factId,
+      );
+      if (currentRevision === null) {
+        return {
+          ...fact,
+          missing: true,
+        };
+      }
+      return {
+        ...fact,
+        expectedRevision: currentRevision,
+        missing: false,
+      };
+    });
+
   const runTask = async (taskId: string): Promise<void> => {
     if (closed) return;
     const task = tasks.get(taskId);
     const request = requests.get(taskId);
-    if (!task || !request) return;
+    const materializedFacts = materializedFactsByTaskId.get(taskId);
+    const retryableFacts = retryableFactsByTaskId.get(taskId);
+    if (!task || !request || materializedFacts === undefined || !retryableFacts) return;
     const startedAt = clock();
     task.status = KnowledgeFactBatchTaskStatus.Running;
     task.startedAt = startedAt;
     updateTimestamps(task, startedAt);
 
     try {
-      const facts = await materializeFacts(request);
+      const facts = materializedFacts ?? await materializeFacts(request);
       if (closed) return;
       task.totalCount = facts.length;
       updateTimestamps(task, clock());
@@ -204,6 +260,22 @@ export const createKnowledgeFactBatchReviewService = (
       for (let index = 0; index < facts.length; index += 1) {
         if (closed) return;
         const fact = facts[index];
+        if (fact.missing) {
+          task.skippedCount += 1;
+          incrementSkippedReason(task, KnowledgeFactBatchSkipReason.NotFound);
+          appendDetail(task, {
+            factId: fact.factId,
+            valuePreview: fact.valuePreview,
+            code: KnowledgeFactBatchSkipReason.NotFound,
+            retryable: false,
+          });
+          task.processedCount += 1;
+          updateTimestamps(task, clock());
+          if (task.processedCount % YIELD_EVERY_COUNT === 0) {
+            await yieldControl();
+          }
+          continue;
+        }
         try {
           applyFact(options.projector, request, fact);
           task.successCount += 1;
@@ -234,6 +306,8 @@ export const createKnowledgeFactBatchReviewService = (
             error.code === KnowledgeBaseErrorCode.FactRevisionConflict
           ) {
             task.skippedCount += 1;
+            retryableFacts.push({ ...fact });
+            task.retryableCount = retryableFacts.length;
             incrementSkippedReason(task, KnowledgeFactBatchSkipReason.RevisionConflict);
             appendDetail(task, {
               factId: fact.factId,
@@ -243,6 +317,8 @@ export const createKnowledgeFactBatchReviewService = (
             });
           } else {
             task.failedCount += 1;
+            retryableFacts.push({ ...fact });
+            task.retryableCount = retryableFacts.length;
             appendDetail(task, {
               factId: fact.factId,
               valuePreview: fact.valuePreview,
@@ -274,26 +350,13 @@ export const createKnowledgeFactBatchReviewService = (
         throw new Error('KnowledgeFactBatchReviewService is closed');
       }
       const now = clock();
-      const task: KnowledgeFactBatchReviewTask = {
-        taskId: createTaskId(),
-        workspaceId: request.workspaceId,
-        action: request.action,
-        status: KnowledgeFactBatchTaskStatus.Queued,
-        totalCount: 0,
-        processedCount: 0,
-        successCount: 0,
-        skippedCount: 0,
-        failedCount: 0,
-        skippedByReason: {},
-        details: [],
-        createdAt: now,
-        startedAt: null,
-        updatedAt: now,
-        completedAt: null,
-      };
+      const taskId = createTaskId();
+      const task = createTaskRecord(taskId, request, now);
       const requestClone = cloneRequest(request);
       tasks.set(task.taskId, task);
       requests.set(task.taskId, requestClone);
+      materializedFactsByTaskId.set(task.taskId, null);
+      retryableFactsByTaskId.set(task.taskId, []);
       idlePromises.set(task.taskId, Promise.resolve().then(() => runTask(task.taskId)));
       return cloneTask(task);
     },
@@ -301,6 +364,52 @@ export const createKnowledgeFactBatchReviewService = (
     getStatus(taskId: string): KnowledgeFactBatchReviewTask | null {
       const task = tasks.get(taskId);
       return task ? cloneTask(task) : null;
+    },
+
+    retry(taskId: string): KnowledgeFactBatchReviewTask | null {
+      if (closed) {
+        throw new Error('KnowledgeFactBatchReviewService is closed');
+      }
+      const sourceTask = tasks.get(taskId);
+      const sourceRequest = requests.get(taskId);
+      const retryableFacts = retryableFactsByTaskId.get(taskId);
+      if (
+        !sourceTask
+        || !sourceRequest
+        || !retryableFacts
+        || retryableFacts.length === 0
+        || (
+          sourceTask.status !== KnowledgeFactBatchTaskStatus.Completed
+          && sourceTask.status !== KnowledgeFactBatchTaskStatus.Failed
+        )
+      ) {
+        return null;
+      }
+      const refreshedRetryableFacts = refreshRetryableFacts(
+        sourceRequest.workspaceId,
+        retryableFacts,
+      );
+      const retryRequest: KnowledgeFactBatchReviewRequest = {
+        workspaceId: sourceRequest.workspaceId,
+        action: sourceRequest.action,
+        selection: {
+          kind: 'fact_ids',
+          items: refreshedRetryableFacts.map(fact => ({
+            factId: fact.factId,
+            expectedRevision: fact.expectedRevision,
+          })),
+        },
+        ...(typeof sourceRequest.reason === 'string' ? { reason: sourceRequest.reason } : {}),
+      };
+      const now = clock();
+      const retryTaskId = createTaskId();
+      const retryTask = createTaskRecord(retryTaskId, retryRequest, now);
+      tasks.set(retryTaskId, retryTask);
+      requests.set(retryTaskId, cloneRequest(retryRequest));
+      materializedFactsByTaskId.set(retryTaskId, refreshedRetryableFacts.map(fact => ({ ...fact })));
+      retryableFactsByTaskId.set(retryTaskId, []);
+      idlePromises.set(retryTaskId, Promise.resolve().then(() => runTask(retryTaskId)));
+      return cloneTask(retryTask);
     },
 
     async waitForIdle(taskId: string): Promise<void> {
@@ -315,6 +424,8 @@ export const createKnowledgeFactBatchReviewService = (
       const activeTasks = [...idlePromises.values()];
       tasks.clear();
       requests.clear();
+      materializedFactsByTaskId.clear();
+      retryableFactsByTaskId.clear();
       idlePromises.clear();
       shutdownPromise = Promise.all(activeTasks).then((): void => undefined);
       return shutdownPromise;

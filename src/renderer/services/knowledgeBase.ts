@@ -149,6 +149,10 @@ export const knowledgeBaseService = {
     taskId: string,
   ): Promise<KnowledgeFactBatchReviewTask | null> =>
     request(api => api.getBatchReviewStatus({ taskId })),
+  retryBatchReview: (
+    taskId: string,
+  ): Promise<KnowledgeFactBatchReviewTask | null> =>
+    request(api => api.retryBatchReview({ taskId })),
   reviewFact: (input: KnowledgeReviewFactRequest): Promise<KnowledgeFactReviewResult> =>
     request(api => api.reviewFact(input)),
   archiveFact: (input: KnowledgeArchiveFactRequest): Promise<KnowledgeFactArchiveResult> =>

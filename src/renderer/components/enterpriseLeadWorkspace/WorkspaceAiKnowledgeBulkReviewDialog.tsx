@@ -11,6 +11,7 @@ export interface WorkspaceAiKnowledgeBulkReviewDialogProps {
   action: KnowledgeFactBatchActionValue;
   isOpen: boolean;
   selectedCount: number;
+  selectionMode?: 'page' | 'matching' | null;
   isSubmitting: boolean;
   reason: string;
   onCancel: () => void;
@@ -21,7 +22,19 @@ export interface WorkspaceAiKnowledgeBulkReviewDialogProps {
 const replaceCount = (key: string, count: number): string =>
   i18nService.t(key).replace('{count}', String(count));
 
-const getDialogTitleKey = (action: KnowledgeFactBatchActionValue): string => {
+const getDialogTitleKey = (
+  action: KnowledgeFactBatchActionValue,
+  selectionMode: 'page' | 'matching' | null | undefined,
+): string => {
+  if (selectionMode === 'matching') {
+    if (action === KnowledgeFactBatchAction.Reject) {
+      return 'enterpriseAiKnowledgeBatchRejectMatchingTitle';
+    }
+    if (action === KnowledgeFactBatchAction.Archive) {
+      return 'enterpriseAiKnowledgeBatchArchiveMatchingTitle';
+    }
+    return 'enterpriseAiKnowledgeBatchConfirmMatchingTitle';
+  }
   if (action === KnowledgeFactBatchAction.Reject) {
     return 'enterpriseAiKnowledgeBatchRejectTitle';
   }
@@ -31,7 +44,19 @@ const getDialogTitleKey = (action: KnowledgeFactBatchActionValue): string => {
   return 'enterpriseAiKnowledgeBatchConfirmTitle';
 };
 
-const getDialogDescriptionKey = (action: KnowledgeFactBatchActionValue): string => {
+const getDialogDescriptionKey = (
+  action: KnowledgeFactBatchActionValue,
+  selectionMode: 'page' | 'matching' | null | undefined,
+): string => {
+  if (selectionMode === 'matching') {
+    if (action === KnowledgeFactBatchAction.Reject) {
+      return 'enterpriseAiKnowledgeBatchRejectMatchingDescription';
+    }
+    if (action === KnowledgeFactBatchAction.Archive) {
+      return 'enterpriseAiKnowledgeBatchArchiveMatchingDescription';
+    }
+    return 'enterpriseAiKnowledgeBatchConfirmMatchingDescription';
+  }
   if (action === KnowledgeFactBatchAction.Reject) {
     return 'enterpriseAiKnowledgeBatchRejectDescription';
   }
@@ -41,7 +66,19 @@ const getDialogDescriptionKey = (action: KnowledgeFactBatchActionValue): string 
   return 'enterpriseAiKnowledgeBatchConfirmDescription';
 };
 
-const getSubmitLabelKey = (action: KnowledgeFactBatchActionValue): string => {
+const getSubmitLabelKey = (
+  action: KnowledgeFactBatchActionValue,
+  selectionMode: 'page' | 'matching' | null | undefined,
+): string => {
+  if (selectionMode === 'matching') {
+    if (action === KnowledgeFactBatchAction.Reject) {
+      return 'enterpriseAiKnowledgeBatchSubmitRejectMatching';
+    }
+    if (action === KnowledgeFactBatchAction.Archive) {
+      return 'enterpriseAiKnowledgeBatchSubmitArchiveMatching';
+    }
+    return 'enterpriseAiKnowledgeBatchSubmitConfirmMatching';
+  }
   if (action === KnowledgeFactBatchAction.Reject) {
     return 'enterpriseAiKnowledgeBatchSubmitReject';
   }
@@ -55,6 +92,7 @@ export const WorkspaceAiKnowledgeBulkReviewDialog = ({
   action,
   isOpen,
   selectedCount,
+  selectionMode = 'page',
   isSubmitting,
   reason,
   onCancel,
@@ -121,6 +159,7 @@ export const WorkspaceAiKnowledgeBulkReviewDialog = ({
     }
     void onConfirm();
   };
+  const isMatchingSelection = selectionMode === 'matching';
 
   return (
     <div className="fixed inset-0 z-40 grid place-items-center bg-black/30 px-4 py-6">
@@ -135,10 +174,14 @@ export const WorkspaceAiKnowledgeBulkReviewDialog = ({
         onKeyDown={handleKeyDown}
       >
         <h3 id={titleId} className="text-base font-semibold text-foreground">
-          {replaceCount(getDialogTitleKey(action), selectedCount)}
+          {isMatchingSelection
+            ? i18nService.t(getDialogTitleKey(action, selectionMode))
+            : replaceCount(getDialogTitleKey(action, selectionMode), selectedCount)}
         </h3>
         <p id={descriptionId} className="mt-2 text-sm leading-6 text-secondary">
-          {replaceCount(getDialogDescriptionKey(action), selectedCount)}
+          {isMatchingSelection
+            ? i18nService.t(getDialogDescriptionKey(action, selectionMode))
+            : replaceCount(getDialogDescriptionKey(action, selectionMode), selectedCount)}
         </p>
 
         {reasonRequired ? (
@@ -191,7 +234,9 @@ export const WorkspaceAiKnowledgeBulkReviewDialog = ({
             className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-50"
             onClick={handleSubmit}
           >
-            {replaceCount(getSubmitLabelKey(action), selectedCount)}
+            {isMatchingSelection
+              ? i18nService.t(getSubmitLabelKey(action, selectionMode))
+              : replaceCount(getSubmitLabelKey(action, selectionMode), selectedCount)}
           </button>
         </div>
       </div>

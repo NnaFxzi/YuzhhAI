@@ -85,6 +85,7 @@ import type {
   KnowledgeFactArchiveResult,
   KnowledgeFactBatchReviewDetail,
   KnowledgeFactBatchReviewRequest,
+  KnowledgeFactBatchReviewRetryRequest,
   KnowledgeFactBatchReviewSelection,
   KnowledgeFactBatchReviewStatusRequest,
   KnowledgeFactBatchReviewTask,
@@ -259,6 +260,10 @@ const batchReviewStatusRequestKeys = {
   taskId: true,
 } satisfies Record<keyof KnowledgeFactBatchReviewStatusRequest, true>;
 
+const batchReviewRetryRequestKeys = {
+  taskId: true,
+} satisfies Record<keyof KnowledgeFactBatchReviewRetryRequest, true>;
+
 const batchReviewTaskKeys = {
   taskId: true,
   workspaceId: true,
@@ -269,6 +274,7 @@ const batchReviewTaskKeys = {
   successCount: true,
   skippedCount: true,
   failedCount: true,
+  retryableCount: true,
   skippedByReason: true,
   details: true,
   createdAt: true,
@@ -384,6 +390,10 @@ const rendererApiFixture = {
     void input;
     return failedRendererResult<KnowledgeFactBatchReviewTask | null>();
   },
+  retryBatchReview: (input: KnowledgeFactBatchReviewRetryRequest) => {
+    void input;
+    return failedRendererResult<KnowledgeFactBatchReviewTask | null>();
+  },
 } satisfies KnowledgeBaseRendererApi;
 
 const expectExactDtoKeys = <T extends object>(
@@ -457,6 +467,7 @@ describe('knowledge base contracts', () => {
       GetFactEvidence: 'knowledgeBase:facts:getEvidence',
       StartBatchReview: 'knowledgeBase:facts:batchReview:start',
       GetBatchReviewStatus: 'knowledgeBase:facts:batchReview:getStatus',
+      RetryBatchReview: 'knowledgeBase:facts:batchReview:retry',
     });
     expect(KnowledgeDocumentVisibility).toEqual({ Active: 'active', Deleted: 'deleted' });
     expect(KNOWLEDGE_SELECTION_TOKEN_TTL_MS).toBe(5 * 60_000);
@@ -512,6 +523,7 @@ describe('knowledge base contracts', () => {
       'getFactEvidence',
       'startBatchReview',
       'getBatchReviewStatus',
+      'retryBatchReview',
     ]);
     expectExactDtoKeys(prepareRequest, prepareExtractionAuthorizationRequestKeys);
     expectExactDtoKeys(requestExtraction, requestExtractionRequestKeys);
@@ -575,6 +587,9 @@ describe('knowledge base contracts', () => {
     const batchReviewStatusRequest: KnowledgeFactBatchReviewStatusRequest = {
       taskId: 'task-1',
     };
+    const batchReviewRetryRequest: KnowledgeFactBatchReviewRetryRequest = {
+      taskId: 'task-1',
+    };
     const batchReviewTask: KnowledgeFactBatchReviewTask = {
       taskId: 'task-1',
       workspaceId: 'workspace-1',
@@ -585,6 +600,7 @@ describe('knowledge base contracts', () => {
       successCount: 1,
       skippedCount: 1,
       failedCount: 0,
+      retryableCount: 2,
       skippedByReason: {
         [KnowledgeFactBatchSkipReason.AlreadyProcessed]: 1,
       },
@@ -598,6 +614,7 @@ describe('knowledge base contracts', () => {
     expectExactDtoKeys(batchReviewDetail, batchReviewDetailKeys);
     expectExactDtoKeys(batchReviewRequest, batchReviewRequestKeys);
     expectExactDtoKeys(batchReviewStatusRequest, batchReviewStatusRequestKeys);
+    expectExactDtoKeys(batchReviewRetryRequest, batchReviewRetryRequestKeys);
     expectExactDtoKeys(batchReviewTask, batchReviewTaskKeys);
     expect(Object.keys(batchReviewSelectionByIds).sort()).toEqual(['items', 'kind']);
     expect(Object.keys(batchReviewSelectionByFilters).sort()).toEqual(['filters', 'kind']);
@@ -623,6 +640,7 @@ describe('knowledge base contracts', () => {
       successCount: 1,
       skippedCount: 1,
       failedCount: 0,
+      retryableCount: 2,
       skippedByReason: {
         already_processed: 1,
       },

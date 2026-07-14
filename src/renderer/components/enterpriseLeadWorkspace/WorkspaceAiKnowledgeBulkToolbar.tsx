@@ -52,6 +52,29 @@ const getDetailLabel = (code: string): string => {
   return i18nService.t('enterpriseAiKnowledgeBatchDetailUnknownError');
 };
 
+const getActionLabel = (
+  action: KnowledgeFactBatchActionValue,
+  selectedCount: number,
+  selectionMode: 'page' | 'matching' | null,
+): string => {
+  if (selectionMode === 'matching') {
+    if (action === KnowledgeFactBatchAction.Reject) {
+      return i18nService.t('enterpriseAiKnowledgeBatchRejectMatchingAction');
+    }
+    if (action === KnowledgeFactBatchAction.Archive) {
+      return i18nService.t('enterpriseAiKnowledgeBatchArchiveMatchingAction');
+    }
+    return i18nService.t('enterpriseAiKnowledgeBatchConfirmMatchingAction');
+  }
+  if (action === KnowledgeFactBatchAction.Reject) {
+    return replaceCount('enterpriseAiKnowledgeBatchRejectAction', selectedCount);
+  }
+  if (action === KnowledgeFactBatchAction.Archive) {
+    return replaceCount('enterpriseAiKnowledgeBatchArchiveAction', selectedCount);
+  }
+  return replaceCount('enterpriseAiKnowledgeBatchConfirmAction', selectedCount);
+};
+
 export interface WorkspaceAiKnowledgeBulkToolbarProps {
   viewModel: WorkspaceAiKnowledgeBatchReviewViewModel;
   showArchiveAction?: boolean;
@@ -85,7 +108,11 @@ export const WorkspaceAiKnowledgeBulkToolbar = ({
     () => task?.details.filter(detail => detail.retryable).length ?? 0,
     [task],
   );
+  const retryableCount = task
+    ? Math.max(task.retryableCount, retryableDetailCount)
+    : 0;
   const disableTerminalActions = viewModel.isStarting;
+  const isMatchingSelection = viewModel.selectionMode === 'matching';
 
   if (!shouldRender) {
     return null;
@@ -166,10 +193,18 @@ export const WorkspaceAiKnowledgeBulkToolbar = ({
                 className="h-4 w-4 rounded border-border text-primary focus:ring-primary disabled:cursor-not-allowed disabled:opacity-50"
                 onChange={() => viewModel.toggleVisible()}
               />
-              <span>{replaceCount('enterpriseAiKnowledgeBatchSelectedCount', viewModel.selectedCount)}</span>
+              <span>
+                {isMatchingSelection
+                  ? i18nService.t('enterpriseAiKnowledgeBatchMatchingSelectionSummary')
+                  : replaceCount('enterpriseAiKnowledgeBatchSelectedCount', viewModel.selectedCount)}
+              </span>
             </label>
 
-            {viewModel.canSelectAllMatching ? (
+            {isMatchingSelection ? (
+              <div className="flex flex-wrap items-center gap-2 text-sm text-secondary">
+                <span>{i18nService.t('enterpriseAiKnowledgeBatchMatchingSelectionHint')}</span>
+              </div>
+            ) : viewModel.canExpandToMatching ? (
               <div className="flex flex-wrap items-center gap-2 text-sm text-secondary">
                 <span>{i18nService.t('enterpriseAiKnowledgeBatchSelectAllMatchingPrompt')}</span>
                 <button
@@ -193,7 +228,11 @@ export const WorkspaceAiKnowledgeBulkToolbar = ({
               className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-white hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-50"
               onClick={() => openDialog(KnowledgeFactBatchAction.Confirm)}
             >
-              {replaceCount('enterpriseAiKnowledgeBatchConfirmAction', viewModel.selectedCount)}
+              {getActionLabel(
+                KnowledgeFactBatchAction.Confirm,
+                viewModel.selectedCount,
+                viewModel.selectionMode,
+              )}
             </button>
             <button
               type="button"
@@ -202,7 +241,11 @@ export const WorkspaceAiKnowledgeBulkToolbar = ({
               className="rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground hover:bg-surface-raised focus:outline-none focus:ring-2 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-50"
               onClick={() => openDialog(KnowledgeFactBatchAction.Reject)}
             >
-              {replaceCount('enterpriseAiKnowledgeBatchRejectAction', viewModel.selectedCount)}
+              {getActionLabel(
+                KnowledgeFactBatchAction.Reject,
+                viewModel.selectedCount,
+                viewModel.selectionMode,
+              )}
             </button>
             {showArchiveAction ? (
               <button
@@ -212,7 +255,11 @@ export const WorkspaceAiKnowledgeBulkToolbar = ({
                 className="rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground hover:bg-surface-raised focus:outline-none focus:ring-2 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-50"
                 onClick={() => openDialog(KnowledgeFactBatchAction.Archive)}
               >
-                {replaceCount('enterpriseAiKnowledgeBatchArchiveAction', viewModel.selectedCount)}
+                {getActionLabel(
+                  KnowledgeFactBatchAction.Archive,
+                  viewModel.selectedCount,
+                  viewModel.selectionMode,
+                )}
               </button>
             ) : null}
             <button
@@ -273,7 +320,7 @@ export const WorkspaceAiKnowledgeBulkToolbar = ({
                 </div>
               </div>
               <div className="flex flex-wrap gap-2">
-                {retryableDetailCount > 0 ? (
+                {retryableCount > 0 ? (
                   <button
                     type="button"
                     data-bulk-review-retry
@@ -281,7 +328,7 @@ export const WorkspaceAiKnowledgeBulkToolbar = ({
                     className="rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground hover:bg-surface-raised focus:outline-none focus:ring-2 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-50"
                     onClick={handleRetryFailed}
                   >
-                    {replaceCount('enterpriseAiKnowledgeBatchRetryFailed', retryableDetailCount)}
+                    {replaceCount('enterpriseAiKnowledgeBatchRetryFailed', retryableCount)}
                   </button>
                 ) : null}
                 <button
@@ -326,6 +373,7 @@ export const WorkspaceAiKnowledgeBulkToolbar = ({
         action={dialogAction ?? KnowledgeFactBatchAction.Confirm}
         isOpen={dialogAction !== null}
         selectedCount={viewModel.selectedCount}
+        selectionMode={viewModel.selectionMode}
         isSubmitting={viewModel.isStarting}
         reason={rejectReason}
         onCancel={closeDialog}

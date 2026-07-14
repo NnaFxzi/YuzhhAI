@@ -54,6 +54,7 @@ export type WorkspaceProjectionChangeHandler = () => Promise<void> | void;
 export interface WorkspaceKnowledgeDocumentsPanelProps {
   workspaceId: string;
   initialImportResult?: KnowledgeImportBatchResult;
+  refreshToken?: number;
   uploadButtonSlotId?: string;
   onDocumentCountChange?: (count: number) => void;
   onWorkspaceProjectionChange?: WorkspaceProjectionChangeHandler;
@@ -1106,6 +1107,7 @@ const ignoreRejectedAction = (action: Promise<void>): void => {
 export default function WorkspaceKnowledgeDocumentsPanel({
   workspaceId,
   initialImportResult,
+  refreshToken,
   uploadButtonSlotId,
   onDocumentCountChange,
   onWorkspaceProjectionChange,
@@ -1113,6 +1115,7 @@ export default function WorkspaceKnowledgeDocumentsPanel({
 }: WorkspaceKnowledgeDocumentsPanelProps): React.ReactElement {
   const state = useWorkspaceKnowledgeDocuments(workspaceId, initialImportResult, {
     onReviewRequired: onAiKnowledgeMetricsRefresh,
+    refreshToken,
   });
   const [visibility, setVisibility] = useState<KnowledgeDocumentVisibility>(
     KnowledgeDocumentVisibilities.Active,

@@ -215,6 +215,7 @@ type KnowledgeBaseServiceApi = typeof knowledgeBaseService;
 export interface UseWorkspaceKnowledgeDocumentsOptions {
   service?: KnowledgeBaseServiceApi;
   onReviewRequired?: () => Promise<void> | void;
+  refreshToken?: number;
 }
 
 export const toKnowledgeDocumentServiceError = (caught: unknown): KnowledgeBaseServiceError =>
@@ -459,6 +460,7 @@ export const useWorkspaceKnowledgeDocuments = (
   options: UseWorkspaceKnowledgeDocumentsOptions = {},
 ): WorkspaceKnowledgeDocumentsState => {
   const service = options.service ?? knowledgeBaseService;
+  const refreshToken = options.refreshToken;
   const [documents, setDocuments] = useState<KnowledgeDocumentListItem[]>([]);
   const [deletedDocuments, setDeletedDocuments] = useState<KnowledgeDocumentListItem[]>([]);
   const [selectedDetails, setSelectedDetails] = useState<KnowledgeDocumentDetails | null>(null);
@@ -470,6 +472,7 @@ export const useWorkspaceKnowledgeDocuments = (
   const [extractionMutatingDocumentIds, setExtractionMutatingDocumentIds] = useState<string[]>([]);
   const [error, setError] = useState<KnowledgeBaseServiceError | null>(null);
   const pollerRef = useRef<KnowledgeDocumentPollingController | null>(null);
+  const previousRefreshTokenRef = useRef(refreshToken);
   const generationRef = useRef(0);
   const workspaceIdRef = useRef(workspaceId);
   const documentsRef = useRef<KnowledgeDocumentListItem[]>([]);
@@ -574,6 +577,14 @@ export const useWorkspaceKnowledgeDocuments = (
   useEffect(() => {
     pollerRef.current?.update([...documents, ...deletedDocuments]);
   }, [deletedDocuments, documents]);
+
+  useEffect(() => {
+    if (previousRefreshTokenRef.current === refreshToken) {
+      return;
+    }
+    previousRefreshTokenRef.current = refreshToken;
+    void refresh();
+  }, [refresh, refreshToken]);
 
   useEffect(() => {
     if (!selectedDetails) {
