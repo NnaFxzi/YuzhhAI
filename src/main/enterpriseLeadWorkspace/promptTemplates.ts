@@ -367,6 +367,7 @@ export function buildPromotionTaskOutputSchema(role: EnterpriseLeadTaskAgentRole
         reviewSummary: '有证据支持的推广复盘结论',
         effectiveStrategies: ['已验证或待人工验证的有效做法'],
         improvementActions: ['仅供人工确认的下一轮改进建议'],
+        proposedKnowledge: ['需要用户确认后才能写入工作空间长期知识的结论'],
       };
     case EnterpriseLeadAgentRole.SalesHandoff:
       return {
@@ -410,6 +411,9 @@ const buildPromotionTaskContext = (
   acceptanceCriteria: executionContext.acceptanceCriteria,
   executionMode: executionContext.executionMode,
   inputArtifacts: inputArtifacts.map(toPromptArtifactSummary),
+  ...(task.role === EnterpriseLeadAgentRole.PromotionAccountMonitoring
+    ? { scheduledMonitoring: task.inputPayload.scheduledPromotionMonitoring ?? null }
+    : {}),
 });
 
 const buildPromotionChatTaskContext = (
@@ -463,6 +467,15 @@ const buildTaskResultSchema = (role: EnterpriseLeadTaskAgentRole, promotion: boo
 });
 
 const buildSafetySection = (): string => safetyBoundaries.map(item => `- ${item}`).join('\n');
+
+const buildPromotionMonitoringSafetySection = (role: EnterpriseLeadTaskAgentRole): string[] =>
+  role === EnterpriseLeadAgentRole.PromotionAccountMonitoring
+    ? [
+        '- 账户监控只能读取已提供的指标，生成报告，并提出等待人工确认的调整建议。',
+        '- 不得发布内容、调整预算、修改投放参数或修改任何平台设置。',
+        '- 平台未知，或指标来源、统计时间范围缺失时，status 必须为 needs_input，不得推测趋势。',
+      ]
+    : [];
 
 const buildChatSafetySection = (): string =>
   safetyBoundaries
@@ -639,6 +652,7 @@ export function buildAgentTaskPrompt({
     '',
     '安全边界：',
     buildSafetySection(),
+    ...buildPromotionMonitoringSafetySection(task.role),
     '',
     promotion
       ? '请基于工作空间、输入 Artifact 和 Artifact 摘要生成本 Agent 的结构化 JSON 结果。'

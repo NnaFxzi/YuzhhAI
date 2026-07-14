@@ -1,7 +1,9 @@
 import {
+  EnterpriseLeadAgentRole,
   EnterpriseLeadRunStatus,
   EnterpriseLeadTaskStatus,
 } from '../../shared/enterpriseLeadWorkspace/constants';
+import { getPromotionWorkflowArtifactKind } from '../../shared/enterpriseLeadWorkspace/promotionContracts';
 import type { PromotionTaskResult } from '../../shared/enterpriseLeadWorkspace/promotionTaskContracts';
 import { PROMOTION_WORKFLOW_GRAPH } from '../../shared/enterpriseLeadWorkspace/promotionWorkflowGraph';
 import type {
@@ -43,6 +45,25 @@ const dedupeWorkflowArtifactRefs = (artifactRefs: WorkflowArtifactRef[]): Workfl
   Array.from(new Map(artifactRefs.map(artifact => [artifact.id, artifact])).values());
 
 const EMPTY_WORKFLOW_CONTROLLER_SUMMARY = '';
+
+const withPerformanceReviewKnowledgeConfirmation = (
+  task: EnterpriseLeadAgentTask,
+  result: PromotionTaskResult,
+): PromotionTaskResult => {
+  if (task.role !== EnterpriseLeadAgentRole.PromotionPerformanceReview) return result;
+  if (result.status !== EnterpriseLeadTaskStatus.Completed) return result;
+  const outputs = result.outputs as Record<string, unknown>;
+  const proposedKnowledge = Array.isArray(outputs.proposedKnowledge)
+    ? outputs.proposedKnowledge.filter(
+        (item): item is string => typeof item === 'string' && item.trim().length > 0,
+      )
+    : [];
+  if (proposedKnowledge.length === 0) return result;
+  return {
+    ...result,
+    status: EnterpriseLeadTaskStatus.AwaitingApproval,
+  };
+};
 
 export class EnterpriseLeadWorkflowOrchestrator {
   private readonly activeRuns = new Map<string, Promise<EnterpriseLeadWorkspaceSnapshot>>();
@@ -376,17 +397,41 @@ export class EnterpriseLeadWorkflowOrchestrator {
         return;
       }
 
-      const taskResult = this.persistTaskResult(runId, task, inputArtifacts, result);
+      const confirmedResult = withPerformanceReviewKnowledgeConfirmation(task, result);
+      if (
+        task.role === EnterpriseLeadAgentRole.PromotionPerformanceReview &&
+        (task.status === EnterpriseLeadTaskStatus.Completed ||
+          task.status === EnterpriseLeadTaskStatus.AwaitingApproval) &&
+        confirmedResult.status !== EnterpriseLeadTaskStatus.Completed &&
+        confirmedResult.status !== EnterpriseLeadTaskStatus.AwaitingApproval
+      ) {
+        if (task.status === EnterpriseLeadTaskStatus.AwaitingApproval) {
+          this.restoreAwaitingPromotionReview(task);
+        } else {
+          this.options.store.updateWorkflowTaskStatus(task.id, EnterpriseLeadTaskStatus.Completed);
+        }
+        this.options.artifactStore.finishAttempt(taskAttempt.id, { status: confirmedResult.status });
+        this.appendTaskResultEvent(runId, task, confirmedResult);
+        return;
+      }
+      const taskResult = this.persistTaskResult(runId, task, inputArtifacts, confirmedResult);
       this.options.store.updateWorkflowTaskResult(task.id, taskResult, attempt);
-      this.options.artifactStore.finishAttempt(taskAttempt.id, { status: result.status });
-      this.appendTaskResultEvent(runId, task, result);
+      this.options.artifactStore.finishAttempt(taskAttempt.id, { status: taskResult.status });
+      this.appendTaskResultEvent(runId, task, taskResult);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      const preserveAwaitingApproval =
+        task.role === EnterpriseLeadAgentRole.PromotionPerformanceReview &&
+        task.status === EnterpriseLeadTaskStatus.AwaitingApproval;
       if (!this.cancelledRuns.has(runId)) {
-        this.options.store.updateWorkflowTaskStatus(task.id, EnterpriseLeadTaskStatus.Error, {
-          error: message,
-          attempt,
-        });
+        if (preserveAwaitingApproval) {
+          this.restoreAwaitingPromotionReview(task);
+        } else {
+          this.options.store.updateWorkflowTaskStatus(task.id, EnterpriseLeadTaskStatus.Error, {
+            error: message,
+            attempt,
+          });
+        }
         this.options.artifactStore.appendEvent({
           runId,
           type: 'task_failed',
@@ -402,19 +447,69 @@ export class EnterpriseLeadWorkflowOrchestrator {
     }
   }
 
+  private restoreAwaitingPromotionReview(task: EnterpriseLeadAgentTask): void {
+    this.options.store.updateWorkflowTaskResult(
+      task.id,
+      {
+        role: task.role,
+        status: EnterpriseLeadTaskStatus.AwaitingApproval,
+        summary: task.summary,
+        outputs: task.outputPayload,
+        artifactRefs: task.artifactRefs,
+        missingInfo: task.missingInfo,
+        todos: task.todos,
+        risks: task.risks,
+        handoffContext: task.handoffContext,
+      },
+      task.attempt ?? 0,
+    );
+  }
+
   private persistTaskResult(
     runId: string,
     task: EnterpriseLeadAgentTask,
     inputArtifacts: WorkflowArtifactRef[],
     result: PromotionTaskResult,
   ): EnterpriseLeadAgentTaskResult {
-    const evidenceIds = result.artifactRefs.flatMap(artifact => artifact.evidenceIds);
+    const invalidArtifactRefs = this.getInvalidTaskArtifactRefs(
+      result.artifactRefs,
+      inputArtifacts,
+      runId,
+      task.id,
+    );
+    const confirmedResult = invalidArtifactRefs.length > 0
+      ? {
+          ...result,
+          status: EnterpriseLeadTaskStatus.NeedsInput,
+          artifactRefs: [],
+          missingInfo: Array.from(new Set([...result.missingInfo, 'verified workflow artifacts'])),
+        }
+      : result;
+    if (
+      confirmedResult.status !== EnterpriseLeadTaskStatus.Completed &&
+      confirmedResult.status !== EnterpriseLeadTaskStatus.AwaitingApproval
+    ) {
+      return {
+        ...confirmedResult,
+        outputs: confirmedResult.outputs as Record<string, unknown>,
+        artifactRefs: dedupeWorkflowArtifactRefs([
+          ...inputArtifacts,
+          ...(task.artifactRefs ?? []),
+        ]),
+      };
+    }
+    const evidenceIds = confirmedResult.artifactRefs.flatMap(artifact => artifact.evidenceIds);
     const artifact = this.options.artifactStore.createArtifactIfRunActive({
       runId,
       taskId: task.id,
-      kind: `${task.role}_output`,
+      kind: getPromotionWorkflowArtifactKind(task.role),
       schemaVersion: 1,
-      payload: result.outputs as Record<string, unknown>,
+      payload: {
+        ...(confirmedResult.outputs as Record<string, unknown>),
+        ...(task.role === EnterpriseLeadAgentRole.PromotionAccountMonitoring
+          ? { scheduledPromotionMonitoring: task.inputPayload.scheduledPromotionMonitoring }
+          : {}),
+      },
       evidenceIds,
     });
     const outputArtifact: WorkflowArtifactRef = {
@@ -426,21 +521,44 @@ export class EnterpriseLeadWorkflowOrchestrator {
       evidenceIds: artifact.evidenceIds,
     };
     return {
-      ...result,
-      outputs: result.outputs as Record<string, unknown>,
+      ...confirmedResult,
+      outputs: confirmedResult.outputs as Record<string, unknown>,
       artifactRefs: dedupeWorkflowArtifactRefs([
         ...inputArtifacts,
         ...(task.artifactRefs ?? []),
-        ...result.artifactRefs,
+        ...confirmedResult.artifactRefs,
         outputArtifact,
       ]),
     };
   }
 
+  private getInvalidTaskArtifactRefs(
+    artifactRefs: WorkflowArtifactRef[],
+    inputArtifacts: WorkflowArtifactRef[],
+    runId: string,
+    taskId: string,
+  ): string[] {
+    const allowedRefIds = new Set(inputArtifacts.map(artifact => artifact.id));
+    return artifactRefs.flatMap(ref => {
+      const artifact = this.options.artifactStore.getArtifact(ref.id);
+      if (
+        !artifact ||
+        artifact.runId !== runId ||
+        artifact.taskId !== ref.producerTaskId ||
+        artifact.kind !== ref.kind ||
+        !allowedRefIds.has(ref.id) ||
+        artifact.taskId === taskId
+      ) {
+        return [ref.id];
+      }
+      return [];
+    });
+  }
+
   private appendTaskResultEvent(
     runId: string,
     task: EnterpriseLeadAgentTask,
-    result: PromotionTaskResult,
+    result: Pick<EnterpriseLeadAgentTaskResult, 'status' | 'summary'>,
   ): void {
     const eventType =
       result.status === EnterpriseLeadTaskStatus.Completed

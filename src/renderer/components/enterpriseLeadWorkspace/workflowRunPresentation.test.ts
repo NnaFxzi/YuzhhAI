@@ -1,9 +1,11 @@
 import { describe, expect, test } from 'vitest';
 
 import { EnterpriseLeadRunStatus } from '../../../shared/enterpriseLeadWorkspace/constants';
+import { PromotionMonitoringReason } from '../../../shared/enterpriseLeadWorkspace/promotionContracts';
 import { WorkflowOptionalNode } from '../../../shared/enterpriseLeadWorkspace/workflowContracts';
 import { i18nService } from '../../services/i18n';
 import {
+  getPromotionMonitoringReasonKey,
   getWorkflowControllerSummaryKey,
   getWorkflowEventLabelKey,
   getWorkflowStartOptionsForMode,
@@ -42,6 +44,32 @@ describe('workflow run presentation', () => {
     expect(getWorkflowControllerSummaryKey('provider_failure' as EnterpriseLeadRunStatus)).toBe(
       'enterpriseLeadWorkflowSummaryManualAttention',
     );
+  });
+
+  test('localizes monitoring reason discriminators in both languages with a safe unknown fallback', () => {
+    const previousLanguage = i18nService.getLanguage();
+    try {
+      expect(getPromotionMonitoringReasonKey(PromotionMonitoringReason.MetricPeriod)).toBe(
+        'enterpriseLeadWorkflowMonitoringReasonMetricPeriod',
+      );
+      expect(getPromotionMonitoringReasonKey('provider_failure: api-key=secret')).toBe(
+        'enterpriseLeadWorkflowMonitoringReasonGeneric',
+      );
+
+      i18nService.setLanguage('zh', { persist: false });
+      expect(i18nService.t(getPromotionMonitoringReasonKey(PromotionMonitoringReason.MetricPeriod)))
+        .toBe('请提供有效的指标统计时间范围。');
+      expect(i18nService.t(getPromotionMonitoringReasonKey('unknown')))
+        .toBe('请补充可验证的监控信息后重试。');
+
+      i18nService.setLanguage('en', { persist: false });
+      expect(i18nService.t(getPromotionMonitoringReasonKey(PromotionMonitoringReason.MetricPeriod)))
+        .toBe('Provide a valid metrics reporting period.');
+      expect(i18nService.t(getPromotionMonitoringReasonKey('unknown')))
+        .toBe('Provide verifiable monitoring information before trying again.');
+    } finally {
+      i18nService.setLanguage(previousLanguage, { persist: false });
+    }
   });
 
   test('localizes controller summary keys and every legacy controller summary in both supported languages', () => {

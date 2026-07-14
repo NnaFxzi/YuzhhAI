@@ -370,6 +370,15 @@ export class EnterpriseLeadWorkspaceStore {
         created_at TEXT NOT NULL
       );
 
+      CREATE TABLE IF NOT EXISTS enterprise_lead_promotion_monitoring_claims (
+        run_id TEXT NOT NULL,
+        task_id TEXT NOT NULL,
+        window_start TEXT NOT NULL,
+        window_end TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        PRIMARY KEY (run_id, window_start, window_end)
+      );
+
       CREATE TABLE IF NOT EXISTS enterprise_lead_workflow_events (
         id TEXT PRIMARY KEY,
         run_id TEXT NOT NULL,
@@ -1448,6 +1457,43 @@ export class EnterpriseLeadWorkspaceStore {
       now,
       taskId,
     );
+  }
+
+  updateWorkflowTaskInputPayload(taskId: string, inputPayload: Record<string, unknown>): void {
+    const task = this.getTask(taskId);
+    if (!task) {
+      throw new Error('Enterprise lead task not found');
+    }
+    this.assertRunMutable(task.runId);
+    this.db.prepare(`
+      UPDATE enterprise_lead_agent_tasks
+      SET input_payload = ?, updated_at = ?
+      WHERE id = ?
+    `).run(JSON.stringify(inputPayload), new Date().toISOString(), taskId);
+  }
+
+  claimPromotionMonitoringWindow(input: {
+    runId: string;
+    taskId: string;
+    windowStart: string;
+    windowEnd: string;
+  }): boolean {
+    const claim = this.db.transaction(() => {
+      this.assertRunMutable(input.runId);
+      const result = this.db.prepare(`
+        INSERT OR IGNORE INTO enterprise_lead_promotion_monitoring_claims
+          (run_id, task_id, window_start, window_end, created_at)
+        VALUES (?, ?, ?, ?, ?)
+      `).run(
+        input.runId,
+        input.taskId,
+        input.windowStart,
+        input.windowEnd,
+        new Date().toISOString(),
+      );
+      return result.changes === 1;
+    });
+    return claim();
   }
 
   updateWorkflowTaskStatus(

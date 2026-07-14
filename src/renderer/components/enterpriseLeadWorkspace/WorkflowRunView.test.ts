@@ -202,4 +202,45 @@ describe('getWorkflowRunActions', () => {
     expect(markup).not.toContain(t('enterpriseLeadWorkflowCancel'));
     expect(markup).not.toContain(t('enterpriseLeadWorkflowRetry'));
   });
+
+  test('localizes structured monitoring summaries instead of exposing service summary codes', async () => {
+    const workspace = createWorkspace();
+    const snapshot = createSnapshot(workspace, {
+      status: EnterpriseLeadRunStatus.NeedsInput,
+      controllerSummary: 'promotion_monitoring_review_blocked',
+    });
+    snapshot.tasks = [{
+      ...createApprovalTask(),
+      role: EnterpriseLeadAgentRole.PromotionAccountMonitoring,
+      status: 'needs_input',
+      summary: 'promotion_monitoring_needs_verified_input',
+      missingInfo: ['metric_period', 'provider_failure: api-key=secret'],
+    }];
+
+    const { markup, t } = await renderWorkflowRun(snapshot);
+
+    expect(markup).toContain(t('enterpriseLeadWorkflowMonitoringNeedsInput'));
+    expect(markup).toContain(t('enterpriseLeadWorkflowMonitoringReviewBlocked'));
+    expect(markup).not.toContain('promotion_monitoring_needs_verified_input');
+    expect(markup).not.toContain('promotion_monitoring_review_blocked');
+    expect(markup).not.toContain('metric_period');
+    expect(markup).not.toContain('provider_failure: api-key=secret');
+    expect(markup).toContain(t('enterpriseLeadWorkflowMonitoringReasonMetricPeriod'));
+    expect(markup).toContain(t('enterpriseLeadWorkflowMonitoringReasonGeneric'));
+  });
+
+  test('describes an awaiting performance review as a user knowledge confirmation', async () => {
+    const workspace = createWorkspace();
+    const snapshot = createSnapshot(workspace, { status: EnterpriseLeadRunStatus.AwaitingApproval });
+    snapshot.tasks = [{
+      ...createApprovalTask(),
+      role: EnterpriseLeadAgentRole.PromotionPerformanceReview,
+      outputPayload: { proposedKnowledge: ['确认后写入长期知识'] },
+    }];
+
+    const { markup, t } = await renderWorkflowRun(snapshot);
+
+    expect(markup).toContain(t('enterpriseLeadWorkflowReviewAwaitingConfirmation'));
+    expect(markup).not.toContain(t('enterpriseLeadWorkflowReviewPending'));
+  });
 });

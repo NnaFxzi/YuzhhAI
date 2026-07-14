@@ -92,6 +92,7 @@ export interface PromotionPerformanceReviewTaskOutputs {
   reviewSummary: string;
   effectiveStrategies: string[];
   improvementActions: string[];
+  proposedKnowledge: string[];
 }
 
 export interface PromotionSalesHandoffDraft {
@@ -381,6 +382,9 @@ const normalizePerformanceReviewOutputs = (
   reviewSummary: readRequiredText(outputs, 'reviewSummary'),
   effectiveStrategies: normalizeTextList(outputs.effectiveStrategies, 'effectiveStrategies'),
   improvementActions: normalizeTextList(outputs.improvementActions, 'improvementActions'),
+  proposedKnowledge: Array.isArray(outputs.proposedKnowledge)
+    ? normalizeTextList(outputs.proposedKnowledge, 'proposedKnowledge')
+    : [],
 });
 
 const normalizeSalesHandoffOutputs = (outputs: UnknownRecord): PromotionSalesHandoffTaskOutputs => {

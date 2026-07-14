@@ -1,6 +1,7 @@
 import { BrowserWindow } from 'electron';
 
 import { parseChannelSessionKey } from '../main/libs/openclawChannelSessionSync';
+import type { PromotionMonitoringScheduleContext } from '../shared/enterpriseLeadWorkspace/promotionContracts';
 import { PlatformRegistry } from '../shared/platform';
 import type {
   DeliveryMode as DeliveryModeType,
@@ -64,6 +65,7 @@ type GatewayPayload =
       timeoutSeconds?: number;
       model?: string;
       thinking?: string;
+      promotionMonitoring?: PromotionMonitoringScheduleContext;
     }
   | {
       kind: 'systemEvent';
@@ -129,7 +131,16 @@ interface GatewayRunLogEntry {
 interface CronJobServiceDeps {
   getGatewayClient: () => GatewayClientLike | null;
   ensureGatewayReady: () => Promise<void>;
+  runScheduledPromotionMonitoring?: (
+    context: PromotionMonitoringScheduleContext,
+  ) => Promise<unknown>;
 }
+
+const PROMOTION_MONITORING_RUNTIME_PROMPT = [
+  'Run monitoring-only analysis for the configured promotion metrics.',
+  'Do not publish, send messages, change budgets, or change platform settings.',
+  'Return only the structured monitoring result required by the monitoring workflow.',
+].join(' ');
 
 type InternalScheduledTaskCandidate = {
   description?: string | null;
@@ -270,11 +281,14 @@ function toGatewayPayload(payload: ScheduledTaskPayload): GatewayPayload {
 
   return {
     kind: PayloadKind.AgentTurn,
-    message: payload.message,
+    message: payload.promotionMonitoring
+      ? PROMOTION_MONITORING_RUNTIME_PROMPT
+      : payload.message,
     ...(typeof payload.timeoutSeconds === 'number'
       ? { timeoutSeconds: payload.timeoutSeconds }
       : {}),
     ...(payload.model ? { model: payload.model } : {}),
+    ...(payload.promotionMonitoring ? { promotionMonitoring: payload.promotionMonitoring } : {}),
   };
 }
 
@@ -395,6 +409,9 @@ export function mapGatewayJob(job: GatewayJob): ScheduledTask {
               ? { timeoutSeconds: job.payload.timeoutSeconds }
               : {}),
             ...(job.payload.model ? { model: job.payload.model } : {}),
+            ...(job.payload.promotionMonitoring
+              ? { promotionMonitoring: job.payload.promotionMonitoring }
+              : {}),
           },
     delivery: {
       mode: delivery.mode,
@@ -464,6 +481,9 @@ function extractRunTitle(summary?: string): string | undefined {
 export class CronJobService {
   private readonly getGatewayClient: () => GatewayClientLike | null;
   private readonly ensureGatewayReady: () => Promise<void>;
+  private readonly runScheduledPromotionMonitoring?: (
+    context: PromotionMonitoringScheduleContext,
+  ) => Promise<unknown>;
   private pollingTimer: ReturnType<typeof setInterval> | null = null;
   private lastKnownStates: Map<string, string> = new Map();
   private lastKnownRunAtMs: Map<string, number> = new Map();
@@ -479,6 +499,7 @@ export class CronJobService {
   constructor(deps: CronJobServiceDeps) {
     this.getGatewayClient = deps.getGatewayClient;
     this.ensureGatewayReady = deps.ensureGatewayReady;
+    this.runScheduledPromotionMonitoring = deps.runScheduledPromotionMonitoring;
   }
 
   /**
@@ -830,7 +851,11 @@ export class CronJobService {
 
         const lastRunAtMs = job.state.lastRunAtMs ?? 0;
         const previousRunAtMs = this.lastKnownRunAtMs.get(job.id) ?? 0;
-        if (lastRunAtMs > previousRunAtMs && previousRunAtMs > 0) {
+        if (lastRunAtMs > previousRunAtMs) {
+          if (job.state.lastRunStatus === GatewayStatus.Ok) {
+            this.lastKnownRunAtMs.set(job.id, lastRunAtMs);
+            void this.dispatchPromotionMonitoring(job);
+          }
           try {
             const runs = await this.listRuns(job.id, 1, 0);
             if (runs[0]) {
@@ -858,6 +883,21 @@ export class CronJobService {
       }
     } catch (error) {
       console.warn('[CronJobService] Polling error:', error);
+    }
+  }
+
+  private async dispatchPromotionMonitoring(job: GatewayJob): Promise<void> {
+    if (
+      !this.runScheduledPromotionMonitoring ||
+      job.payload.kind !== PayloadKind.AgentTurn ||
+      !job.payload.promotionMonitoring
+    ) {
+      return;
+    }
+    try {
+      await this.runScheduledPromotionMonitoring(job.payload.promotionMonitoring);
+    } catch (error) {
+      console.error('[CronJobService] Promotion monitoring dispatch failed:', error);
     }
   }
 

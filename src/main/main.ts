@@ -8615,6 +8615,8 @@ if (!gotTheLock) {
 
   initCronJobServiceManager({
     getOpenClawRuntimeAdapter: () => openClawRuntimeAdapter,
+    runScheduledPromotionMonitoring: context =>
+      getEnterpriseLeadWorkspaceService().runScheduledPromotionMonitoring(context),
   });
   initScheduledTaskHelpers({
     getIMGatewayManager: () => ({

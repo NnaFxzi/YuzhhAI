@@ -5,6 +5,10 @@ import {
   type EnterpriseLeadTaskStatus as EnterpriseLeadTaskStatusValue,
 } from '../../../shared/enterpriseLeadWorkspace/constants';
 import {
+  PromotionMonitoringPresentation,
+  PromotionMonitoringReason,
+} from '../../../shared/enterpriseLeadWorkspace/promotionContracts';
+import {
   DEFAULT_WORKFLOW_START_OPTIONS,
   WorkflowEventType,
   type WorkflowEventType as WorkflowEventTypeValue,
@@ -65,6 +69,22 @@ const legacyWorkflowControllerSummaryKeys: Record<string, string> = {
   'Promotion workflow is processing ready tasks.': 'enterpriseLeadWorkflowSummaryRunning',
   'Workflow requires manual attention.': 'enterpriseLeadWorkflowSummaryManualAttention',
   'Promotion workflow completed with draft-only outputs.': 'enterpriseLeadWorkflowSummaryCompleted',
+  [PromotionMonitoringPresentation.ReviewBlocked]: 'enterpriseLeadWorkflowMonitoringReviewBlocked',
+};
+
+const workflowTaskSummaryKeys: Record<string, string> = {
+  [PromotionMonitoringPresentation.NeedsVerifiedInput]: 'enterpriseLeadWorkflowMonitoringNeedsInput',
+};
+
+const promotionMonitoringReasonKeys: Record<PromotionMonitoringReason, string> = {
+  [PromotionMonitoringReason.MetricSnapshot]: 'enterpriseLeadWorkflowMonitoringReasonMetricSnapshot',
+  [PromotionMonitoringReason.MetricPlatform]: 'enterpriseLeadWorkflowMonitoringReasonMetricPlatform',
+  [PromotionMonitoringReason.MetricSource]: 'enterpriseLeadWorkflowMonitoringReasonMetricSource',
+  [PromotionMonitoringReason.MetricPeriod]: 'enterpriseLeadWorkflowMonitoringReasonMetricPeriod',
+  [PromotionMonitoringReason.IdempotencyKey]: 'enterpriseLeadWorkflowMonitoringReasonIdempotencyKey',
+  [PromotionMonitoringReason.Workspace]: 'enterpriseLeadWorkflowMonitoringReasonWorkspace',
+  [PromotionMonitoringReason.Run]: 'enterpriseLeadWorkflowMonitoringReasonRun',
+  [PromotionMonitoringReason.MonitoringAgent]: 'enterpriseLeadWorkflowMonitoringReasonMonitoringAgent',
 };
 
 const workflowControllerSummaryFallbackKey = 'enterpriseLeadWorkflowSummaryManualAttention';
@@ -96,3 +116,10 @@ export const getWorkflowControllerSummaryKey = (
 export const getWorkflowAttemptStatusLabelKey = (status: string): string =>
   workflowAttemptStatusLabelKeys[status as EnterpriseLeadTaskStatusValue] ??
   workflowControllerSummaryFallbackKey;
+
+export const getWorkflowTaskSummaryKey = (summary: string): string | null =>
+  workflowTaskSummaryKeys[summary] ?? null;
+
+export const getPromotionMonitoringReasonKey = (reason: string): string =>
+  promotionMonitoringReasonKeys[reason as PromotionMonitoringReason] ??
+  'enterpriseLeadWorkflowMonitoringReasonGeneric';

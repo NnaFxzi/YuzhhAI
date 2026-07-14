@@ -1,11 +1,15 @@
 import React, { useMemo } from 'react';
 
-import { EnterpriseLeadTaskStatus } from '../../../shared/enterpriseLeadWorkspace/constants';
+import {
+  EnterpriseLeadAgentRole,
+  EnterpriseLeadTaskStatus,
+} from '../../../shared/enterpriseLeadWorkspace/constants';
 import type { EnterpriseLeadAgentTask } from '../../../shared/enterpriseLeadWorkspace/types';
 import { normalizeWorkflowArtifactRef, type WorkflowArtifactRef } from '../../../shared/enterpriseLeadWorkspace/workflowContracts';
 import { i18nService } from '../../services/i18n';
 import { getAgentCardTone, getAgentStatusLabelKey, getEnterpriseLeadTaskDisplay } from './enterpriseLeadWorkspaceUi';
 import WorkflowApprovalPanel from './WorkflowApprovalPanel';
+import { getPromotionMonitoringReasonKey, getWorkflowTaskSummaryKey } from './workflowRunPresentation';
 
 interface WorkflowTaskCardProps {
   task: EnterpriseLeadAgentTask;
@@ -52,6 +56,10 @@ export const WorkflowTaskCard: React.FC<WorkflowTaskCardProps> = ({
   );
   const childSessionId = getChildSessionId(task);
   const needsApproval = task.status === EnterpriseLeadTaskStatus.AwaitingApproval;
+  const summaryKey = getWorkflowTaskSummaryKey(task.summary);
+  const missingInfo = task.role === EnterpriseLeadAgentRole.PromotionAccountMonitoring
+    ? task.missingInfo.map(reason => i18nService.t(getPromotionMonitoringReasonKey(reason)))
+    : task.missingInfo;
 
   return (
     <article className={`rounded-lg border p-4 ${tone.containerClassName}`}>
@@ -72,8 +80,8 @@ export const WorkflowTaskCard: React.FC<WorkflowTaskCardProps> = ({
         <span>{i18nService.t('enterpriseLeadWorkflowRiskCount').replace('{count}', String(task.risks.length))}</span>
         <span>{i18nService.t('enterpriseLeadWorkflowTodoCount').replace('{count}', String(task.todos.length))}</span>
       </div>
-      {task.summary ? <p className="mt-3 text-sm leading-6 text-secondary">{task.summary}</p> : null}
-      {task.missingInfo.length > 0 ? <p className="mt-3 text-xs text-amber-800 dark:text-amber-200">{task.missingInfo.join(' · ')}</p> : null}
+      {task.summary ? <p className="mt-3 text-sm leading-6 text-secondary">{summaryKey ? i18nService.t(summaryKey) : task.summary}</p> : null}
+      {missingInfo.length > 0 ? <p className="mt-3 text-xs text-amber-800 dark:text-amber-200">{missingInfo.join(' · ')}</p> : null}
       <div className="mt-3 grid gap-3 text-xs text-secondary sm:grid-cols-2">
         <div><p className="font-semibold text-foreground">{i18nService.t('enterpriseLeadWorkflowInputArtifacts')}</p>{inputArtifacts.map(item => <p key={item.id} className="mt-1 truncate">{item.summary || item.kind}</p>)}</div>
         <div><p className="font-semibold text-foreground">{i18nService.t('enterpriseLeadWorkflowOutputArtifacts')}</p>{outputArtifacts.map(item => <p key={item.id} className="mt-1 truncate">{item.summary || item.kind}</p>)}</div>

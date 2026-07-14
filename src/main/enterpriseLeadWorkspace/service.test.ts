@@ -3368,6 +3368,510 @@ describe('EnterpriseLeadWorkspaceService', () => {
     );
   });
 
+  test('scheduled monitoring needs input without a known platform, source, and time window', async () => {
+    const setup = createService();
+    db = setup.db;
+    const workspace = setup.service.createWorkspace({
+      ...draftPayload(),
+      workspaceAgents: buildDefaultPromotionDepartmentWorkspaceAgents(),
+    });
+    const run = setup.store.createRun({
+      workspaceId: workspace.id,
+      userGoal: '监控推广账户',
+      workflowVersion: PROMOTION_WORKFLOW_VERSION,
+      tasks: [
+        { role: EnterpriseLeadAgentRole.PromotionAccountMonitoring, nodeId: 'monitoring' },
+        {
+          role: EnterpriseLeadAgentRole.PromotionPerformanceReview,
+          nodeId: 'review',
+          dependsOnTaskIds: ['monitoring'],
+        },
+      ],
+    });
+
+    const result = await setup.service.runScheduledPromotionMonitoring({
+      workspaceId: workspace.id,
+      runId: run.id,
+      agentId: EnterpriseLeadAgentRole.PromotionAccountMonitoring,
+      metricSource: {
+        channel: 'unknown',
+        accountName: 'LobsterAI',
+        capturedAt: '2026-07-14T08:00:00.000Z',
+        impressions: 100,
+        clicks: 10,
+        interactions: 6,
+        leads: 2,
+        cost: 32,
+      },
+      idempotencyKey: 'workspace-1:unknown:2026-07-07',
+      window: { start: '', end: '' },
+    });
+
+    expect(result.status).toBe(EnterpriseLeadTaskStatus.NeedsInput);
+    expect(setup.modelClient.prompts).toHaveLength(0);
+    expect(setup.store.listTasks(run.id)[0]).toMatchObject({
+      status: EnterpriseLeadTaskStatus.NeedsInput,
+      missingInfo: expect.arrayContaining(['metric_platform', 'metric_source', 'metric_period']),
+    });
+  });
+
+  test('scheduled monitoring turns malformed non-empty metric periods into needs input', async () => {
+    const setup = createService();
+    db = setup.db;
+    const workspace = setup.service.createWorkspace({
+      ...draftPayload(),
+      workspaceAgents: buildDefaultPromotionDepartmentWorkspaceAgents(),
+    });
+    const run = setup.store.createRun({
+      workspaceId: workspace.id,
+      userGoal: '监控推广账户',
+      workflowVersion: PROMOTION_WORKFLOW_VERSION,
+      tasks: [
+        { role: EnterpriseLeadAgentRole.PromotionAccountMonitoring, nodeId: 'monitoring' },
+        { role: EnterpriseLeadAgentRole.PromotionPerformanceReview, nodeId: 'review', dependsOnTaskIds: ['monitoring'] },
+      ],
+    });
+
+    await expect(setup.service.runScheduledPromotionMonitoring({
+      workspaceId: workspace.id,
+      runId: run.id,
+      agentId: EnterpriseLeadAgentRole.PromotionAccountMonitoring,
+      metricSource: {
+        channel: 'xiaohongshu', accountName: 'LobsterAI', capturedAt: '2026-07-14T08:00:00.000Z',
+        impressions: 100, clicks: 10, interactions: 6, leads: 2, cost: 32,
+        sourceId: 'metric-source-1', periodStart: 'invalid-timestamp', periodEnd: '2026-07-13T23:59:59.000Z',
+      },
+      idempotencyKey: 'invalid-period',
+      window: { start: '2026-07-07T00:00:00.000Z', end: '2026-07-13T23:59:59.000Z' },
+    })).resolves.toMatchObject({ status: EnterpriseLeadTaskStatus.NeedsInput, duplicate: false });
+    expect(setup.store.listTasks(run.id)[0]).toMatchObject({
+      status: EnterpriseLeadTaskStatus.NeedsInput,
+      missingInfo: expect.arrayContaining(['metric_period']),
+    });
+    expect(setup.modelClient.prompts).toHaveLength(0);
+  });
+
+  test('does not make a non-completed proposed-knowledge review approvable or durable', async () => {
+    const setup = createService();
+    db = setup.db;
+    const workspace = setup.service.createWorkspace({
+      ...draftPayload(),
+      workspaceAgents: buildDefaultPromotionDepartmentWorkspaceAgents(),
+    });
+    const run = setup.store.createRun({
+      workspaceId: workspace.id,
+      userGoal: '监控推广账户',
+      workflowVersion: PROMOTION_WORKFLOW_VERSION,
+      tasks: [
+        { role: EnterpriseLeadAgentRole.PromotionAccountMonitoring, nodeId: 'monitoring' },
+        { role: EnterpriseLeadAgentRole.PromotionPerformanceReview, nodeId: 'review', dependsOnTaskIds: ['monitoring'] },
+      ],
+    });
+    setup.modelClient.enqueue({
+      role: EnterpriseLeadAgentRole.PromotionAccountMonitoring,
+      status: EnterpriseLeadTaskStatus.Completed,
+      summary: '账户指标报告已生成。',
+      outputs: { metrics: [{}], anomalies: [{}], hypotheses: ['有效'], adjustmentActions: ['继续'] },
+      missingInfo: [], todos: [], risks: [], handoffContext: {},
+    });
+    setup.modelClient.enqueue({
+      role: EnterpriseLeadAgentRole.PromotionPerformanceReview,
+      status: EnterpriseLeadTaskStatus.NeedsInput,
+      summary: '复盘需要更多证据。',
+      outputs: {
+        reviewSummary: '不应归档。', effectiveStrategies: [], improvementActions: [],
+        proposedKnowledge: ['不应被持久化的复盘知识'],
+      },
+      missingInfo: ['verified review evidence'], todos: [], risks: [], handoffContext: {},
+    });
+
+    const result = await setup.service.runScheduledPromotionMonitoring({
+      workspaceId: workspace.id, runId: run.id, agentId: EnterpriseLeadAgentRole.PromotionAccountMonitoring,
+      metricSource: {
+        channel: 'xiaohongshu', accountName: 'LobsterAI', capturedAt: '2026-07-14T08:00:00.000Z',
+        impressions: 100, clicks: 10, interactions: 6, leads: 2, cost: 32,
+        sourceId: 'metric-source-1', periodStart: '2026-07-07T00:00:00.000Z', periodEnd: '2026-07-13T23:59:59.000Z',
+      },
+      idempotencyKey: 'needs-input-review',
+      window: { start: '2026-07-07T00:00:00.000Z', end: '2026-07-13T23:59:59.000Z' },
+    });
+    const review = setup.store.listTasks(run.id).find(
+      task => task.role === EnterpriseLeadAgentRole.PromotionPerformanceReview,
+    );
+    if (!review) throw new Error('Expected performance review task');
+
+    expect(result.status).toBe(EnterpriseLeadTaskStatus.NeedsInput);
+    expect(review.status).toBe(EnterpriseLeadTaskStatus.NeedsInput);
+    await expect(setup.service.approveTask(workspace.id, run.id, review.id)).rejects.toThrow(
+      'not awaiting approval',
+    );
+    expect(setup.service.getWorkspace(workspace.id)?.extractionSources).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ text: '不应被持久化的复盘知识' })]),
+    );
+  });
+
+  test('scheduled monitoring is idempotent and passes its metric report artifact to performance review', async () => {
+    const setup = createService();
+    db = setup.db;
+    const workspace = setup.service.createWorkspace({
+      ...draftPayload(),
+      workspaceAgents: buildDefaultPromotionDepartmentWorkspaceAgents(),
+    });
+    const run = setup.store.createRun({
+      workspaceId: workspace.id,
+      userGoal: '监控推广账户',
+      workflowVersion: PROMOTION_WORKFLOW_VERSION,
+      tasks: [
+        { role: EnterpriseLeadAgentRole.PromotionAccountMonitoring, nodeId: 'monitoring' },
+        {
+          role: EnterpriseLeadAgentRole.PromotionPerformanceReview,
+          nodeId: 'review',
+          dependsOnTaskIds: ['monitoring'],
+        },
+      ],
+    });
+    const input = {
+      workspaceId: workspace.id,
+      runId: run.id,
+      agentId: EnterpriseLeadAgentRole.PromotionAccountMonitoring,
+      metricSource: {
+        channel: 'xiaohongshu',
+        accountName: 'LobsterAI',
+        capturedAt: '2026-07-14T08:00:00.000Z',
+        impressions: 100,
+        clicks: 10,
+        interactions: 6,
+        leads: 2,
+        cost: 32,
+        sourceId: 'metric-source-1',
+        periodStart: '2026-07-07T00:00:00.000Z',
+        periodEnd: '2026-07-13T23:59:59.000Z',
+        currency: 'CNY',
+        evidenceIds: ['evidence-1'],
+      },
+      idempotencyKey: 'workspace-1:metric-source-1:2026-07-07',
+      window: {
+        start: '2026-07-07T00:00:00.000Z',
+        end: '2026-07-13T23:59:59.000Z',
+      },
+    };
+    setup.modelClient.enqueue({
+      role: EnterpriseLeadAgentRole.PromotionAccountMonitoring,
+      status: EnterpriseLeadTaskStatus.Completed,
+      summary: '账户指标报告已生成。',
+      outputs: {
+        metrics: [{ ctr: 0.1 }],
+        anomalies: [{ metric: 'clicks', direction: 'up' }],
+        hypotheses: ['内容匹配度提升'],
+        adjustmentActions: ['人工确认后保留当前素材方向'],
+      },
+      missingInfo: [],
+      todos: [],
+      risks: [],
+      handoffContext: {},
+    });
+    setup.modelClient.enqueue({
+      role: EnterpriseLeadAgentRole.PromotionPerformanceReview,
+      status: EnterpriseLeadTaskStatus.Completed,
+      summary: '推广复盘已生成。',
+      outputs: {
+        reviewSummary: '点击率稳定提升。',
+        effectiveStrategies: ['保留当前选题方向'],
+        improvementActions: ['人工确认后扩大测试样本'],
+        proposedKnowledge: ['当前选题方向在小红书表现稳定'],
+      },
+      missingInfo: [],
+      todos: [],
+      risks: [],
+      handoffContext: {},
+    });
+
+    const first = await setup.service.runScheduledPromotionMonitoring(input);
+    const artifacts = new WorkflowArtifactStore(setup.db).listRunArtifacts(run.id);
+    const review = setup.store
+      .listTasks(run.id)
+      .find(task => task.role === EnterpriseLeadAgentRole.PromotionPerformanceReview);
+    if (!review) throw new Error('Expected performance review task');
+
+    expect(first.status).toBe(EnterpriseLeadTaskStatus.AwaitingApproval);
+    expect(artifacts).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: EnterpriseLeadDeliverableKind.PromotionMetricReport }),
+      expect.objectContaining({ kind: EnterpriseLeadDeliverableKind.PromotionPerformanceReview }),
+    ]));
+    expect(review.artifactRefs).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: EnterpriseLeadDeliverableKind.PromotionMetricReport }),
+    ]));
+    expect(setup.modelClient.prompts[1].prompt).toContain(EnterpriseLeadDeliverableKind.PromotionMetricReport);
+    expect(review.status).toBe(EnterpriseLeadTaskStatus.AwaitingApproval);
+    expect(workspace.extractionSources.some(source =>
+      source.text?.includes('当前选题方向在小红书表现稳定'),
+    )).toBe(false);
+
+    const approved = await setup.service.approveTask(workspace.id, run.id, review.id);
+    expect(approved.tasks.find(task => task.id === review.id)?.status).toBe(
+      EnterpriseLeadTaskStatus.Completed,
+    );
+    expect(setup.service.getWorkspace(workspace.id)?.extractionSources).toEqual(expect.arrayContaining([
+      expect.objectContaining({ text: '当前选题方向在小红书表现稳定' }),
+    ]));
+
+    const duplicate = await setup.service.runScheduledPromotionMonitoring(input);
+
+    expect(duplicate.duplicate).toBe(true);
+    expect(setup.modelClient.prompts).toHaveLength(2);
+    expect(new WorkflowArtifactStore(setup.db).listRunArtifacts(run.id)).toHaveLength(2);
+
+    const duplicateWithDifferentClientKey = await setup.service.runScheduledPromotionMonitoring({
+      ...input,
+      idempotencyKey: 'different-client-key-for-the-same-window',
+    });
+    expect(duplicateWithDifferentClientKey.duplicate).toBe(true);
+    expect(setup.modelClient.prompts).toHaveLength(2);
+
+    setup.modelClient.enqueue({
+      role: EnterpriseLeadAgentRole.PromotionAccountMonitoring,
+      status: EnterpriseLeadTaskStatus.Completed,
+      summary: '不应重复生成的指标报告。',
+      outputs: { metrics: [{}], anomalies: [{}], hypotheses: ['不应执行'], adjustmentActions: ['不应执行'] },
+      missingInfo: [], todos: [], risks: [], handoffContext: {},
+    });
+    setup.modelClient.enqueue({
+      role: EnterpriseLeadAgentRole.PromotionPerformanceReview,
+      status: EnterpriseLeadTaskStatus.Completed,
+      summary: '不应重复生成的复盘。',
+      outputs: { reviewSummary: '不应执行。', effectiveStrategies: [], improvementActions: [], proposedKnowledge: [] },
+      missingInfo: [], todos: [], risks: [], handoffContext: {},
+    });
+    const offsetEquivalentDuplicate = await setup.service.runScheduledPromotionMonitoring({
+      ...input,
+      idempotencyKey: 'equivalent-offset-window',
+      metricSource: {
+        ...input.metricSource,
+        periodStart: '2026-07-07T08:00:00+08:00',
+        periodEnd: '2026-07-14T07:59:59+08:00',
+      },
+      window: { start: '2026-07-07T08:00:00+08:00', end: '2026-07-14T07:59:59+08:00' },
+    });
+    expect(offsetEquivalentDuplicate.duplicate).toBe(true);
+    expect(setup.modelClient.prompts).toHaveLength(2);
+
+    const arbitraryAgent = await setup.service.runScheduledPromotionMonitoring({
+      ...input,
+      idempotencyKey: 'different-window',
+      agentId: 'arbitrary-agent-id',
+      window: {
+        start: '2026-07-14T00:00:00.000Z',
+        end: '2026-07-20T23:59:59.000Z',
+      },
+    });
+    expect(arbitraryAgent.status).toBe(EnterpriseLeadTaskStatus.NeedsInput);
+    expect(setup.modelClient.prompts).toHaveLength(2);
+  });
+
+  test('a failed later review preserves the prior successful review', async () => {
+    const setup = createService();
+    db = setup.db;
+    const workspace = setup.service.createWorkspace({
+      ...draftPayload(),
+      workspaceAgents: buildDefaultPromotionDepartmentWorkspaceAgents(),
+    });
+    const run = setup.store.createRun({
+      workspaceId: workspace.id,
+      userGoal: '监控推广账户',
+      workflowVersion: PROMOTION_WORKFLOW_VERSION,
+      tasks: [
+        { role: EnterpriseLeadAgentRole.PromotionAccountMonitoring, nodeId: 'monitoring' },
+        {
+          role: EnterpriseLeadAgentRole.PromotionPerformanceReview,
+          nodeId: 'review',
+          dependsOnTaskIds: ['monitoring'],
+        },
+      ],
+    });
+    const baseInput = {
+      workspaceId: workspace.id,
+      runId: run.id,
+      agentId: EnterpriseLeadAgentRole.PromotionAccountMonitoring,
+      metricSource: {
+        channel: 'xiaohongshu', accountName: 'LobsterAI', capturedAt: '2026-07-14T08:00:00.000Z',
+        impressions: 100, clicks: 10, interactions: 6, leads: 2, cost: 32,
+        sourceId: 'metric-source-1', periodStart: '2026-07-07T00:00:00.000Z',
+        periodEnd: '2026-07-13T23:59:59.000Z',
+      },
+      window: { start: '2026-07-07T00:00:00.000Z', end: '2026-07-13T23:59:59.000Z' },
+    };
+    const monitoringResponse = {
+      role: EnterpriseLeadAgentRole.PromotionAccountMonitoring,
+      status: EnterpriseLeadTaskStatus.Completed,
+      summary: '账户指标报告已生成。',
+      outputs: {
+        metrics: [{ ctr: 0.1 }], anomalies: [{ metric: 'clicks' }], hypotheses: ['选题有效'],
+        adjustmentActions: ['人工确认后继续测试'],
+      },
+      missingInfo: [], todos: [], risks: [], handoffContext: {},
+    };
+    const reviewResponse = {
+      role: EnterpriseLeadAgentRole.PromotionPerformanceReview,
+      status: EnterpriseLeadTaskStatus.Completed,
+      summary: '首轮复盘已生成。',
+      outputs: {
+        reviewSummary: '首轮结论。', effectiveStrategies: ['选题有效'],
+        improvementActions: ['扩大样本'], proposedKnowledge: ['首轮复盘知识'],
+      },
+      missingInfo: [], todos: [], risks: [], handoffContext: {},
+    };
+    setup.modelClient.enqueue(monitoringResponse);
+    setup.modelClient.enqueue(reviewResponse);
+    await setup.service.runScheduledPromotionMonitoring({ ...baseInput, idempotencyKey: 'window-1' });
+    const priorReview = setup.store
+      .listTasks(run.id)
+      .find(task => task.role === EnterpriseLeadAgentRole.PromotionPerformanceReview);
+    if (!priorReview) throw new Error('Expected performance review task');
+
+    setup.modelClient.enqueue(monitoringResponse);
+    setup.modelClient.enqueue({
+      ...reviewResponse,
+      status: EnterpriseLeadTaskStatus.NeedsInput,
+      summary: '复盘缺少人工确认。',
+      missingInfo: ['approved review input'],
+      outputs: { ...reviewResponse.outputs, proposedKnowledge: [] },
+    });
+    const failed = await setup.service.runScheduledPromotionMonitoring({
+      ...baseInput,
+      idempotencyKey: 'window-2',
+      window: { start: '2026-07-14T00:00:00.000Z', end: '2026-07-20T23:59:59.000Z' },
+    });
+
+    expect(failed.status).toBe(EnterpriseLeadTaskStatus.NeedsInput);
+    expect(setup.store.getTask(priorReview.id)).toMatchObject({
+      status: EnterpriseLeadTaskStatus.AwaitingApproval,
+      summary: '首轮复盘已生成。',
+      outputPayload: priorReview.outputPayload,
+    });
+
+    setup.modelClient.enqueue(monitoringResponse);
+    const errored = await setup.service.runScheduledPromotionMonitoring({
+      ...baseInput,
+      idempotencyKey: 'window-3',
+      window: { start: '2026-07-21T00:00:00.000Z', end: '2026-07-27T23:59:59.000Z' },
+    });
+
+    expect(errored.status).toBe(EnterpriseLeadTaskStatus.Error);
+    expect(setup.store.getTask(priorReview.id)).toMatchObject({
+      status: EnterpriseLeadTaskStatus.AwaitingApproval,
+      summary: '首轮复盘已生成。',
+      outputPayload: priorReview.outputPayload,
+      artifactRefs: priorReview.artifactRefs,
+    });
+  });
+
+  test('atomically claims a monitoring window when concurrent callers use different client keys', async () => {
+    const setup = createService();
+    db = setup.db;
+    const workspace = setup.service.createWorkspace({
+      ...draftPayload(),
+      workspaceAgents: buildDefaultPromotionDepartmentWorkspaceAgents(),
+    });
+    const run = setup.store.createRun({
+      workspaceId: workspace.id,
+      userGoal: '监控推广账户',
+      workflowVersion: PROMOTION_WORKFLOW_VERSION,
+      tasks: [
+        { role: EnterpriseLeadAgentRole.PromotionAccountMonitoring, nodeId: 'monitoring' },
+        { role: EnterpriseLeadAgentRole.PromotionPerformanceReview, nodeId: 'review', dependsOnTaskIds: ['monitoring'] },
+      ],
+    });
+    const pendingMonitoring = setup.modelClient.enqueuePending();
+    setup.modelClient.enqueue({
+      role: EnterpriseLeadAgentRole.PromotionPerformanceReview,
+      status: EnterpriseLeadTaskStatus.Completed,
+      summary: '复盘完成。',
+      outputs: { reviewSummary: '复盘完成。', effectiveStrategies: ['保留'], improvementActions: ['继续'], proposedKnowledge: [] },
+      missingInfo: [], todos: [], risks: [], handoffContext: {},
+    });
+    const baseInput = {
+      workspaceId: workspace.id, runId: run.id, agentId: EnterpriseLeadAgentRole.PromotionAccountMonitoring,
+      metricSource: {
+        channel: 'xiaohongshu', accountName: 'LobsterAI', capturedAt: '2026-07-14T08:00:00.000Z',
+        impressions: 100, clicks: 10, interactions: 6, leads: 2, cost: 32,
+        sourceId: 'metric-source-1', periodStart: '2026-07-07T00:00:00.000Z', periodEnd: '2026-07-13T23:59:59.000Z',
+      },
+      window: { start: '2026-07-07T00:00:00.000Z', end: '2026-07-13T23:59:59.000Z' },
+    };
+    const first = setup.service.runScheduledPromotionMonitoring({ ...baseInput, idempotencyKey: 'key-a' });
+    await vi.waitFor(() => expect(setup.modelClient.prompts).toHaveLength(1));
+    const second = setup.service.runScheduledPromotionMonitoring({ ...baseInput, idempotencyKey: 'key-b' });
+    pendingMonitoring.resolve({
+      role: EnterpriseLeadAgentRole.PromotionAccountMonitoring,
+      status: EnterpriseLeadTaskStatus.Completed,
+      summary: '指标完成。',
+      outputs: { metrics: [{ ctr: 0.1 }], anomalies: [{ metric: 'clicks' }], hypotheses: ['有效'], adjustmentActions: ['继续'] },
+      missingInfo: [], todos: [], risks: [], handoffContext: {},
+    });
+
+    const [, duplicate] = await Promise.all([first, second]);
+
+    expect(duplicate.duplicate).toBe(true);
+    expect(setup.modelClient.prompts).toHaveLength(2);
+    expect(new WorkflowArtifactStore(setup.db).listRunArtifacts(run.id)).toHaveLength(2);
+  });
+
+  test('rejects model artifact references from another monitoring run', async () => {
+    const setup = createService();
+    db = setup.db;
+    const workspace = setup.service.createWorkspace({
+      ...draftPayload(),
+      workspaceAgents: buildDefaultPromotionDepartmentWorkspaceAgents(),
+    });
+    const createMonitoringRun = () => setup.store.createRun({
+      workspaceId: workspace.id,
+      userGoal: '监控推广账户',
+      workflowVersion: PROMOTION_WORKFLOW_VERSION,
+      tasks: [
+        { role: EnterpriseLeadAgentRole.PromotionAccountMonitoring, nodeId: 'monitoring' },
+        { role: EnterpriseLeadAgentRole.PromotionPerformanceReview, nodeId: 'review', dependsOnTaskIds: ['monitoring'] },
+      ],
+    });
+    const foreignRun = createMonitoringRun();
+    const foreignTask = setup.store.listTasks(foreignRun.id)[0];
+    const foreignArtifact = new WorkflowArtifactStore(setup.db).createArtifact({
+      runId: foreignRun.id,
+      taskId: foreignTask.id,
+      kind: EnterpriseLeadDeliverableKind.PromotionMetricReport,
+      schemaVersion: 1,
+      payload: { metric: 'foreign' },
+      evidenceIds: [],
+    });
+    const run = createMonitoringRun();
+    setup.modelClient.enqueue({
+      role: EnterpriseLeadAgentRole.PromotionAccountMonitoring,
+      status: EnterpriseLeadTaskStatus.Completed,
+      summary: '指标完成。',
+      outputs: {
+        metrics: [{ ctr: 0.1 }], anomalies: [{ metric: 'clicks' }], hypotheses: ['有效'], adjustmentActions: ['继续'],
+        artifactRefs: [{
+          id: foreignArtifact.id, kind: foreignArtifact.kind, schemaVersion: 1, summary: 'foreign',
+          producerTaskId: foreignTask.id, evidenceIds: [],
+        }],
+      },
+      missingInfo: [], todos: [], risks: [], handoffContext: {},
+    });
+
+    const result = await setup.service.runScheduledPromotionMonitoring({
+      workspaceId: workspace.id, runId: run.id, agentId: EnterpriseLeadAgentRole.PromotionAccountMonitoring,
+      metricSource: {
+        channel: 'xiaohongshu', accountName: 'LobsterAI', capturedAt: '2026-07-14T08:00:00.000Z',
+        impressions: 100, clicks: 10, interactions: 6, leads: 2, cost: 32,
+        sourceId: 'metric-source-1', periodStart: '2026-07-07T00:00:00.000Z', periodEnd: '2026-07-13T23:59:59.000Z',
+      },
+      idempotencyKey: 'foreign-ref',
+      window: { start: '2026-07-07T00:00:00.000Z', end: '2026-07-13T23:59:59.000Z' },
+    });
+
+    expect(result.status).toBe(EnterpriseLeadTaskStatus.NeedsInput);
+    expect(new WorkflowArtifactStore(setup.db).listRunArtifacts(run.id)).toEqual([]);
+  });
+
   test('listRuns returns summaries with counts newest first', () => {
     const setup = createService();
     db = setup.db;

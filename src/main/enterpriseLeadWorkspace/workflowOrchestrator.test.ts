@@ -8,7 +8,10 @@ import {
   EnterpriseLeadWorkspaceType,
 } from '../../shared/enterpriseLeadWorkspace/constants';
 import type { PromotionTaskResult } from '../../shared/enterpriseLeadWorkspace/promotionTaskContracts';
-import { WorkflowExecutionMode } from '../../shared/enterpriseLeadWorkspace/workflowContracts';
+import {
+  WorkflowExecutionMode,
+  WorkflowOptionalNode,
+} from '../../shared/enterpriseLeadWorkspace/workflowContracts';
 import { EnterpriseLeadWorkspaceStore } from './store';
 import { WorkflowArtifactStore } from './workflowArtifactStore';
 import type { WorkflowExecutionAdapter } from './workflowExecutionAdapter';
@@ -128,12 +131,47 @@ describe('EnterpriseLeadWorkflowOrchestrator', () => {
     const snapshot = await setupResult.orchestrator.startRun(
       setupResult.workspace.id,
       setupResult.run.id,
+      { enabledOptionalNodes: [WorkflowOptionalNode.MonitoringRequested], maxConcurrency: 3 },
     );
 
     expect(snapshot.currentRun?.status).toBe(EnterpriseLeadRunStatus.NeedsInput);
     expect(snapshot.currentRun?.controllerSummary).toBe('');
     expect(snapshot.tasks.find(task => task.role === EnterpriseLeadAgentRole.PromotionCompetitorInsight)?.status)
       .toBe(EnterpriseLeadTaskStatus.Waiting);
+  });
+
+  test.each([
+    EnterpriseLeadTaskStatus.NeedsInput,
+    EnterpriseLeadTaskStatus.Error,
+  ])('does not make a %s performance review approvable when it proposes knowledge', async status => {
+    const adapter = new FakeWorkflowExecutionAdapter({
+      [EnterpriseLeadAgentRole.PromotionPerformanceReview]: {
+        status,
+        summary: 'Need verified review evidence',
+        outputs: { proposedKnowledge: ['Do not persist this proposed knowledge.'] },
+      },
+    });
+    const setupResult = setup(adapter);
+    databases.push(setupResult.database);
+
+    const snapshot = await setupResult.orchestrator.startRun(
+      setupResult.workspace.id,
+      setupResult.run.id,
+      { enabledOptionalNodes: [WorkflowOptionalNode.MonitoringRequested], maxConcurrency: 3 },
+    );
+    const review = snapshot.tasks.find(
+      task => task.role === EnterpriseLeadAgentRole.PromotionPerformanceReview,
+    );
+
+    expect(snapshot.currentRun?.status).toBe(
+      status === EnterpriseLeadTaskStatus.NeedsInput
+        ? EnterpriseLeadRunStatus.NeedsInput
+        : EnterpriseLeadRunStatus.Error,
+    );
+    expect(review?.status).toBe(status);
+    expect(setupResult.artifacts.listRunArtifacts(setupResult.run.id)).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ taskId: review?.id })]),
+    );
   });
 
   test('requires an explicit approval decision before it runs downstream tasks', async () => {

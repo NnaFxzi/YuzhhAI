@@ -1,13 +1,15 @@
-import { test, expect } from 'vitest';
 import Database from 'better-sqlite3';
-import { makeTask, makeModel } from './fixtures';
+import { expect,test } from 'vitest';
+
+import {
+BindingKind,   DeliveryMode,
+  OriginKind, PayloadKind,
+ScheduleKind, } from './constants';
+import { mapGatewayJob } from './cronJobService';
+import { makeModel,makeTask } from './fixtures';
 import { ScheduledTaskMetaStore } from './metaStore';
 import { TaskModelMapper } from './modelMapper';
 import { taskPolicyRegistry } from './policies/registry';
-import {
-  OriginKind, BindingKind, ScheduleKind, PayloadKind,
-  DeliveryMode, DeliveryChannel,
-} from './constants';
 
 const mapper = new TaskModelMapper();
 
@@ -127,4 +129,59 @@ test('integration: legacy task with IM announce -> normalizeDraft links binding'
   const normalized = policy.normalizeDraft(model);
   expect(normalized.binding.kind).toBe(BindingKind.IMSession);
   expect((normalized.binding as any).platform).toBe('feishu');
+});
+
+test('integration: promotion monitoring agentTurn keeps workspace, source, and idempotency metadata', () => {
+  const monitoring = {
+    workspaceId: 'workspace-1',
+    runId: 'run-1',
+    agentId: 'promotion_account_monitoring',
+    metricSource: {
+      channel: 'xiaohongshu',
+      accountName: 'LobsterAI',
+      capturedAt: '2026-07-14T08:00:00.000Z',
+      impressions: 100,
+      clicks: 10,
+      interactions: 6,
+      leads: 2,
+      cost: 32,
+      sourceId: 'metric-source-1',
+      periodStart: '2026-07-07T00:00:00.000Z',
+      periodEnd: '2026-07-13T23:59:59.000Z',
+      currency: 'CNY',
+      evidenceIds: ['evidence-1'],
+    },
+    idempotencyKey: 'workspace-1:metric-source-1:2026-07-07',
+    window: {
+      start: '2026-07-07T00:00:00.000Z',
+      end: '2026-07-13T23:59:59.000Z',
+    },
+  };
+  const model = makeModel({
+    payload: {
+      kind: PayloadKind.AgentTurn,
+      message: 'Read metrics and prepare a confirmation-only review.',
+      promotionMonitoring: monitoring,
+    },
+  });
+  const policy = taskPolicyRegistry.get(model.origin);
+  const wire = mapper.toWireInput(model, policy);
+
+  const mapped = mapGatewayJob({
+    ...makeTask({
+      payload: wire.payload,
+      delivery: wire.delivery,
+      sessionTarget: wire.sessionTarget,
+      wakeMode: wire.wakeMode,
+      agentId: wire.agentId,
+      sessionKey: wire.sessionKey,
+    }),
+    createdAtMs: 1_700_000_000_000,
+    updatedAtMs: 1_700_000_000_000,
+  } as any);
+
+  expect(mapped.payload).toMatchObject({
+    kind: PayloadKind.AgentTurn,
+    promotionMonitoring: monitoring,
+  });
 });

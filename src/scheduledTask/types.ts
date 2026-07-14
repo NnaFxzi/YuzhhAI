@@ -1,3 +1,4 @@
+import type { PromotionMonitoringScheduleContext } from '../shared/enterpriseLeadWorkspace/promotionContracts';
 import type { DeliveryMode, SessionTarget, TaskStatus, WakeMode } from './constants';
 
 export interface ScheduleAt {
@@ -25,6 +26,7 @@ export interface AgentTurnPayload {
   message: string;
   timeoutSeconds?: number;
   model?: string;
+  promotionMonitoring?: PromotionMonitoringScheduleContext;
 }
 
 export interface SystemEventPayload {
