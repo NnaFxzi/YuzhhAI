@@ -79,6 +79,7 @@ export interface WorkflowEvent {
   sequence: number;
   type:
     | 'run_started'
+    | 'run_retrying'
     | 'task_ready'
     | 'task_started'
     | 'task_retrying'

@@ -180,6 +180,50 @@ describe('EnterpriseLeadWorkflowOrchestrator', () => {
     expect(resumed.currentRun?.status).toBe(EnterpriseLeadRunStatus.Completed);
     expect(setupResult.adapter.calls.get(EnterpriseLeadAgentRole.PromotionDataCleaning)).toBe(2);
     expect(setupResult.adapter.calls.get(EnterpriseLeadAgentRole.PromotionController)).toBe(controllerCalls);
+    expect(setupResult.artifacts.listEvents(setupResult.run.id)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ type: 'run_retrying' })]),
+    );
+  });
+
+  test('does not resume completed, cancelled, or archived runs or append terminal events', async () => {
+    const completedSetup = setup();
+    const cancelledSetup = setup();
+    const archivedSetup = setup();
+    databases.push(completedSetup.database, cancelledSetup.database, archivedSetup.database);
+
+    await completedSetup.orchestrator.startRun(completedSetup.workspace.id, completedSetup.run.id);
+    const completedEvents = completedSetup.artifacts.listEvents(completedSetup.run.id);
+    const completedSnapshot = await completedSetup.orchestrator.resumeRun(
+      completedSetup.workspace.id,
+      completedSetup.run.id,
+    );
+
+    await cancelledSetup.orchestrator.cancelRun(cancelledSetup.workspace.id, cancelledSetup.run.id);
+    const cancelledEvents = cancelledSetup.artifacts.listEvents(cancelledSetup.run.id);
+    const cancelledSnapshot = await cancelledSetup.orchestrator.resumeRun(
+      cancelledSetup.workspace.id,
+      cancelledSetup.run.id,
+    );
+
+    archivedSetup.store.updateRunProgress({
+      runId: archivedSetup.run.id,
+      status: EnterpriseLeadRunStatus.Completed,
+      currentRole: null,
+      controllerSummary: 'Completed for archive.',
+    });
+    archivedSetup.store.archiveRun(archivedSetup.workspace.id, archivedSetup.run.id);
+    const archivedEvents = archivedSetup.artifacts.listEvents(archivedSetup.run.id);
+    const archivedSnapshot = await archivedSetup.orchestrator.resumeRun(
+      archivedSetup.workspace.id,
+      archivedSetup.run.id,
+    );
+
+    expect(completedSnapshot.currentRun?.status).toBe(EnterpriseLeadRunStatus.Completed);
+    expect(completedSetup.artifacts.listEvents(completedSetup.run.id)).toEqual(completedEvents);
+    expect(cancelledSnapshot.currentRun?.status).toBe(EnterpriseLeadRunStatus.Cancelled);
+    expect(cancelledSetup.artifacts.listEvents(cancelledSetup.run.id)).toEqual(cancelledEvents);
+    expect(archivedSnapshot.currentRun?.status).toBe(EnterpriseLeadRunStatus.Archived);
+    expect(archivedSetup.artifacts.listEvents(archivedSetup.run.id)).toEqual(archivedEvents);
   });
 
   test('retains own task artifacts after result persistence and on retry without model echo', async () => {
@@ -255,6 +299,7 @@ describe('EnterpriseLeadWorkflowOrchestrator', () => {
     );
     if (!cleaningTask) throw new Error('Expected data cleaning task');
 
+    expect(setupResult.artifacts.retryRunOnce(setupResult.run.id).transitioned).toBe(true);
     const orphanedAttempt = (cleaningTask.attempt ?? 0) + 1;
     setupResult.store.updateWorkflowTaskStatus(cleaningTask.id, EnterpriseLeadTaskStatus.Running, {
       attempt: orphanedAttempt,

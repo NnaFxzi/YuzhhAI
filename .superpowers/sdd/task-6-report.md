@@ -67,3 +67,12 @@ Feature commit: `6e8bf3c9 feat(workflow): expose promotion run control IPC`
 - Restricted `markRunErrorOnce` to the same non-terminal run states, so a late IPC rejection after cancellation cannot overwrite `Cancelled` or append `run_error`.
 - Preserved existing error-resume behavior: an active failure still writes one durable error event, while a resumed attempt cannot create a duplicate.
 - Added regression coverage for cancelling a completed run without mutations, cancellation followed by a late error transition, and IPC non-emission when durable error persistence is rejected.
+
+## State-machine consolidation
+
+- Added one small workflow-run policy module for active and terminal state classification; progress writes now use an atomic active-row predicate, while completed, cancelled, errored, and archived rows reject replacement writes.
+- Archiving now atomically requires matching workspace ownership, a completed non-archived row, and handles a zero-row update with precise ownership, terminal, or already-archived errors.
+- Preserved promotion retry behavior as an explicit transactional `error -> running` attempt that appends `run_retrying`. The original durable `run_error` remains exactly once; a later retry failure returns the run to `error` with its latest summary without appending another terminal error event.
+- Resume is a no-op for completed/cancelled runs (and rejected for archived service runs); it cannot append duplicate terminal events. Cancellation and late-failure predicates remain terminal-safe.
+- Sender/run cursor entries now clear when a stream settles normally and when its renderer is destroyed, while a new subscription primes at the current event tail to preserve real-time-only delivery.
+- Updated legacy tests that had reopened completed runs before archive, and added direct store, retry, terminal-resume, archive, and cursor-cleanup coverage.

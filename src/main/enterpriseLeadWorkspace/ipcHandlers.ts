@@ -365,6 +365,10 @@ const clearWorkflowEventStream = (
   if (streams?.get(runId) !== stream) return;
   streams.delete(runId);
   if (streams.size === 0) workflowEventStreams.delete(sender);
+
+  const cursors = workflowEventCursors.get(sender);
+  cursors?.delete(runId);
+  if (cursors?.size === 0) workflowEventCursors.delete(sender);
 };
 
 const getWorkflowRunExecution = (

@@ -10,6 +10,7 @@ import type {
 } from '../../shared/enterpriseLeadWorkspace/types';
 import type { WorkflowEvent, WorkflowExecutionMode } from '../../shared/enterpriseLeadWorkspace/workflowContracts';
 import { EnterpriseLeadWorkspaceStore } from './store';
+import { WorkflowRunActiveStatuses } from './workflowRunState';
 
 export interface CreateWorkflowArtifactInput {
   runId: string;
@@ -186,24 +187,23 @@ export class WorkflowArtifactStore {
         SET status = ?, controller_summary = ?, updated_at = ?
         WHERE id = ?
           AND archive_status <> 'archived'
-          AND status NOT IN (?, ?, ?, ?)
-          AND NOT EXISTS (
-            SELECT 1
-            FROM enterprise_lead_workflow_events
-            WHERE run_id = ? AND type = 'run_error'
-          )
+          AND status IN (?, ?, ?, ?, ?)
       `).run(
         EnterpriseLeadRunStatus.Error,
         message,
         now,
         runId,
-        EnterpriseLeadRunStatus.Completed,
-        EnterpriseLeadRunStatus.Cancelled,
-        EnterpriseLeadRunStatus.Error,
-        EnterpriseLeadRunStatus.Archived,
-        runId,
+        ...WorkflowRunActiveStatuses,
       );
       if (update.changes === 0) return { transitioned: false };
+
+      const hasRunError = this.db.prepare(`
+        SELECT 1
+        FROM enterprise_lead_workflow_events
+        WHERE run_id = ? AND type = 'run_error'
+        LIMIT 1
+      `).get(runId);
+      if (hasRunError) return { transitioned: true };
 
       return {
         transitioned: true,
@@ -215,6 +215,34 @@ export class WorkflowArtifactStore {
       };
     });
     return markError();
+  }
+
+  retryRunOnce(runId: string): MarkWorkflowRunErrorOnceResult {
+    const retry = this.db.transaction(() => {
+      const update = this.db.prepare(`
+        UPDATE enterprise_lead_runs
+        SET status = ?, current_role = NULL, controller_summary = ?, updated_at = ?
+        WHERE id = ?
+          AND archive_status <> 'archived'
+          AND status = ?
+      `).run(
+        EnterpriseLeadRunStatus.Running,
+        'Retrying workflow after a previous failure.',
+        new Date().toISOString(),
+        runId,
+        EnterpriseLeadRunStatus.Error,
+      );
+      if (update.changes === 0) return { transitioned: false };
+      return {
+        transitioned: true,
+        event: this.appendEventUnsafe({
+          runId,
+          type: 'run_retrying',
+          summary: 'Retrying workflow after a previous failure.',
+        }),
+      };
+    });
+    return retry();
   }
 
   listEvents(runId: string): EnterpriseLeadWorkflowEvent[] {

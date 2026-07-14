@@ -18,6 +18,7 @@ import {
 import type { CreateEnterpriseLeadTaskInput, EnterpriseLeadWorkspaceStore } from './store';
 import type { WorkflowArtifactStore } from './workflowArtifactStore';
 import type { WorkflowExecutionAdapter } from './workflowExecutionAdapter';
+import { isWorkflowRunTerminal } from './workflowRunState';
 
 export interface EnterpriseLeadWorkflowOrchestratorOptions {
   store: EnterpriseLeadWorkspaceStore;
@@ -84,7 +85,17 @@ export class EnterpriseLeadWorkflowOrchestrator {
     const active = this.activeRuns.get(runId);
     if (active) return active;
 
-    this.assertRunWorkspace(workspaceId, runId);
+    const run = this.assertRunWorkspace(workspaceId, runId);
+    if (run.archiveStatus === 'archived' || run.status === EnterpriseLeadRunStatus.Archived) {
+      return this.getSnapshot(workspaceId, runId);
+    }
+    if (run.status === EnterpriseLeadRunStatus.Error) {
+      if (!this.options.artifactStore.retryRunOnce(runId).transitioned) {
+        return this.getSnapshot(workspaceId, runId);
+      }
+    } else if (isWorkflowRunTerminal(run.status)) {
+      return this.getSnapshot(workspaceId, runId);
+    }
     const tasks = this.options.store.listTasks(runId);
     this.recoverInterruptedTasks(runId, tasks);
     const recoveredTasks = this.options.store.listTasks(runId);

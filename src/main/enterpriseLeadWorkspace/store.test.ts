@@ -758,6 +758,20 @@ describe('EnterpriseLeadWorkspaceStore', () => {
       roles: [EnterpriseLeadAgentRole.SalesHandoff],
     });
 
+    expect(() => store.archiveRun(workspace.id, run.id)).toThrow(
+      'Enterprise lead run must be completed before archive',
+    );
+    expect(store.getRun(run.id)).toMatchObject({
+      status: EnterpriseLeadRunStatus.Running,
+      archiveStatus: 'not_archived',
+    });
+    store.updateRunProgress({
+      runId: run.id,
+      status: EnterpriseLeadRunStatus.Completed,
+      currentRole: null,
+      controllerSummary: 'Ready to archive.',
+    });
+
     const archivedRun = store.archiveRun(workspace.id, run.id);
 
     expect(archivedRun).toEqual(
@@ -770,6 +784,51 @@ describe('EnterpriseLeadWorkspaceStore', () => {
     );
     expect(archivedRun.completedAt).toBeTruthy();
     expect(store.getRun(run.id)).toEqual(archivedRun);
+    expect(() => store.archiveRun(workspace.id, run.id)).toThrow(
+      'Enterprise lead run is already archived',
+    );
+  });
+
+  test('atomically rejects progress writes that would replace terminal runs', () => {
+    setupStore();
+    const workspace = store.createWorkspace({
+      name: '华南重包获客工作台',
+      type: EnterpriseLeadWorkspaceType.EnterpriseLead,
+      profile,
+      extractionSources: [],
+      enabledAgentRoles: [],
+    });
+    const completed = store.createRun({
+      workspaceId: workspace.id,
+      userGoal: '已完成运行',
+      roles: [EnterpriseLeadAgentRole.Controller],
+    });
+    const cancelled = store.createRun({
+      workspaceId: workspace.id,
+      userGoal: '已取消运行',
+      roles: [EnterpriseLeadAgentRole.Controller],
+    });
+
+    store.updateRunProgress({
+      runId: completed.id,
+      status: EnterpriseLeadRunStatus.Completed,
+      currentRole: null,
+      controllerSummary: 'Completed.',
+    });
+    store.cancelWorkflowRun(cancelled.id);
+
+    [completed, cancelled].forEach(run => {
+      const before = store.getRun(run.id);
+      expect(() =>
+        store.updateRunProgress({
+          runId: run.id,
+          status: EnterpriseLeadRunStatus.Running,
+          currentRole: EnterpriseLeadAgentRole.Controller,
+          controllerSummary: 'Late progress.',
+        }),
+      ).toThrow('Enterprise lead run is terminal');
+      expect(store.getRun(run.id)).toEqual(before);
+    });
   });
 
   test('rejects archive when run does not belong to workspace', () => {
@@ -1583,6 +1642,12 @@ describe('EnterpriseLeadWorkspaceStore', () => {
       workspaceId: 'workspace-legacy-runs',
       userGoal: '迁移后新运行',
       roles: [EnterpriseLeadAgentRole.SalesHandoff],
+    });
+    store.updateRunProgress({
+      runId: createdRun.id,
+      status: EnterpriseLeadRunStatus.Completed,
+      currentRole: null,
+      controllerSummary: '迁移后运行已完成。',
     });
     const archivedRun = store.archiveRun('workspace-legacy-runs', createdRun.id);
 

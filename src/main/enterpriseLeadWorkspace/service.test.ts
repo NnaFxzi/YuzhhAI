@@ -3043,7 +3043,6 @@ describe('EnterpriseLeadWorkspaceService', () => {
     const task = snapshot.tasks.find(item => item.role === EnterpriseLeadAgentRole.TopicPlanning);
     if (!task || !snapshot.currentRun)
       throw new Error('Expected content planning task and current run');
-    markRunReadyToArchive(setup.store, snapshot.currentRun.id);
     setup.modelClient.enqueue({
       role: EnterpriseLeadAgentRole.TopicPlanning,
       status: EnterpriseLeadTaskStatus.Completed,
@@ -3061,6 +3060,7 @@ describe('EnterpriseLeadWorkspaceService', () => {
       '归档前先生成一版',
     );
 
+    markRunReadyToArchive(setup.store, snapshot.currentRun.id);
     setup.service.archiveRun(workspace.id, snapshot.currentRun.id);
 
     await expect(setup.service.rerunTask(task.id)).rejects.toThrow(
@@ -3082,11 +3082,11 @@ describe('EnterpriseLeadWorkspaceService', () => {
     const task = snapshot.tasks.find(item => item.role === EnterpriseLeadAgentRole.TopicPlanning);
     if (!task || !snapshot.currentRun)
       throw new Error('Expected content planning task and current run');
-    markRunReadyToArchive(setup.store, snapshot.currentRun.id);
     const pendingGeneration = setup.modelClient.enqueuePending();
 
     const runTaskPromise = setup.service.runTask(task.id);
     expect(setup.modelClient.prompts).toHaveLength(1);
+    markRunReadyToArchive(setup.store, snapshot.currentRun.id);
     setup.service.archiveRun(workspace.id, snapshot.currentRun.id);
     pendingGeneration.resolve({
       role: EnterpriseLeadAgentRole.TopicPlanning,
@@ -3117,7 +3117,6 @@ describe('EnterpriseLeadWorkspaceService', () => {
     const task = snapshot.tasks.find(item => item.role === EnterpriseLeadAgentRole.TopicPlanning);
     if (!task || !snapshot.currentRun)
       throw new Error('Expected content planning task and current run');
-    markRunReadyToArchive(setup.store, snapshot.currentRun.id);
     const pendingGeneration = setup.modelClient.enqueuePending();
 
     const pendingVersionPromise = setup.service.createPendingVersionFromChat(
@@ -3125,6 +3124,7 @@ describe('EnterpriseLeadWorkspaceService', () => {
       '生成待确认版本',
     );
     expect(setup.modelClient.prompts).toHaveLength(1);
+    markRunReadyToArchive(setup.store, snapshot.currentRun.id);
     setup.service.archiveRun(workspace.id, snapshot.currentRun.id);
     pendingGeneration.resolve({
       role: EnterpriseLeadAgentRole.TopicPlanning,

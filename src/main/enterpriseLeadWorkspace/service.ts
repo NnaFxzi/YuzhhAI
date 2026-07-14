@@ -1461,8 +1461,17 @@ export class EnterpriseLeadWorkspaceService {
 
   async resumeRun(workspaceId: string, runId: string): Promise<EnterpriseLeadWorkspaceSnapshot> {
     const run = this.getRunForWorkspace(workspaceId, runId);
+    if (
+      run.status === EnterpriseLeadRunStatus.Completed ||
+      run.status === EnterpriseLeadRunStatus.Cancelled
+    ) {
+      return this.getSnapshot(workspaceId, run.id);
+    }
     if (this.isPromotionWorkflowRun(run)) {
       await this.workflowOrchestrator.resumeRun(workspaceId, run.id);
+      return this.getSnapshot(workspaceId, run.id);
+    }
+    if (run.status === EnterpriseLeadRunStatus.Error) {
       return this.getSnapshot(workspaceId, run.id);
     }
     return this.runWorkflow(workspaceId, run.id);

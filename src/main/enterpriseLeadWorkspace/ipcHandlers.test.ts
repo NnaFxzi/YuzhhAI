@@ -612,6 +612,54 @@ describe('registerEnterpriseLeadWorkspaceHandlers', () => {
     }
   });
 
+  test('clears a settled sender cursor so Resume does not replay events from before it subscribed', async () => {
+    const { deps, service } = makeDeps();
+    const snapshot = {
+      workspace: { id: 'workspace-1' },
+      currentRun: { id: 'run-1' },
+      tasks: [],
+      pendingVersions: [],
+      deliverables: [],
+      todos: [],
+      archives: [],
+    } as EnterpriseLeadWorkspaceSnapshot;
+    const events: EnterpriseLeadWorkflowEvent[] = [
+      { runId: 'run-1', sequence: 1, type: 'run_started', payload: {}, createdAt: '2026-07-14T00:00:00.000Z' },
+    ];
+    service.getSnapshot = vi.fn(() => snapshot);
+    service.startWorkflow = vi.fn(async () => snapshot);
+    service.resumeRun = vi.fn(async () => {
+      events.push({
+        runId: 'run-1', sequence: 3, type: 'task_started', payload: {}, createdAt: '2026-07-14T00:00:02.000Z',
+      });
+      return snapshot;
+    });
+    deps.listWorkflowEvents = vi.fn(() => events);
+    const sender = { send: vi.fn() };
+    registerEnterpriseLeadWorkspaceHandlers(deps);
+
+    await registeredHandlers.get(EnterpriseLeadWorkflowIpc.Start)?.({ sender }, {
+      workspaceId: 'workspace-1', runId: 'run-1', options: { enabledOptionalNodes: [], maxConcurrency: 1 },
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    events.push({
+      runId: 'run-1', sequence: 2, type: 'task_ready', payload: {}, createdAt: '2026-07-14T00:00:01.000Z',
+    });
+
+    await registeredHandlers.get(EnterpriseLeadWorkflowIpc.Resume)?.({ sender }, {
+      workspaceId: 'workspace-1', runId: 'run-1',
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(sender.send).toHaveBeenCalledTimes(1);
+    expect(sender.send).toHaveBeenCalledWith(
+      EnterpriseLeadWorkflowIpc.Event,
+      expect.objectContaining({ sequence: 3, type: 'task_started' }),
+    );
+  });
+
   test('persists a run error after its only sender is destroyed', async () => {
     const { deps, service } = makeDeps();
     const snapshot = {

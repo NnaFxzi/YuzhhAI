@@ -90,7 +90,7 @@ describe('WorkflowArtifactStore', () => {
     });
   });
 
-  test('persists a terminal run error only once across sequential failure attempts', () => {
+  test('records an explicit retry attempt and keeps subsequent failures terminal without duplicate run errors', () => {
     database = new Database(':memory:');
     const workspaceStore = new EnterpriseLeadWorkspaceStore(database);
     const store = new WorkflowArtifactStore(database);
@@ -119,23 +119,20 @@ describe('WorkflowArtifactStore', () => {
     });
 
     const firstFailure = store.markRunErrorOnce(run.id, 'first gateway failure');
-    workspaceStore.updateRunProgress({
-      runId: run.id,
-      status: EnterpriseLeadRunStatus.Running,
-      currentRole: null,
-      controllerSummary: 'Retrying the workflow.',
-    });
+    const retry = store.retryRunOnce(run.id);
     const resumedFailure = store.markRunErrorOnce(run.id, 'second gateway failure');
 
     expect(firstFailure).toMatchObject({ transitioned: true, event: { type: 'run_error' } });
-    expect(resumedFailure).toEqual({ transitioned: false });
+    expect(retry).toMatchObject({ transitioned: true, event: { type: 'run_retrying' } });
+    expect(resumedFailure).toEqual({ transitioned: true });
     expect(workspaceStore.getRun(run.id)).toMatchObject({
-      status: EnterpriseLeadRunStatus.Running,
-      controllerSummary: 'Retrying the workflow.',
+      status: EnterpriseLeadRunStatus.Error,
+      controllerSummary: 'second gateway failure',
     });
     expect(store.listEvents(run.id).filter(event => event.type === 'run_error')).toEqual([
       expect.objectContaining({ summary: 'first gateway failure' }),
     ]);
+    expect(store.listEvents(run.id).filter(event => event.type === 'run_retrying')).toHaveLength(1);
   });
 
   test('keeps a cancelled run unchanged when a late workflow rejection arrives', () => {

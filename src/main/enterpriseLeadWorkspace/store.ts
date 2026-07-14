@@ -43,6 +43,11 @@ import {
 } from '../../shared/enterpriseLeadWorkspace/workflowContracts';
 import { KNOWLEDGE_DOCUMENT_LEGACY_SOURCE_PREFIX } from '../../shared/knowledgeBase/constants';
 import { buildLegacyKnowledgeSourceId } from '../knowledgeBase/legacyKnowledgeSourceIdentity';
+import {
+  canProgressWorkflowRun,
+  isWorkflowRunActive,
+  WorkflowRunActiveStatuses,
+} from './workflowRunState';
 
 const defaultRiskRules = [
   'no_real_publish',
@@ -1243,10 +1248,16 @@ export class EnterpriseLeadWorkspaceStore {
   }
 
   updateRunProgress(input: UpdateEnterpriseLeadRunProgressInput): EnterpriseLeadRun {
-    this.assertRunMutable(input.runId);
+    const run = this.getRun(input.runId);
+    if (!run) {
+      throw new Error('Enterprise lead run not found');
+    }
+    if (!canProgressWorkflowRun(run.status, input.status) || run.archiveStatus === 'archived') {
+      throw new Error('Enterprise lead run is terminal');
+    }
 
     const now = new Date().toISOString();
-    this.db.prepare(`
+    const update = this.db.prepare(`
       UPDATE enterprise_lead_runs
       SET
         status = ?,
@@ -1258,6 +1269,8 @@ export class EnterpriseLeadWorkspaceStore {
           ELSE completed_at
         END
       WHERE id = ?
+        AND archive_status <> 'archived'
+        AND status IN (?, ?, ?, ?, ?)
     `).run(
       input.status,
       input.currentRole,
@@ -1266,13 +1279,17 @@ export class EnterpriseLeadWorkspaceStore {
       input.status === EnterpriseLeadRunStatus.Completed ? 1 : 0,
       now,
       input.runId,
+      ...WorkflowRunActiveStatuses,
     );
+    if (update.changes === 0) {
+      throw new Error('Enterprise lead run is terminal');
+    }
 
-    const run = this.getRun(input.runId);
-    if (!run) {
+    const updatedRun = this.getRun(input.runId);
+    if (!updatedRun) {
       throw new Error('Enterprise lead run not found');
     }
-    return run;
+    return updatedRun;
   }
 
   listArchivedRuns(workspaceId: string): EnterpriseLeadRun[] {
@@ -1297,30 +1314,37 @@ export class EnterpriseLeadWorkspaceStore {
   }
 
   archiveRun(workspaceId: string, runId: string): EnterpriseLeadRun {
-    const run = this.getRun(runId);
-    if (!run) {
-      throw new Error('Enterprise lead run not found');
-    }
-    if (run.workspaceId !== workspaceId) {
-      throw new Error('Enterprise lead run does not belong to workspace');
-    }
-
     const now = new Date().toISOString();
-    this.db.prepare(`
+    const update = this.db.prepare(`
       UPDATE enterprise_lead_runs
       SET
         status = ?,
         archive_status = 'archived',
         updated_at = ?,
         completed_at = COALESCE(completed_at, ?)
-      WHERE id = ? AND workspace_id = ?
+      WHERE id = ?
+        AND workspace_id = ?
+        AND status = ?
+        AND archive_status <> 'archived'
     `).run(
       EnterpriseLeadRunStatus.Archived,
       now,
       now,
       runId,
       workspaceId,
+      EnterpriseLeadRunStatus.Completed,
     );
+    if (update.changes === 0) {
+      const run = this.getRun(runId);
+      if (!run) throw new Error('Enterprise lead run not found');
+      if (run.workspaceId !== workspaceId) {
+        throw new Error('Enterprise lead run does not belong to workspace');
+      }
+      if (run.archiveStatus === 'archived' || run.status === EnterpriseLeadRunStatus.Archived) {
+        throw new Error('Enterprise lead run is already archived');
+      }
+      throw new Error('Enterprise lead run must be completed before archive');
+    }
 
     const archivedRun = this.getRun(runId);
     if (!archivedRun) {
@@ -1792,8 +1816,11 @@ export class EnterpriseLeadWorkspaceStore {
     if (!run) {
       throw new Error('Enterprise lead run not found');
     }
-    if (run.status === EnterpriseLeadRunStatus.Archived || run.archiveStatus === 'archived') {
+    if (run.archiveStatus === 'archived' || run.status === EnterpriseLeadRunStatus.Archived) {
       throw new Error('Enterprise lead run is archived');
+    }
+    if (!isWorkflowRunActive(run.status)) {
+      throw new Error('Enterprise lead run is terminal');
     }
   }
 
