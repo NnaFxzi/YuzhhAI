@@ -19,8 +19,14 @@ import { buildDefaultEnterpriseLeadWorkspaceSettings } from '../../shared/enterp
 import {
   KnowledgeDocumentSourceMode,
   KnowledgeDocumentStatus,
+  KnowledgeFactDomain,
+  KnowledgeFactDomains,
 } from '../../shared/knowledgeBase/constants';
 import { KnowledgeDocumentStore } from '../knowledgeBase/knowledgeDocumentStore';
+import {
+  EnterpriseLeadProfileInvalidRequestError,
+  EnterpriseLeadWorkspaceProfilePersistenceStage,
+} from './profileRevisionStore';
 import { EnterpriseLeadWorkspaceStore } from './store';
 
 const createStore = (): { db: Database.Database; store: EnterpriseLeadWorkspaceStore } => {
@@ -46,6 +52,8 @@ const profile = {
 
 type EnterpriseLeadWorkspaceTable =
   | 'enterprise_lead_workspaces'
+  | 'enterprise_lead_workspace_profile_field_revisions'
+  | 'knowledge_trusted_profile_index_jobs'
   | 'enterprise_lead_runs'
   | 'enterprise_lead_agent_tasks'
   | 'enterprise_lead_pending_versions';
@@ -96,6 +104,7 @@ describe('EnterpriseLeadWorkspaceStore', () => {
     });
 
     expect(workspace.profile).toEqual(profile);
+    expect(workspace.profileRevision).toBe(1);
     expect(workspace.riskRules).toEqual([
       'no_real_publish',
       'no_real_comment',
@@ -105,6 +114,74 @@ describe('EnterpriseLeadWorkspaceStore', () => {
     ]);
     expect(store.getWorkspace(workspace.id)).toEqual(workspace);
     expect(store.listWorkspaces()).toEqual([workspace]);
+    expect(
+      db!.prepare(`
+        SELECT COUNT(*) AS count
+        FROM enterprise_lead_workspace_profile_field_revisions
+        WHERE workspace_id = ? AND revision = 1
+      `).get(workspace.id),
+    ).toEqual({ count: KnowledgeFactDomains.length });
+    expect(store.getTrustedProfileIndexStore().getJob(workspace.id, 1)).toMatchObject({
+      workspaceId: workspace.id,
+      profileRevision: 1,
+    });
+    expect(store.getTrustedProfileIndexStore().getState(workspace.id)).toBeNull();
+  });
+
+  test('rejects canonical trust overlap on create without any ownership row', () => {
+    setupStore();
+    const overlappingKey = 'productList:重型纸箱';
+
+    expect(() => store.createWorkspace({
+      name: 'Contradictory create workspace',
+      type: EnterpriseLeadWorkspaceType.EnterpriseLead,
+      profile: {
+        ...profile,
+        confirmedKnowledgeKeys: [overlappingKey],
+        ignoredKnowledgeKeys: [overlappingKey],
+      },
+      extractionSources: [],
+      enabledAgentRoles: [],
+    })).toThrow(EnterpriseLeadProfileInvalidRequestError);
+
+    expect(readTableCount(db!, 'enterprise_lead_workspaces')).toBe(0);
+    expect(readTableCount(
+      db!,
+      'enterprise_lead_workspace_profile_field_revisions',
+    )).toBe(0);
+    expect(readTableCount(db!, 'knowledge_trusted_profile_index_jobs')).toBe(0);
+  });
+
+  test('rolls back all three profile ownership areas for every create fault stage', () => {
+    for (const faultStage of [
+      EnterpriseLeadWorkspaceProfilePersistenceStage.AfterWorkspaceInsert,
+      EnterpriseLeadWorkspaceProfilePersistenceStage.AfterFieldInitialization,
+      EnterpriseLeadWorkspaceProfilePersistenceStage.AfterInitialOutboxInsert,
+    ]) {
+      const faultDb = new Database(':memory:');
+      const faultStore = new EnterpriseLeadWorkspaceStore(faultDb, {
+        faultInjector: stage => {
+          if (stage === faultStage) {
+            throw new Error('injected create fault');
+          }
+        },
+      });
+
+      expect(() => faultStore.createWorkspace({
+        name: 'Faulted workspace',
+        type: EnterpriseLeadWorkspaceType.EnterpriseLead,
+        profile,
+        extractionSources: [],
+        enabledAgentRoles: [],
+      })).toThrow('injected create fault');
+      expect(readTableCount(faultDb, 'enterprise_lead_workspaces')).toBe(0);
+      expect(readTableCount(
+        faultDb,
+        'enterprise_lead_workspace_profile_field_revisions',
+      )).toBe(0);
+      expect(readTableCount(faultDb, 'knowledge_trusted_profile_index_jobs')).toBe(0);
+      faultDb.close();
+    }
   });
 
   test('upserts one stable source without replacing unrelated legacy entries', () => {
@@ -489,17 +566,27 @@ describe('EnterpriseLeadWorkspaceStore', () => {
       settings: buildDefaultEnterpriseLeadWorkspaceSettings(),
     });
 
-    const updated = store.updateWorkspaceProfile(workspace.id, {
-      ...profile,
-      companySummary: '更新后的企业画像',
-      productList: ['精密金属支架'],
-      prohibitedClaims: ['不能承诺最低价'],
+    const updated = store.updateWorkspaceProfile({
+      workspaceId: workspace.id,
+      expectedProfileRevision: workspace.profileRevision,
+      profile: {
+        ...profile,
+        companySummary: '更新后的企业画像',
+        productList: ['精密金属支架'],
+        prohibitedClaims: ['不能承诺最低价'],
+      },
+      touchedFields: [
+        KnowledgeFactDomain.CompanySummary,
+        KnowledgeFactDomain.ProductList,
+        KnowledgeFactDomain.ProhibitedClaims,
+      ],
     });
 
     expect(updated.profile.companySummary).toBe('更新后的企业画像');
     expect(updated.profile.productList).toEqual(['精密金属支架']);
     expect(updated.profile.prohibitedClaims).toEqual(['不能承诺最低价']);
     expect(updated.settings).toEqual(workspace.settings);
+    expect(updated.profileRevision).toBe(2);
     expect(Date.parse(updated.updatedAt)).not.toBeNaN();
     expect(store.getWorkspace(workspace.id)?.profile).toEqual(updated.profile);
   });

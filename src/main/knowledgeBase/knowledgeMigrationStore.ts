@@ -191,6 +191,15 @@ export class KnowledgeMigrationStore {
     return result.changes > 0;
   }
 
+  deleteWorkspaceMigrationInCurrentTransaction(workspaceId: string): number {
+    if (!this.db.inTransaction) {
+      throw new Error('Knowledge migration transaction required');
+    }
+    return this.db.prepare(`
+      DELETE FROM knowledge_migration_state WHERE workspace_id = ?
+    `).run(workspaceId.trim()).changes;
+  }
+
   private finish(
     workspaceId: string,
     status: KnowledgeMigrationState['status'],

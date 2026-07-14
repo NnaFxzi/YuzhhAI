@@ -76,19 +76,8 @@ import type {
   KitSkillMetadata,
   ResolvedKitCapabilities,
 } from '../../shared/kit/constants';
-import type {
-  KnowledgeBaseIpcResult,
-  KnowledgeDocumentDetails,
-  KnowledgeDocumentDetailsRequest,
-  KnowledgeDocumentListItem,
-  KnowledgeDocumentRevisionRequest,
-  KnowledgeFileSelection,
-  KnowledgeImportBatchResult,
-  KnowledgeImportSelectionRequest,
-  KnowledgeListDocumentsRequest,
-  KnowledgeRetryDocumentRequest,
-  KnowledgeRetryLocalIndexRequest,
-} from '../../shared/knowledgeBase/types';
+import type { KnowledgeFactDomain } from '../../shared/knowledgeBase/constants';
+import type { KnowledgeBaseRendererApi } from '../../shared/knowledgeBase/types';
 import type {
   ListLocalWebServicesOptions,
   LocalWebService,
@@ -699,30 +688,7 @@ interface IElectronAPI {
       request: ContentQualityRegressionApplyPromptPatchRequest,
     ) => Promise<ContentQualityRegressionApplyPromptPatchResponse>;
   };
-  knowledgeBase: {
-    selectFiles: () => Promise<KnowledgeBaseIpcResult<KnowledgeFileSelection | null>>;
-    importSelection: (
-      input: KnowledgeImportSelectionRequest,
-    ) => Promise<KnowledgeBaseIpcResult<KnowledgeImportBatchResult>>;
-    listDocuments: (
-      input: KnowledgeListDocumentsRequest,
-    ) => Promise<KnowledgeBaseIpcResult<KnowledgeDocumentListItem[]>>;
-    getDocumentDetails: (
-      input: KnowledgeDocumentDetailsRequest,
-    ) => Promise<KnowledgeBaseIpcResult<KnowledgeDocumentDetails>>;
-    deleteDocument: (
-      input: KnowledgeDocumentRevisionRequest,
-    ) => Promise<KnowledgeBaseIpcResult<KnowledgeDocumentListItem>>;
-    restoreDocument: (
-      input: KnowledgeDocumentRevisionRequest,
-    ) => Promise<KnowledgeBaseIpcResult<KnowledgeDocumentListItem>>;
-    retryDocument: (
-      input: KnowledgeRetryDocumentRequest,
-    ) => Promise<KnowledgeBaseIpcResult<KnowledgeDocumentListItem>>;
-    retryLocalIndex: (
-      input: KnowledgeRetryLocalIndexRequest,
-    ) => Promise<KnowledgeBaseIpcResult<KnowledgeDocumentListItem>>;
-  };
+  knowledgeBase: KnowledgeBaseRendererApi;
   enterpriseLeadWorkspace: {
     listWorkspaces: () => Promise<EnterpriseLeadIpcResult<EnterpriseLeadWorkspace[]>>;
     getWorkspace: (id: string) => Promise<EnterpriseLeadIpcResult<EnterpriseLeadWorkspace | null>>;
@@ -734,6 +700,8 @@ interface IElectronAPI {
     updateWorkspaceProfile: (
       workspaceId: string,
       profile: EnterpriseLeadWorkspaceProfile,
+      expectedProfileRevision: number,
+      touchedFields: KnowledgeFactDomain[],
     ) => Promise<EnterpriseLeadIpcResult<EnterpriseLeadWorkspace>>;
     updateWorkspaceSources: (
       workspaceId: string,

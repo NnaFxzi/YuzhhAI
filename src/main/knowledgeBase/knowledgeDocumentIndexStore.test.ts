@@ -24,7 +24,6 @@ import {
   chunkKnowledgeDocumentVersion,
 } from './knowledgeDocumentChunker';
 import {
-  isTransientSqliteBusyError,
   KnowledgeDocumentIndexStateError,
   KnowledgeDocumentIndexStore,
 } from './knowledgeDocumentIndexStore';
@@ -480,14 +479,6 @@ const publishText = (
 ) => publishTarget(store, scheduleText(documents, store, workspaceId, text));
 
 describe('KnowledgeDocumentIndexStore', () => {
-  test('identifies only raw transient SQLite busy result codes', () => {
-    expect(isTransientSqliteBusyError({ code: 'SQLITE_BUSY' })).toBe(true);
-    expect(isTransientSqliteBusyError({ code: 'SQLITE_BUSY_SNAPSHOT' })).toBe(true);
-    expect(isTransientSqliteBusyError({ code: 'SQLITE_CONSTRAINT' })).toBe(false);
-    expect(isTransientSqliteBusyError(new Error('database is locked'))).toBe(false);
-    expect(isTransientSqliteBusyError(null)).toBe(false);
-  });
-
   test('persists one tokenizer choice and schedules text or not-applicable state', () => {
     const db = new Database(':memory:');
     ensureWorkspace(db, 'workspace-a');
@@ -1804,7 +1795,7 @@ describe('KnowledgeDocumentIndexStore', () => {
     db.close();
   });
 
-  test('deactivates immediately, cancels a lease, and preserves attempt numbering', () => {
+  test('deactivates immediately and physically removes the old index generation', () => {
     const { db, store, target } = createScheduledIndexStore();
     const firstClaim = store.claimNext()!;
     const chunks = chunkKnowledgeDocumentVersion({
@@ -1826,23 +1817,24 @@ describe('KnowledgeDocumentIndexStore', () => {
     }, '2026-07-11T01:03:00.000Z');
     expect(store.getState(target.version.id)).toBeNull();
     expect(store.listVersionChunks(target.version.id)).toEqual([]);
-    expect(store.listAttempts(target.version.id)[0]).toMatchObject({
-      outcome: KnowledgeDocumentIndexAttemptOutcome.Cancelled,
-      errorCode: KnowledgeDocumentIndexErrorCode.StateConflict,
-      finishedAt: '2026-07-11T01:03:00.000Z',
-    });
+    expect(store.listAttempts(target.version.id)).toEqual([]);
     expect(db.prepare(`
       SELECT COUNT(*) AS count
       FROM knowledge_document_chunks
       WHERE document_version_id = ?
-    `).get(target.version.id)).toEqual({ count: chunks.length });
+    `).get(target.version.id)).toEqual({ count: 0 });
+    expect(db.prepare(`
+      SELECT COUNT(*) AS count
+      FROM knowledge_document_chunks_fts
+      WHERE document_version_id = ?
+    `).get(target.version.id)).toEqual({ count: 0 });
 
     expect(store.scheduleCurrentVersion({
       workspaceId: target.document.workspaceId,
       documentId: target.document.id,
       documentVersionId: target.version.id,
-    }).attemptCount).toBe(1);
-    expect(store.claimNext()!.attempt.attemptNumber).toBe(2);
+    }).attemptCount).toBe(0);
+    expect(store.claimNext()!.attempt.attemptNumber).toBe(1);
     db.close();
   });
 
@@ -1920,7 +1912,7 @@ describe('KnowledgeDocumentIndexStore', () => {
       deleted += batchCount;
       batchCount = store.purgeInactiveGenerationBatch();
     }
-    expect(deleted).toBe(chunks.length);
+    expect(deleted).toBe(0);
     expect(db.prepare(`
       SELECT COUNT(*) AS count
       FROM knowledge_document_chunks

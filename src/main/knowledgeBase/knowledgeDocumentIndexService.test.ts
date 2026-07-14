@@ -8,7 +8,11 @@ import {
   type KnowledgeDocumentIndexExecutor,
   KnowledgeDocumentIndexUnavailableError,
 } from './knowledgeDocumentIndexExecutor';
-import { KnowledgeDocumentIndexService } from './knowledgeDocumentIndexService';
+import {
+  KnowledgeDocumentIndexService,
+  KnowledgeDocumentIndexServiceLogCode,
+  KnowledgeDocumentIndexServiceLogStage,
+} from './knowledgeDocumentIndexService';
 import type { KnowledgeDocumentIndexRunResult } from './knowledgeDocumentIndexTypes';
 
 const deferred = <T>() => {
@@ -28,6 +32,14 @@ const waitForCondition = async (condition: () => boolean): Promise<void> => {
     await new Promise(resolve => setTimeout(resolve, 1));
   }
 };
+
+const createSensitiveFailure = (label: string): Error => Object.assign(
+  new Error(`${label} SECRET SELECT * FROM private_table /private/company.pdf`),
+  {
+    stack: `${label} STACK SECRET /private/stack.ts:42`,
+    cause: new Error(`${label} CAUSE SECRET api-key-value`),
+  },
+);
 
 describe('KnowledgeDocumentIndexService', () => {
   test('coalesces repeated wake calls and shuts down its executor once', async () => {
@@ -102,8 +114,9 @@ describe('KnowledgeDocumentIndexService', () => {
       }),
       shutdown: vi.fn(async () => undefined),
     } satisfies KnowledgeDocumentIndexExecutor;
+    const persistFailure = createSensitiveFailure('persist');
     const failRunnableStates = vi.fn(() => {
-      throw new Error('sqlite busy');
+      throw persistFailure;
     });
     const service = new KnowledgeDocumentIndexService(executor, { failRunnableStates });
     const errorLog = vi.spyOn(console, 'error').mockImplementation(() => undefined);
@@ -116,6 +129,11 @@ describe('KnowledgeDocumentIndexService', () => {
         KnowledgeDocumentIndexErrorCode.WorkerUnavailable,
       );
       expect(executor.runUntilIdle).toHaveBeenCalledTimes(1);
+      const serializedLogs = JSON.stringify(errorLog.mock.calls);
+      expect(serializedLogs).not.toContain(persistFailure.message);
+      expect(serializedLogs).not.toContain(persistFailure.stack);
+      expect(serializedLogs).not.toContain('api-key-value');
+      expect(serializedLogs).not.toContain('/private/company.pdf');
     } finally {
       await service.shutdown();
       errorLog.mockRestore();
@@ -200,7 +218,7 @@ describe('KnowledgeDocumentIndexService', () => {
   });
 
   test('logs a generic executor failure and stops without bulk failure', async () => {
-    const failure = new Error('unexpected runner defect');
+    const failure = createSensitiveFailure('drain');
     const executor = {
       runUntilIdle: vi.fn(async () => {
         throw failure;
@@ -216,10 +234,15 @@ describe('KnowledgeDocumentIndexService', () => {
       await service.waitForIdle();
 
       expect(failRunnableStates).not.toHaveBeenCalled();
-      expect(errorLog).toHaveBeenCalledWith(
-        '[KnowledgeBase] Local index worker drain failed:',
-        failure,
-      );
+      expect(errorLog).toHaveBeenCalledWith('[KnowledgeDocumentIndex]', {
+        stage: KnowledgeDocumentIndexServiceLogStage.Drain,
+        code: KnowledgeDocumentIndexServiceLogCode.DrainFailed,
+      });
+      const serializedLogs = JSON.stringify(errorLog.mock.calls);
+      expect(serializedLogs).not.toContain(failure.message);
+      expect(serializedLogs).not.toContain(failure.stack);
+      expect(serializedLogs).not.toContain('api-key-value');
+      expect(serializedLogs).not.toContain('/private/company.pdf');
     } finally {
       await service.shutdown();
       errorLog.mockRestore();

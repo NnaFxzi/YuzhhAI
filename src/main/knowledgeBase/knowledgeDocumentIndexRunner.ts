@@ -3,9 +3,9 @@ import {
   KNOWLEDGE_INDEX_WORKER_WRITE_BATCH_CHUNKS,
   KnowledgeDocumentIndexErrorCode,
 } from '../../shared/knowledgeBase/constants';
+import { isTransientSqliteBusyError } from '../libs/sqliteTransactionRetry';
 import { chunkKnowledgeDocumentVersion } from './knowledgeDocumentChunker';
 import {
-  isTransientSqliteBusyError,
   KnowledgeDocumentIndexStateError,
   KnowledgeDocumentIndexStore,
 } from './knowledgeDocumentIndexStore';
@@ -15,6 +15,15 @@ export interface KnowledgeDocumentIndexRunnerOptions {
   afterSuccessfulWriteBatch?: () => void;
   afterSuccessfulCleanupBatch?: () => void;
 }
+
+export const KnowledgeDocumentIndexRunnerLogStage = {
+  PersistAttemptFailure: 'persist_attempt_failure',
+  ProcessClaim: 'process_claim',
+} as const;
+
+export const KnowledgeDocumentIndexRunnerLogCode = {
+  FailurePersistenceFailed: 'index_failure_persistence_failed',
+} as const;
 
 const purgeInactiveGenerationsUntilIdle = (
   store: KnowledgeDocumentIndexStore,
@@ -83,20 +92,35 @@ export const runKnowledgeDocumentIndexUntilIdle = (
       if (isTransientSqliteBusyError(error)) {
         throw error;
       }
-      console.error('[KnowledgeBase] Local index attempt failed:', error);
+      const errorCode = error instanceof KnowledgeDocumentIndexStateError
+        ? KnowledgeDocumentIndexErrorCode.StateConflict
+        : KnowledgeDocumentIndexErrorCode.ProcessingFailed;
+      const logIdentity = {
+        workspaceId: claim.state.workspaceId,
+        documentId: claim.state.documentId,
+        documentVersionId: claim.state.documentVersionId,
+        attemptId: claim.attempt.id,
+      };
+      console.error('[KnowledgeDocumentIndex]', {
+        ...logIdentity,
+        stage: KnowledgeDocumentIndexRunnerLogStage.ProcessClaim,
+        code: errorCode,
+      });
       try {
         store.failAttempt({
           documentVersionId: claim.state.documentVersionId,
           attemptId: claim.attempt.id,
-          errorCode: error instanceof KnowledgeDocumentIndexStateError
-            ? KnowledgeDocumentIndexErrorCode.StateConflict
-            : KnowledgeDocumentIndexErrorCode.ProcessingFailed,
+          errorCode,
         });
       } catch (persistError) {
         if (isTransientSqliteBusyError(persistError)) {
           throw persistError;
         }
-        console.warn('[KnowledgeBase] Failed to persist local index attempt failure:', persistError);
+        console.warn('[KnowledgeDocumentIndex]', {
+          ...logIdentity,
+          stage: KnowledgeDocumentIndexRunnerLogStage.PersistAttemptFailure,
+          code: KnowledgeDocumentIndexRunnerLogCode.FailurePersistenceFailed,
+        });
       }
       failedCount += 1;
     }

@@ -1,5 +1,6 @@
 import type { DomesticResearchConfig } from '../agent/domesticResearch';
 import type { ExternalResearchConfig } from '../agent/externalResearch';
+import type { KnowledgeFactDomain } from '../knowledgeBase/constants';
 import type { ProviderConfig } from '../providers';
 import type {
   EnterpriseLeadAgentRole,
@@ -9,6 +10,7 @@ import type {
   EnterpriseLeadDocumentExtractionStage,
   EnterpriseLeadDocumentExtractionStatus,
   EnterpriseLeadExtractionSourceKind,
+  EnterpriseLeadIpcErrorCode,
   EnterpriseLeadKnowledgeIndexStatus,
   EnterpriseLeadRiskLevel,
   EnterpriseLeadRunStatus,
@@ -179,6 +181,7 @@ export interface EnterpriseLeadWorkspace {
   name: string;
   type: EnterpriseLeadWorkspaceType | string;
   profile: EnterpriseLeadWorkspaceProfile;
+  profileRevision: number;
   extractionSources: EnterpriseLeadExtractionSource[];
   riskRules: string[];
   enabledAgentRoles: Array<EnterpriseLeadAgentRole | string>;
@@ -365,8 +368,26 @@ export interface EnterpriseLeadWorkspaceSnapshot {
   archives: EnterpriseLeadArchive[];
 }
 
-export interface EnterpriseLeadIpcResult<T> {
-  success: boolean;
-  error?: string;
-  data?: T;
+export interface EnterpriseLeadProfileConflictSnapshot {
+  id: string;
+  profile: EnterpriseLeadWorkspaceProfile;
+  profileRevision: number;
+  updatedAt: string;
 }
+
+export interface EnterpriseLeadWorkspaceProfileUpdateRequest {
+  workspaceId: string;
+  profile: EnterpriseLeadWorkspaceProfile;
+  expectedProfileRevision: number;
+  touchedFields: KnowledgeFactDomain[];
+}
+
+export interface EnterpriseLeadIpcError {
+  code: EnterpriseLeadIpcErrorCode;
+  message: string;
+  latestProfile?: EnterpriseLeadProfileConflictSnapshot;
+}
+
+export type EnterpriseLeadIpcResult<T> =
+  | { success: true; data: T }
+  | { success: false; error: EnterpriseLeadIpcError };

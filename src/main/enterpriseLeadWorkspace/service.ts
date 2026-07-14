@@ -33,6 +33,7 @@ import type {
   EnterpriseLeadWorkspaceAgentCalibrationResponse,
   EnterpriseLeadWorkspaceDraft,
   EnterpriseLeadWorkspaceProfile,
+  EnterpriseLeadWorkspaceProfileUpdateRequest,
   EnterpriseLeadWorkspaceRunAgentSnapshot,
   EnterpriseLeadWorkspaceRunSummary,
   EnterpriseLeadWorkspaceSettingsUpdate,
@@ -42,6 +43,16 @@ import {
   normalizeAgentTaskResultInput,
   normalizeWorkspaceDraftInput,
 } from '../../shared/enterpriseLeadWorkspace/validation';
+import {
+  KnowledgeFactDomain,
+  type KnowledgeFactDomain as KnowledgeFactDomainValue,
+  KnowledgeFactDomains,
+} from '../../shared/knowledgeBase/constants';
+import {
+  buildEnterpriseKnowledgeKey,
+  getChangedEnterpriseProfileFields,
+  normalizeEnterpriseKnowledgeValue,
+} from '../../shared/knowledgeBase/enterpriseLeadProfileKnowledge';
 import type { ModelClientAdapter } from '../industryPack/modelClientAdapter';
 import { resolveRawApiConfigFromAppConfig } from '../libs/claudeSettings';
 import {
@@ -58,6 +69,9 @@ import {
   type WorkspaceChunkExtractionResult,
 } from './documentExtraction';
 import { parseModelJsonObject } from './modelJson';
+import {
+  EnterpriseLeadProfileRevisionConflictError,
+} from './profileRevisionStore';
 import {
   buildAgentChatPrompt,
   buildAgentTaskPrompt,
@@ -79,6 +93,8 @@ interface EnterpriseLeadWorkspaceServiceOptions {
   contentKnowledgeVectorStore?: ContentKnowledgeVectorStore;
   documentExtractionTimeoutMs?: number;
   staleDocumentProcessingMs?: number;
+  prepareWorkspaceDeletion: (workspaceId: string) => boolean;
+  onTrustedRefreshCommitted?: (workspaceId: string) => void;
 }
 
 export interface EnterpriseLeadWorkspaceAgentTemplate {
@@ -127,8 +143,13 @@ const DEFAULT_DOCUMENT_EXTRACTION_TIMEOUT_MS = 180_000;
 const DEFAULT_STALE_DOCUMENT_PROCESSING_MS = 10 * 60_000;
 const DOCUMENT_EXTRACTION_TIMEOUT_MESSAGE =
   'Document extraction timed out. Please try again with a smaller file.';
+const DOCUMENT_PROCESSING_FAILED_MESSAGE = 'Document processing failed. Please retry.';
+const PROFILE_CONFLICT_RETRY_EXHAUSTED_MESSAGE =
+  'Workspace profile update conflicted repeatedly';
 const STALE_DOCUMENT_PROCESSING_MESSAGE =
   'Document processing was interrupted. Please retry this document.';
+const SERVICE_SHUTTING_DOWN_MESSAGE = 'Enterprise lead workspace service is shutting down';
+const VECTOR_INDEX_REFRESH_FAILED_MESSAGE = 'Knowledge index refresh failed. Please retry.';
 
 const normalizePositiveTimeout = (value: number | undefined, fallback: number): number => {
   if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
@@ -193,35 +214,15 @@ const buildEnterpriseWorkspaceKnowledgeSourceContent = (
     .filter(Boolean)
     .join('\n\n');
 
-const enterpriseLeadProfileArrayFields = [
-  'productList',
-  'productCapabilities',
-  'targetCustomers',
-  'applicationScenarios',
-  'sellingPoints',
-  'channelPreferences',
-  'prohibitedClaims',
-  'contactRules',
-  'missingInfo',
-] as const;
+type EnterpriseLeadProfileArrayField = Exclude<
+  KnowledgeFactDomainValue,
+  typeof KnowledgeFactDomain.CompanySummary
+>;
 
-type EnterpriseLeadProfileArrayField = (typeof enterpriseLeadProfileArrayFields)[number];
-
-const enterpriseLeadProfileFactFieldLabels: Record<
-  EnterpriseLeadProfileArrayField | 'companySummary',
-  string
-> = {
-  companySummary: '公司概况',
-  productList: '产品',
-  productCapabilities: '产品能力',
-  targetCustomers: '目标客户',
-  applicationScenarios: '应用场景',
-  sellingPoints: '卖点',
-  channelPreferences: '渠道偏好',
-  prohibitedClaims: '禁用承诺',
-  contactRules: '联系规则',
-  missingInfo: '缺失信息',
-};
+const enterpriseLeadProfileArrayFields = KnowledgeFactDomains.filter(
+  (field): field is EnterpriseLeadProfileArrayField =>
+    field !== KnowledgeFactDomain.CompanySummary,
+);
 
 const cloneWorkspaceProfile = (
   profile: EnterpriseLeadWorkspaceProfile,
@@ -244,30 +245,17 @@ const cloneWorkspaceProfile = (
     : {}),
 });
 
-const normalizeWorkspaceKnowledgeKeyText = (value: string): string =>
-  value.trim().replace(/\s+/g, ' ').toLowerCase();
-
-const normalizeWorkspaceKnowledgeKey = (value: string): string => {
-  const separatorIndex = value.indexOf(':');
-  if (separatorIndex === -1) {
-    return normalizeWorkspaceKnowledgeKeyText(value);
-  }
-  const field = value.slice(0, separatorIndex).trim();
-  const text = normalizeWorkspaceKnowledgeKeyText(value.slice(separatorIndex + 1));
-  return field && text ? `${field}:${text}` : '';
-};
-
 const getWorkspaceKnowledgeFieldKey = (
-  field: keyof EnterpriseLeadWorkspaceProfile,
+  field: KnowledgeFactDomainValue,
   value: string,
-): string => {
-  const normalizedText = normalizeWorkspaceKnowledgeKeyText(value);
-  return normalizedText ? `${field}:${normalizedText}` : '';
-};
+): string => buildEnterpriseKnowledgeKey(field, value);
 
 const getWorkspaceProfileKnowledgeKeys = (profile: EnterpriseLeadWorkspaceProfile): Set<string> => {
   const keys = new Set<string>();
-  const companyKey = getWorkspaceKnowledgeFieldKey('companySummary', profile.companySummary);
+  const companyKey = getWorkspaceKnowledgeFieldKey(
+    KnowledgeFactDomain.CompanySummary,
+    profile.companySummary,
+  );
   if (companyKey) {
     keys.add(companyKey);
   }
@@ -304,7 +292,7 @@ const mergeWorkspaceProfileValues = (
       if (!value) {
         return false;
       }
-      const key = value.toLowerCase();
+      const key = normalizeEnterpriseKnowledgeValue(value).normalizedValue;
       if (seen.has(key)) {
         return false;
       }
@@ -322,7 +310,10 @@ const mergeExtractedWorkspaceProfile = (
   const extractedCompanySummary = extractedProfile.companySummary.trim();
   nextProfile.companySummary =
     currentProfile.companySummary.trim() ||
-    (ignoredKeys.has(getWorkspaceKnowledgeFieldKey('companySummary', extractedCompanySummary))
+    (ignoredKeys.has(getWorkspaceKnowledgeFieldKey(
+      KnowledgeFactDomain.CompanySummary,
+      extractedCompanySummary,
+    ))
       ? ''
       : extractedCompanySummary);
   enterpriseLeadProfileArrayFields.forEach((field: EnterpriseLeadProfileArrayField) => {
@@ -338,87 +329,6 @@ const mergeExtractedWorkspaceProfile = (
 
 const getSourceExtractedKnowledgeKeys = (source: EnterpriseLeadExtractionSource): string[] =>
   Array.isArray(source.extractedKnowledgeKeys) ? source.extractedKnowledgeKeys : [];
-
-const buildConfirmedWorkspaceProfileSourceContent = (
-  profile: EnterpriseLeadWorkspaceProfile,
-): string => {
-  const confirmedKeys = new Set(
-    (profile.confirmedKnowledgeKeys ?? []).map(normalizeWorkspaceKnowledgeKey).filter(Boolean),
-  );
-  if (confirmedKeys.size === 0) {
-    return '';
-  }
-
-  const lines: string[] = [];
-  const addConfirmedFact = (
-    field: EnterpriseLeadProfileArrayField | 'companySummary',
-    value: string,
-  ): void => {
-    const text = value.trim();
-    const key = getWorkspaceKnowledgeFieldKey(field, text);
-    if (!text || !key || !confirmedKeys.has(key)) {
-      return;
-    }
-    lines.push(`${enterpriseLeadProfileFactFieldLabels[field]}：${text}`);
-  };
-
-  addConfirmedFact('companySummary', profile.companySummary);
-  enterpriseLeadProfileArrayFields.forEach(field => {
-    profile[field].forEach(value => addConfirmedFact(field, value));
-  });
-
-  return lines.join('\n');
-};
-
-const buildWorkspaceRuleSourceContent = (profile: EnterpriseLeadWorkspaceProfile): string =>
-  [
-    ...profile.prohibitedClaims
-      .map(value => value.trim())
-      .filter(Boolean)
-      .map(value => `禁用承诺：${value}`),
-    ...profile.contactRules
-      .map(value => value.trim())
-      .filter(Boolean)
-      .map(value => `联系规则：${value}`),
-  ].join('\n');
-
-const buildDerivedWorkspaceKnowledgeSources = (
-  workspaceId: string,
-  profile?: EnterpriseLeadWorkspaceProfile,
-): ContentKnowledgeSource[] => {
-  if (!profile) {
-    return [];
-  }
-
-  const sources: ContentKnowledgeSource[] = [];
-  const confirmedProfileContent = buildConfirmedWorkspaceProfileSourceContent(profile);
-  if (confirmedProfileContent.trim()) {
-    sources.push({
-      sourceId: `profile-confirmed:${workspaceId}`,
-      sourceType: ContentKnowledgeSourceType.WorkspaceConfirmedProfile,
-      label: '已确认业务知识',
-      content: confirmedProfileContent,
-      priority: 0.18,
-      verifiedByUser: true,
-      evidenceTier: 'internal',
-    });
-  }
-
-  const ruleContent = buildWorkspaceRuleSourceContent(profile);
-  if (ruleContent.trim()) {
-    sources.push({
-      sourceId: `workspace-rules:${workspaceId}`,
-      sourceType: ContentKnowledgeSourceType.WorkspaceRule,
-      label: '硬性规则',
-      content: ruleContent,
-      priority: 0.2,
-      verifiedByUser: true,
-      evidenceTier: 'internal',
-    });
-  }
-
-  return sources;
-};
 
 const isEnterpriseLeadTaskStatus = (value: string): value is EnterpriseLeadTaskStatus =>
   Object.values(EnterpriseLeadTaskStatus).includes(value as EnterpriseLeadTaskStatus);
@@ -557,7 +467,17 @@ export class EnterpriseLeadWorkspaceService {
 
   private readonly staleDocumentProcessingMs: number;
 
+  private readonly prepareWorkspaceDeletion: (workspaceId: string) => boolean;
+
+  private readonly onTrustedRefreshCommitted?: (workspaceId: string) => void;
+
   private documentProcessingQueue: Promise<void> = Promise.resolve();
+
+  private readonly activeModelWork = new Set<Promise<unknown>>();
+
+  private closing = false;
+
+  private shutdownPromise: Promise<void> | null = null;
 
   constructor(options: EnterpriseLeadWorkspaceServiceOptions) {
     this.store = options.store;
@@ -572,6 +492,8 @@ export class EnterpriseLeadWorkspaceService {
       options.staleDocumentProcessingMs,
       DEFAULT_STALE_DOCUMENT_PROCESSING_MS,
     );
+    this.prepareWorkspaceDeletion = options.prepareWorkspaceDeletion;
+    this.onTrustedRefreshCommitted = options.onTrustedRefreshCommitted;
   }
 
   listWorkspaces(): EnterpriseLeadWorkspace[] {
@@ -602,6 +524,7 @@ export class EnterpriseLeadWorkspaceService {
       settings: normalizedDraft.settings,
       workspaceAgents: normalizedDraft.workspaceAgents,
     });
+    this.notifyTrustedRefresh(workspace.id);
     if (!this.contentKnowledgeVectorStore) {
       return workspace;
     }
@@ -612,45 +535,33 @@ export class EnterpriseLeadWorkspaceService {
   }
 
   deleteWorkspace(workspaceId: string): boolean {
-    const deleted = this.store.deleteWorkspace(workspaceId);
-    if (deleted) {
-      this.contentKnowledgeVectorStore?.deleteScope(
-        buildEnterpriseLeadWorkspaceKnowledgeScopeId(workspaceId),
-      );
-    }
-    return deleted;
+    return this.prepareWorkspaceDeletion(workspaceId);
   }
 
-  async extractDraftFromConversation(sourceText: string): Promise<EnterpriseLeadWorkspaceDraft> {
-    const sourceLabel = '对话输入';
-    const draft = await this.extractDraftFromSource(sourceText, sourceLabel);
-
-    return {
-      ...draft,
-      source: {
-        kind: EnterpriseLeadExtractionSourceKind.Conversation,
-        label: sourceLabel,
-        text: sourceText,
-      },
-    };
+  extractDraftFromConversation(sourceText: string): Promise<EnterpriseLeadWorkspaceDraft> {
+    return this.trackModelWork(async () => {
+      const sourceLabel = '对话输入';
+      const draft = await this.extractDraftFromSource(sourceText, sourceLabel);
+      this.ensureOpenForModelCall();
+      return {
+        ...draft,
+        source: {
+          kind: EnterpriseLeadExtractionSourceKind.Conversation,
+          label: sourceLabel,
+          text: sourceText,
+        },
+      };
+    });
   }
 
   updateWorkspaceProfile(
-    workspaceId: string,
-    profile: EnterpriseLeadWorkspaceProfile,
+    input: EnterpriseLeadWorkspaceProfileUpdateRequest,
   ): EnterpriseLeadWorkspace {
-    const updatedWorkspace = this.store.updateWorkspaceProfile(workspaceId, profile);
-    if (!this.contentKnowledgeVectorStore) {
-      return updatedWorkspace;
+    const workspace = this.store.updateWorkspaceProfile(input);
+    if (workspace.profileRevision > input.expectedProfileRevision) {
+      this.notifyTrustedRefresh(workspace.id);
     }
-    return this.store.updateWorkspaceSources(
-      updatedWorkspace.id,
-      this.syncWorkspaceSourcesToVectorIndex(
-        updatedWorkspace.id,
-        updatedWorkspace.extractionSources,
-        updatedWorkspace.profile,
-      ),
-    );
+    return workspace;
   }
 
   updateWorkspaceSources(
@@ -673,6 +584,7 @@ export class EnterpriseLeadWorkspaceService {
     sources: EnterpriseLeadExtractionSource[],
     sourceIndex: number,
   ): EnterpriseLeadWorkspace {
+    if (this.closing) throw new Error(SERVICE_SHUTTING_DOWN_MESSAGE);
     if (!Number.isInteger(sourceIndex) || sourceIndex < 0 || sourceIndex >= sources.length) {
       throw new Error('Document source index is invalid');
     }
@@ -771,6 +683,7 @@ export class EnterpriseLeadWorkspaceService {
       return this.extractDraftFromLargeSource(sourceText, sourceLabel, onProgress);
     }
 
+    this.ensureOpenForModelCall();
     const result = await this.withDocumentExtractionTimeout(
       this.modelClient.generate({
         prompt: buildWorkspaceExtractionPrompt({ sourceText, sourceLabel }),
@@ -798,6 +711,7 @@ export class EnterpriseLeadWorkspaceService {
     });
 
     for (const chunk of chunkPlan.chunks) {
+      this.ensureOpenForModelCall();
       const result = await this.withDocumentExtractionTimeout(
         this.modelClient.generate({
           prompt: buildWorkspaceChunkExtractionPrompt({
@@ -829,6 +743,7 @@ export class EnterpriseLeadWorkspaceService {
       stage: EnterpriseLeadDocumentExtractionStage.Merging,
       total: chunkPlan.chunks.length,
     });
+    this.ensureOpenForModelCall();
     const mergeResult = await this.withDocumentExtractionTimeout(
       this.modelClient.generate({
         prompt: buildWorkspaceChunkMergePrompt({ chunkResults, sourceLabel }),
@@ -864,16 +779,52 @@ export class EnterpriseLeadWorkspaceService {
     }
   }
 
+  private ensureOpenForModelCall(): void {
+    if (this.closing) throw new Error(SERVICE_SHUTTING_DOWN_MESSAGE);
+  }
+
+  private trackModelWork<T>(operation: () => Promise<T>): Promise<T> {
+    try {
+      this.ensureOpenForModelCall();
+    } catch (error) {
+      return Promise.reject(error);
+    }
+    let resolveWork!: (value: T | PromiseLike<T>) => void;
+    let rejectWork!: (reason?: unknown) => void;
+    const work = new Promise<T>((resolve, reject) => {
+      resolveWork = resolve;
+      rejectWork = reject;
+    });
+    let tracked!: Promise<T>;
+    tracked = work.finally(() => this.activeModelWork.delete(tracked));
+    this.activeModelWork.add(tracked);
+    try {
+      resolveWork(operation());
+    } catch (error) {
+      rejectWork(error);
+    }
+    return tracked;
+  }
+
+  private async waitForModelWork(): Promise<void> {
+    while (this.activeModelWork.size > 0) {
+      await Promise.allSettled([...this.activeModelWork]);
+    }
+  }
+
   async waitForDocumentProcessingIdle(): Promise<void> {
     await this.documentProcessingQueue;
   }
 
   private enqueueDocumentProcessingJob(workspaceId: string, sourceIndex: number): void {
+    if (this.closing) return;
     const nextQueue = this.documentProcessingQueue
       .catch((): void => undefined)
       .then(() => this.processWorkspaceDocumentSource(workspaceId, sourceIndex));
-    this.documentProcessingQueue = nextQueue.catch(error => {
-      console.warn('[EnterpriseLeadWorkspace] Background document processing failed:', error);
+    this.documentProcessingQueue = nextQueue.catch(() => {
+      console.warn('[EnterpriseLeadWorkspace]', {
+        code: 'background_document_processing_failed',
+      });
     });
   }
 
@@ -881,6 +832,7 @@ export class EnterpriseLeadWorkspaceService {
     workspaceId: string,
     sourceIndex: number,
   ): Promise<void> {
+    if (this.closing) return;
     try {
       const workspace = this.store.getWorkspace(workspaceId);
       const source = workspace?.extractionSources[sourceIndex];
@@ -892,13 +844,9 @@ export class EnterpriseLeadWorkspaceService {
       const extractedDraft = await this.extractDraftFromSource(sourceText, source.label, update => {
         this.updateWorkspaceDocumentProcessingProgress(workspaceId, sourceIndex, update);
       });
-      const nextProfile = mergeExtractedWorkspaceProfile(workspace.profile, extractedDraft.profile);
-      const extractedKnowledgeKeys = getNewExtractedWorkspaceKnowledgeKeys(
-        workspace.profile,
-        extractedDraft.profile,
-        nextProfile,
-      );
-      const profiledWorkspace = this.store.updateWorkspaceProfile(workspace.id, nextProfile);
+      if (this.closing) return;
+      const { extractedKnowledgeKeys, workspace: profiledWorkspace } =
+        this.applyLegacyExtractedProfile(workspace.id, extractedDraft.profile);
 
       const now = new Date().toISOString();
       const nextSources = [...profiledWorkspace.extractionSources];
@@ -923,7 +871,62 @@ export class EnterpriseLeadWorkspaceService {
       };
       this.updateWorkspaceSources(profiledWorkspace.id, nextSources);
     } catch (error) {
+      if (this.closing) return;
       this.markWorkspaceDocumentProcessingFailed(workspaceId, sourceIndex, error);
+    }
+  }
+
+  private applyLegacyExtractedProfile(
+    workspaceId: string,
+    extractedProfile: EnterpriseLeadWorkspaceProfile,
+  ): { extractedKnowledgeKeys: string[]; workspace: EnterpriseLeadWorkspace } {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const currentWorkspace = this.store.getWorkspace(workspaceId);
+      if (!currentWorkspace) {
+        throw new Error('Enterprise lead workspace not found');
+      }
+      const nextProfile = mergeExtractedWorkspaceProfile(
+        currentWorkspace.profile,
+        extractedProfile,
+      );
+      const changedFields = getChangedEnterpriseProfileFields(
+        currentWorkspace.profile,
+        nextProfile,
+      );
+      const extractedKnowledgeKeys = getNewExtractedWorkspaceKnowledgeKeys(
+        currentWorkspace.profile,
+        extractedProfile,
+        nextProfile,
+      );
+      if (changedFields.length === 0) {
+        return { extractedKnowledgeKeys, workspace: currentWorkspace };
+      }
+      try {
+        const workspace = this.store.updateWorkspaceProfile({
+          workspaceId,
+          expectedProfileRevision: currentWorkspace.profileRevision,
+          profile: nextProfile,
+          touchedFields: changedFields,
+        });
+        this.notifyTrustedRefresh(workspace.id);
+        return {
+          extractedKnowledgeKeys,
+          workspace,
+        };
+      } catch (error) {
+        if (!(error instanceof EnterpriseLeadProfileRevisionConflictError)) {
+          throw error;
+        }
+      }
+    }
+    throw new Error(PROFILE_CONFLICT_RETRY_EXHAUSTED_MESSAGE);
+  }
+
+  private notifyTrustedRefresh(workspaceId: string): void {
+    try {
+      this.onTrustedRefreshCommitted?.(workspaceId);
+    } catch {
+      console.warn('[EnterpriseLeadWorkspace]', { code: 'trusted_refresh_wake_failed' });
     }
   }
 
@@ -967,7 +970,12 @@ export class EnterpriseLeadWorkspaceService {
     if (!workspace || !source) {
       return;
     }
-    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorMessage = error instanceof Error && (
+      error.message === DOCUMENT_EXTRACTION_TIMEOUT_MESSAGE
+      || error.message === PROFILE_CONFLICT_RETRY_EXHAUSTED_MESSAGE
+    )
+      ? error.message
+      : DOCUMENT_PROCESSING_FAILED_MESSAGE;
     const nextSources = [...workspace.extractionSources];
     nextSources[sourceIndex] = {
       ...source,
@@ -977,7 +985,7 @@ export class EnterpriseLeadWorkspaceService {
       extractionStage: undefined,
       extractionStatus: EnterpriseLeadDocumentExtractionStatus.Failed,
       updatedAt: new Date().toISOString(),
-      vectorIndexError: errorMessage,
+      vectorIndexError: VECTOR_INDEX_REFRESH_FAILED_MESSAGE,
       vectorIndexStatus: EnterpriseLeadKnowledgeIndexStatus.Failed,
     };
     this.store.updateWorkspaceSources(workspace.id, nextSources);
@@ -986,9 +994,8 @@ export class EnterpriseLeadWorkspaceService {
   private syncWorkspaceSourcesToVectorIndex(
     workspaceId: string,
     sources: EnterpriseLeadExtractionSource[],
-    profile = this.store.getWorkspace(workspaceId)?.profile,
   ): EnterpriseLeadExtractionSource[] {
-    if (!this.contentKnowledgeVectorStore) {
+    if (this.closing || !this.contentKnowledgeVectorStore) {
       return sources;
     }
 
@@ -1001,16 +1008,15 @@ export class EnterpriseLeadWorkspaceService {
 
     try {
       const rawDocumentSources: ContentKnowledgeSource[] = contentSources
-        .filter(item => item.content.trim())
         .map(item => ({
           sourceId: item.sourceId,
           sourceType: ContentKnowledgeSourceType.WorkspaceDocument,
           label: item.source.label,
           content: item.content,
         }));
-      const syncResult = this.contentKnowledgeVectorStore.replaceSources(
+      const syncResult = this.contentKnowledgeVectorStore.replaceLegacyWorkspaceDocumentSources(
         buildEnterpriseLeadWorkspaceKnowledgeScopeId(workspaceId),
-        [...rawDocumentSources, ...buildDerivedWorkspaceKnowledgeSources(workspaceId, profile)],
+        rawDocumentSources,
       );
       const chunkCountBySourceId = new Map(
         syncResult.sourceResults.map(item => [item.sourceId, item.chunkCount]),
@@ -1018,6 +1024,17 @@ export class EnterpriseLeadWorkspaceService {
 
       return contentSources.map((item): EnterpriseLeadExtractionSource => {
         if (!item.content.trim()) {
+          const chunkCount = chunkCountBySourceId.get(item.sourceId);
+          if (chunkCount && chunkCount > 0) {
+            return {
+              ...item.source,
+              vectorChunkCount: chunkCount,
+              vectorEmbeddingVersion: CONTENT_KNOWLEDGE_EMBEDDING_VERSION,
+              vectorIndexError: undefined as string | undefined,
+              vectorIndexedAt: now,
+              vectorIndexStatus: EnterpriseLeadKnowledgeIndexStatus.Indexed,
+            };
+          }
           // Nothing to vector-index (e.g. images): preserve the caller's status
           // so renderers can keep marking such sources as Indexed without text.
           return item.source;
@@ -1035,8 +1052,7 @@ export class EnterpriseLeadWorkspaceService {
               : EnterpriseLeadKnowledgeIndexStatus.Pending,
         };
       });
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+    } catch {
       return contentSources.map((item): EnterpriseLeadExtractionSource => {
         if (!item.content.trim()) {
           // Preserve the caller's status for sources that were never indexed.
@@ -1046,12 +1062,22 @@ export class EnterpriseLeadWorkspaceService {
           ...item.source,
           vectorChunkCount: 0,
           vectorEmbeddingVersion: CONTENT_KNOWLEDGE_EMBEDDING_VERSION,
-          vectorIndexError: errorMessage,
+          vectorIndexError: VECTOR_INDEX_REFRESH_FAILED_MESSAGE,
           vectorIndexedAt: undefined as string | undefined,
           vectorIndexStatus: EnterpriseLeadKnowledgeIndexStatus.Failed,
         };
       });
     }
+  }
+
+  shutdown(): Promise<void> {
+    if (this.shutdownPromise) return this.shutdownPromise;
+    this.closing = true;
+    this.shutdownPromise = (async () => {
+      await this.documentProcessingQueue.catch((): void => undefined);
+      await this.waitForModelWork();
+    })();
+    return this.shutdownPromise;
   }
 
   updateWorkspaceAgents(
@@ -1079,30 +1105,33 @@ export class EnterpriseLeadWorkspaceService {
     });
   }
 
-  async testWorkspaceAgent(
+  testWorkspaceAgent(
     workspaceId: string,
     request: EnterpriseLeadWorkspaceAgentCalibrationRequest,
   ): Promise<EnterpriseLeadWorkspaceAgentCalibrationResponse> {
-    const workspace = this.store.getWorkspace(workspaceId);
-    if (!workspace) {
-      throw new Error('Enterprise lead workspace not found');
-    }
+    return this.trackModelWork(async () => {
+      const workspace = this.store.getWorkspace(workspaceId);
+      if (!workspace) {
+        throw new Error('Enterprise lead workspace not found');
+      }
 
-    const result = await this.modelClient.generate({
-      prompt: buildWorkspaceAgentCalibrationPrompt({
-        workspace,
-        agent: request.agent,
-        example: request.example,
-      }),
-      apiConfig: resolveWorkspaceApiConfig(workspace),
-      ...(request.agent.model.trim() ? { model: request.agent.model.trim() } : {}),
+      const result = await this.modelClient.generate({
+        prompt: buildWorkspaceAgentCalibrationPrompt({
+          workspace,
+          agent: request.agent,
+          example: request.example,
+        }),
+        apiConfig: resolveWorkspaceApiConfig(workspace),
+        ...(request.agent.model.trim() ? { model: request.agent.model.trim() } : {}),
+      });
+      this.ensureOpenForModelCall();
+      const content = result.text.trim();
+
+      return {
+        content,
+        checks: buildWorkspaceAgentCalibrationChecks(content),
+      };
     });
-    const content = result.text.trim();
-
-    return {
-      content,
-      checks: buildWorkspaceAgentCalibrationChecks(content),
-    };
   }
 
   createRun(workspaceId: string, userGoal: string): EnterpriseLeadWorkspaceSnapshot {
@@ -1127,100 +1156,110 @@ export class EnterpriseLeadWorkspaceService {
     return this.getSnapshot(workspaceId, run.id);
   }
 
-  async runTask(taskId: string): Promise<EnterpriseLeadAgentTask> {
-    const taskContext = this.getTaskContext(taskId);
-    const taskModel = taskContext.task.agentSnapshot?.model.trim();
-    const result = await this.modelClient.generate({
-      prompt: buildAgentTaskPrompt(taskContext),
-      apiConfig: resolveWorkspaceApiConfig(taskContext.workspace),
-      ...(taskModel ? { model: taskModel } : {}),
+  runTask(taskId: string): Promise<EnterpriseLeadAgentTask> {
+    return this.trackModelWork(async () => {
+      const taskContext = this.getTaskContext(taskId);
+      const taskModel = taskContext.task.agentSnapshot?.model.trim();
+      const result = await this.modelClient.generate({
+        prompt: buildAgentTaskPrompt(taskContext),
+        apiConfig: resolveWorkspaceApiConfig(taskContext.workspace),
+        ...(taskModel ? { model: taskModel } : {}),
+      });
+      this.ensureOpenForModelCall();
+      const normalizedResult = sanitizeTaskResult(
+        normalizeAgentTaskResultInput(parseModelJsonObject(result.text)),
+        taskContext.task,
+      );
+
+      this.store.updateTaskResult(taskId, normalizedResult);
+      const updatedTask = this.store.getTask(taskId);
+      if (!updatedTask) {
+        throw new Error('Enterprise lead Agent task disappeared after update');
+      }
+
+      return updatedTask;
     });
-    const normalizedResult = sanitizeTaskResult(
-      normalizeAgentTaskResultInput(parseModelJsonObject(result.text)),
-      taskContext.task,
-    );
-
-    this.store.updateTaskResult(taskId, normalizedResult);
-    const updatedTask = this.store.getTask(taskId);
-    if (!updatedTask) {
-      throw new Error('Enterprise lead Agent task disappeared after update');
-    }
-
-    return updatedTask;
   }
 
   async rerunTask(taskId: string): Promise<EnterpriseLeadAgentTask> {
     return this.runTask(taskId);
   }
 
-  async runWorkflow(workspaceId: string, runId: string): Promise<EnterpriseLeadWorkspaceSnapshot> {
-    const run = this.getRunForWorkspace(workspaceId, runId);
-    const tasks = this.store.listTasks(run.id);
+  runWorkflow(workspaceId: string, runId: string): Promise<EnterpriseLeadWorkspaceSnapshot> {
+    return this.trackModelWork(async () => {
+      const run = this.getRunForWorkspace(workspaceId, runId);
+      const tasks = this.store.listTasks(run.id);
 
-    for (const task of tasks) {
-      if (task.status === EnterpriseLeadTaskStatus.Completed && !task.stale) {
-        continue;
-      }
+      for (const task of tasks) {
+        if (task.status === EnterpriseLeadTaskStatus.Completed && !task.stale) {
+          continue;
+        }
 
-      const taskTitle = getTaskTitle(task);
-      this.store.updateRunProgress({
-        runId: run.id,
-        status: EnterpriseLeadRunStatus.Running,
-        currentRole: task.role,
-        controllerSummary: `${taskTitle} 正在处理。`,
-      });
-
-      const updatedTask = await this.runTask(task.id);
-      if (updatedTask.status !== EnterpriseLeadTaskStatus.Completed) {
-        const updatedTaskTitle = getTaskTitle(updatedTask);
+        const taskTitle = getTaskTitle(task);
         this.store.updateRunProgress({
           runId: run.id,
-          status: this.mapTaskStatusToRunStatus(updatedTask.status),
-          currentRole: updatedTask.role,
-          controllerSummary: updatedTask.summary || `${updatedTaskTitle} 需要人工确认后继续。`,
+          status: EnterpriseLeadRunStatus.Running,
+          currentRole: task.role,
+          controllerSummary: `${taskTitle} 正在处理。`,
         });
-        return this.getSnapshot(workspaceId, run.id);
+
+        const updatedTask = await this.runTask(task.id);
+        this.ensureOpenForModelCall();
+        if (updatedTask.status !== EnterpriseLeadTaskStatus.Completed) {
+          const updatedTaskTitle = getTaskTitle(updatedTask);
+          this.store.updateRunProgress({
+            runId: run.id,
+            status: this.mapTaskStatusToRunStatus(updatedTask.status),
+            currentRole: updatedTask.role,
+            controllerSummary: updatedTask.summary || `${updatedTaskTitle} 需要人工确认后继续。`,
+          });
+          return this.getSnapshot(workspaceId, run.id);
+        }
       }
-    }
 
-    this.store.updateRunProgress({
-      runId: run.id,
-      status: EnterpriseLeadRunStatus.Completed,
-      currentRole: null,
-      controllerSummary: '总控已完成本次获客任务。',
+      this.ensureOpenForModelCall();
+      this.store.updateRunProgress({
+        runId: run.id,
+        status: EnterpriseLeadRunStatus.Completed,
+        currentRole: null,
+        controllerSummary: '总控已完成本次获客任务。',
+      });
+
+      return this.getSnapshot(workspaceId, run.id);
     });
-
-    return this.getSnapshot(workspaceId, run.id);
   }
 
-  async createPendingVersionFromChat(
+  createPendingVersionFromChat(
     taskId: string,
     userMessage: string,
   ): Promise<EnterpriseLeadPendingVersion> {
-    const taskContext = this.getTaskContext(taskId);
-    const taskModel = taskContext.task.agentSnapshot?.model.trim();
-    const result = await this.modelClient.generate({
-      prompt: buildAgentChatPrompt({
-        ...taskContext,
-        userMessage,
-      }),
-      apiConfig: resolveWorkspaceApiConfig(taskContext.workspace),
-      ...(taskModel ? { model: taskModel } : {}),
-    });
-    const normalizedResult = sanitizeTaskResult(
-      normalizeAgentTaskResultInput(parseModelJsonObject(result.text)),
-      taskContext.task,
-    );
+    return this.trackModelWork(async () => {
+      const taskContext = this.getTaskContext(taskId);
+      const taskModel = taskContext.task.agentSnapshot?.model.trim();
+      const result = await this.modelClient.generate({
+        prompt: buildAgentChatPrompt({
+          ...taskContext,
+          userMessage,
+        }),
+        apiConfig: resolveWorkspaceApiConfig(taskContext.workspace),
+        ...(taskModel ? { model: taskModel } : {}),
+      });
+      this.ensureOpenForModelCall();
+      const normalizedResult = sanitizeTaskResult(
+        normalizeAgentTaskResultInput(parseModelJsonObject(result.text)),
+        taskContext.task,
+      );
 
-    return this.store.createPendingVersion({
-      taskId,
-      userMessage,
-      summary: normalizedResult.summary,
-      outputPayload: normalizedResult.outputs,
-      missingInfo: normalizedResult.missingInfo,
-      todos: normalizedResult.todos,
-      risks: normalizedResult.risks,
-      handoffContext: normalizedResult.handoffContext,
+      return this.store.createPendingVersion({
+        taskId,
+        userMessage,
+        summary: normalizedResult.summary,
+        outputPayload: normalizedResult.outputs,
+        missingInfo: normalizedResult.missingInfo,
+        todos: normalizedResult.todos,
+        risks: normalizedResult.risks,
+        handoffContext: normalizedResult.handoffContext,
+      });
     });
   }
 

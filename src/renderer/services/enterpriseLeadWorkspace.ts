@@ -1,8 +1,10 @@
+import { EnterpriseLeadIpcErrorCode } from '../../shared/enterpriseLeadWorkspace/constants';
 import type {
   EnterpriseLeadAgentTask,
   EnterpriseLeadExtractionSource,
   EnterpriseLeadIpcResult,
   EnterpriseLeadPendingVersion,
+  EnterpriseLeadProfileConflictSnapshot,
   EnterpriseLeadWorkspace,
   EnterpriseLeadWorkspaceAgentBinding,
   EnterpriseLeadWorkspaceAgentCalibrationRequest,
@@ -13,21 +15,190 @@ import type {
   EnterpriseLeadWorkspaceSettingsUpdate,
   EnterpriseLeadWorkspaceSnapshot,
 } from '../../shared/enterpriseLeadWorkspace/types';
+import {
+  KnowledgeFactDomain,
+  type KnowledgeFactDomain as KnowledgeFactDomainValue,
+} from '../../shared/knowledgeBase/constants';
 
 type EnterpriseLeadWorkspaceApi = Window['electron']['enterpriseLeadWorkspace'];
 
 const LOG_PREFIX = '[EnterpriseLeadWorkspace]';
+const OPERATION_FAILED_MESSAGE = 'Enterprise lead workspace operation failed';
 
-export const EnterpriseLeadWorkspaceServiceError = {
+const isPlainObject = (value: unknown): value is Record<string, unknown> => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return false;
+  }
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+};
+
+const hasOwn = (value: Record<string, unknown>, key: string): boolean =>
+  Object.prototype.hasOwnProperty.call(value, key);
+
+const cloneDenseStringArray = (value: unknown): string[] | null => {
+  if (!Array.isArray(value)) {
+    return null;
+  }
+  const length = value.length;
+  const cloned: string[] = [];
+  for (let index = 0; index < length; index += 1) {
+    if (!Object.prototype.hasOwnProperty.call(value, index)) {
+      return null;
+    }
+    const item = value[index] as unknown;
+    if (typeof item !== 'string') {
+      return null;
+    }
+    cloned.push(item);
+  }
+  return cloned;
+};
+
+const cloneProfileConflictSnapshot = (
+  value: unknown,
+): EnterpriseLeadProfileConflictSnapshot | null => {
+  try {
+    if (
+      !isPlainObject(value) ||
+      !hasOwn(value, 'id') ||
+      !hasOwn(value, 'profile') ||
+      !hasOwn(value, 'profileRevision') ||
+      !hasOwn(value, 'updatedAt')
+    ) {
+      return null;
+    }
+    const id = value.id;
+    const profileSource = value.profile;
+    const profileRevision = value.profileRevision;
+    const updatedAt = value.updatedAt;
+    if (
+      typeof id !== 'string' ||
+      !id.trim() ||
+      typeof profileRevision !== 'number' ||
+      !Number.isSafeInteger(profileRevision) ||
+      profileRevision < 1 ||
+      typeof updatedAt !== 'string' ||
+      !updatedAt.trim() ||
+      !Number.isFinite(Date.parse(updatedAt)) ||
+      !isPlainObject(profileSource) ||
+      !hasOwn(profileSource, KnowledgeFactDomain.CompanySummary)
+    ) {
+      return null;
+    }
+    const companySummary = profileSource.companySummary;
+    if (typeof companySummary !== 'string') {
+      return null;
+    }
+    const cloneRequiredArrayField = (
+      domain: Exclude<
+        KnowledgeFactDomainValue,
+        typeof KnowledgeFactDomain.CompanySummary
+      >,
+    ): string[] | null => {
+      if (!hasOwn(profileSource, domain)) {
+        return null;
+      }
+      const source = profileSource[domain];
+      return cloneDenseStringArray(source);
+    };
+    const productList = cloneRequiredArrayField(KnowledgeFactDomain.ProductList);
+    const productCapabilities = cloneRequiredArrayField(KnowledgeFactDomain.ProductCapabilities);
+    const targetCustomers = cloneRequiredArrayField(KnowledgeFactDomain.TargetCustomers);
+    const applicationScenarios = cloneRequiredArrayField(
+      KnowledgeFactDomain.ApplicationScenarios,
+    );
+    const sellingPoints = cloneRequiredArrayField(KnowledgeFactDomain.SellingPoints);
+    const channelPreferences = cloneRequiredArrayField(KnowledgeFactDomain.ChannelPreferences);
+    const prohibitedClaims = cloneRequiredArrayField(KnowledgeFactDomain.ProhibitedClaims);
+    const contactRules = cloneRequiredArrayField(KnowledgeFactDomain.ContactRules);
+    const missingInfo = cloneRequiredArrayField(KnowledgeFactDomain.MissingInfo);
+    if (
+      productList === null ||
+      productCapabilities === null ||
+      targetCustomers === null ||
+      applicationScenarios === null ||
+      sellingPoints === null ||
+      channelPreferences === null ||
+      prohibitedClaims === null ||
+      contactRules === null ||
+      missingInfo === null
+    ) {
+      return null;
+    }
+    const cloneOptionalTrustKeys = (
+      field: 'confirmedKnowledgeKeys' | 'ignoredKnowledgeKeys',
+    ): string[] | undefined | null => {
+      if (!hasOwn(profileSource, field)) {
+        return undefined;
+      }
+      const source = profileSource[field];
+      return cloneDenseStringArray(source);
+    };
+    const confirmedKnowledgeKeys = cloneOptionalTrustKeys('confirmedKnowledgeKeys');
+    const ignoredKnowledgeKeys = cloneOptionalTrustKeys('ignoredKnowledgeKeys');
+    if (confirmedKnowledgeKeys === null || ignoredKnowledgeKeys === null) {
+      return null;
+    }
+    return {
+      id,
+      profile: {
+        companySummary,
+        productList,
+        productCapabilities,
+        targetCustomers,
+        applicationScenarios,
+        sellingPoints,
+        channelPreferences,
+        prohibitedClaims,
+        contactRules,
+        missingInfo,
+        ...(confirmedKnowledgeKeys !== undefined ? { confirmedKnowledgeKeys } : {}),
+        ...(ignoredKnowledgeKeys !== undefined ? { ignoredKnowledgeKeys } : {}),
+      },
+      profileRevision,
+      updatedAt,
+    };
+  } catch {
+    return null;
+  }
+};
+
+export const EnterpriseLeadWorkspaceServiceErrorCode = {
   ProcessDocumentSourceApiUnavailable: 'process_document_source_api_unavailable',
   UpdateSourcesApiUnavailable: 'update_sources_api_unavailable',
 } as const;
 
+export class EnterpriseLeadWorkspaceServiceError extends Error {
+  public readonly code: EnterpriseLeadIpcErrorCode;
+
+  public readonly latestProfile?: EnterpriseLeadProfileConflictSnapshot;
+
+  constructor(
+    code: EnterpriseLeadIpcErrorCode,
+    message: string,
+    latestProfile?: unknown,
+  ) {
+    const safeLatestProfile = code === EnterpriseLeadIpcErrorCode.ProfileRevisionConflict
+      ? cloneProfileConflictSnapshot(latestProfile)
+      : null;
+    const hasInvalidConflictSnapshot =
+      code === EnterpriseLeadIpcErrorCode.ProfileRevisionConflict && !safeLatestProfile;
+    super(hasInvalidConflictSnapshot ? OPERATION_FAILED_MESSAGE : message);
+    this.name = 'EnterpriseLeadWorkspaceServiceError';
+    this.code = hasInvalidConflictSnapshot ? EnterpriseLeadIpcErrorCode.OperationFailed : code;
+    this.latestProfile = safeLatestProfile ?? undefined;
+  }
+}
+
 const getApi = (): EnterpriseLeadWorkspaceApi | null =>
   window.electron?.enterpriseLeadWorkspace ?? null;
 
-const logError = (action: string, error: unknown): void => {
-  console.error(`${LOG_PREFIX} ${action} failed`, error);
+const logError = (action: string): void => {
+  console.error(`${LOG_PREFIX} ${action} failed`, {
+    code: EnterpriseLeadIpcErrorCode.OperationFailed,
+    message: OPERATION_FAILED_MESSAGE,
+  });
 };
 
 const unwrap = <T>(action: string, result: EnterpriseLeadIpcResult<T>, fallback: T): T => {
@@ -35,7 +206,7 @@ const unwrap = <T>(action: string, result: EnterpriseLeadIpcResult<T>, fallback:
     return result.data ?? fallback;
   }
 
-  logError(action, result.error || 'Unknown enterprise lead workspace error');
+  logError(action);
   return fallback;
 };
 
@@ -44,9 +215,13 @@ const unwrapOrThrow = <T>(action: string, result: EnterpriseLeadIpcResult<T>, fa
     return result.data ?? fallback;
   }
 
-  const errorMessage = result.error || 'Unknown enterprise lead workspace error';
-  logError(action, errorMessage);
-  throw new Error(errorMessage);
+  const serviceError = new EnterpriseLeadWorkspaceServiceError(
+    result.error.code,
+    result.error.message,
+    result.error.latestProfile,
+  );
+  logError(action);
+  throw serviceError;
 };
 
 const request = async <T>(
@@ -56,14 +231,14 @@ const request = async <T>(
 ): Promise<T> => {
   const api = getApi();
   if (!api) {
-    logError(action, 'Enterprise lead workspace API is unavailable');
+    logError(action);
     return fallback;
   }
 
   try {
     return unwrap(action, await invoke(api), fallback);
-  } catch (error) {
-    logError(action, error);
+  } catch {
+    logError(action);
     return fallback;
   }
 };
@@ -76,15 +251,21 @@ const requestOrThrow = async <T>(
   const api = getApi();
   if (!api) {
     const errorMessage = 'Enterprise lead workspace API is unavailable';
-    logError(action, errorMessage);
+    logError(action);
     throw new Error(errorMessage);
   }
 
   try {
     return unwrapOrThrow(action, await invoke(api), fallback);
   } catch (error) {
-    logError(action, error);
-    throw error;
+    logError(action);
+    if (error instanceof EnterpriseLeadWorkspaceServiceError) {
+      throw error;
+    }
+    throw new EnterpriseLeadWorkspaceServiceError(
+      EnterpriseLeadIpcErrorCode.OperationFailed,
+      OPERATION_FAILED_MESSAGE,
+    );
   }
 };
 
@@ -118,9 +299,16 @@ export const updateWorkspaceSettings = async (
 export const updateWorkspaceProfile = async (
   workspaceId: string,
   profile: EnterpriseLeadWorkspaceProfile,
+  expectedProfileRevision: number,
+  touchedFields: KnowledgeFactDomainValue[],
 ): Promise<EnterpriseLeadWorkspace | null> =>
-  request<EnterpriseLeadWorkspace | null>('updateWorkspaceProfile', null, api =>
-    api.updateWorkspaceProfile(workspaceId, profile),
+  requestOrThrow<EnterpriseLeadWorkspace | null>('updateWorkspaceProfile', null, api =>
+    api.updateWorkspaceProfile(
+      workspaceId,
+      profile,
+      expectedProfileRevision,
+      touchedFields,
+    ),
   );
 
 export const updateWorkspaceSources = async (
@@ -129,7 +317,7 @@ export const updateWorkspaceSources = async (
 ): Promise<EnterpriseLeadWorkspace | null> =>
   requestOrThrow<EnterpriseLeadWorkspace | null>('updateWorkspaceSources', null, api => {
     if (typeof api.updateWorkspaceSources !== 'function') {
-      throw new Error(EnterpriseLeadWorkspaceServiceError.UpdateSourcesApiUnavailable);
+      throw new Error(EnterpriseLeadWorkspaceServiceErrorCode.UpdateSourcesApiUnavailable);
     }
     return api.updateWorkspaceSources(workspaceId, sources);
   });
@@ -141,7 +329,7 @@ export const processDocumentSource = async (
 ): Promise<EnterpriseLeadWorkspace | null> =>
   requestOrThrow<EnterpriseLeadWorkspace | null>('processDocumentSource', null, api => {
     if (typeof api.processDocumentSource !== 'function') {
-      throw new Error(EnterpriseLeadWorkspaceServiceError.ProcessDocumentSourceApiUnavailable);
+      throw new Error(EnterpriseLeadWorkspaceServiceErrorCode.ProcessDocumentSourceApiUnavailable);
     }
     return api.processDocumentSource(workspaceId, sources, sourceIndex);
   });

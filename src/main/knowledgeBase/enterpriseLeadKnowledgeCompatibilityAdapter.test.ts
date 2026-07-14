@@ -55,6 +55,8 @@ const documentItem = (
     updatedAt: '2026-07-11T00:00:00.000Z',
   },
   localIndex: null,
+  enrichment: null,
+  hasStalePriorVersionExtraction: false,
   createdAt: '2026-07-11T00:00:00.000Z',
   updatedAt: '2026-07-11T00:00:00.000Z',
   deletedAt: null,
@@ -107,6 +109,22 @@ describe('EnterpriseLeadKnowledgeCompatibilityAdapter', () => {
     });
     expect(sources[1]).not.toHaveProperty('text');
     expect(sources[1]).not.toHaveProperty('filePath');
+  });
+
+  test('keeps compatibility upsert/remove transaction-neutral under an outer rollback', () => {
+    expect(() => adapter.upsertDocumentInCurrentTransaction(workspaceId, documentItem()))
+      .toThrow();
+    expect(() => adapter.removeDocumentInCurrentTransaction(workspaceId, 'doc-1'))
+      .toThrow();
+    const before = workspaceStore.getWorkspace(workspaceId)?.extractionSources;
+
+    expect(() => db.transaction(() => {
+      adapter.upsertDocumentInCurrentTransaction(workspaceId, documentItem());
+      adapter.removeDocumentInCurrentTransaction(workspaceId, 'doc-1');
+      throw new Error('outer rollback');
+    })()).toThrow('outer rollback');
+
+    expect(workspaceStore.getWorkspace(workspaceId)?.extractionSources).toEqual(before);
   });
 
   test('maps processing, ready, no-text, and failed states without claiming indexed content', () => {

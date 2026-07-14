@@ -5,6 +5,8 @@ import {
   KnowledgeDocumentIndexStatus as KnowledgeDocumentIndexStatuses,
   type KnowledgeDocumentStatus,
   KnowledgeDocumentStatus as KnowledgeDocumentStatuses,
+  type KnowledgeEnrichmentStatus,
+  KnowledgeEnrichmentStatus as KnowledgeEnrichmentStatuses,
   KnowledgeIngestionJobStatus,
 } from '../../../shared/knowledgeBase/constants';
 import type {
@@ -38,6 +40,17 @@ const indexStatusKeys: Record<KnowledgeDocumentIndexStatus, string> = {
   [KnowledgeDocumentIndexStatuses.NotApplicable]:
     'enterpriseKnowledgeLocalIndexStatusNotApplicable',
   [KnowledgeDocumentIndexStatuses.Failed]: 'enterpriseKnowledgeLocalIndexStatusFailed',
+};
+
+const enrichmentStatusKeys: Record<KnowledgeEnrichmentStatus, string> = {
+  [KnowledgeEnrichmentStatuses.Queued]: 'enterpriseKnowledgeAiExtractionStatusQueued',
+  [KnowledgeEnrichmentStatuses.Running]: 'enterpriseKnowledgeAiExtractionStatusRunning',
+  [KnowledgeEnrichmentStatuses.ReviewRequired]:
+    'enterpriseKnowledgeAiExtractionStatusReviewRequired',
+  [KnowledgeEnrichmentStatuses.Completed]: 'enterpriseKnowledgeAiExtractionStatusCompleted',
+  [KnowledgeEnrichmentStatuses.Failed]: 'enterpriseKnowledgeAiExtractionStatusFailed',
+  [KnowledgeEnrichmentStatuses.Cancelled]: 'enterpriseKnowledgeAiExtractionStatusCancelled',
+  [KnowledgeEnrichmentStatuses.Stale]: 'enterpriseKnowledgeAiExtractionStatusStale',
 };
 
 const errorKeys: Partial<Record<KnowledgeBaseErrorCode, string>> = {
@@ -82,6 +95,65 @@ export const summarizeKnowledgeImportBatch = (
   },
 });
 
+export interface KnowledgeDocumentExtractionPresentation {
+  status: KnowledgeEnrichmentStatus | null;
+  statusKey: string;
+  progress: number | null;
+  pendingFactCount: number;
+  errorKey: string | null;
+  canPrepare: boolean;
+  canRetry: boolean;
+  canCancel: boolean;
+  showsStalePriorVersion: boolean;
+}
+
+const retryableEnrichmentStatuses = new Set<KnowledgeEnrichmentStatus>([
+  KnowledgeEnrichmentStatuses.Failed,
+  KnowledgeEnrichmentStatuses.Cancelled,
+  KnowledgeEnrichmentStatuses.Stale,
+]);
+
+export const getKnowledgeDocumentExtractionPresentation = (
+  document: KnowledgeDocumentListItem,
+): KnowledgeDocumentExtractionPresentation => {
+  const enrichment =
+    document.enrichment?.documentVersionId === document.currentVersionId
+      ? document.enrichment
+      : null;
+  const isDeleted = Boolean(document.deletedAt);
+  const isLocallySearchable =
+    document.status === KnowledgeDocumentStatuses.Ready &&
+    document.localIndex?.documentVersionId === document.currentVersionId &&
+    document.localIndex.status === KnowledgeDocumentIndexStatuses.Indexed;
+  const canStartPaidAction = !isDeleted && isLocallySearchable;
+  const showsStalePriorVersion =
+    document.enrichment === null && document.hasStalePriorVersionExtraction;
+
+  return {
+    status: enrichment?.status ?? null,
+    statusKey: enrichment
+      ? enrichmentStatusKeys[enrichment.status]
+      : showsStalePriorVersion
+        ? 'enterpriseKnowledgeAiExtractionStatusStalePriorVersion'
+        : 'enterpriseKnowledgeAiExtractionStatusNotStarted',
+    progress: enrichment
+      ? Math.round(Math.min(100, Math.max(0, enrichment.progress * 100)))
+      : null,
+    pendingFactCount: enrichment?.pendingFactCount ?? 0,
+    errorKey: enrichment?.errorCode ? getKnowledgeDocumentErrorKey(enrichment.errorCode) : null,
+    canPrepare: canStartPaidAction && enrichment === null,
+    canRetry:
+      canStartPaidAction &&
+      enrichment !== null &&
+      retryableEnrichmentStatuses.has(enrichment.status),
+    canCancel:
+      !isDeleted &&
+      (enrichment?.status === KnowledgeEnrichmentStatuses.Queued ||
+        enrichment?.status === KnowledgeEnrichmentStatuses.Running),
+    showsStalePriorVersion,
+  };
+};
+
 export const shouldPollKnowledgeDocuments = (
   documents: KnowledgeDocumentListItem[],
 ): boolean =>
@@ -90,7 +162,10 @@ export const shouldPollKnowledgeDocuments = (
       document.currentJob?.status === KnowledgeIngestionJobStatus.Queued ||
       document.currentJob?.status === KnowledgeIngestionJobStatus.Running ||
       document.localIndex?.status === KnowledgeDocumentIndexStatuses.Pending ||
-      document.localIndex?.status === KnowledgeDocumentIndexStatuses.Indexing,
+      document.localIndex?.status === KnowledgeDocumentIndexStatuses.Indexing ||
+      (document.enrichment?.documentVersionId === document.currentVersionId &&
+        (document.enrichment.status === KnowledgeEnrichmentStatuses.Queued ||
+          document.enrichment.status === KnowledgeEnrichmentStatuses.Running)),
   );
 
 export const canRetryKnowledgeDocumentIndex = (

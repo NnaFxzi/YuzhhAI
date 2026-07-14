@@ -727,6 +727,28 @@ test('outbound prompt uses indexed knowledge from the active enterprise workspac
 
 test('outbound prompt injects active workspace digest for ordinary edit requests', async () => {
   const db = new Database(':memory:');
+  db.exec(`
+    CREATE TABLE enterprise_lead_workspaces (
+      id TEXT PRIMARY KEY,
+      profile_revision INTEGER NOT NULL
+    );
+    CREATE TABLE knowledge_trusted_profile_index_state (
+      workspace_id TEXT PRIMARY KEY,
+      scope_id TEXT NOT NULL UNIQUE,
+      indexed_profile_revision INTEGER NOT NULL,
+      indexed_at TEXT NOT NULL
+    ) WITHOUT ROWID;
+    INSERT INTO enterprise_lead_workspaces (id, profile_revision)
+    VALUES ('factory-a', 1);
+    INSERT INTO knowledge_trusted_profile_index_state (
+      workspace_id, scope_id, indexed_profile_revision, indexed_at
+    ) VALUES (
+      'factory-a',
+      'enterprise-workspace:factory-a',
+      1,
+      '2026-07-13T00:00:00.000Z'
+    );
+  `);
   const vectorStore = new ContentKnowledgeVectorStore(db);
   vectorStore.replaceSources('enterprise-workspace:factory-a', [
     {

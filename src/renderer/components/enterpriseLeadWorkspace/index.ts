@@ -3,6 +3,7 @@ export {
   type EnterpriseLeadWorkspaceShellMode as EnterpriseLeadWorkspaceShellModeType,
 } from './enterpriseLeadWorkspaceUi';
 export { EnterpriseLeadWorkspaceView } from './EnterpriseLeadWorkspaceView';
+export { WorkspaceAiKnowledgePanel } from './WorkspaceAiKnowledgePanel';
 export { WorkspaceCreationRecords } from './WorkspaceCreationRecords';
 export { WorkspaceEntryHome } from './WorkspaceEntryHome';
 export { WorkspaceKnowledgeBase } from './WorkspaceKnowledgeBase';

@@ -176,7 +176,9 @@ describe('KnowledgeIngestionService', () => {
       parser: 'pdf',
       truncated: true,
     });
-    const onDocumentUpdated = vi.fn();
+    const updateCompatibilityProjectionInCurrentTransaction = vi.fn(() => {
+      expect(db.inTransaction).toBe(true);
+    });
     const service = new KnowledgeIngestionService({
       db,
       documentStore,
@@ -184,7 +186,7 @@ describe('KnowledgeIngestionService', () => {
       managedFileStore,
       indexStore,
       extractDocumentText,
-      onDocumentUpdated,
+      updateCompatibilityProjectionInCurrentTransaction,
     });
 
     service.wake();
@@ -205,11 +207,339 @@ describe('KnowledgeIngestionService', () => {
     expect(jobStore.getJob(created.job.id)?.status).toBe(
       KnowledgeIngestionJobStatus.Completed,
     );
-    expect(onDocumentUpdated).toHaveBeenCalledWith('workspace-a', created.document.id);
+    expect(updateCompatibilityProjectionInCurrentTransaction).toHaveBeenCalledWith(
+      'workspace-a',
+      created.document.id,
+    );
+  });
+
+  test('publishes ready raw sources with one targeted post-commit callback per ingestion job', async () => {
+    const targets = [];
+    for (let index = 0; index < 1_000; index += 1) {
+      targets.push(await createQueuedDocument(`linear-${index}.pdf`, new Date(
+        Date.parse('2026-07-11T01:00:00.000Z') + index,
+      ).toISOString()));
+    }
+    const replaceWorkspaceDocumentSource = vi.fn(() => {
+      expect(db.inTransaction).toBe(false);
+    });
+    const replaceWorkspaceDocumentSources = vi.fn();
+    const onIndexQueued = vi.fn(() => expect(db.inTransaction).toBe(false));
+    const prepare = vi.spyOn(db, 'prepare');
+    let eventLoopYielded = false;
+    setTimeout(() => {
+      eventLoopYielded = true;
+    }, 0);
+    const service = new KnowledgeIngestionService({
+      db,
+      documentStore,
+      jobStore,
+      managedFileStore,
+      indexStore,
+      extractDocumentText: vi.fn(async managedPath => ({
+        content: `ready:${managedPath}`,
+        parser: 'pdf',
+        truncated: false,
+      })),
+      replaceWorkspaceDocumentSource,
+      replaceWorkspaceDocumentSources,
+      onIndexQueued,
+    });
+
+    service.wake();
+    await service.waitForIdle();
+
+    expect(replaceWorkspaceDocumentSource).toHaveBeenCalledTimes(1_000);
+    expect(new Set(replaceWorkspaceDocumentSource.mock.calls.map(call => call[1])).size).toBe(1_000);
+    expect(replaceWorkspaceDocumentSource.mock.calls.every(call => call[0] === 'workspace-a'))
+      .toBe(true);
+    expect(replaceWorkspaceDocumentSources).not.toHaveBeenCalled();
+    expect(prepare.mock.calls.length).toBeLessThanOrEqual((80 * targets.length) + 200);
+    expect(onIndexQueued).toHaveBeenCalledTimes(1);
+    expect(eventLoopYielded).toBe(true);
+    expect(targets.every(target =>
+      documentStore.getDocument(target.document.id)?.status === KnowledgeDocumentStatus.Ready))
+      .toBe(true);
+  }, 30_000);
+
+  test('commits extraction, job, local index, and compatibility projection in one transaction', async () => {
+    const created = await createQueuedDocument('compatibility-atomic.pdf');
+    const updateCompatibilityProjectionInCurrentTransaction = vi.fn(() => {
+      expect(db.inTransaction).toBe(true);
+      throw new Error('SECRET compatibility SQL /private/path');
+    });
+    const replaceWorkspaceDocumentSource = vi.fn();
+    const onIndexQueued = vi.fn();
+    const service = new KnowledgeIngestionService({
+      db,
+      documentStore,
+      jobStore,
+      managedFileStore,
+      indexStore,
+      extractDocumentText: vi.fn().mockResolvedValue({
+        content: 'must not partially publish',
+        parser: 'pdf',
+        truncated: false,
+      }),
+      updateCompatibilityProjectionInCurrentTransaction,
+      replaceWorkspaceDocumentSource,
+      onIndexQueued,
+    } as ConstructorParameters<typeof KnowledgeIngestionService>[0]);
+
+    service.wake();
+    await service.waitForIdle();
+
+    expect(updateCompatibilityProjectionInCurrentTransaction).toHaveBeenCalledTimes(2);
+    expect(documentStore.getVersion(created.version.id)).toMatchObject({
+      extractedText: null,
+      parser: null,
+    });
+    expect(documentStore.getDocument(created.document.id)?.status).toBe(
+      KnowledgeDocumentStatus.Failed,
+    );
+    expect(jobStore.getJob(created.job.id)?.status).toBe(KnowledgeIngestionJobStatus.Failed);
+    expect(indexStore.getState(created.version.id)).toBeNull();
+    expect(replaceWorkspaceDocumentSource).not.toHaveBeenCalled();
+    expect(onIndexQueued).not.toHaveBeenCalled();
+  });
+
+  test('seals ingestion synchronously and shares shutdown while active extraction settles durably', async () => {
+    const created = await createQueuedDocument('shutdown-active.pdf');
+    const extraction = deferred<{
+      content: string;
+      parser: string;
+      truncated: boolean;
+    }>();
+    const replaceWorkspaceDocumentSource = vi.fn();
+    const onIndexQueued = vi.fn();
+    const extractDocumentText = vi.fn(() => extraction.promise);
+    const service = new KnowledgeIngestionService({
+      db,
+      documentStore,
+      jobStore,
+      managedFileStore,
+      indexStore,
+      extractDocumentText,
+      replaceWorkspaceDocumentSource,
+      onIndexQueued,
+    });
+    service.wake();
+    for (let attempt = 0; attempt < 20 && extractDocumentText.mock.calls.length === 0; attempt += 1) {
+      await Promise.resolve();
+    }
+    expect(extractDocumentText).toHaveBeenCalledTimes(1);
+
+    const firstShutdown = service.shutdown();
+    const secondShutdown = service.shutdown();
+    expect(secondShutdown).toBe(firstShutdown);
+    service.wake();
+    extraction.resolve({ content: 'late content', parser: 'pdf', truncated: false });
+    await firstShutdown;
+
+    expect(jobStore.getJob(created.job.id)).toMatchObject({
+      status: KnowledgeIngestionJobStatus.Running,
+    });
+    expect(replaceWorkspaceDocumentSource).not.toHaveBeenCalled();
+    expect(onIndexQueued).not.toHaveBeenCalled();
+    expect(indexStore.getState(created.version.id)).toBeNull();
+  });
+
+  test('shutdown aborts claim BUSY backoff and permits no database access after close', async () => {
+    const claimNext = vi.spyOn(jobStore, 'claimNextJob').mockImplementation(() => {
+      throw Object.assign(new Error('SECRET busy SQL'), { code: 'SQLITE_BUSY' });
+    });
+    const retrySignals: AbortSignal[] = [];
+    const busyRetryDelay = vi.fn((_delayMs: number, signal?: AbortSignal) => {
+      if (signal) retrySignals.push(signal);
+      return new Promise<void>((resolve, reject) => {
+        if (!signal) return;
+        signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+        if (signal.aborted) reject(signal.reason);
+        void resolve;
+      });
+    });
+    const service = new KnowledgeIngestionService({
+      db,
+      documentStore,
+      jobStore,
+      managedFileStore,
+      indexStore,
+      extractDocumentText: vi.fn(),
+      busyRetryDelay,
+    } as ConstructorParameters<typeof KnowledgeIngestionService>[0]);
+    service.wake();
+    for (let attempt = 0; attempt < 50 && busyRetryDelay.mock.calls.length === 0; attempt += 1) {
+      await Promise.resolve();
+    }
+    expect(busyRetryDelay.mock.calls.length).toBeGreaterThan(0);
+
+    const first = service.shutdown();
+    const second = service.shutdown();
+    expect(second).toBe(first);
+    expect(retrySignals.length).toBeGreaterThan(0);
+    expect(retrySignals.every(signal => signal.aborted)).toBe(true);
+    await first;
+    const claimCountAtShutdown = claimNext.mock.calls.length;
+    db.close();
+    service.wake();
+    await service.waitForIdle();
+    expect(claimNext).toHaveBeenCalledTimes(claimCountAtShutdown);
+    db = new Database(':memory:');
+  });
+
+  test('default BUSY backoff removes listeners and timers across consecutive retries', async () => {
+    vi.useFakeTimers();
+    try {
+      const service = new KnowledgeIngestionService({
+        db,
+        documentStore,
+        jobStore,
+        managedFileStore,
+        indexStore,
+        extractDocumentText: vi.fn(),
+      });
+      const internal = service as unknown as {
+        shutdownController: AbortController;
+        waitForBusyRetry(delayMs: number): Promise<void>;
+      };
+      const addListener = vi.spyOn(internal.shutdownController.signal, 'addEventListener');
+      const removeListener = vi.spyOn(internal.shutdownController.signal, 'removeEventListener');
+      const clearTimer = vi.spyOn(globalThis, 'clearTimeout');
+      const emitWarning = vi.spyOn(process, 'emitWarning').mockImplementation(() => {});
+
+      for (let retry = 0; retry < 12; retry += 1) {
+        const pending = internal.waitForBusyRetry(25);
+        await vi.advanceTimersByTimeAsync(25);
+        await pending;
+      }
+
+      expect(addListener).toHaveBeenCalledTimes(12);
+      expect(removeListener).toHaveBeenCalledTimes(12);
+      expect(clearTimer).toHaveBeenCalledTimes(12);
+      expect(emitWarning).not.toHaveBeenCalled();
+    } finally {
+      vi.restoreAllMocks();
+      vi.useRealTimers();
+    }
+  });
+
+  test('default BUSY backoff shutdown clears its timer and listener exactly once', async () => {
+    vi.useFakeTimers();
+    try {
+      const service = new KnowledgeIngestionService({
+        db,
+        documentStore,
+        jobStore,
+        managedFileStore,
+        indexStore,
+        extractDocumentText: vi.fn(),
+      });
+      const internal = service as unknown as {
+        shutdownController: AbortController;
+        waitForBusyRetry(delayMs: number): Promise<void>;
+      };
+      const removeListener = vi.spyOn(internal.shutdownController.signal, 'removeEventListener');
+      const clearTimer = vi.spyOn(globalThis, 'clearTimeout');
+      const pending = internal.waitForBusyRetry(1_000);
+
+      const shutdown = service.shutdown();
+      await expect(pending).rejects.toBeDefined();
+      await shutdown;
+
+      expect(removeListener).toHaveBeenCalledTimes(1);
+      expect(clearTimer).toHaveBeenCalledTimes(1);
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.restoreAllMocks();
+      vi.useRealTimers();
+    }
+  });
+
+  test('shutdown leaves OCR waiters durable and never starts the next queued image', async () => {
+    const first = await createQueuedDocument('shutdown-first.png', '2026-07-11T01:00:00.000Z');
+    const second = await createQueuedDocument('shutdown-second.png', '2026-07-11T01:00:01.000Z');
+    const extraction = deferred<{ content: string; parser: string; truncated: boolean }>();
+    const extractDocumentText = vi.fn(() => extraction.promise);
+    const replaceWorkspaceDocumentSource = vi.fn();
+    const onIndexQueued = vi.fn();
+    const claimNext = vi.spyOn(jobStore, 'claimNextJob');
+    const service = new KnowledgeIngestionService({
+      db,
+      documentStore,
+      jobStore,
+      managedFileStore,
+      indexStore,
+      extractDocumentText,
+      replaceWorkspaceDocumentSource,
+      onIndexQueued,
+    } as ConstructorParameters<typeof KnowledgeIngestionService>[0]);
+    service.wake();
+    for (let attempt = 0; attempt < 50 && extractDocumentText.mock.calls.length === 0; attempt += 1) {
+      await Promise.resolve();
+    }
+    expect(extractDocumentText).toHaveBeenCalledTimes(1);
+
+    const shutdown = service.shutdown();
+    const claimCountAtShutdown = claimNext.mock.calls.length;
+    extraction.resolve({ content: 'late OCR', parser: 'ocr', truncated: false });
+    await shutdown;
+
+    expect(extractDocumentText).toHaveBeenCalledTimes(1);
+    expect(jobStore.getJob(first.job.id)?.status).toBe(KnowledgeIngestionJobStatus.Running);
+    expect([
+      KnowledgeIngestionJobStatus.Queued,
+      KnowledgeIngestionJobStatus.Running,
+    ]).toContain(jobStore.getJob(second.job.id)?.status);
+    expect(documentStore.getVersion(second.version.id)?.extractedText).toBeNull();
+    expect(indexStore.getState(first.version.id)).toBeNull();
+    expect(indexStore.getState(second.version.id)).toBeNull();
+    expect(replaceWorkspaceDocumentSource).not.toHaveBeenCalled();
+    expect(onIndexQueued).not.toHaveBeenCalled();
+    expect(claimNext).toHaveBeenCalledTimes(claimCountAtShutdown);
+  });
+
+  test('awaits an already-started raw publication but suppresses every later wake while closing', async () => {
+    const created = await createQueuedDocument('shutdown-vector.pdf');
+    const vectorGate = deferred<void>();
+    const replaceWorkspaceDocumentSource = vi.fn(() => {
+      expect(db.inTransaction).toBe(false);
+      return vectorGate.promise;
+    });
+    const onIndexQueued = vi.fn(() => expect(db.inTransaction).toBe(false));
+    const service = new KnowledgeIngestionService({
+      db,
+      documentStore,
+      jobStore,
+      managedFileStore,
+      indexStore,
+      extractDocumentText: vi.fn().mockResolvedValue({
+        content: 'ready before vector gate',
+        parser: 'pdf',
+        truncated: false,
+      }),
+      replaceWorkspaceDocumentSource,
+      onIndexQueued,
+    } as ConstructorParameters<typeof KnowledgeIngestionService>[0]);
+    service.wake();
+    await vi.waitFor(() => expect(replaceWorkspaceDocumentSource).toHaveBeenCalledTimes(1));
+    expect(jobStore.getJob(created.job.id)?.status).toBe(KnowledgeIngestionJobStatus.Completed);
+    expect(indexStore.getState(created.version.id)?.status).toBe(KnowledgeDocumentIndexStatus.Pending);
+
+    let shutdownCompleted = false;
+    const shutdown = service.shutdown();
+    void shutdown.then(() => { shutdownCompleted = true; });
+    await Promise.resolve();
+    expect(shutdownCompleted).toBe(false);
+    expect(onIndexQueued).not.toHaveBeenCalled();
+
+    vectorGate.resolve();
+    await shutdown;
+    expect(onIndexQueued).not.toHaveBeenCalled();
   });
 
   test('marks an empty successful parse as completed without text', async () => {
     const created = await createQueuedDocument('empty.pdf');
+    const replaceWorkspaceDocumentSource = vi.fn();
     const service = new KnowledgeIngestionService({
       db,
       documentStore,
@@ -221,6 +551,7 @@ describe('KnowledgeIngestionService', () => {
         parser: 'pdf',
         truncated: false,
       }),
+      replaceWorkspaceDocumentSource,
     });
 
     service.wake();
@@ -232,10 +563,12 @@ describe('KnowledgeIngestionService', () => {
     expect(jobStore.getJob(created.job.id)?.status).toBe(
       KnowledgeIngestionJobStatus.Completed,
     );
+    expect(replaceWorkspaceDocumentSource).not.toHaveBeenCalled();
   });
 
   test('stores only a stable sanitized failure when local extraction throws', async () => {
     const created = await createQueuedDocument('broken.pdf');
+    const replaceWorkspaceDocumentSource = vi.fn();
     const service = new KnowledgeIngestionService({
       db,
       documentStore,
@@ -245,6 +578,7 @@ describe('KnowledgeIngestionService', () => {
       extractDocumentText: vi.fn().mockRejectedValue(
         new Error('/private/customer/secret.pdf parser stack detail'),
       ),
+      replaceWorkspaceDocumentSource,
     });
 
     service.wake();
@@ -258,12 +592,14 @@ describe('KnowledgeIngestionService', () => {
       errorMessage: 'Local document extraction failed',
       status: KnowledgeIngestionJobStatus.Failed,
     });
+    expect(replaceWorkspaceDocumentSource).not.toHaveBeenCalled();
   });
 
   test('does not commit output after the document is deleted during extraction', async () => {
     const created = await createQueuedDocument('deleted.pdf');
     const extraction = deferred<{ content: string; parser: string; truncated: boolean }>();
     const extractDocumentText = vi.fn(() => extraction.promise);
+    const replaceWorkspaceDocumentSource = vi.fn();
     const service = new KnowledgeIngestionService({
       db,
       documentStore,
@@ -271,10 +607,12 @@ describe('KnowledgeIngestionService', () => {
       managedFileStore,
       indexStore,
       extractDocumentText,
+      replaceWorkspaceDocumentSource,
     });
 
     service.wake();
     await vi.waitFor(() => expect(extractDocumentText).toHaveBeenCalledTimes(1));
+    expect(replaceWorkspaceDocumentSource).not.toHaveBeenCalled();
     const processing = documentStore.getDocument(created.document.id)!;
     documentStore.softDeleteDocument(processing.id, processing.revision);
     extraction.resolve({ content: 'stale text', parser: 'pdf', truncated: false });
@@ -475,7 +813,7 @@ describe('KnowledgeIngestionService', () => {
       await service.waitForIdle();
 
       expect(activeVersionReadCount).toBe(5);
-      expect(busyRetryDelay).toHaveBeenCalledWith(25);
+      expect(busyRetryDelay).toHaveBeenCalledWith(25, expect.any(AbortSignal));
       expect(fixture.documentStore.getDocument(created.document.id)?.status).toBe(
         KnowledgeDocumentStatus.Ready,
       );
@@ -558,7 +896,7 @@ describe('KnowledgeIngestionService', () => {
       await service.waitForIdle();
 
       expect(failureJobReadCount).toBeGreaterThan(4);
-      expect(busyRetryDelay).toHaveBeenCalledWith(25);
+      expect(busyRetryDelay).toHaveBeenCalledWith(25, expect.any(AbortSignal));
       expect(fixture.documentStore.getDocument(created.document.id)?.status).toBe(
         KnowledgeDocumentStatus.Failed,
       );
@@ -589,7 +927,7 @@ describe('KnowledgeIngestionService', () => {
       expectedDocumentStatus: KnowledgeDocumentStatus.Failed,
       expectedProjectionStatus: EnterpriseLeadDocumentExtractionStatus.Failed,
     },
-  ])('retries $outcome compatibility projection after one exhausted busy round', async testCase => {
+  ])('retries the whole $outcome commit with its compatibility projection after a busy snapshot', async testCase => {
     const fixture = await createFileBackedIngestionFixture();
     const consoleWarn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     try {
@@ -645,14 +983,20 @@ describe('KnowledgeIngestionService', () => {
         },
       });
       const busyRetryDelay = vi.fn(async () => undefined);
-      const onDocumentUpdated = (workspaceId: string, documentId: string): void => {
+      const updateCompatibilityProjectionInCurrentTransaction = (
+        workspaceId: string,
+        documentId: string,
+      ): void => {
+        expect(fixture.db.inTransaction).toBe(true);
         const document = fixture.documentStore.getDocument(documentId);
         if (!document) {
           throw new Error('/private/customer/document-disappeared.pdf');
         }
         projectionArmed = true;
         try {
-          compatibilityAdapter.upsertDocument(
+          (compatibilityAdapter as EnterpriseLeadKnowledgeCompatibilityAdapter & {
+            upsertDocumentInCurrentTransaction: typeof compatibilityAdapter.upsertDocument;
+          }).upsertDocumentInCurrentTransaction(
             workspaceId,
             documentService.getDocumentDetails({ documentId }).document,
             {
@@ -680,7 +1024,7 @@ describe('KnowledgeIngestionService', () => {
           : vi.fn().mockRejectedValue(
               new Error('/private/customer/projection-failed.pdf parser detail'),
             ),
-        onDocumentUpdated,
+        updateCompatibilityProjectionInCurrentTransaction,
         busyRetryDelay,
       };
       const service = new KnowledgeIngestionService(serviceOptions);
@@ -689,7 +1033,7 @@ describe('KnowledgeIngestionService', () => {
       await service.waitForIdle();
 
       expect(projectionReadCount).toBeGreaterThan(4);
-      expect(busyRetryDelay).toHaveBeenCalledWith(25);
+      expect(busyRetryDelay).toHaveBeenCalledWith(25, expect.any(AbortSignal));
       expect(fixture.documentStore.getDocument(created.document.id)?.status).toBe(
         testCase.expectedDocumentStatus,
       );
@@ -790,7 +1134,7 @@ describe('KnowledgeIngestionService', () => {
 
       expect(initialIdleError).toBeNull();
       expect(maxActiveExtractions).toBeLessThanOrEqual(2);
-      expect(busyRetryDelay).toHaveBeenCalledWith(25);
+      expect(busyRetryDelay).toHaveBeenCalledWith(25, expect.any(AbortSignal));
 
       extractionRelease.resolve();
       await initialIdle;
@@ -895,7 +1239,7 @@ describe('KnowledgeIngestionService', () => {
         truncated: false,
       }),
       indexStore: {
-        scheduleCurrentVersion: vi.fn(() => {
+        scheduleCurrentVersionInCurrentTransaction: vi.fn(() => {
           throw new Error('forced scheduling failure');
         }),
       },
@@ -915,7 +1259,7 @@ describe('KnowledgeIngestionService', () => {
   test('contains a synchronous index wake failure after pending ingestion commits', async () => {
     const created = await createQueuedDocument('wake-failure.pdf');
     const onIndexQueued = vi.fn(() => {
-      throw new Error('forced wake failure');
+      throw new Error('SECRET forced wake SQL /private/path');
     });
     const consoleWarn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     try {
@@ -950,9 +1294,11 @@ describe('KnowledgeIngestionService', () => {
       );
       expect(onIndexQueued).toHaveBeenCalledTimes(1);
       expect(consoleWarn).toHaveBeenCalledWith(
-        '[KnowledgeBase] Failed to wake local index worker:',
-        expect.objectContaining({ message: 'forced wake failure' }),
+        '[KnowledgeIngestion]',
+        { code: 'index_worker_wake_failed' },
       );
+      expect(consoleWarn.mock.calls.flat().some(value => value instanceof Error)).toBe(false);
+      expect(JSON.stringify(consoleWarn.mock.calls)).not.toMatch(/SECRET|SQL|private|path/i);
     } finally {
       consoleWarn.mockRestore();
     }

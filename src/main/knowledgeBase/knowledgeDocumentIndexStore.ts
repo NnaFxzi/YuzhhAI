@@ -17,6 +17,7 @@ import {
   KnowledgeDocumentStatus as KnowledgeDocumentStatuses,
 } from '../../shared/knowledgeBase/constants';
 import type { KnowledgeDocumentIndexSummary } from '../../shared/knowledgeBase/types';
+import { runTransientSqliteWriteTransaction } from '../libs/sqliteTransactionRetry';
 import {
   buildKnowledgeChunkId,
   buildKnowledgeFtsMatchQuery,
@@ -203,60 +204,6 @@ const isInvalidFtsMatchError = (error: unknown): boolean =>
     /unterminated string/i.test(error.message)
   );
 
-const TRANSIENT_WRITE_TRANSACTION_MAX_RETRIES = 3;
-const TRANSIENT_BUSY_RETRY_BASE_DELAY_MS = 25;
-const TRANSIENT_BUSY_RETRY_MAX_DELAY_MS = 250;
-
-export type TransientSqliteBusyRetryDelay = (delayMs: number) => Promise<void>;
-
-const defaultTransientSqliteBusyRetryDelay: TransientSqliteBusyRetryDelay = delayMs =>
-  new Promise(resolve => setTimeout(resolve, delayMs));
-
-export const isTransientSqliteBusyError = (error: unknown): boolean =>
-  typeof error === 'object' &&
-  error !== null &&
-  'code' in error &&
-  (error.code === 'SQLITE_BUSY' || error.code === 'SQLITE_BUSY_SNAPSHOT');
-
-export const runTransientSqliteWriteTransaction = <T>(run: () => T): T => {
-  let retryCount = 0;
-  while (true) {
-    try {
-      return run();
-    } catch (error) {
-      if (
-        !isTransientSqliteBusyError(error) ||
-        retryCount >= TRANSIENT_WRITE_TRANSACTION_MAX_RETRIES
-      ) {
-        throw error;
-      }
-      retryCount += 1;
-    }
-  }
-};
-
-export const runTransientSqliteWriteTransactionUntilSuccess = async <T>(
-  run: () => T,
-  busyRetryDelay: TransientSqliteBusyRetryDelay = defaultTransientSqliteBusyRetryDelay,
-): Promise<T> => {
-  let busyRetryRound = 0;
-  while (true) {
-    try {
-      return runTransientSqliteWriteTransaction(run);
-    } catch (error) {
-      if (!isTransientSqliteBusyError(error)) {
-        throw error;
-      }
-      const delayMs = Math.min(
-        TRANSIENT_BUSY_RETRY_MAX_DELAY_MS,
-        TRANSIENT_BUSY_RETRY_BASE_DELAY_MS * (2 ** busyRetryRound),
-      );
-      busyRetryRound += 1;
-      await busyRetryDelay(delayMs);
-    }
-  }
-};
-
 const probeTrigram = (db: Database.Database): boolean => {
   const tableName = `temp.knowledge_trigram_probe_${randomUUID().replace(/-/g, '')}`;
   try {
@@ -400,10 +347,23 @@ export class KnowledgeDocumentIndexStore {
     },
     now = new Date().toISOString(),
   ): KnowledgeDocumentIndexState {
-    const transaction = this.db.transaction(() => {
-      const workspaceId = input.workspaceId.trim();
-      const documentId = input.documentId.trim();
-      const documentVersionId = input.documentVersionId.trim();
+    const transaction = this.db.transaction(() =>
+      this.scheduleCurrentVersionInCurrentTransaction(input, now));
+    return transaction();
+  }
+
+  scheduleCurrentVersionInCurrentTransaction(
+    input: {
+      workspaceId: string;
+      documentId: string;
+      documentVersionId: string;
+    },
+    now = new Date().toISOString(),
+  ): KnowledgeDocumentIndexState {
+    this.assertCurrentTransaction();
+    const workspaceId = input.workspaceId.trim();
+    const documentId = input.documentId.trim();
+    const documentVersionId = input.documentVersionId.trim();
       const target = this.db
         .prepare(
           `
@@ -480,9 +440,7 @@ export class KnowledgeDocumentIndexStore {
           completedAt,
           now,
         );
-      return this.requireState(documentVersionId);
-    });
-    return transaction();
+    return this.requireState(documentVersionId);
   }
 
   claimNext(now = new Date().toISOString()): KnowledgeDocumentIndexClaim | null {
@@ -1179,39 +1137,55 @@ export class KnowledgeDocumentIndexStore {
     const workspaceId = input.workspaceId.trim();
     const documentId = input.documentId.trim();
     const documentVersionId = input.documentVersionId.trim();
-    const transaction = this.db.transaction(() => {
-      const target = this.db.prepare(`
-        SELECT 1
-        FROM knowledge_document_index_state
-        WHERE workspace_id = ? AND document_id = ? AND document_version_id = ?
-        LIMIT 1
-      `).get(workspaceId, documentId, documentVersionId);
-      if (!target) {
-        throw new KnowledgeDocumentIndexStateError(
-          'Knowledge document index deactivation target does not match its state',
-        );
-      }
-      this.db.prepare(`
-        UPDATE knowledge_document_index_attempts
-        SET outcome = ?, finished_at = ?, error_code = ?
-        WHERE document_version_id = ? AND outcome = ?
-      `).run(
-        KnowledgeDocumentIndexAttemptOutcomes.Cancelled,
-        now,
-        KnowledgeDocumentIndexErrorCodes.StateConflict,
+    const transaction = this.db.transaction(() =>
+      this.deactivateVersionInCurrentTransaction({
+        workspaceId,
+        documentId,
         documentVersionId,
-        KnowledgeDocumentIndexAttemptOutcomes.Running,
-      );
-      const deleted = this.db.prepare(`
-        DELETE FROM knowledge_document_index_state WHERE document_version_id = ?
-      `).run(documentVersionId);
-      if (deleted.changes === 0) {
-        throw new KnowledgeDocumentIndexStateError(
-          'Knowledge document index state changed during deactivation',
-        );
-      }
-    });
+      }, now));
     transaction();
+  }
+
+  deactivateVersionInCurrentTransaction(
+    input: {
+      workspaceId: string;
+      documentId: string;
+      documentVersionId: string;
+    },
+    _now = new Date().toISOString(),
+  ): void {
+    this.assertCurrentTransaction();
+    const workspaceId = input.workspaceId.trim();
+    const documentId = input.documentId.trim();
+    const documentVersionId = input.documentVersionId.trim();
+    const target = this.db.prepare(`
+      SELECT 1
+      FROM knowledge_document_index_state
+      WHERE workspace_id = ? AND document_id = ? AND document_version_id = ?
+      LIMIT 1
+    `).get(workspaceId, documentId, documentVersionId);
+    if (!target) {
+      throw new KnowledgeDocumentIndexStateError(
+        'Knowledge document index deactivation target does not match its state',
+      );
+    }
+    this.db.prepare(`
+      DELETE FROM knowledge_document_chunks_fts WHERE document_version_id = ?
+    `).run(documentVersionId);
+    this.db.prepare(`
+      DELETE FROM knowledge_document_chunks WHERE document_version_id = ?
+    `).run(documentVersionId);
+    this.db.prepare(`
+      DELETE FROM knowledge_document_index_attempts WHERE document_version_id = ?
+    `).run(documentVersionId);
+    const deleted = this.db.prepare(`
+      DELETE FROM knowledge_document_index_state WHERE document_version_id = ?
+    `).run(documentVersionId);
+    if (deleted.changes === 0) {
+      throw new KnowledgeDocumentIndexStateError(
+        'Knowledge document index state changed during deactivation',
+      );
+    }
   }
 
   listVersionChunks(
@@ -1394,24 +1368,92 @@ export class KnowledgeDocumentIndexStore {
 
   deleteWorkspaceIndex(workspaceId: string): void {
     const normalizedWorkspaceId = workspaceId.trim();
-    this.db.prepare(`
+    const transaction = this.db.transaction(() =>
+      this.deleteWorkspaceIndexInCurrentTransaction(normalizedWorkspaceId));
+    transaction();
+  }
+
+  deleteWorkspaceIndexInCurrentTransaction(workspaceId: string): number {
+    this.assertCurrentTransaction();
+    const normalizedWorkspaceId = workspaceId.trim();
+    let deletedCount = 0;
+    deletedCount += this.db.prepare(`
       DELETE FROM knowledge_document_index_attempts
-      WHERE document_version_id IN (
-        SELECT version.id
+      WHERE EXISTS (
+        SELECT 1 FROM knowledge_document_index_state AS state
+        WHERE state.document_version_id = knowledge_document_index_attempts.document_version_id
+          AND state.workspace_id = ?
+      ) OR EXISTS (
+        SELECT 1
         FROM knowledge_document_versions AS version
         JOIN knowledge_documents AS document ON document.id = version.document_id
-        WHERE document.workspace_id = ?
+        WHERE version.id = knowledge_document_index_attempts.document_version_id
+          AND document.workspace_id = ?
       )
-    `).run(normalizedWorkspaceId);
-    this.db.prepare(`
+    `).run(normalizedWorkspaceId, normalizedWorkspaceId).changes;
+    deletedCount += this.db.prepare(`
       DELETE FROM knowledge_document_index_state WHERE workspace_id = ?
-    `).run(normalizedWorkspaceId);
-    this.db.prepare(`
+    `).run(normalizedWorkspaceId).changes;
+    deletedCount += this.db.prepare(`
       DELETE FROM knowledge_document_chunks_fts WHERE workspace_id = ?
-    `).run(normalizedWorkspaceId);
-    this.db.prepare(`
+    `).run(normalizedWorkspaceId).changes;
+    deletedCount += this.db.prepare(`
       DELETE FROM knowledge_document_chunks WHERE workspace_id = ?
-    `).run(normalizedWorkspaceId);
+    `).run(normalizedWorkspaceId).changes;
+    return deletedCount;
+  }
+
+  deleteParentlessIndexInCurrentTransaction(): number {
+    this.assertCurrentTransaction();
+    let deletedCount = 0;
+    deletedCount += this.db.prepare(`
+      DELETE FROM knowledge_document_chunks_fts
+      WHERE NOT EXISTS (
+        SELECT 1
+        FROM knowledge_document_chunks AS chunk
+        JOIN knowledge_document_index_state AS state
+          ON state.document_version_id = chunk.document_version_id
+        JOIN knowledge_document_versions AS version
+          ON version.id = state.document_version_id
+        WHERE chunk.storage_id = knowledge_document_chunks_fts.storage_id
+      )
+    `).run().changes;
+    deletedCount += this.db.prepare(`
+      DELETE FROM knowledge_document_index_attempts
+      WHERE NOT EXISTS (
+        SELECT 1
+        FROM knowledge_document_index_state AS state
+        JOIN knowledge_document_versions AS version
+          ON version.id = state.document_version_id
+        WHERE state.document_version_id = knowledge_document_index_attempts.document_version_id
+      )
+    `).run().changes;
+    deletedCount += this.db.prepare(`
+      DELETE FROM knowledge_document_chunks
+      WHERE NOT EXISTS (
+        SELECT 1
+        FROM knowledge_document_index_state AS state
+        JOIN knowledge_document_versions AS version
+          ON version.id = state.document_version_id
+        WHERE state.document_version_id = knowledge_document_chunks.document_version_id
+      )
+    `).run().changes;
+    deletedCount += this.db.prepare(`
+      DELETE FROM knowledge_document_index_state
+      WHERE NOT EXISTS (
+        SELECT 1 FROM knowledge_document_versions AS version
+        WHERE version.id = knowledge_document_index_state.document_version_id
+      )
+    `).run().changes;
+    return deletedCount;
+  }
+
+  private assertCurrentTransaction(): void {
+    if (!this.db.inTransaction) {
+      throw new KnowledgeDocumentIndexStateError(
+        'Knowledge document index transaction required',
+      );
+    }
   }
 
   private requireActiveIndexTarget(input: {

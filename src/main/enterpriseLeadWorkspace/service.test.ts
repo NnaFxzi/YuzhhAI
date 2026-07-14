@@ -26,8 +26,12 @@ import { buildDefaultEnterpriseLeadWorkspaceSettings } from '../../shared/enterp
 import {
   KnowledgeDocumentSourceMode,
   KnowledgeDocumentStatus,
+  KnowledgeFactDomain,
 } from '../../shared/knowledgeBase/constants';
+import { hasCanonicalEnterpriseProfileKnowledgeTrustOverlap } from '../../shared/knowledgeBase/enterpriseLeadProfileKnowledge';
+import type { KnowledgeDocumentListItem } from '../../shared/knowledgeBase/types';
 import type { ModelClientAdapter, ModelGenerationInput } from '../industryPack/modelClientAdapter';
+import { EnterpriseLeadKnowledgeCompatibilityAdapter } from '../knowledgeBase/enterpriseLeadKnowledgeCompatibilityAdapter';
 import { KnowledgeDocumentStore } from '../knowledgeBase/knowledgeDocumentStore';
 import { ContentKnowledgeSourceType } from '../libs/contentKnowledgeRetrieval';
 import { ContentKnowledgeVectorStore } from '../libs/contentKnowledgeVectorStore';
@@ -37,6 +41,9 @@ import {
   type WorkspaceChunkExtractionResult,
 } from './documentExtraction';
 import { cleanModelJsonText, parseModelJsonObject } from './modelJson';
+import {
+  EnterpriseLeadProfileRevisionConflictError,
+} from './profileRevisionStore';
 import {
   type EnterpriseLeadWorkspaceAgentProvider,
   type EnterpriseLeadWorkspaceAgentTemplate,
@@ -96,12 +103,16 @@ const createService = (
     modelClient: FakeModelClient;
     agentProvider: EnterpriseLeadWorkspaceAgentProvider;
     contentKnowledgeVectorStore: ContentKnowledgeVectorStore;
+    prepareWorkspaceDeletion: (workspaceId: string) => boolean;
+    onTrustedRefreshCommitted: () => void;
   }> = {},
 ): {
   agentProvider: EnterpriseLeadWorkspaceAgentProvider;
   contentKnowledgeVectorStore: ContentKnowledgeVectorStore;
   db: Database.Database;
   modelClient: FakeModelClient;
+  prepareWorkspaceDeletion: ReturnType<typeof vi.fn>;
+  onTrustedRefreshCommitted: ReturnType<typeof vi.fn>;
   service: EnterpriseLeadWorkspaceService;
   store: EnterpriseLeadWorkspaceStore;
 } => {
@@ -111,15 +122,31 @@ const createService = (
   const agentProvider = overrides.agentProvider ?? createAgentProvider();
   const contentKnowledgeVectorStore =
     overrides.contentKnowledgeVectorStore ?? new ContentKnowledgeVectorStore(db);
+  const prepareWorkspaceDeletion = vi.fn(
+    overrides.prepareWorkspaceDeletion ?? ((workspaceId: string): boolean => {
+      const deleted = store.deleteWorkspace(workspaceId);
+      if (deleted) {
+        contentKnowledgeVectorStore.deleteScope(
+          buildEnterpriseLeadWorkspaceKnowledgeScopeId(workspaceId),
+        );
+      }
+      return deleted;
+    }),
+  );
+  const onTrustedRefreshCommitted = vi.fn(overrides.onTrustedRefreshCommitted);
   return {
     agentProvider,
     contentKnowledgeVectorStore,
     db,
     modelClient,
+    prepareWorkspaceDeletion,
+    onTrustedRefreshCommitted,
     service: new EnterpriseLeadWorkspaceService({
       store,
       modelClient,
       agentProvider,
+      prepareWorkspaceDeletion,
+      onTrustedRefreshCommitted,
       ...({ contentKnowledgeVectorStore } as Record<string, unknown>),
     } as never),
     store,
@@ -231,6 +258,48 @@ describe('EnterpriseLeadWorkspaceService', () => {
     db = undefined;
   });
 
+  test('wakes trusted refresh once after committed workspace creation and manual Profile save', () => {
+    let callbackDb: Database.Database | null = null;
+    const setup = createService({
+      onTrustedRefreshCommitted: () => {
+        expect(callbackDb?.inTransaction).toBe(false);
+      },
+    });
+    db = setup.db;
+    callbackDb = setup.db;
+
+    const workspace = setup.service.createWorkspace(draftPayload());
+    expect(setup.onTrustedRefreshCommitted).toHaveBeenCalledTimes(1);
+
+    const updated = setup.service.updateWorkspaceProfile({
+      workspaceId: workspace.id,
+      expectedProfileRevision: workspace.profileRevision,
+      profile: { ...workspace.profile, contactRules: ['manual committed save'] },
+      touchedFields: [KnowledgeFactDomain.ContactRules],
+    });
+    expect(updated.profileRevision).toBe(workspace.profileRevision + 1);
+    expect(setup.onTrustedRefreshCommitted).toHaveBeenCalledTimes(2);
+
+    expect(() => setup.service.updateWorkspaceProfile({
+      workspaceId: workspace.id,
+      expectedProfileRevision: workspace.profileRevision,
+      profile: { ...workspace.profile, contactRules: ['conflicting save'] },
+      touchedFields: [KnowledgeFactDomain.ContactRules],
+    })).toThrow(EnterpriseLeadProfileRevisionConflictError);
+    expect(setup.onTrustedRefreshCommitted).toHaveBeenCalledTimes(2);
+  });
+
+  test('never wakes trusted refresh when workspace creation rolls back', () => {
+    const setup = createService();
+    db = setup.db;
+    vi.spyOn(setup.store, 'createWorkspace').mockImplementation(() => {
+      throw new Error('SECRET create rollback SQL /private/path');
+    });
+
+    expect(() => setup.service.createWorkspace(draftPayload())).toThrow();
+    expect(setup.onTrustedRefreshCommitted).not.toHaveBeenCalled();
+  });
+
   test('extracts a workspace draft from conversation text', async () => {
     const setup = createService();
     db = setup.db;
@@ -258,6 +327,14 @@ describe('EnterpriseLeadWorkspaceService', () => {
       ...draftPayload(),
       extractionSources: [],
     });
+    const replaceRaw = vi.spyOn(
+      setup.contentKnowledgeVectorStore,
+      'replaceLegacyWorkspaceDocumentSources',
+    );
+    const replaceTrusted = vi.spyOn(
+      setup.contentKnowledgeVectorStore,
+      'replaceTrustedSources',
+    );
 
     const updated = setup.service.updateWorkspaceSources(workspace.id, [
       {
@@ -280,12 +357,16 @@ describe('EnterpriseLeadWorkspaceService', () => {
     expect(Date.parse(indexedSource.vectorIndexedAt ?? '')).not.toBeNaN();
     const sourceId = updated.extractionSources[0]?.id;
     expect(sourceId).toMatch(/^source_/);
+    expect(replaceRaw).toHaveBeenCalledTimes(1);
+    expect(replaceTrusted).not.toHaveBeenCalled();
 
     const updatedAgain = setup.service.updateWorkspaceSources(
       workspace.id,
       updated.extractionSources,
     );
     expect(updatedAgain.extractionSources[0]?.id).toBe(sourceId);
+    expect(replaceRaw).toHaveBeenCalledTimes(2);
+    expect(replaceTrusted).not.toHaveBeenCalled();
 
     const searchResult = setup.contentKnowledgeVectorStore.search(
       `enterprise-workspace:${workspace.id}`,
@@ -296,7 +377,7 @@ describe('EnterpriseLeadWorkspaceService', () => {
     expect(searchResult.hits[0].chunk.text).toContain('工业包装服务');
   });
 
-  test('preserves normalized knowledge document projections from stale legacy updates', () => {
+  test('preserves normalized document vectors byte-for-byte while replacing legacy sources', () => {
     const setup = createService();
     db = setup.db;
     const workspace = setup.service.createWorkspace({
@@ -315,42 +396,106 @@ describe('EnterpriseLeadWorkspaceService', () => {
         fileSize: 10,
         sourceMtime: 100,
         parser: 'pdf',
-        extractedText: null,
+        extractedText: 'normalized-only precision machining evidence',
         extractionPartial: false,
       },
     });
     const normalizedSourceId = `knowledge-document:${created.document.id}`;
-    setup.store.upsertWorkspaceSourceById(workspace.id, {
-      id: normalizedSourceId,
-      kind: EnterpriseLeadExtractionSourceKind.File,
-      label: '最新文档状态',
-      fileName: 'manual.pdf',
-      text: '已迁移的本地正文',
-      extractionStatus: EnterpriseLeadDocumentExtractionStatus.Extracted,
-      vectorIndexStatus: EnterpriseLeadKnowledgeIndexStatus.Pending,
-    });
-
-    const updated = setup.service.updateWorkspaceSources(workspace.id, [
+    new EnterpriseLeadKnowledgeCompatibilityAdapter(setup.store).upsertDocument(
+      workspace.id,
       {
-        id: 'legacy-manual',
+        id: created.document.id,
+        displayName: created.document.displayName,
+        sourceMode: created.document.sourceMode,
+        currentVersionId: created.document.currentVersionId,
+        revision: created.document.revision,
+        status: created.document.status,
+        fileSize: created.version.fileSize,
+        mimeType: created.version.mimeType,
+        contentHash: created.version.contentHash,
+        currentJob: null,
+        localIndex: null,
+        enrichment: null,
+        hasStalePriorVersionExtraction: false,
+        createdAt: created.document.createdAt,
+        updatedAt: created.document.updatedAt,
+        deletedAt: created.document.deletedAt,
+      } satisfies KnowledgeDocumentListItem,
+    );
+    const projected = setup.store
+      .getWorkspace(workspace.id)
+      ?.extractionSources.find(source => source.id === normalizedSourceId);
+    expect(projected).not.toHaveProperty('text');
+    expect(setup.contentKnowledgeVectorStore.replaceWorkspaceDocumentSource(
+      workspace.id,
+      created.document.id,
+    )).toBe(true);
+    const scopeId = buildEnterpriseLeadWorkspaceKnowledgeScopeId(workspace.id);
+    const readNormalizedChunks = (): unknown[] => setup.db.prepare(`
+      SELECT * FROM content_knowledge_chunks
+      WHERE scope_id = ? AND source_type = ? AND source_id = ?
+      ORDER BY chunk_index
+    `).all(scopeId, ContentKnowledgeSourceType.WorkspaceDocument, normalizedSourceId);
+    const normalizedBefore = readNormalizedChunks();
+    expect(normalizedBefore).toHaveLength(1);
+
+    setup.service.updateWorkspaceSources(workspace.id, [
+      {
+        id: 'legacy-remove',
         kind: EnterpriseLeadExtractionSourceKind.Manual,
-        label: '旧页面仍可编辑的手工资料',
-        text: '手工正文',
+        label: '待删除旧资料',
+        text: 'obsolete legacy source',
+      },
+      {
+        id: 'legacy-keep',
+        kind: EnterpriseLeadExtractionSourceKind.Manual,
+        label: '待更新旧资料',
+        text: 'first legacy revision',
       },
     ]);
 
-    expect(updated.extractionSources).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ id: 'legacy-manual', text: '手工正文' }),
-        expect.objectContaining({
-          id: normalizedSourceId,
-          label: '最新文档状态',
-          extractionStatus: EnterpriseLeadDocumentExtractionStatus.Extracted,
-          vectorIndexStatus: EnterpriseLeadKnowledgeIndexStatus.Indexed,
-          vectorChunkCount: 1,
-        }),
-      ]),
-    );
+    const updated = setup.service.updateWorkspaceSources(workspace.id, [
+      {
+        id: 'legacy-keep',
+        kind: EnterpriseLeadExtractionSourceKind.Manual,
+        label: '已更新旧资料',
+        text: 'second legacy revision',
+      },
+    ]);
+
+    expect(readNormalizedChunks()).toEqual(normalizedBefore);
+    expect(setup.contentKnowledgeVectorStore.search(
+      scopeId,
+      'normalized-only precision machining evidence',
+      { hitThreshold: 0, maxHits: 20, minBusinessSignals: 0 },
+    ).hits).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        chunk: expect.objectContaining({ sourceId: normalizedSourceId }),
+      }),
+    ]));
+    expect(setup.db.prepare(`
+      SELECT DISTINCT source_id FROM content_knowledge_chunks
+      WHERE scope_id = ? AND source_type = ?
+      ORDER BY source_id
+    `).all(scopeId, ContentKnowledgeSourceType.WorkspaceDocument)).toEqual([
+      { source_id: normalizedSourceId },
+      { source_id: 'legacy-keep' },
+    ]);
+    expect(updated.extractionSources).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: 'legacy-keep',
+        text: 'second legacy revision',
+      }),
+      expect.objectContaining({
+        id: normalizedSourceId,
+        label: 'manual.pdf',
+        vectorChunkCount: 1,
+        vectorIndexStatus: EnterpriseLeadKnowledgeIndexStatus.Indexed,
+      }),
+    ]));
+    expect(updated.extractionSources).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'legacy-remove' }),
+    ]));
   });
 
   test('queues document extraction and vector indexing without waiting for the model response', async () => {
@@ -404,6 +549,164 @@ describe('EnterpriseLeadWorkspaceService', () => {
     expect(processedWorkspace?.extractionSources[0]?.extractedKnowledgeKeys).toContain(
       'productList:精密金属支架',
     );
+  });
+
+  test('reapplies a deferred legacy extraction to the latest Profile without losing a manual edit', async () => {
+    const setup = createService();
+    db = setup.db;
+    const workspace = setup.service.createWorkspace(draftPayload());
+    expect(setup.onTrustedRefreshCommitted).toHaveBeenCalledTimes(1);
+    const replaceRaw = vi.spyOn(
+      setup.contentKnowledgeVectorStore,
+      'replaceLegacyWorkspaceDocumentSources',
+    );
+    const replaceTrusted = vi.spyOn(
+      setup.contentKnowledgeVectorStore,
+      'replaceTrustedSources',
+    );
+    const pendingExtraction = setup.modelClient.enqueuePending();
+
+    setup.service.enqueueWorkspaceDocumentProcessing(
+      workspace.id,
+      [{
+        kind: 'file',
+        label: '并发资料',
+        fileName: 'race.md',
+        text: '模型将提取一个新产品。',
+      }],
+      0,
+    );
+    await waitForModelPromptCount(setup.modelClient, 1);
+
+    const manuallyUpdated = setup.service.updateWorkspaceProfile({
+      workspaceId: workspace.id,
+      expectedProfileRevision: workspace.profileRevision,
+      profile: {
+        ...workspace.profile,
+        contactRules: ['人工编辑必须保留'],
+      },
+      touchedFields: [KnowledgeFactDomain.ContactRules],
+    });
+    expect(manuallyUpdated.profileRevision).toBe(2);
+    expect(setup.onTrustedRefreshCommitted).toHaveBeenCalledTimes(2);
+    expect(replaceRaw).not.toHaveBeenCalled();
+    expect(replaceTrusted).not.toHaveBeenCalled();
+
+    pendingExtraction.resolve({
+      ...draftPayload(),
+      profile: {
+        ...draftPayload().profile,
+        productList: ['模型新增产品'],
+        contactRules: [],
+      },
+    });
+    await setup.service.waitForDocumentProcessingIdle();
+
+    const finalWorkspace = setup.service.getWorkspace(workspace.id);
+    expect(finalWorkspace?.profileRevision).toBe(3);
+    expect(finalWorkspace?.profile.contactRules).toContain('人工编辑必须保留');
+    expect(finalWorkspace?.profile.productList).toContain('模型新增产品');
+    expect(replaceRaw).toHaveBeenCalledTimes(1);
+    expect(replaceTrusted).not.toHaveBeenCalled();
+    expect(setup.store.getProfileRevisionStore().getFieldRevision(
+      workspace.id,
+      KnowledgeFactDomain.ContactRules,
+    )).toBe(2);
+    expect(setup.store.getProfileRevisionStore().getFieldRevision(
+      workspace.id,
+      KnowledgeFactDomain.ProductList,
+    )).toBe(2);
+    expect(setup.store.getTrustedProfileIndexStore().getJob(workspace.id, 3)).not.toBeNull();
+    expect(setup.onTrustedRefreshCommitted).toHaveBeenCalledTimes(3);
+  });
+
+  test('treats a semantic legacy extraction no-op as no Profile revision or refresh write', async () => {
+    const setup = createService();
+    db = setup.db;
+    const workspace = setup.service.createWorkspace(draftPayload());
+    setup.modelClient.enqueue(draftPayload());
+
+    setup.service.enqueueWorkspaceDocumentProcessing(
+      workspace.id,
+      [{
+        kind: 'file',
+        label: '重复资料',
+        fileName: 'same.md',
+        text: '只包含已存在的资料。',
+      }],
+      0,
+    );
+    await setup.service.waitForDocumentProcessingIdle();
+
+    expect(setup.service.getWorkspace(workspace.id)?.profileRevision).toBe(1);
+    expect(setup.store.getTrustedProfileIndexStore().getJob(workspace.id, 2)).toBeNull();
+    expect(setup.onTrustedRefreshCommitted).toHaveBeenCalledTimes(1);
+  });
+
+  test('bounds legacy Profile conflict retries at three and stores only a fixed safe failure', async () => {
+    const setup = createService();
+    db = setup.db;
+    const workspace = setup.service.createWorkspace(draftPayload());
+    setup.modelClient.enqueue({
+      ...draftPayload(),
+      profile: {
+        ...draftPayload().profile,
+        productList: ['永远冲突的模型产品'],
+      },
+    });
+    const updateSpy = vi.spyOn(setup.store, 'updateWorkspaceProfile').mockImplementation(() => {
+      const latest = setup.store.getWorkspace(workspace.id);
+      if (!latest) {
+        throw new Error('workspace missing');
+      }
+      throw new EnterpriseLeadProfileRevisionConflictError({
+        id: latest.id,
+        profile: latest.profile,
+        profileRevision: latest.profileRevision,
+        updatedAt: latest.updatedAt,
+      });
+    });
+
+    setup.service.enqueueWorkspaceDocumentProcessing(
+      workspace.id,
+      [{
+        kind: 'file',
+        label: '冲突资料',
+        fileName: 'conflict.md',
+        text: '触发冲突。',
+      }],
+      0,
+    );
+    await setup.service.waitForDocumentProcessingIdle();
+
+    expect(updateSpy).toHaveBeenCalledTimes(3);
+    expect(setup.service.getWorkspace(workspace.id)?.extractionSources[0]?.extractionError).toBe(
+      'Workspace profile update conflicted repeatedly',
+    );
+    expect(setup.service.getWorkspace(workspace.id)?.profileRevision).toBe(1);
+    expect(setup.onTrustedRefreshCommitted).toHaveBeenCalledTimes(1);
+  });
+
+  test('stores only fixed safe document failure messages for unexpected model errors', async () => {
+    const setup = createService();
+    db = setup.db;
+    const workspace = setup.service.createWorkspace(draftPayload());
+    vi.spyOn(setup.modelClient, 'generate').mockRejectedValueOnce(
+      new Error('SECRET provider SQL /private/company.pdf'),
+    );
+
+    setup.service.enqueueWorkspaceDocumentProcessing(
+      workspace.id,
+      [{ kind: 'file', label: 'secret.md', fileName: 'secret.md', text: '资料' }],
+      0,
+    );
+    await setup.service.waitForDocumentProcessingIdle();
+
+    const source = setup.service.getWorkspace(workspace.id)?.extractionSources[0];
+    expect(source?.extractionError).toBe('Document processing failed. Please retry.');
+    expect(source?.vectorIndexError).toBe('Knowledge index refresh failed. Please retry.');
+    expect(JSON.stringify(source)).not.toContain('SECRET provider SQL');
+    expect(JSON.stringify(source)).not.toContain('/private/company.pdf');
   });
 
   test('extracts large documents through chunk facts before merging the workspace draft', async () => {
@@ -581,6 +884,89 @@ describe('EnterpriseLeadWorkspaceService', () => {
     expect(processedWorkspace?.extractionSources[0]?.extractionProgressTotal).toBeUndefined();
   });
 
+  test('shutdown seals deferred multi-chunk extraction before another model or vector call starts', async () => {
+    const setup = createService();
+    db = setup.db;
+    const workspace = setup.service.createWorkspace(draftPayload());
+    const replaceRaw = vi.spyOn(
+      setup.contentKnowledgeVectorStore,
+      'replaceLegacyWorkspaceDocumentSources',
+    );
+    replaceRaw.mockClear();
+    const largeText = [
+      '公司：精密五金加工厂，主营金属支架。',
+      `${'产品能力：CNC 加工、来图定制、小批量快反。\n'.repeat(3_200)}`,
+      '客户：自动化设备厂和机器人集成商。',
+    ].join('\n\n');
+    const chunkPlan = buildWorkspaceExtractionChunks({
+      sourceId: 'source-large-shutdown',
+      sourceLabel: 'large.md',
+      sourceText: largeText,
+    });
+    expect(chunkPlan.chunks.length).toBeGreaterThan(1);
+    const firstChunk = setup.modelClient.enqueuePending();
+
+    setup.service.enqueueWorkspaceDocumentProcessing(
+      workspace.id,
+      [{
+        kind: 'file',
+        label: 'large.md',
+        fileName: 'large.md',
+        text: largeText,
+      }],
+      0,
+    );
+    await waitForModelPromptCount(setup.modelClient, 1);
+
+    const shutdownPromise = setup.service.shutdown();
+    firstChunk.resolve({
+      facts: { productCapabilities: ['CNC 加工'] },
+      evidence: [],
+    });
+    await shutdownPromise;
+
+    expect(setup.modelClient.prompts).toHaveLength(1);
+    expect(replaceRaw).not.toHaveBeenCalled();
+  });
+
+  test('shutdown waits for active Agent model work and prevents its late database write', async () => {
+    const setup = createService();
+    db = setup.db;
+    const workspace = setup.service.createWorkspace(draftPayload());
+    const snapshot = setup.service.createRun(workspace.id, '关闭边界测试');
+    const task = snapshot.tasks[0];
+    if (!task) throw new Error('Expected an Agent task');
+    const pendingGeneration = setup.modelClient.enqueuePending();
+    const runTask = setup.service.runTask(task.id);
+    expect(setup.modelClient.prompts).toHaveLength(1);
+
+    let shutdownCompleted = false;
+    const shutdown = setup.service.shutdown();
+    void shutdown.then(() => { shutdownCompleted = true; });
+    await Promise.resolve();
+    expect(shutdownCompleted).toBe(false);
+    pendingGeneration.resolve({
+      role: task.role,
+      status: EnterpriseLeadTaskStatus.Completed,
+      summary: '关闭后不应写入',
+      outputs: { draft: 'late-output' },
+      missingInfo: [],
+      todos: [],
+      risks: [],
+      handoffContext: {},
+    });
+
+    await expect(runTask).rejects.toThrow('shutting down');
+    await shutdown;
+    expect(setup.store.getTask(task.id)).toEqual(task);
+    expect(shutdownCompleted).toBe(true);
+
+    const promptCount = setup.modelClient.prompts.length;
+    await expect(setup.service.extractDraftFromConversation('关闭后请求'))
+      .rejects.toThrow('shutting down');
+    expect(setup.modelClient.prompts).toHaveLength(promptCount);
+  });
+
   test('marks document processing failed when model extraction times out', async () => {
     vi.useFakeTimers();
     try {
@@ -649,10 +1035,15 @@ describe('EnterpriseLeadWorkspaceService', () => {
     const setup = createService();
     db = setup.db;
     const workspace = setup.service.createWorkspace(draftPayload());
-    setup.service.updateWorkspaceProfile(workspace.id, {
-      ...workspace.profile,
-      productList: [],
-      ignoredKnowledgeKeys: ['productList:精密金属支架'],
+    setup.service.updateWorkspaceProfile({
+      workspaceId: workspace.id,
+      expectedProfileRevision: workspace.profileRevision,
+      profile: {
+        ...workspace.profile,
+        productList: [],
+        ignoredKnowledgeKeys: ['productList:精密金属支架'],
+      },
+      touchedFields: [KnowledgeFactDomain.ProductList],
     });
     setup.modelClient.enqueue({
       ...draftPayload(),
@@ -705,6 +1096,15 @@ describe('EnterpriseLeadWorkspaceService', () => {
         '帮我做 10 个小红书选题',
       ).matched,
     ).toBe(true);
+    setup.contentKnowledgeVectorStore.replaceTrustedSources(
+      buildEnterpriseLeadWorkspaceKnowledgeScopeId(workspace.id),
+      [{
+        sourceId: `workspace-rules:${workspace.id}`,
+        sourceType: ContentKnowledgeSourceType.WorkspaceRule,
+        label: '硬性规则',
+        content: '禁用承诺：绝对防损',
+      }],
+    );
 
     const updated = setup.service.updateWorkspaceSources(workspace.id, []);
     const searchResult = setup.contentKnowledgeVectorStore.search(
@@ -786,7 +1186,7 @@ describe('EnterpriseLeadWorkspaceService', () => {
     ).toBe(false);
   });
 
-  test('indexes confirmed profile facts and hard rules as derived workspace sources', () => {
+  test('keeps trusted Profile and rule sources out of the legacy raw-document sync path', () => {
     const setup = createService();
     db = setup.db;
     const baseDraft = draftPayload();
@@ -818,23 +1218,56 @@ describe('EnterpriseLeadWorkspaceService', () => {
       `,
       )
       .all(scopeId) as Array<{ source_type: string; content: string }>;
-    const confirmedSource = rows.find(
-      row => row.source_type === ContentKnowledgeSourceType.WorkspaceConfirmedProfile,
-    );
-    const ruleSource = rows.find(
-      row => row.source_type === ContentKnowledgeSourceType.WorkspaceRule,
-    );
-
     expect(rows.some(row => row.source_type === ContentKnowledgeSourceType.WorkspaceDocument)).toBe(
       true,
     );
-    expect(confirmedSource).toBeDefined();
-    expect(confirmedSource?.content).toContain('重型纸箱');
-    expect(confirmedSource?.content).toContain('可替代木箱');
-    expect(confirmedSource?.content).not.toContain('蜂窝纸板');
-    expect(ruleSource).toBeDefined();
-    expect(ruleSource?.content).toContain('绝对防损');
-    expect(ruleSource?.content).toContain('仅生成草稿，不要代替客户发送');
+    expect(rows.some(
+      row => row.source_type === ContentKnowledgeSourceType.WorkspaceConfirmedProfile,
+    )).toBe(false);
+    expect(rows.some(row => row.source_type === ContentKnowledgeSourceType.WorkspaceRule))
+      .toBe(false);
+    expect(setup.store.getTrustedProfileIndexStore().getJob(workspace.id, 1))
+      .toMatchObject({ status: 'queued' });
+  });
+
+  test('does not inspect or rebuild trusted Profile sources during a raw-document sync', () => {
+    const setup = createService();
+    db = setup.db;
+    const workspace = setup.service.createWorkspace(draftPayload());
+    const overlappingKey = 'productList:重型纸箱';
+    setup.db.prepare(`
+      UPDATE enterprise_lead_workspaces
+      SET profile = ?
+      WHERE id = ?
+    `).run(JSON.stringify({
+      ...workspace.profile,
+      confirmedKnowledgeKeys: [overlappingKey],
+      ignoredKnowledgeKeys: [overlappingKey],
+    }), workspace.id);
+    const contradictoryProfile = setup.store.getWorkspace(workspace.id)?.profile;
+    expect(contradictoryProfile).toMatchObject({
+      confirmedKnowledgeKeys: [overlappingKey],
+      ignoredKnowledgeKeys: [overlappingKey],
+    });
+    expect(
+      contradictoryProfile &&
+      hasCanonicalEnterpriseProfileKnowledgeTrustOverlap(contradictoryProfile),
+    ).toBe(true);
+    const replaceRaw = vi.spyOn(
+      setup.contentKnowledgeVectorStore,
+      'replaceLegacyWorkspaceDocumentSources',
+    );
+    const replaceTrusted = vi.spyOn(
+      setup.contentKnowledgeVectorStore,
+      'replaceTrustedSources',
+    );
+
+    expect(() => setup.service.updateWorkspaceSources(
+      workspace.id,
+      workspace.extractionSources,
+    )).not.toThrow();
+    expect(replaceRaw).toHaveBeenCalledTimes(1);
+    expect(replaceTrusted).not.toHaveBeenCalled();
   });
 
   test('clears indexed workspace source content when a workspace is deleted', () => {
@@ -856,6 +1289,7 @@ describe('EnterpriseLeadWorkspaceService', () => {
     ).toBe(true);
 
     expect(setup.service.deleteWorkspace(workspace.id)).toBe(true);
+    expect(setup.prepareWorkspaceDeletion).toHaveBeenCalledTimes(1);
     const searchResult = setup.contentKnowledgeVectorStore.search(
       scopeId,
       '帮我做 10 个小红书选题',
@@ -863,6 +1297,21 @@ describe('EnterpriseLeadWorkspaceService', () => {
 
     expect(searchResult.matched).toBe(false);
     expect(searchResult.diagnostics.candidateCount).toBe(0);
+  });
+
+  test('delegates workspace deletion exactly once without a second store or vector cleanup', () => {
+    const prepareWorkspaceDeletion = vi.fn(() => true);
+    const setup = createService({ prepareWorkspaceDeletion });
+    db = setup.db;
+    const deleteWorkspace = vi.spyOn(setup.store, 'deleteWorkspace');
+    const deleteScope = vi.spyOn(setup.contentKnowledgeVectorStore, 'deleteScope');
+
+    expect(setup.service.deleteWorkspace('workspace-delegated')).toBe(true);
+
+    expect(prepareWorkspaceDeletion).toHaveBeenCalledTimes(1);
+    expect(prepareWorkspaceDeletion).toHaveBeenCalledWith('workspace-delegated');
+    expect(deleteWorkspace).not.toHaveBeenCalled();
+    expect(deleteScope).not.toHaveBeenCalled();
   });
 
   test('preserves uploaded document metadata and pending extraction status on creation', () => {
@@ -938,7 +1387,7 @@ describe('EnterpriseLeadWorkspaceService', () => {
 
     const throwingStore = {
       ...setup.store,
-      replaceSources: vi.fn(() => {
+      replaceLegacyWorkspaceDocumentSources: vi.fn(() => {
         throw new Error('vector store offline');
       }),
     };
@@ -947,6 +1396,7 @@ describe('EnterpriseLeadWorkspaceService', () => {
       modelClient: setup.modelClient,
       agentProvider: setup.agentProvider,
       contentKnowledgeVectorStore: throwingStore as unknown as ContentKnowledgeVectorStore,
+      prepareWorkspaceDeletion: setup.prepareWorkspaceDeletion,
     } as never);
 
     const imageSource = {

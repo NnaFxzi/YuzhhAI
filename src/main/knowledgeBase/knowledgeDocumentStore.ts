@@ -340,35 +340,44 @@ export class KnowledgeDocumentStore {
     extractionPartial: boolean;
     status: KnowledgeDocument['status'];
   }): boolean {
-    const transaction = this.db.transaction(() => {
-      if (!this.isActiveCurrentVersion(input.documentId, input.documentVersionId)) {
-        return false;
-      }
-      const versionUpdate = this.db
-        .prepare(
-          `
+    const transaction = this.db.transaction(() =>
+      this.applyExtractionResultInCurrentTransaction(input));
+    return transaction();
+  }
+
+  applyExtractionResultInCurrentTransaction(input: {
+    documentId: string;
+    documentVersionId: string;
+    parser: string;
+    extractedText: string | null;
+    extractionPartial: boolean;
+    status: KnowledgeDocument['status'];
+  }): boolean {
+    this.assertCurrentTransaction();
+    if (!this.isActiveCurrentVersion(input.documentId, input.documentVersionId)) {
+      return false;
+    }
+    const versionUpdate = this.db
+      .prepare(
+        `
           UPDATE knowledge_document_versions
           SET parser = ?, extracted_text = ?, extraction_partial = ?
           WHERE id = ? AND document_id = ?
-        `,
-        )
-        .run(
-          cleanRequiredText(input.parser, 'Parser'),
-          input.extractedText,
-          input.extractionPartial ? 1 : 0,
-          input.documentVersionId,
-          input.documentId,
-        );
-      if (versionUpdate.changes === 0) {
-        return false;
-      }
-      return this.updateActiveCurrentVersionStatus(
-        input.documentId,
+      `,
+      )
+      .run(
+        cleanRequiredText(input.parser, 'Parser'),
+        input.extractedText,
+        input.extractionPartial ? 1 : 0,
         input.documentVersionId,
-        input.status,
+        input.documentId,
       );
-    });
-    return transaction();
+    if (versionUpdate.changes === 0) return false;
+    return this.updateActiveCurrentVersionStatus(
+      input.documentId,
+      input.documentVersionId,
+      input.status,
+    );
   }
 
   setDocumentStatusIfCurrentVersion(input: {
@@ -421,42 +430,76 @@ export class KnowledgeDocumentStore {
     document: KnowledgeDocument;
     version: KnowledgeDocumentVersion;
   } {
-    const transaction = this.db.transaction(() => {
-      const current = this.requireExpectedRevision(documentId, expectedRevision);
-      const now = new Date().toISOString();
-      const versionId = randomUUID();
-      this.insertVersion(documentId, versionId, version, now);
-      const result = this.db
-        .prepare(
-          `
-          UPDATE knowledge_documents
-          SET current_version_id = ?, status = ?, revision = revision + 1, updated_at = ?
-          WHERE id = ? AND revision = ?
-        `,
-        )
-        .run(versionId, status ?? current.status, now, documentId, expectedRevision);
-
-      this.throwIfRevisionUpdateMissed(documentId, result.changes);
-      return {
-        document: this.requireDocument(documentId),
-        version: this.requireVersion(versionId),
-      };
-    });
-
+    const transaction = this.db.transaction(() =>
+      this.addVersionInCurrentTransaction(documentId, expectedRevision, version, status));
     return transaction();
   }
 
+  addVersionInCurrentTransaction(
+    documentId: string,
+    expectedRevision: number,
+    version: CreateKnowledgeDocumentInput['version'],
+    status?: KnowledgeDocumentStatus,
+  ): { document: KnowledgeDocument; version: KnowledgeDocumentVersion } {
+    this.assertCurrentTransaction();
+    const current = this.requireExpectedRevision(documentId, expectedRevision);
+    const now = new Date().toISOString();
+    const versionId = randomUUID();
+    this.insertVersion(documentId, versionId, version, now);
+    const result = this.db
+      .prepare(
+        `
+          UPDATE knowledge_documents
+          SET current_version_id = ?, status = ?, revision = revision + 1, updated_at = ?
+          WHERE id = ? AND revision = ?
+      `,
+      )
+      .run(versionId, status ?? current.status, now, documentId, expectedRevision);
+    this.throwIfRevisionUpdateMissed(documentId, result.changes);
+    return {
+      document: this.requireDocument(documentId),
+      version: this.requireVersion(versionId),
+    };
+  }
+
   softDeleteDocument(documentId: string, expectedRevision: number): KnowledgeDocument {
+    const transaction = this.db.transaction(() =>
+      this.softDeleteDocumentInCurrentTransaction(documentId, expectedRevision));
+    return transaction();
+  }
+
+  softDeleteDocumentInCurrentTransaction(
+    documentId: string,
+    expectedRevision: number,
+  ): KnowledgeDocument {
+    this.assertCurrentTransaction();
     return this.setDeletedAt(documentId, expectedRevision, new Date().toISOString());
   }
 
   restoreDocument(documentId: string, expectedRevision: number): KnowledgeDocument {
+    const transaction = this.db.transaction(() =>
+      this.restoreDocumentInCurrentTransaction(documentId, expectedRevision));
+    return transaction();
+  }
+
+  restoreDocumentInCurrentTransaction(
+    documentId: string,
+    expectedRevision: number,
+  ): KnowledgeDocument {
+    this.assertCurrentTransaction();
     return this.setDeletedAt(documentId, expectedRevision, null);
   }
 
   deleteWorkspaceDocuments(workspaceId: string): number {
     const normalizedWorkspaceId = cleanRequiredText(workspaceId, 'Workspace id');
-    const transaction = this.db.transaction(() => {
+    const transaction = this.db.transaction(() =>
+      this.deleteWorkspaceDocumentsInCurrentTransaction(normalizedWorkspaceId));
+    return transaction();
+  }
+
+  deleteWorkspaceDocumentsInCurrentTransaction(workspaceId: string): number {
+    this.assertCurrentTransaction();
+    const normalizedWorkspaceId = cleanRequiredText(workspaceId, 'Workspace id');
       this.db
         .prepare(
           `
@@ -467,11 +510,20 @@ export class KnowledgeDocumentStore {
         `,
         )
         .run(normalizedWorkspaceId);
-      return this.db
+    return this.db
         .prepare('DELETE FROM knowledge_documents WHERE workspace_id = ?')
         .run(normalizedWorkspaceId).changes;
-    });
-    return transaction();
+  }
+
+  deleteParentlessVersionsInCurrentTransaction(): number {
+    this.assertCurrentTransaction();
+    return this.db.prepare(`
+      DELETE FROM knowledge_document_versions
+      WHERE NOT EXISTS (
+        SELECT 1 FROM knowledge_documents AS document
+        WHERE document.id = knowledge_document_versions.document_id
+      )
+    `).run().changes;
   }
 
   private initialize(): void {
@@ -624,6 +676,12 @@ export class KnowledgeDocumentStore {
 
     this.throwIfRevisionUpdateMissed(documentId, result.changes);
     return this.requireDocument(documentId);
+  }
+
+  private assertCurrentTransaction(): void {
+    if (!this.db.inTransaction) {
+      throw new Error('Knowledge document transaction required');
+    }
   }
 
   private requireExpectedRevision(documentId: string, expectedRevision: number): KnowledgeDocument {

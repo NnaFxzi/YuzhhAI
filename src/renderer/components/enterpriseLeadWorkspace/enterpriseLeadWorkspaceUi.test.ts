@@ -30,7 +30,11 @@ import type {
   EnterpriseLeadWorkspaceSnapshot,
 } from '../../../shared/enterpriseLeadWorkspace/types';
 import { buildDefaultEnterpriseLeadWorkspaceSettings } from '../../../shared/enterpriseLeadWorkspace/validation';
-import type { KnowledgeImportBatchResult } from '../../../shared/knowledgeBase/types';
+import type {
+  KnowledgeExtractionAuthorizationPreparation,
+  KnowledgeFactMetrics,
+  KnowledgeImportBatchResult,
+} from '../../../shared/knowledgeBase/types';
 import { enterpriseLeadWorkspaceService } from '../../services/enterpriseLeadWorkspace';
 import { i18nService } from '../../services/i18n';
 import agentReducer from '../../store/slices/agentSlice';
@@ -98,6 +102,7 @@ import WorkspaceEntryHome, {
   WorkspaceDeleteConfirmDialog,
   WorkspaceHistoryList,
 } from './WorkspaceEntryHome';
+import WorkspaceKnowledgeExtractionDialog from './WorkspaceKnowledgeExtractionDialog';
 import { buildWorkspaceSearchResults, WorkspaceSearch } from './WorkspaceSearch';
 import {
   getWorkspaceSettingsReadiness,
@@ -164,6 +169,7 @@ const createWorkspace = (
   name: `Workspace ${id}`,
   type: 'enterprise_lead',
   profile: emptyProfile(),
+  profileRevision: 1,
   extractionSources: [],
   riskRules: [],
   enabledAgentRoles,
@@ -382,8 +388,17 @@ class FakeDomNode {
   parentNode: FakeDomNode | null = null;
   childNodes: FakeDomNode[] = [];
   ownerDocument: FakeDomDocument | null = null;
-  nodeValue: string | null = null;
+  private nodeValueValue: string | null = null;
   private textContentValue = '';
+
+  get nodeValue(): string | null {
+    return this.nodeValueValue;
+  }
+
+  set nodeValue(value: string | null) {
+    this.nodeValueValue = value;
+    this.textContentValue = value ?? '';
+  }
 
   get textContent(): string {
     return this.textContentValue;
@@ -391,6 +406,7 @@ class FakeDomNode {
 
   set textContent(value: string) {
     this.textContentValue = value;
+    this.nodeValueValue = value;
   }
 
   get firstChild(): FakeDomNode | null {
@@ -461,6 +477,18 @@ class FakeDomElement extends FakeDomNode {
   attributes = new Map<string, string>();
   namespaceURI = 'http://www.w3.org/1999/xhtml';
   nodeName: string;
+  selected = false;
+  defaultSelected = false;
+  checked = false;
+  disabled = false;
+  private valueValue = '';
+  private eventListeners = new Map<
+    string,
+    Array<{
+      listener: EventListenerOrEventListenerObject;
+      capture: boolean;
+    }>
+  >();
 
   constructor(
     public tagName: string,
@@ -481,6 +509,21 @@ class FakeDomElement extends FakeDomNode {
     this.childNodes = value ? [new FakeDomText(value)] : [];
   }
 
+  get options(): FakeDomElement[] {
+    return this.childNodes.filter(
+      (node): node is FakeDomElement =>
+        node instanceof FakeDomElement && node.tagName.toLowerCase() === 'option',
+    );
+  }
+
+  get value(): string {
+    return this.valueValue;
+  }
+
+  set value(value: string) {
+    this.valueValue = value;
+  }
+
   setAttribute(name: string, value: string): void {
     this.attributes.set(name, value);
   }
@@ -493,9 +536,128 @@ class FakeDomElement extends FakeDomNode {
     this.attributes.delete(name);
   }
 
-  addEventListener(): void {}
+  addEventListener(
+    type: string,
+    listener: EventListenerOrEventListenerObject,
+    options?: boolean | AddEventListenerOptions,
+  ): void {
+    const capture = typeof options === 'boolean' ? options : Boolean(options?.capture);
+    const listeners = this.eventListeners.get(type) ?? [];
+    listeners.push({ listener, capture });
+    this.eventListeners.set(type, listeners);
+  }
 
-  removeEventListener(): void {}
+  removeEventListener(
+    type: string,
+    listener: EventListenerOrEventListenerObject,
+    options?: boolean | EventListenerOptions,
+  ): void {
+    const capture = typeof options === 'boolean' ? options : Boolean(options?.capture);
+    const listeners = this.eventListeners.get(type);
+    if (!listeners) {
+      return;
+    }
+    this.eventListeners.set(
+      type,
+      listeners.filter(entry => entry.listener !== listener || entry.capture !== capture),
+    );
+  }
+
+  attachEvent(): void {}
+
+  detachEvent(): void {}
+
+  focus(): void {}
+
+  private dispatchBubblingEvent(type: string): void {
+    const path: FakeDomElement[] = [this];
+    let current: FakeDomNode | null = this.parentNode;
+    while (current) {
+      if (current instanceof FakeDomElement) {
+        path.push(current);
+      }
+      current = current.parentNode;
+    }
+    let propagationStopped = false;
+    let immediatePropagationStopped = false;
+    let defaultPrevented = false;
+    const event = {
+      type,
+      target: this,
+      srcElement: this,
+      currentTarget: null,
+      bubbles: true,
+      cancelable: true,
+      get defaultPrevented(): boolean {
+        return defaultPrevented;
+      },
+      eventPhase: 0,
+      isTrusted: false,
+      timeStamp: Date.now(),
+      button: 0,
+      buttons: 0,
+      detail: type === 'click' ? 1 : 0,
+      view: window,
+      preventDefault(): void {
+        defaultPrevented = true;
+      },
+      stopPropagation(): void {
+        propagationStopped = true;
+      },
+      stopImmediatePropagation(): void {
+        propagationStopped = true;
+        immediatePropagationStopped = true;
+      },
+      composedPath: (): FakeDomElement[] => [...path],
+    } as unknown as Event;
+    const invoke = (element: FakeDomElement, capture: boolean): void => {
+      immediatePropagationStopped = false;
+      for (const entry of element.eventListeners.get(type) ?? []) {
+        if (entry.capture !== capture || immediatePropagationStopped) {
+          continue;
+        }
+        if (typeof entry.listener === 'function') {
+          entry.listener.call(element, event);
+        } else {
+          entry.listener.handleEvent(event);
+        }
+      }
+    };
+
+    for (const element of [...path].reverse()) {
+      invoke(element, true);
+      if (propagationStopped) {
+        return;
+      }
+    }
+    for (const element of path) {
+      invoke(element, false);
+      if (propagationStopped) {
+        return;
+      }
+    }
+  }
+
+  click(): void {
+    this.dispatchBubblingEvent('click');
+  }
+
+  input(value: string): void {
+    const previousValue = this.value;
+    this.dispatchBubblingEvent('focusin');
+    const valueSetter = Object.getOwnPropertyDescriptor(FakeDomElement.prototype, 'value')?.set;
+    valueSetter?.call(this, value);
+    const valueTracker = (
+      this as unknown as {
+        _valueTracker?: { setValue: (trackedValue: string) => void };
+      }
+    )._valueTracker;
+    valueTracker?.setValue(previousValue);
+    this.dispatchBubblingEvent('input');
+    this.dispatchBubblingEvent('change');
+    this.dispatchBubblingEvent('keyup');
+    this.dispatchBubblingEvent('focusout');
+  }
 
   getAttribute(name: string): string | null {
     return this.attributes.get(name) ?? null;
@@ -506,9 +668,44 @@ class FakeDomElement extends FakeDomNode {
   }
 }
 
+const findFakeDomElement = (
+  root: FakeDomNode,
+  predicate: (element: FakeDomElement) => boolean,
+): FakeDomElement | null => {
+  for (const child of root.childNodes) {
+    if (child instanceof FakeDomElement) {
+      if (predicate(child)) {
+        return child;
+      }
+      const nested = findFakeDomElement(child, predicate);
+      if (nested) {
+        return nested;
+      }
+    }
+  }
+  return null;
+};
+
+const findFakeDomElements = (
+  root: FakeDomNode,
+  predicate: (element: FakeDomElement) => boolean,
+): FakeDomElement[] => {
+  const elements: FakeDomElement[] = [];
+  for (const child of root.childNodes) {
+    if (child instanceof FakeDomElement) {
+      if (predicate(child)) {
+        elements.push(child);
+      }
+      elements.push(...findFakeDomElements(child, predicate));
+    }
+  }
+  return elements;
+};
+
 class FakeDomDocument extends FakeDomNode {
   nodeType = 9;
   nodeName = '#document';
+  oninput: unknown = null;
   documentElement: FakeDomElement;
   body: FakeDomElement;
   defaultView: Window & typeof globalThis;
@@ -564,6 +761,8 @@ const installFakeDom = (): (() => void) => {
     window: undefined as unknown,
     addEventListener: (): void => undefined,
     removeEventListener: (): void => undefined,
+    setTimeout: globalThis.setTimeout,
+    clearTimeout: globalThis.clearTimeout,
     requestAnimationFrame: (callback: FrameRequestCallback): number =>
       setTimeout(() => callback(Date.now()), 0) as unknown as number,
     cancelAnimationFrame: (handle: number): void => clearTimeout(handle),
@@ -633,11 +832,1779 @@ const collectFakeDomAttributeValues = (node: FakeDomNode, attributeName: string)
   return values;
 };
 
+interface CapturedWorkspaceAiKnowledgePanelProps {
+  workspaceId: string;
+  profileRevision: number;
+  profile: EnterpriseLeadWorkspaceProfile;
+  onMetricsChange?: (metrics: KnowledgeFactMetrics) => void;
+  onMaintainCompany: () => void;
+  onProjectionRefresh?: (input: {
+    workspaceId: string;
+    profileRevision: number;
+  }) => Promise<void> | void;
+}
+
+interface CapturedWorkspaceKnowledgeDocumentsPanelProps {
+  workspaceId: string;
+  initialImportResult?: KnowledgeImportBatchResult;
+  onDocumentCountChange: (count: number) => void;
+  onWorkspaceProjectionChange: () => Promise<void> | void;
+  onAiKnowledgeMetricsRefresh?: () => Promise<void> | void;
+}
+
+type KnowledgeBaseServiceApi =
+  typeof import('../../services/knowledgeBase').knowledgeBaseService;
+
+interface WorkspaceKnowledgeBaseMountHarness {
+  ReactInner: typeof React;
+  container: FakeDomElement;
+  aiPanelProps: () => CapturedWorkspaceAiKnowledgePanelProps | null;
+  documentPanelProps: () => CapturedWorkspaceKnowledgeDocumentsPanelProps | null;
+  service: typeof enterpriseLeadWorkspaceService;
+  knowledgeBaseService: KnowledgeBaseServiceApi;
+  translate: (key: string) => string;
+  render: (
+    workspace: EnterpriseLeadWorkspace,
+    onWorkspaceUpdated?: (workspace: EnterpriseLeadWorkspace) => void,
+    onLayout?: () => void,
+  ) => Promise<void>;
+  startSuspendedRender: (
+    workspace: EnterpriseLeadWorkspace,
+    suspension: Promise<unknown>,
+    onWorkspaceUpdated?: (workspace: EnterpriseLeadWorkspace) => void,
+  ) => Promise<void>;
+  cleanup: () => Promise<void>;
+}
+
+const mountIsolatedWorkspaceKnowledgeBase = async (input: {
+  workspace: EnterpriseLeadWorkspace;
+  initialImportResult?: KnowledgeImportBatchResult;
+  onWorkspaceUpdated?: (workspace: EnterpriseLeadWorkspace) => void;
+  configureService?: (service: typeof enterpriseLeadWorkspaceService) => void;
+  configureKnowledgeBaseService?: (service: KnowledgeBaseServiceApi) => void;
+  strictMode?: boolean;
+}): Promise<WorkspaceKnowledgeBaseMountHarness> => {
+  await vi.resetModules();
+  const restoreDom = installFakeDom();
+  const ReactInner = await import('react');
+  const { createRoot } = await import('react-dom/client');
+  let capturedAiPanelProps: CapturedWorkspaceAiKnowledgePanelProps | null = null;
+  let capturedDocumentPanelProps: CapturedWorkspaceKnowledgeDocumentsPanelProps | null = null;
+
+  vi.doMock('./WorkspaceKnowledgeDocumentsPanel', () => {
+    const ControlledWorkspaceKnowledgeDocumentsPanel = (
+      props: CapturedWorkspaceKnowledgeDocumentsPanelProps,
+    ): React.ReactElement => {
+      ReactInner.useLayoutEffect(() => {
+        capturedDocumentPanelProps = props;
+      }, [props]);
+      return ReactInner.createElement('div', { 'data-testid': 'controlled-document-panel' });
+    };
+    return {
+      default: ControlledWorkspaceKnowledgeDocumentsPanel,
+    };
+  });
+  vi.doMock('./WorkspaceAiKnowledgePanel', () => {
+    const ControlledWorkspaceAiKnowledgePanel = (
+      props: CapturedWorkspaceAiKnowledgePanelProps,
+    ): React.ReactElement => {
+      ReactInner.useLayoutEffect(() => {
+        capturedAiPanelProps = props;
+      }, [props]);
+      const [privateFilter, setPrivateFilter] = ReactInner.useState('active');
+      return ReactInner.createElement(
+        'section',
+        { 'data-testid': 'controlled-ai-panel' },
+        ReactInner.createElement(
+          'button',
+          {
+            type: 'button',
+            'data-testid': 'controlled-ai-maintain-company',
+            onClick: props.onMaintainCompany,
+          },
+          'controlled-maintain-company',
+        ),
+        ReactInner.createElement(
+          'button',
+          {
+            type: 'button',
+            'data-testid': 'controlled-ai-private-history',
+            onClick: () => setPrivateFilter('history'),
+          },
+          'controlled-private-history',
+        ),
+        ReactInner.createElement(
+          'span',
+          { 'data-testid': 'controlled-ai-private-filter' },
+          privateFilter,
+        ),
+      );
+    };
+    return {
+      default: ControlledWorkspaceAiKnowledgePanel,
+      WorkspaceAiKnowledgePanel: ControlledWorkspaceAiKnowledgePanel,
+    };
+  });
+
+  const enterpriseLeadWorkspaceModule = await import('../../services/enterpriseLeadWorkspace');
+  const knowledgeBaseModule = await import('../../services/knowledgeBase');
+  const i18nModule = await import('../../services/i18n');
+  input.configureKnowledgeBaseService?.(knowledgeBaseModule.knowledgeBaseService);
+  const { WorkspaceKnowledgeBase: IsolatedWorkspaceKnowledgeBase } =
+    await import('./WorkspaceKnowledgeBase');
+  const service = enterpriseLeadWorkspaceModule.enterpriseLeadWorkspaceService;
+  vi.spyOn(service, 'getRun').mockResolvedValue(null);
+  input.configureService?.(service);
+  const container = document.createElement('div') as unknown as FakeDomElement;
+  const root = createRoot(container as unknown as Element);
+  let renderGeneration = 0;
+  const SuspendAfterWorkspaceKnowledgeBase = (props: {
+    suspension?: Promise<unknown>;
+  }): React.ReactElement | null => {
+    if (props.suspension) {
+      throw props.suspension;
+    }
+    return null;
+  };
+  const RootHarness = (props: {
+    workspace: EnterpriseLeadWorkspace;
+    onWorkspaceUpdated?: (workspace: EnterpriseLeadWorkspace) => void;
+    onLayout?: () => void;
+    generation: number;
+    suspension?: Promise<unknown>;
+  }): React.ReactElement => {
+    ReactInner.useLayoutEffect(() => {
+      props.onLayout?.();
+    }, [props.generation, props.onLayout]);
+    return ReactInner.createElement(
+      ReactInner.Suspense,
+      {
+        fallback: ReactInner.createElement('div', {
+          'data-testid': 'workspace-knowledge-suspense-fallback',
+        }),
+      },
+      ReactInner.createElement(IsolatedWorkspaceKnowledgeBase, {
+        workspace: props.workspace,
+        initialImportResult: input.initialImportResult,
+        onWorkspaceUpdated: props.onWorkspaceUpdated,
+      }),
+      ReactInner.createElement(SuspendAfterWorkspaceKnowledgeBase, {
+        suspension: props.suspension,
+      }),
+    );
+  };
+  const createRootHarnessElement = (
+    props: React.ComponentProps<typeof RootHarness>,
+  ): React.ReactElement => {
+    const element = ReactInner.createElement(RootHarness, props);
+    return input.strictMode
+      ? ReactInner.createElement(ReactInner.StrictMode, null, element)
+      : element;
+  };
+
+  const render = async (
+    workspace: EnterpriseLeadWorkspace,
+    onWorkspaceUpdated = input.onWorkspaceUpdated,
+    onLayout?: () => void,
+  ): Promise<void> => {
+    renderGeneration += 1;
+    await ReactInner.act(async () => {
+      root.render(
+        createRootHarnessElement({
+          workspace,
+          onWorkspaceUpdated,
+          onLayout,
+          generation: renderGeneration,
+        }),
+      );
+      await Promise.resolve();
+    });
+  };
+
+  const startSuspendedRender = async (
+    workspace: EnterpriseLeadWorkspace,
+    suspension: Promise<unknown>,
+    onWorkspaceUpdated = input.onWorkspaceUpdated,
+  ): Promise<void> => {
+    renderGeneration += 1;
+    await ReactInner.act(async () => {
+      ReactInner.startTransition(() => {
+        root.render(
+          createRootHarnessElement({
+            workspace,
+            onWorkspaceUpdated,
+            generation: renderGeneration,
+            suspension,
+          }),
+        );
+      });
+      await Promise.resolve();
+    });
+  };
+
+  await render(input.workspace, input.onWorkspaceUpdated);
+
+  return {
+    ReactInner,
+    container,
+    aiPanelProps: () => capturedAiPanelProps,
+    documentPanelProps: () => capturedDocumentPanelProps,
+    service,
+    knowledgeBaseService: knowledgeBaseModule.knowledgeBaseService,
+    translate: key => i18nModule.i18nService.t(key),
+    render,
+    startSuspendedRender,
+    cleanup: async () => {
+      await ReactInner.act(async () => {
+        root.unmount();
+      });
+      vi.doUnmock('./WorkspaceKnowledgeDocumentsPanel');
+      vi.doUnmock('./WorkspaceAiKnowledgePanel');
+      restoreDom();
+      await vi.resetModules();
+    },
+  };
+};
+
+const getFakeDomElementByTestId = (
+  root: FakeDomNode,
+  testId: string,
+): FakeDomElement | null =>
+  findFakeDomElement(root, element => element.getAttribute('data-testid') === testId);
+
+const getKnowledgeMetricButton = (
+  root: FakeDomNode,
+  label: string,
+): FakeDomElement | null =>
+  findFakeDomElement(
+    root,
+    element => element.tagName.toLowerCase() === 'button' && element.textContent.includes(label),
+  );
+
+const getKnowledgeMetricValue = (root: FakeDomNode, label: string): string => {
+  const button = getKnowledgeMetricButton(root, label);
+  const value = button?.childNodes.find(
+    node => node instanceof FakeDomElement && node.tagName.toLowerCase() === 'p',
+  );
+  return value?.textContent ?? '';
+};
+
+const automaticVectorFailureCases = [
+  { label: 'a rejected request', outcome: 'reject' },
+  { label: 'a null response', outcome: 'null' },
+  { label: 'a wrong-workspace response', outcome: 'wrong_workspace' },
+] as const;
+
 afterEach(() => {
   vi.restoreAllMocks();
 });
 
 describe('enterprise lead workspace UI helpers', () => {
+  test('keeps committed extraction callbacks when replacement callbacks render but never commit', async () => {
+    const restoreDom = installFakeDom();
+    const { createRoot } = await import('react-dom/client');
+    const container = document.createElement('div') as unknown as FakeDomElement;
+    const root = createRoot(container as unknown as Element);
+    const oldSend = vi.fn(async () => undefined);
+    const oldClose = vi.fn();
+    const abortedSend = vi.fn(async () => undefined);
+    const abortedClose = vi.fn();
+    const preparation: KnowledgeExtractionAuthorizationPreparation = {
+      authorizationToken: 'single-use-token',
+      descriptor: {
+        workspaceId: 'workspace-committed',
+        documentId: 'document-committed',
+        documentVersionId: 'version-committed',
+        documentDisplayName: 'Committed.pdf',
+        providerId: 'provider-private-id',
+        providerLabel: 'Provider',
+        modelId: 'model-private-id',
+        modelLabel: 'Model',
+        plannedModelCalls: 1,
+        partial: false,
+        expiresAt: '2026-07-14T00:00:00.000Z',
+      },
+    };
+    const prepare = vi.fn(async () => preparation);
+    const permanentSuspension = new Promise<void>(() => undefined);
+    const SuspendAfterDialog = ({
+      suspension,
+    }: {
+      suspension?: Promise<void>;
+    }): null => {
+      if (suspension) {
+        throw suspension;
+      }
+      return null;
+    };
+    const renderDialog = (
+      send: (authorizationToken: string) => Promise<void>,
+      onClose: () => void,
+      suspension?: Promise<void>,
+    ): React.ReactElement =>
+      React.createElement(
+        React.StrictMode,
+        null,
+        React.createElement(
+          React.Suspense,
+          { fallback: null },
+          React.createElement(WorkspaceKnowledgeExtractionDialog, {
+            prepare,
+            send,
+            onClose,
+          }),
+          React.createElement(SuspendAfterDialog, { suspension }),
+        ),
+      );
+
+    try {
+      await React.act(async () => {
+        root.render(renderDialog(oldSend, oldClose));
+        for (let index = 0; index < 8; index += 1) {
+          await Promise.resolve();
+        }
+      });
+      const sendButton = getFakeDomElementByTestId(
+        container,
+        'knowledge-extraction-send',
+      );
+      expect(sendButton).not.toBeNull();
+
+      await React.act(async () => {
+        React.startTransition(() => {
+          root.render(
+            renderDialog(abortedSend, abortedClose, permanentSuspension),
+          );
+        });
+        await Promise.resolve();
+      });
+      await React.act(async () => {
+        sendButton?.click();
+        for (let index = 0; index < 4; index += 1) {
+          await Promise.resolve();
+        }
+      });
+
+      expect(abortedSend).not.toHaveBeenCalled();
+      expect(abortedClose).not.toHaveBeenCalled();
+      expect(oldSend).toHaveBeenCalledTimes(1);
+      expect(oldSend).toHaveBeenCalledWith('single-use-token');
+      expect(oldClose).toHaveBeenCalledTimes(1);
+    } finally {
+      await React.act(async () => {
+        root.unmount();
+      });
+      restoreDom();
+    }
+  });
+
+  test('uses replacement extraction callbacks after those props commit', async () => {
+    const restoreDom = installFakeDom();
+    const { createRoot } = await import('react-dom/client');
+    const container = document.createElement('div') as unknown as FakeDomElement;
+    const root = createRoot(container as unknown as Element);
+    const oldSend = vi.fn(async () => undefined);
+    const oldClose = vi.fn();
+    const committedSend = vi.fn(async () => undefined);
+    const committedClose = vi.fn();
+    const prepare = vi.fn(
+      async (): Promise<KnowledgeExtractionAuthorizationPreparation> => ({
+        authorizationToken: 'single-use-token',
+        descriptor: {
+          workspaceId: 'workspace-committed',
+          documentId: 'document-committed',
+          documentVersionId: 'version-committed',
+          documentDisplayName: 'Committed.pdf',
+          providerId: 'provider-private-id',
+          providerLabel: 'Provider',
+          modelId: 'model-private-id',
+          modelLabel: 'Model',
+          plannedModelCalls: 1,
+          partial: false,
+          expiresAt: '2026-07-14T00:00:00.000Z',
+        },
+      }),
+    );
+    const renderDialog = (
+      send: (authorizationToken: string) => Promise<void>,
+      onClose: () => void,
+    ): React.ReactElement =>
+      React.createElement(
+        React.StrictMode,
+        null,
+        React.createElement(WorkspaceKnowledgeExtractionDialog, {
+          prepare,
+          send,
+          onClose,
+        }),
+      );
+
+    try {
+      await React.act(async () => {
+        root.render(renderDialog(oldSend, oldClose));
+        for (let index = 0; index < 8; index += 1) {
+          await Promise.resolve();
+        }
+      });
+      await React.act(async () => {
+        root.render(renderDialog(committedSend, committedClose));
+        await Promise.resolve();
+      });
+      const sendButton = getFakeDomElementByTestId(
+        container,
+        'knowledge-extraction-send',
+      );
+      expect(sendButton).not.toBeNull();
+
+      await React.act(async () => {
+        sendButton?.click();
+        for (let index = 0; index < 4; index += 1) {
+          await Promise.resolve();
+        }
+      });
+
+      expect(oldSend).not.toHaveBeenCalled();
+      expect(oldClose).not.toHaveBeenCalled();
+      expect(committedSend).toHaveBeenCalledTimes(1);
+      expect(committedSend).toHaveBeenCalledWith('single-use-token');
+      expect(committedClose).toHaveBeenCalledTimes(1);
+    } finally {
+      await React.act(async () => {
+        root.unmount();
+      });
+      restoreDom();
+    }
+  });
+
+  test('composes the real parent branches and routes the mounted AI maintain button to company editing', async () => {
+    const workspace = {
+      ...createWorkspace('workspace-integration'),
+      profile: {
+        ...emptyProfile(),
+        productList: ['Legacy product'],
+      },
+      profileRevision: 4,
+    };
+    const initialImportResult: KnowledgeImportBatchResult = {
+      importedCount: 1,
+      failedCount: 0,
+      items: [],
+    };
+    const harness = await mountIsolatedWorkspaceKnowledgeBase({
+      workspace,
+      initialImportResult,
+    });
+
+    try {
+      expect(
+        getFakeDomElementByTestId(harness.container, 'controlled-document-panel'),
+      ).not.toBeNull();
+      expect(getFakeDomElementByTestId(harness.container, 'controlled-ai-panel')).toBeNull();
+      expect(harness.documentPanelProps()).toMatchObject({
+        workspaceId: workspace.id,
+        initialImportResult,
+        onDocumentCountChange: expect.any(Function),
+        onWorkspaceProjectionChange: expect.any(Function),
+      });
+
+      const aiTab = getKnowledgeMetricButton(
+        harness.container,
+        harness.translate('enterpriseLeadKnowledgeAiKnowledgeTitle'),
+      );
+      expect(aiTab).not.toBeNull();
+      await harness.ReactInner.act(async () => {
+        aiTab?.click();
+      });
+
+      const aiProps = harness.aiPanelProps();
+      expect(aiProps).toMatchObject({
+        workspaceId: workspace.id,
+        profileRevision: workspace.profileRevision,
+        profile: workspace.profile,
+        onMetricsChange: expect.any(Function),
+        onMaintainCompany: expect.any(Function),
+        onProjectionRefresh: expect.any(Function),
+      });
+      expect(aiProps?.profile).toBe(workspace.profile);
+      expect(getFakeDomElementByTestId(harness.container, 'controlled-ai-panel')).not.toBeNull();
+      expect(
+        findFakeDomElements(
+          harness.container,
+          element => element.tagName.toLowerCase() === 'input',
+        ),
+      ).toEqual([]);
+      expect(harness.container.textContent).not.toContain(
+        harness.translate('enterpriseLeadKnowledgeAddContent'),
+      );
+
+      const privateHistory = getFakeDomElementByTestId(
+        harness.container,
+        'controlled-ai-private-history',
+      );
+      await harness.ReactInner.act(async () => {
+        privateHistory?.click();
+      });
+      const pendingCard = getKnowledgeMetricButton(
+        harness.container,
+        harness.translate('enterpriseLeadKnowledgePendingMetric'),
+      );
+      await harness.ReactInner.act(async () => {
+        pendingCard?.click();
+      });
+      expect(
+        getFakeDomElementByTestId(harness.container, 'controlled-ai-private-filter')?.textContent,
+      ).toBe('history');
+      const confirmedCard = getKnowledgeMetricButton(
+        harness.container,
+        harness.translate('enterpriseLeadKnowledgeConfirmedMetric'),
+      );
+      await harness.ReactInner.act(async () => {
+        confirmedCard?.click();
+      });
+      expect(
+        getFakeDomElementByTestId(harness.container, 'controlled-ai-private-filter')?.textContent,
+      ).toBe('history');
+
+      const maintainCompany = getFakeDomElementByTestId(
+        harness.container,
+        'controlled-ai-maintain-company',
+      );
+      expect(maintainCompany).not.toBeNull();
+      await harness.ReactInner.act(async () => {
+        maintainCompany?.click();
+      });
+      expect(
+        findFakeDomElement(
+          harness.container,
+          element => element.tagName.toLowerCase() === 'textarea',
+        ),
+      ).not.toBeNull();
+      expect(harness.container.textContent).toContain(
+        harness.translate('enterpriseLeadKnowledgeCompanyModalTitle'),
+      );
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  test('refreshes top AI metrics from a completed document extraction without opening the AI view', async () => {
+    const workspace = {
+      ...createWorkspace('workspace-document-metrics-refresh'),
+      profileRevision: 4,
+    };
+    const refreshedMetrics: KnowledgeFactMetrics = {
+      activePendingCount: 17,
+      activeConfirmedCount: 0,
+      staleConfirmedCount: 0,
+      rejectedHistoryCount: 0,
+      archivedHistoryCount: 0,
+      unduplicatedLegacyConfirmedCount: 0,
+      totalAiKnowledgeCount: 17,
+    };
+    let listFacts: ReturnType<typeof vi.fn> | null = null;
+    const harness = await mountIsolatedWorkspaceKnowledgeBase({
+      workspace,
+      configureKnowledgeBaseService: service => {
+        listFacts = vi.spyOn(service, 'listFacts').mockResolvedValue({
+          items: [],
+          nextCursor: null,
+          metrics: refreshedMetrics,
+        });
+      },
+    });
+
+    try {
+      expect(getFakeDomElementByTestId(harness.container, 'controlled-ai-panel')).toBeNull();
+      const refreshMetrics = harness.documentPanelProps()?.onAiKnowledgeMetricsRefresh;
+      expect(refreshMetrics).toEqual(expect.any(Function));
+
+      await harness.ReactInner.act(async () => {
+        await refreshMetrics?.();
+      });
+
+      expect(listFacts).toHaveBeenCalledWith({
+        workspaceId: workspace.id,
+        limit: 1,
+      });
+      expect(
+        getKnowledgeMetricValue(
+          harness.container,
+          harness.translate('enterpriseLeadKnowledgeAiKnowledgeMetric'),
+        ),
+      ).toBe('17');
+      expect(
+        getKnowledgeMetricValue(
+          harness.container,
+          harness.translate('enterpriseLeadKnowledgePendingMetric'),
+        ),
+      ).toBe('17');
+      expect(getFakeDomElementByTestId(harness.container, 'controlled-ai-panel')).toBeNull();
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  test('owns backend AI metrics by workspace, revision, and render generation before passive effects', async () => {
+    const workspaceA = {
+      ...createWorkspace('workspace-metrics-a'),
+      profileRevision: 4,
+    };
+    const workspaceB = {
+      ...createWorkspace('workspace-metrics-b'),
+      profileRevision: 4,
+    };
+    const harness = await mountIsolatedWorkspaceKnowledgeBase({ workspace: workspaceA });
+    const metrics = (overrides: Partial<KnowledgeFactMetrics> = {}): KnowledgeFactMetrics => ({
+      activePendingCount: 1,
+      activeConfirmedCount: 2,
+      staleConfirmedCount: 3,
+      rejectedHistoryCount: 4,
+      archivedHistoryCount: 5,
+      unduplicatedLegacyConfirmedCount: 6,
+      totalAiKnowledgeCount: 7,
+      ...overrides,
+    });
+    const aiLabel = harness.translate('enterpriseLeadKnowledgeAiKnowledgeMetric');
+    const pendingLabel = harness.translate('enterpriseLeadKnowledgePendingMetric');
+    const confirmedLabel = harness.translate('enterpriseLeadKnowledgeConfirmedMetric');
+    const documentLabel = harness.translate('enterpriseLeadKnowledgeDocumentMetric');
+
+    try {
+      const aiTab = getKnowledgeMetricButton(
+        harness.container,
+        harness.translate('enterpriseLeadKnowledgeAiKnowledgeTitle'),
+      );
+      await harness.ReactInner.act(async () => {
+        aiTab?.click();
+      });
+      const firstAiProps = harness.aiPanelProps();
+      expect(firstAiProps?.onMetricsChange).toEqual(expect.any(Function));
+      await harness.ReactInner.act(async () => {
+        harness.documentPanelProps()?.onDocumentCountChange(19);
+        firstAiProps?.onMetricsChange?.(metrics());
+      });
+      expect(getKnowledgeMetricValue(harness.container, documentLabel)).toBe('19');
+      expect(getKnowledgeMetricValue(harness.container, aiLabel)).toBe('7');
+      expect(getKnowledgeMetricValue(harness.container, pendingLabel)).toBe('1');
+      expect(getKnowledgeMetricValue(harness.container, confirmedLabel)).toBe('11');
+
+      await harness.ReactInner.act(async () => {
+        firstAiProps?.onMetricsChange?.(
+          metrics({
+            activePendingCount: 8,
+            activeConfirmedCount: 13,
+            staleConfirmedCount: 21,
+            unduplicatedLegacyConfirmedCount: 34,
+            totalAiKnowledgeCount: 55,
+          }),
+        );
+      });
+      expect(getKnowledgeMetricValue(harness.container, documentLabel)).toBe('19');
+      expect(getKnowledgeMetricValue(harness.container, aiLabel)).toBe('55');
+      expect(getKnowledgeMetricValue(harness.container, pendingLabel)).toBe('8');
+      expect(getKnowledgeMetricValue(harness.container, confirmedLabel)).toBe('68');
+
+      let workspaceBPrePassive: string[] = [];
+      await harness.render(workspaceB, undefined, () => {
+        workspaceBPrePassive = [
+          getKnowledgeMetricValue(harness.container, aiLabel),
+          getKnowledgeMetricValue(harness.container, pendingLabel),
+          getKnowledgeMetricValue(harness.container, confirmedLabel),
+        ];
+      });
+      expect(workspaceBPrePassive).toEqual(['0', '0', '0']);
+      await harness.ReactInner.act(async () => {
+        firstAiProps?.onMetricsChange?.(metrics({ totalAiKnowledgeCount: 89 }));
+      });
+      expect(getKnowledgeMetricValue(harness.container, aiLabel)).toBe('0');
+
+      const workspaceBRevision4Props = harness.aiPanelProps();
+      await harness.ReactInner.act(async () => {
+        workspaceBRevision4Props?.onMetricsChange?.(metrics({ totalAiKnowledgeCount: 144 }));
+      });
+      expect(getKnowledgeMetricValue(harness.container, aiLabel)).toBe('144');
+      expect(getKnowledgeMetricValue(harness.container, documentLabel)).toBe('19');
+
+      const workspaceBRevision5 = {
+        ...workspaceB,
+        profileRevision: 5,
+        updatedAt: '2026-07-04T05:00:00.000Z',
+      };
+      let revision5PrePassive: string[] = [];
+      await harness.render(workspaceBRevision5, undefined, () => {
+        revision5PrePassive = [
+          getKnowledgeMetricValue(harness.container, aiLabel),
+          getKnowledgeMetricValue(harness.container, pendingLabel),
+          getKnowledgeMetricValue(harness.container, confirmedLabel),
+        ];
+      });
+      expect(revision5PrePassive).toEqual(['0', '0', '0']);
+      await harness.ReactInner.act(async () => {
+        workspaceBRevision4Props?.onMetricsChange?.(metrics({ totalAiKnowledgeCount: 233 }));
+      });
+      expect(getKnowledgeMetricValue(harness.container, aiLabel)).toBe('0');
+      const revision5Props = harness.aiPanelProps();
+      await harness.ReactInner.act(async () => {
+        revision5Props?.onMetricsChange?.(metrics({ totalAiKnowledgeCount: 377 }));
+      });
+      expect(getKnowledgeMetricValue(harness.container, aiLabel)).toBe('377');
+      expect(getKnowledgeMetricValue(harness.container, documentLabel)).toBe('19');
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  test('keeps committed workspace metrics owned when a transition renders another workspace but suspends before commit', async () => {
+    const workspaceA = {
+      ...createWorkspace('workspace-suspended-metrics-a'),
+      profileRevision: 4,
+    };
+    const workspaceB = {
+      ...createWorkspace('workspace-suspended-metrics-b'),
+      profileRevision: 4,
+    };
+    const harness = await mountIsolatedWorkspaceKnowledgeBase({ workspace: workspaceA });
+    const metrics = (totalAiKnowledgeCount: number): KnowledgeFactMetrics => ({
+      activePendingCount: 1,
+      activeConfirmedCount: 2,
+      staleConfirmedCount: 3,
+      rejectedHistoryCount: 4,
+      archivedHistoryCount: 5,
+      unduplicatedLegacyConfirmedCount: 6,
+      totalAiKnowledgeCount,
+    });
+    const aiLabel = harness.translate('enterpriseLeadKnowledgeAiKnowledgeMetric');
+    const suspendedRender = createDeferred<void>();
+
+    try {
+      await harness.ReactInner.act(async () => {
+        getKnowledgeMetricButton(
+          harness.container,
+          harness.translate('enterpriseLeadKnowledgeAiKnowledgeTitle'),
+        )?.click();
+      });
+      const initialAiProps = harness.aiPanelProps();
+      expect(initialAiProps).toMatchObject({
+        workspaceId: workspaceA.id,
+        profileRevision: workspaceA.profileRevision,
+      });
+      await harness.ReactInner.act(async () => {
+        initialAiProps?.onMetricsChange?.(metrics(7));
+      });
+      expect(getKnowledgeMetricValue(harness.container, aiLabel)).toBe('7');
+      const committedAiProps = harness.aiPanelProps();
+
+      await harness.startSuspendedRender(workspaceB, suspendedRender.promise);
+      expect(harness.aiPanelProps()).toBe(committedAiProps);
+      expect(
+        getFakeDomElementByTestId(harness.container, 'workspace-knowledge-suspense-fallback'),
+      ).toBeNull();
+
+      await harness.ReactInner.act(async () => {
+        committedAiProps?.onMetricsChange?.(metrics(41));
+      });
+      expect(getKnowledgeMetricValue(harness.container, aiLabel)).toBe('41');
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  test('keeps a committed workspace AI reload current when another workspace render suspends before commit', async () => {
+    const workspaceA = {
+      ...createWorkspace('workspace-suspended-reload-a'),
+      profileRevision: 4,
+    };
+    const workspaceB = {
+      ...createWorkspace('workspace-suspended-reload-b'),
+      profileRevision: 4,
+    };
+    const refreshedWorkspaceA: EnterpriseLeadWorkspace = {
+      ...workspaceA,
+      name: 'Accepted suspended-render refresh',
+      updatedAt: '2026-07-04T04:30:00.000Z',
+    };
+    const onWorkspaceUpdated = vi.fn();
+    const harness = await mountIsolatedWorkspaceKnowledgeBase({
+      workspace: workspaceA,
+      onWorkspaceUpdated,
+    });
+    const pendingWorkspace = createDeferred<EnterpriseLeadWorkspace | null>();
+    const suspendedRender = createDeferred<void>();
+
+    try {
+      await harness.ReactInner.act(async () => {
+        getKnowledgeMetricButton(
+          harness.container,
+          harness.translate('enterpriseLeadKnowledgeAiKnowledgeTitle'),
+        )?.click();
+      });
+      const committedAiProps = harness.aiPanelProps();
+      const getWorkspace = vi
+        .spyOn(harness.service, 'getWorkspace')
+        .mockReturnValueOnce(pendingWorkspace.promise);
+      const pendingRefresh = committedAiProps?.onProjectionRefresh?.({
+        workspaceId: workspaceA.id,
+        profileRevision: workspaceA.profileRevision,
+      });
+
+      await harness.startSuspendedRender(
+        workspaceB,
+        suspendedRender.promise,
+        onWorkspaceUpdated,
+      );
+      expect(harness.aiPanelProps()).toBe(committedAiProps);
+      await harness.ReactInner.act(async () => {
+        pendingWorkspace.resolve(refreshedWorkspaceA);
+        await pendingRefresh;
+      });
+
+      expect(getWorkspace).toHaveBeenCalledWith(workspaceA.id);
+      expect(onWorkspaceUpdated).toHaveBeenCalledTimes(1);
+      expect(onWorkspaceUpdated).toHaveBeenCalledWith(refreshedWorkspaceA);
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  test('keeps an in-flight profile save owned when another workspace render suspends before commit', async () => {
+    const workspaceA: EnterpriseLeadWorkspace = {
+      ...createWorkspace('workspace-suspended-save-a'),
+      profile: {
+        ...emptyProfile(),
+        companySummary: 'Original company summary',
+      },
+      profileRevision: 4,
+    };
+    const workspaceB = {
+      ...createWorkspace('workspace-suspended-save-b'),
+      profileRevision: 4,
+    };
+    const savedWorkspaceA: EnterpriseLeadWorkspace = {
+      ...workspaceA,
+      profile: {
+        ...workspaceA.profile,
+        companySummary: 'Saved company summary',
+      },
+      profileRevision: 5,
+      updatedAt: '2026-07-04T05:00:00.000Z',
+    };
+    const onWorkspaceUpdated = vi.fn();
+    const harness = await mountIsolatedWorkspaceKnowledgeBase({
+      workspace: workspaceA,
+      onWorkspaceUpdated,
+    });
+    const pendingSave = createDeferred<EnterpriseLeadWorkspace | null>();
+    const suspendedRender = createDeferred<void>();
+
+    try {
+      await harness.ReactInner.act(async () => {
+        getKnowledgeMetricButton(
+          harness.container,
+          harness.translate('enterpriseLeadKnowledgeAiKnowledgeTitle'),
+        )?.click();
+      });
+      await harness.ReactInner.act(async () => {
+        getFakeDomElementByTestId(
+          harness.container,
+          'controlled-ai-maintain-company',
+        )?.click();
+      });
+      const companyTextarea = findFakeDomElement(
+        harness.container,
+        element => element.tagName.toLowerCase() === 'textarea',
+      );
+      expect(companyTextarea).not.toBeNull();
+      await harness.ReactInner.act(async () => {
+        companyTextarea?.input('Saved company summary');
+      });
+      const updateWorkspaceProfile = vi
+        .spyOn(harness.service, 'updateWorkspaceProfile')
+        .mockReturnValueOnce(pendingSave.promise);
+      const saveButton = findFakeDomElement(
+        harness.container,
+        element =>
+          element.tagName.toLowerCase() === 'button' &&
+          element.textContent.includes(harness.translate('enterpriseLeadKnowledgeSaveAction')),
+      );
+      expect(saveButton).not.toBeNull();
+      await harness.ReactInner.act(async () => {
+        saveButton?.click();
+        await Promise.resolve();
+      });
+      expect(updateWorkspaceProfile).toHaveBeenCalledTimes(1);
+
+      await harness.startSuspendedRender(
+        workspaceB,
+        suspendedRender.promise,
+        onWorkspaceUpdated,
+      );
+      await harness.ReactInner.act(async () => {
+        pendingSave.resolve(savedWorkspaceA);
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(onWorkspaceUpdated).toHaveBeenCalledTimes(1);
+      expect(onWorkspaceUpdated).toHaveBeenCalledWith(savedWorkspaceA);
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  test('lets only the first same-revision document or AI reload publish across both seams', async () => {
+    const workspace = {
+      ...createWorkspace('workspace-cross-seam-reload'),
+      profileRevision: 4,
+    };
+    const firstDocumentWorkspace: EnterpriseLeadWorkspace = {
+      ...workspace,
+      profile: {
+        ...workspace.profile,
+        companySummary: 'First document reload snapshot',
+      },
+      updatedAt: '2026-07-04T04:10:00.000Z',
+    };
+    const staleAiWorkspace: EnterpriseLeadWorkspace = {
+      ...workspace,
+      profile: {
+        ...workspace.profile,
+        companySummary: 'Stale AI reload snapshot',
+      },
+      updatedAt: '2026-07-04T04:20:00.000Z',
+    };
+    const onWorkspaceUpdated = vi.fn();
+    const harness = await mountIsolatedWorkspaceKnowledgeBase({
+      workspace,
+      onWorkspaceUpdated,
+    });
+    const pendingDocumentWorkspace = createDeferred<EnterpriseLeadWorkspace | null>();
+    const pendingAiWorkspace = createDeferred<EnterpriseLeadWorkspace | null>();
+
+    try {
+      const getWorkspace = vi
+        .spyOn(harness.service, 'getWorkspace')
+        .mockReturnValueOnce(pendingDocumentWorkspace.promise)
+        .mockReturnValueOnce(pendingAiWorkspace.promise);
+      const pendingDocumentRefresh =
+        harness.documentPanelProps()?.onWorkspaceProjectionChange();
+      await harness.ReactInner.act(async () => {
+        getKnowledgeMetricButton(
+          harness.container,
+          harness.translate('enterpriseLeadKnowledgeAiKnowledgeTitle'),
+        )?.click();
+      });
+      const pendingAiRefresh = harness.aiPanelProps()?.onProjectionRefresh?.({
+        workspaceId: workspace.id,
+        profileRevision: workspace.profileRevision,
+      });
+      expect(getWorkspace).toHaveBeenCalledTimes(2);
+
+      await harness.ReactInner.act(async () => {
+        pendingDocumentWorkspace.resolve(firstDocumentWorkspace);
+        await pendingDocumentRefresh;
+      });
+      expect(onWorkspaceUpdated).toHaveBeenCalledTimes(1);
+      expect(onWorkspaceUpdated).toHaveBeenLastCalledWith(firstDocumentWorkspace);
+      expect(harness.aiPanelProps()?.profile.companySummary).toBe(
+        firstDocumentWorkspace.profile.companySummary,
+      );
+
+      await harness.ReactInner.act(async () => {
+        pendingAiWorkspace.resolve(staleAiWorkspace);
+        await pendingAiRefresh;
+      });
+      expect(onWorkspaceUpdated).toHaveBeenCalledTimes(1);
+      expect(onWorkspaceUpdated).not.toHaveBeenCalledWith(staleAiWorkspace);
+      expect(harness.aiPanelProps()?.profile.companySummary).toBe(
+        firstDocumentWorkspace.profile.companySummary,
+      );
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  test('rejects an older document settlement after a profile publication advances workspace ownership', async () => {
+    const workspace: EnterpriseLeadWorkspace = {
+      ...createWorkspace('workspace-profile-publication-race'),
+      profile: {
+        ...emptyProfile(),
+        companySummary: 'Original company summary',
+      },
+      profileRevision: 4,
+    };
+    const savedWorkspace: EnterpriseLeadWorkspace = {
+      ...workspace,
+      profile: {
+        ...workspace.profile,
+        companySummary: 'Saved company summary',
+      },
+      profileRevision: 5,
+      updatedAt: '2026-07-04T05:00:00.000Z',
+    };
+    const staleDocumentWorkspace: EnterpriseLeadWorkspace = {
+      ...workspace,
+      profileRevision: 5,
+      updatedAt: '2026-07-04T04:30:00.000Z',
+    };
+    const onWorkspaceUpdated = vi.fn();
+    const harness = await mountIsolatedWorkspaceKnowledgeBase({
+      workspace,
+      onWorkspaceUpdated,
+    });
+    const pendingDocumentWorkspace = createDeferred<EnterpriseLeadWorkspace | null>();
+
+    try {
+      vi.spyOn(harness.service, 'getWorkspace').mockReturnValueOnce(
+        pendingDocumentWorkspace.promise,
+      );
+      const pendingDocumentRefresh =
+        harness.documentPanelProps()?.onWorkspaceProjectionChange();
+
+      await harness.ReactInner.act(async () => {
+        getKnowledgeMetricButton(
+          harness.container,
+          harness.translate('enterpriseLeadKnowledgeAiKnowledgeTitle'),
+        )?.click();
+      });
+      await harness.ReactInner.act(async () => {
+        getFakeDomElementByTestId(
+          harness.container,
+          'controlled-ai-maintain-company',
+        )?.click();
+      });
+      const companyTextarea = findFakeDomElement(
+        harness.container,
+        element => element.tagName.toLowerCase() === 'textarea',
+      );
+      await harness.ReactInner.act(async () => {
+        companyTextarea?.input('Saved company summary');
+      });
+      vi.spyOn(harness.service, 'updateWorkspaceProfile').mockResolvedValueOnce(savedWorkspace);
+      const saveButton = findFakeDomElement(
+        harness.container,
+        element =>
+          element.tagName.toLowerCase() === 'button' &&
+          element.textContent.includes(harness.translate('enterpriseLeadKnowledgeSaveAction')),
+      );
+      await harness.ReactInner.act(async () => {
+        saveButton?.click();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(onWorkspaceUpdated).toHaveBeenCalledTimes(1);
+      expect(onWorkspaceUpdated).toHaveBeenLastCalledWith(savedWorkspace);
+
+      await harness.ReactInner.act(async () => {
+        pendingDocumentWorkspace.resolve(staleDocumentWorkspace);
+        await pendingDocumentRefresh;
+      });
+      expect(onWorkspaceUpdated).toHaveBeenCalledTimes(1);
+      expect(harness.aiPanelProps()?.profile.companySummary).toBe(
+        savedWorkspace.profile.companySummary,
+      );
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  test('publishes a deferred automatic vector sync once and releases syncing for the next key', async () => {
+    const source = {
+      id: 'vector-source-a',
+      kind: EnterpriseLeadExtractionSourceKind.File,
+      label: 'vector-source-a.pdf',
+      text: 'Searchable source text',
+      extractionStatus: EnterpriseLeadDocumentExtractionStatus.Extracted,
+      vectorIndexStatus: EnterpriseLeadKnowledgeIndexStatus.Pending,
+      updatedAt: '2026-07-04T04:00:00.000Z',
+    };
+    const workspace: EnterpriseLeadWorkspace = {
+      ...createWorkspace('workspace-automatic-vector-sync'),
+      extractionSources: [source],
+      profileRevision: 4,
+    };
+    const indexedWorkspace: EnterpriseLeadWorkspace = {
+      ...workspace,
+      extractionSources: [
+        {
+          ...source,
+          vectorChunkCount: 1,
+          vectorIndexStatus: EnterpriseLeadKnowledgeIndexStatus.Indexed,
+          updatedAt: '2026-07-04T04:10:00.000Z',
+        },
+      ],
+      updatedAt: '2026-07-04T04:10:00.000Z',
+    };
+    const nextSource = {
+      ...source,
+      id: 'vector-source-b',
+      label: 'vector-source-b.pdf',
+      text: 'A different searchable source',
+      updatedAt: '2026-07-04T05:00:00.000Z',
+    };
+    const nextWorkspace: EnterpriseLeadWorkspace = {
+      ...workspace,
+      extractionSources: [nextSource],
+      updatedAt: '2026-07-04T05:00:00.000Z',
+    };
+    const firstSync = createDeferred<EnterpriseLeadWorkspace | null>();
+    const secondSync = createDeferred<EnterpriseLeadWorkspace | null>();
+    const onWorkspaceUpdated = vi.fn();
+    let syncCallCount = 0;
+    const harness = await mountIsolatedWorkspaceKnowledgeBase({
+      workspace,
+      onWorkspaceUpdated,
+      strictMode: true,
+      configureService: service => {
+        vi.spyOn(service, 'updateWorkspaceSources').mockImplementation(() => {
+          syncCallCount += 1;
+          return syncCallCount === 1 ? firstSync.promise : secondSync.promise;
+        });
+      },
+    });
+
+    try {
+      expect(syncCallCount).toBe(1);
+      await harness.ReactInner.act(async () => {
+        firstSync.resolve(indexedWorkspace);
+        await firstSync.promise;
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(onWorkspaceUpdated).toHaveBeenCalledTimes(1);
+      expect(onWorkspaceUpdated).toHaveBeenLastCalledWith(indexedWorkspace);
+      expect(syncCallCount).toBe(1);
+
+      await harness.render(nextWorkspace, onWorkspaceUpdated);
+      expect(syncCallCount).toBe(2);
+      expect(onWorkspaceUpdated).toHaveBeenCalledTimes(1);
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  test('retries the same automatic vector key after a committed revision invalidates its owner', async () => {
+    const source = {
+      id: 'vector-source-revision',
+      kind: EnterpriseLeadExtractionSourceKind.File,
+      label: 'vector-source-revision.pdf',
+      text: 'Searchable revision source',
+      extractionStatus: EnterpriseLeadDocumentExtractionStatus.Extracted,
+      vectorIndexStatus: EnterpriseLeadKnowledgeIndexStatus.Pending,
+      updatedAt: '2026-07-04T04:00:00.000Z',
+    };
+    const workspaceRevision4: EnterpriseLeadWorkspace = {
+      ...createWorkspace('workspace-automatic-vector-revision'),
+      extractionSources: [source],
+      profileRevision: 4,
+    };
+    const workspaceRevision5: EnterpriseLeadWorkspace = {
+      ...workspaceRevision4,
+      profileRevision: 5,
+      updatedAt: '2026-07-04T05:00:00.000Z',
+    };
+    const staleIndexedWorkspace: EnterpriseLeadWorkspace = {
+      ...workspaceRevision4,
+      extractionSources: [
+        {
+          ...source,
+          vectorChunkCount: 1,
+          vectorIndexStatus: EnterpriseLeadKnowledgeIndexStatus.Indexed,
+        },
+      ],
+    };
+    const currentIndexedWorkspace: EnterpriseLeadWorkspace = {
+      ...workspaceRevision5,
+      extractionSources: [
+        {
+          ...source,
+          vectorChunkCount: 1,
+          vectorIndexStatus: EnterpriseLeadKnowledgeIndexStatus.Indexed,
+        },
+      ],
+    };
+    const staleSync = createDeferred<EnterpriseLeadWorkspace | null>();
+    const currentSync = createDeferred<EnterpriseLeadWorkspace | null>();
+    const onWorkspaceUpdated = vi.fn();
+    let syncCallCount = 0;
+    const harness = await mountIsolatedWorkspaceKnowledgeBase({
+      workspace: workspaceRevision4,
+      onWorkspaceUpdated,
+      configureService: service => {
+        vi.spyOn(service, 'updateWorkspaceSources').mockImplementation(() => {
+          syncCallCount += 1;
+          return syncCallCount === 1 ? staleSync.promise : currentSync.promise;
+        });
+      },
+    });
+
+    try {
+      expect(syncCallCount).toBe(1);
+      await harness.render(workspaceRevision5, onWorkspaceUpdated);
+      expect(syncCallCount).toBe(1);
+
+      await harness.ReactInner.act(async () => {
+        staleSync.resolve(staleIndexedWorkspace);
+        await staleSync.promise;
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(onWorkspaceUpdated).not.toHaveBeenCalled();
+      expect(syncCallCount).toBe(2);
+
+      await harness.ReactInner.act(async () => {
+        currentSync.resolve(currentIndexedWorkspace);
+        await currentSync.promise;
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(onWorkspaceUpdated).toHaveBeenCalledTimes(1);
+      expect(onWorkspaceUpdated).toHaveBeenLastCalledWith(currentIndexedWorkspace);
+      expect(syncCallCount).toBe(2);
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  test.each(automaticVectorFailureCases)(
+    'retries the current revision after stale automatic vector owner settles with $label',
+    async ({ outcome }) => {
+      const source = {
+        id: 'vector-source-stale-failure',
+        kind: EnterpriseLeadExtractionSourceKind.File,
+        label: 'vector-source-stale-failure.pdf',
+        text: 'Searchable stale failure source',
+        extractionStatus: EnterpriseLeadDocumentExtractionStatus.Extracted,
+        vectorIndexStatus: EnterpriseLeadKnowledgeIndexStatus.Pending,
+        updatedAt: '2026-07-04T04:00:00.000Z',
+      };
+      const workspaceRevision4: EnterpriseLeadWorkspace = {
+        ...createWorkspace(`workspace-automatic-vector-stale-${outcome}`),
+        extractionSources: [source],
+        profileRevision: 4,
+      };
+      const workspaceRevision5: EnterpriseLeadWorkspace = {
+        ...workspaceRevision4,
+        profileRevision: 5,
+        updatedAt: '2026-07-04T05:00:00.000Z',
+      };
+      const currentIndexedWorkspace: EnterpriseLeadWorkspace = {
+        ...workspaceRevision5,
+        extractionSources: [
+          {
+            ...source,
+            vectorChunkCount: 1,
+            vectorIndexStatus: EnterpriseLeadKnowledgeIndexStatus.Indexed,
+          },
+        ],
+      };
+      const wrongWorkspace: EnterpriseLeadWorkspace = {
+        ...workspaceRevision4,
+        id: `wrong-workspace-${outcome}`,
+      };
+      const staleSync = createDeferred<EnterpriseLeadWorkspace | null>();
+      const currentSync = createDeferred<EnterpriseLeadWorkspace | null>();
+      const onWorkspaceUpdated = vi.fn();
+      let syncCallCount = 0;
+      const harness = await mountIsolatedWorkspaceKnowledgeBase({
+        workspace: workspaceRevision4,
+        onWorkspaceUpdated,
+        strictMode: true,
+        configureService: service => {
+          vi.spyOn(service, 'updateWorkspaceSources').mockImplementation(() => {
+            syncCallCount += 1;
+            return syncCallCount === 1 ? staleSync.promise : currentSync.promise;
+          });
+        },
+      });
+
+      try {
+        expect(syncCallCount).toBe(1);
+        await harness.render(workspaceRevision5, onWorkspaceUpdated);
+        expect(syncCallCount).toBe(1);
+
+        await harness.ReactInner.act(async () => {
+          if (outcome === 'reject') {
+            staleSync.reject(new Error('stale automatic vector request failed'));
+            await staleSync.promise.catch(() => undefined);
+          } else {
+            staleSync.resolve(outcome === 'null' ? null : wrongWorkspace);
+            await staleSync.promise;
+          }
+          await Promise.resolve();
+          await Promise.resolve();
+        });
+        expect(onWorkspaceUpdated).not.toHaveBeenCalled();
+        expect(syncCallCount).toBe(2);
+
+        await harness.ReactInner.act(async () => {
+          currentSync.resolve(currentIndexedWorkspace);
+          await currentSync.promise;
+          await Promise.resolve();
+          await Promise.resolve();
+        });
+        expect(onWorkspaceUpdated).toHaveBeenCalledTimes(1);
+        expect(onWorkspaceUpdated).toHaveBeenLastCalledWith(currentIndexedWorkspace);
+        expect(syncCallCount).toBe(2);
+      } finally {
+        await harness.cleanup();
+      }
+    },
+  );
+
+  test.each(automaticVectorFailureCases)(
+    'does not immediately retry current automatic vector owner after $label',
+    async ({ outcome }) => {
+      const source = {
+        id: 'vector-source-current-failure',
+        kind: EnterpriseLeadExtractionSourceKind.File,
+        label: 'vector-source-current-failure.pdf',
+        text: 'Searchable current failure source',
+        extractionStatus: EnterpriseLeadDocumentExtractionStatus.Extracted,
+        vectorIndexStatus: EnterpriseLeadKnowledgeIndexStatus.Pending,
+      };
+      const workspace: EnterpriseLeadWorkspace = {
+        ...createWorkspace(`workspace-automatic-vector-current-${outcome}`),
+        extractionSources: [source],
+        profileRevision: 4,
+      };
+      const wrongWorkspace: EnterpriseLeadWorkspace = {
+        ...workspace,
+        id: `wrong-current-workspace-${outcome}`,
+      };
+      const pendingSync = createDeferred<EnterpriseLeadWorkspace | null>();
+      const onWorkspaceUpdated = vi.fn();
+      let syncCallCount = 0;
+      const harness = await mountIsolatedWorkspaceKnowledgeBase({
+        workspace,
+        onWorkspaceUpdated,
+        strictMode: true,
+        configureService: service => {
+          vi.spyOn(service, 'updateWorkspaceSources').mockImplementation(() => {
+            syncCallCount += 1;
+            return pendingSync.promise;
+          });
+        },
+      });
+
+      try {
+        expect(syncCallCount).toBe(1);
+        await harness.ReactInner.act(async () => {
+          if (outcome === 'reject') {
+            pendingSync.reject(new Error('current automatic vector request failed'));
+            await pendingSync.promise.catch(() => undefined);
+          } else {
+            pendingSync.resolve(outcome === 'null' ? null : wrongWorkspace);
+            await pendingSync.promise;
+          }
+          await Promise.resolve();
+          await Promise.resolve();
+        });
+        expect(onWorkspaceUpdated).not.toHaveBeenCalled();
+        expect(syncCallCount).toBe(1);
+      } finally {
+        await harness.cleanup();
+      }
+    },
+  );
+
+  test.each(automaticVectorFailureCases)(
+    'starts the same-source newer revision after current automatic vector owner settles with $label',
+    async ({ outcome }) => {
+      const source = {
+        id: 'vector-source-current-failure-new-revision',
+        kind: EnterpriseLeadExtractionSourceKind.File,
+        label: 'vector-source-current-failure-new-revision.pdf',
+        text: 'Searchable current failure source for a newer revision',
+        extractionStatus: EnterpriseLeadDocumentExtractionStatus.Extracted,
+        vectorIndexStatus: EnterpriseLeadKnowledgeIndexStatus.Pending,
+        updatedAt: '2026-07-04T04:00:00.000Z',
+      };
+      const workspaceRevision4: EnterpriseLeadWorkspace = {
+        ...createWorkspace(`workspace-automatic-vector-current-new-revision-${outcome}`),
+        extractionSources: [source],
+        profileRevision: 4,
+      };
+      const workspaceRevision5: EnterpriseLeadWorkspace = {
+        ...workspaceRevision4,
+        profileRevision: 5,
+        updatedAt: '2026-07-04T05:00:00.000Z',
+      };
+      const currentIndexedWorkspace: EnterpriseLeadWorkspace = {
+        ...workspaceRevision5,
+        extractionSources: [
+          {
+            ...source,
+            vectorChunkCount: 1,
+            vectorIndexStatus: EnterpriseLeadKnowledgeIndexStatus.Indexed,
+          },
+        ],
+      };
+      const wrongWorkspace: EnterpriseLeadWorkspace = {
+        ...workspaceRevision4,
+        id: `wrong-current-new-revision-workspace-${outcome}`,
+      };
+      const failedSync = createDeferred<EnterpriseLeadWorkspace | null>();
+      const currentSync = createDeferred<EnterpriseLeadWorkspace | null>();
+      const onWorkspaceUpdated = vi.fn();
+      let syncCallCount = 0;
+      const harness = await mountIsolatedWorkspaceKnowledgeBase({
+        workspace: workspaceRevision4,
+        onWorkspaceUpdated,
+        strictMode: true,
+        configureService: service => {
+          vi.spyOn(service, 'updateWorkspaceSources').mockImplementation(() => {
+            syncCallCount += 1;
+            return syncCallCount === 1 ? failedSync.promise : currentSync.promise;
+          });
+        },
+      });
+
+      try {
+        expect(syncCallCount).toBe(1);
+        await harness.ReactInner.act(async () => {
+          if (outcome === 'reject') {
+            failedSync.reject(new Error('current automatic vector request failed before revision'));
+            await failedSync.promise.catch(() => undefined);
+          } else {
+            failedSync.resolve(outcome === 'null' ? null : wrongWorkspace);
+            await failedSync.promise;
+          }
+          await Promise.resolve();
+          await Promise.resolve();
+        });
+        expect(onWorkspaceUpdated).not.toHaveBeenCalled();
+        expect(syncCallCount).toBe(1);
+
+        await harness.render(workspaceRevision5, onWorkspaceUpdated);
+        expect(syncCallCount).toBe(2);
+        expect(onWorkspaceUpdated).not.toHaveBeenCalled();
+
+        await harness.ReactInner.act(async () => {
+          currentSync.resolve(currentIndexedWorkspace);
+          await currentSync.promise;
+          await Promise.resolve();
+          await Promise.resolve();
+        });
+        expect(onWorkspaceUpdated).toHaveBeenCalledTimes(1);
+        expect(onWorkspaceUpdated).toHaveBeenLastCalledWith(currentIndexedWorkspace);
+        expect(syncCallCount).toBe(2);
+      } finally {
+        await harness.cleanup();
+      }
+    },
+  );
+
+  test('starts automatic vector sync when the parent commits the same internally published revision', async () => {
+    const pendingSource = {
+      id: 'vector-source-internal-publication',
+      kind: EnterpriseLeadExtractionSourceKind.File,
+      label: 'vector-source-internal-publication.pdf',
+      text: 'Searchable source published before the parent prop catches up',
+      extractionStatus: EnterpriseLeadDocumentExtractionStatus.Extracted,
+      vectorIndexStatus: EnterpriseLeadKnowledgeIndexStatus.Pending,
+      updatedAt: '2026-07-04T05:00:00.000Z',
+    };
+    const workspaceRevision4: EnterpriseLeadWorkspace = {
+      ...createWorkspace('workspace-automatic-vector-internal-publication'),
+      extractionSources: [],
+      profileRevision: 4,
+    };
+    const workspaceRevision5: EnterpriseLeadWorkspace = {
+      ...workspaceRevision4,
+      extractionSources: [pendingSource],
+      profileRevision: 5,
+      updatedAt: '2026-07-04T05:00:00.000Z',
+    };
+    const indexedWorkspace: EnterpriseLeadWorkspace = {
+      ...workspaceRevision5,
+      extractionSources: [
+        {
+          ...pendingSource,
+          vectorChunkCount: 1,
+          vectorIndexStatus: EnterpriseLeadKnowledgeIndexStatus.Indexed,
+        },
+      ],
+    };
+    const pendingSync = createDeferred<EnterpriseLeadWorkspace | null>();
+    const onWorkspaceUpdated = vi.fn();
+    const harness = await mountIsolatedWorkspaceKnowledgeBase({
+      workspace: workspaceRevision4,
+      onWorkspaceUpdated,
+      strictMode: true,
+      configureService: service => {
+        vi.spyOn(service, 'updateWorkspaceSources').mockReturnValue(pendingSync.promise);
+      },
+    });
+
+    try {
+      const updateWorkspaceSources = vi.mocked(harness.service.updateWorkspaceSources);
+      vi.spyOn(harness.service, 'getWorkspace').mockResolvedValueOnce(workspaceRevision5);
+      await harness.ReactInner.act(async () => {
+        await harness.documentPanelProps()?.onWorkspaceProjectionChange();
+      });
+      expect(onWorkspaceUpdated).toHaveBeenCalledTimes(1);
+      expect(onWorkspaceUpdated).toHaveBeenLastCalledWith(workspaceRevision5);
+      expect(updateWorkspaceSources).not.toHaveBeenCalled();
+
+      await harness.render(workspaceRevision5, onWorkspaceUpdated);
+      expect(updateWorkspaceSources).toHaveBeenCalledTimes(1);
+      expect(updateWorkspaceSources).toHaveBeenLastCalledWith(
+        workspaceRevision5.id,
+        workspaceRevision5.extractionSources,
+      );
+
+      await harness.ReactInner.act(async () => {
+        pendingSync.resolve(indexedWorkspace);
+        await pendingSync.promise;
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(onWorkspaceUpdated).toHaveBeenCalledTimes(2);
+      expect(onWorkspaceUpdated).toHaveBeenLastCalledWith(indexedWorkspace);
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  test('does not publish a deferred automatic vector sync after unmount', async () => {
+    const source = {
+      id: 'vector-source-unmount',
+      kind: EnterpriseLeadExtractionSourceKind.File,
+      label: 'vector-source-unmount.pdf',
+      text: 'Searchable unmount source',
+      extractionStatus: EnterpriseLeadDocumentExtractionStatus.Extracted,
+      vectorIndexStatus: EnterpriseLeadKnowledgeIndexStatus.Pending,
+    };
+    const workspace: EnterpriseLeadWorkspace = {
+      ...createWorkspace('workspace-automatic-vector-unmount'),
+      extractionSources: [source],
+      profileRevision: 4,
+    };
+    const indexedWorkspace: EnterpriseLeadWorkspace = {
+      ...workspace,
+      extractionSources: [
+        {
+          ...source,
+          vectorChunkCount: 1,
+          vectorIndexStatus: EnterpriseLeadKnowledgeIndexStatus.Indexed,
+        },
+      ],
+    };
+    const pendingSync = createDeferred<EnterpriseLeadWorkspace | null>();
+    const onWorkspaceUpdated = vi.fn();
+    let didCleanup = false;
+    const harness = await mountIsolatedWorkspaceKnowledgeBase({
+      workspace,
+      onWorkspaceUpdated,
+      configureService: service => {
+        vi.spyOn(service, 'updateWorkspaceSources').mockReturnValueOnce(pendingSync.promise);
+      },
+    });
+
+    try {
+      await harness.cleanup();
+      didCleanup = true;
+      pendingSync.resolve(indexedWorkspace);
+      await pendingSync.promise;
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(onWorkspaceUpdated).not.toHaveBeenCalled();
+    } finally {
+      if (!didCleanup) {
+        await harness.cleanup();
+      }
+    }
+  });
+
+  test('rejects an old workspace A AI settlement after committed A to B to A transitions', async () => {
+    const workspaceA: EnterpriseLeadWorkspace = {
+      ...createWorkspace('workspace-aba-a'),
+      profile: {
+        ...emptyProfile(),
+        companySummary: 'Original workspace A',
+      },
+      profileRevision: 4,
+    };
+    const workspaceB = {
+      ...createWorkspace('workspace-aba-b'),
+      profileRevision: 4,
+    };
+    const committedWorkspaceAAgain: EnterpriseLeadWorkspace = {
+      ...workspaceA,
+      profile: {
+        ...workspaceA.profile,
+        companySummary: 'Committed workspace A again',
+      },
+      updatedAt: '2026-07-04T04:40:00.000Z',
+    };
+    const staleOriginalAResult: EnterpriseLeadWorkspace = {
+      ...workspaceA,
+      profile: {
+        ...workspaceA.profile,
+        companySummary: 'Stale original A response',
+      },
+      updatedAt: '2026-07-04T04:20:00.000Z',
+    };
+    const onWorkspaceUpdated = vi.fn();
+    const harness = await mountIsolatedWorkspaceKnowledgeBase({
+      workspace: workspaceA,
+      onWorkspaceUpdated,
+    });
+    const pendingWorkspace = createDeferred<EnterpriseLeadWorkspace | null>();
+
+    try {
+      await harness.ReactInner.act(async () => {
+        getKnowledgeMetricButton(
+          harness.container,
+          harness.translate('enterpriseLeadKnowledgeAiKnowledgeTitle'),
+        )?.click();
+      });
+      vi.spyOn(harness.service, 'getWorkspace').mockReturnValueOnce(pendingWorkspace.promise);
+      const pendingRefresh = harness.aiPanelProps()?.onProjectionRefresh?.({
+        workspaceId: workspaceA.id,
+        profileRevision: workspaceA.profileRevision,
+      });
+
+      await harness.render(workspaceB, onWorkspaceUpdated);
+      await harness.render(committedWorkspaceAAgain, onWorkspaceUpdated);
+      expect(harness.aiPanelProps()).toMatchObject({
+        workspaceId: committedWorkspaceAAgain.id,
+        profileRevision: committedWorkspaceAAgain.profileRevision,
+        profile: committedWorkspaceAAgain.profile,
+      });
+
+      await harness.ReactInner.act(async () => {
+        pendingWorkspace.resolve(staleOriginalAResult);
+        await pendingRefresh;
+      });
+      expect(onWorkspaceUpdated).not.toHaveBeenCalled();
+      expect(harness.aiPanelProps()?.profile.companySummary).toBe(
+        committedWorkspaceAAgain.profile.companySummary,
+      );
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  test('reconciles mounted AI projection refreshes without losing dirty drafts or publishing stale workspaces', async () => {
+    const workspaceA = {
+      ...createWorkspace('workspace-projection-a'),
+      profile: {
+        ...emptyProfile(),
+        companySummary: 'Original summary',
+      },
+      profileRevision: 4,
+    };
+    const onWorkspaceUpdated = vi.fn();
+    const harness = await mountIsolatedWorkspaceKnowledgeBase({
+      workspace: workspaceA,
+      onWorkspaceUpdated,
+    });
+
+    try {
+      const aiTab = getKnowledgeMetricButton(
+        harness.container,
+        harness.translate('enterpriseLeadKnowledgeAiKnowledgeTitle'),
+      );
+      await harness.ReactInner.act(async () => {
+        aiTab?.click();
+      });
+      await harness.ReactInner.act(async () => {
+        getFakeDomElementByTestId(
+          harness.container,
+          'controlled-ai-maintain-company',
+        )?.click();
+      });
+      const companyTextarea = findFakeDomElement(
+        harness.container,
+        element => element.tagName.toLowerCase() === 'textarea',
+      );
+      expect(companyTextarea).not.toBeNull();
+      await harness.ReactInner.act(async () => {
+        companyTextarea?.input('Unsaved local summary');
+      });
+      expect(companyTextarea?.value).toBe('Unsaved local summary');
+
+      const sameRevisionWorkspace: EnterpriseLeadWorkspace = {
+        ...workspaceA,
+        extractionSources: [
+          {
+            id: 'knowledge-document:same-revision',
+            kind: EnterpriseLeadExtractionSourceKind.File,
+            label: 'Same revision.pdf',
+          },
+        ],
+      };
+      const getWorkspace = vi
+        .spyOn(harness.service, 'getWorkspace')
+        .mockResolvedValueOnce(sameRevisionWorkspace);
+      const revision4ProjectionRefresh = harness.aiPanelProps()?.onProjectionRefresh;
+      expect(revision4ProjectionRefresh).toEqual(expect.any(Function));
+      await harness.ReactInner.act(async () => {
+        await revision4ProjectionRefresh?.({
+          workspaceId: workspaceA.id,
+          profileRevision: 4,
+        });
+      });
+      expect(getWorkspace).toHaveBeenLastCalledWith(workspaceA.id);
+      expect(companyTextarea?.value).toBe('Unsaved local summary');
+      expect(onWorkspaceUpdated).toHaveBeenLastCalledWith(sameRevisionWorkspace);
+
+      const newerWorkspace: EnterpriseLeadWorkspace = {
+        ...sameRevisionWorkspace,
+        profile: {
+          ...sameRevisionWorkspace.profile,
+          companySummary: 'Server revision summary',
+        },
+        profileRevision: 5,
+        updatedAt: '2026-07-04T05:00:00.000Z',
+      };
+      getWorkspace.mockResolvedValueOnce(newerWorkspace);
+      await harness.ReactInner.act(async () => {
+        await harness.aiPanelProps()?.onProjectionRefresh?.({
+          workspaceId: workspaceA.id,
+          profileRevision: 5,
+        });
+      });
+      expect(companyTextarea?.value).toBe('Server revision summary');
+      expect(harness.aiPanelProps()).toMatchObject({
+        workspaceId: workspaceA.id,
+        profileRevision: 5,
+        profile: newerWorkspace.profile,
+      });
+      expect(onWorkspaceUpdated).toHaveBeenLastCalledWith(newerWorkspace);
+
+      const pendingWorkspace = createDeferred<EnterpriseLeadWorkspace | null>();
+      const oldWorkspaceResult: EnterpriseLeadWorkspace = {
+        ...newerWorkspace,
+        profileRevision: 6,
+        updatedAt: '2026-07-04T06:00:00.000Z',
+      };
+      getWorkspace.mockReturnValueOnce(pendingWorkspace.promise);
+      const pendingRefresh = harness.aiPanelProps()?.onProjectionRefresh?.({
+        workspaceId: workspaceA.id,
+        profileRevision: 6,
+      });
+      const workspaceB = {
+        ...createWorkspace('workspace-projection-b'),
+        profileRevision: 1,
+      };
+      await harness.render(workspaceB, onWorkspaceUpdated);
+      await harness.ReactInner.act(async () => {
+        pendingWorkspace.resolve(oldWorkspaceResult);
+        await pendingRefresh;
+      });
+      expect(harness.aiPanelProps()).toMatchObject({
+        workspaceId: workspaceB.id,
+        profileRevision: workspaceB.profileRevision,
+        profile: workspaceB.profile,
+      });
+      expect(onWorkspaceUpdated).not.toHaveBeenCalledWith(oldWorkspaceResult);
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
   test('routes only AI Chat to embedded Cowork without dedicated chat-session APIs', () => {
     expect(
       getEnterpriseLeadWorkspacePageRouting(EnterpriseLeadWorkspaceInternalPage.AiChat),

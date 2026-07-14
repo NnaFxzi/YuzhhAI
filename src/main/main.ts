@@ -154,7 +154,10 @@ import { ContentGenerationService } from './industryPack/contentGenerationServic
 import { IndustryPackLoader } from './industryPack/industryPackLoader';
 import { IndustryPackStore } from './industryPack/industryPackStore';
 import { registerIndustryPackHandlers } from './industryPack/ipcHandlers';
-import { createConfiguredIndustryModelClient } from './industryPack/modelClientAdapter';
+import {
+  createConfiguredIndustryModelClient,
+  type ModelClientAdapter,
+} from './industryPack/modelClientAdapter';
 import { PositioningService } from './industryPack/positioningService';
 import { registerAsrIpcHandlers } from './ipcHandlers/asr';
 import { registerContentQualityRegressionHandlers } from './ipcHandlers/contentQualityRegression';
@@ -1353,6 +1356,8 @@ let industryPackStore: IndustryPackStore | null = null;
 let enterpriseLeadWorkspaceStore: EnterpriseLeadWorkspaceStore | null = null;
 let enterpriseLeadWorkspaceService: EnterpriseLeadWorkspaceService | null = null;
 let knowledgeBaseFoundation: KnowledgeBaseFoundation | null = null;
+let enterpriseKnowledgeModelClient: ModelClientAdapter | null = null;
+let contentKnowledgeVectorStore: ContentKnowledgeVectorStore | null = null;
 let contentGenerationService: ContentGenerationService | null = null;
 let positioningService: PositioningService | null = null;
 let agentExternalResearchStore: AgentExternalResearchStore | null = null;
@@ -1636,13 +1641,31 @@ const getEnterpriseLeadWorkspaceStore = (): EnterpriseLeadWorkspaceStore => {
   return enterpriseLeadWorkspaceStore;
 };
 
+const getEnterpriseKnowledgeModelClient = (): ModelClientAdapter => {
+  if (!enterpriseKnowledgeModelClient) {
+    enterpriseKnowledgeModelClient = createConfiguredIndustryModelClient();
+  }
+  return enterpriseKnowledgeModelClient;
+};
+
+const getContentKnowledgeVectorStore = (): ContentKnowledgeVectorStore => {
+  if (!contentKnowledgeVectorStore) {
+    contentKnowledgeVectorStore = new ContentKnowledgeVectorStore(getStore().getDatabase());
+  }
+  return contentKnowledgeVectorStore;
+};
+
 const getEnterpriseLeadWorkspaceService = (): EnterpriseLeadWorkspaceService => {
   if (!enterpriseLeadWorkspaceService) {
     enterpriseLeadWorkspaceService = new EnterpriseLeadWorkspaceService({
       store: getEnterpriseLeadWorkspaceStore(),
-      modelClient: createConfiguredIndustryModelClient(),
+      modelClient: getEnterpriseKnowledgeModelClient(),
       agentProvider: getAgentManager(),
-      contentKnowledgeVectorStore: new ContentKnowledgeVectorStore(getStore().getDatabase()),
+      contentKnowledgeVectorStore: getContentKnowledgeVectorStore(),
+      prepareWorkspaceDeletion: workspaceId =>
+        getKnowledgeBaseFoundation().prepareWorkspaceDeletion(workspaceId),
+      onTrustedRefreshCommitted: () =>
+        getKnowledgeBaseFoundation().trustedIndexingService.wake(),
     });
   }
   return enterpriseLeadWorkspaceService;
@@ -1660,6 +1683,8 @@ const getKnowledgeBaseFoundation = (): KnowledgeBaseFoundation => {
       }),
       userDataPath: app.getPath('userData'),
       workspaceStore: getEnterpriseLeadWorkspaceStore(),
+      modelClient: getEnterpriseKnowledgeModelClient(),
+      contentKnowledgeVectorStore: getContentKnowledgeVectorStore(),
       extractDocumentText: (managedPath, options) =>
         extractDocumentTextFromFile(managedPath, {
           extensionHint: options.extensionHint,
@@ -2602,7 +2627,7 @@ const getCoworkEngineRouter = () => {
         },
         new SubagentRunStore(getStore().getDatabase()),
         new SubagentMessageStore(getStore().getDatabase()),
-        new ContentKnowledgeVectorStore(getStore().getDatabase()),
+        getContentKnowledgeVectorStore(),
       );
       // Wire up channel session sync for IM conversations via OpenClaw
       try {
@@ -6297,17 +6322,9 @@ if (!gotTheLock) {
         getEnterpriseLeadWorkspaceService().extractDraftFromConversation(text),
       createWorkspace: draft => getEnterpriseLeadWorkspaceService().createWorkspace(draft),
       deleteWorkspace: workspaceId =>
-        getStore()
-          .getDatabase()
-          .transaction(() => {
-            const deleted = getEnterpriseLeadWorkspaceService().deleteWorkspace(workspaceId);
-            if (deleted) {
-              getKnowledgeBaseFoundation().deleteWorkspaceData(workspaceId);
-            }
-            return deleted;
-          })(),
-      updateWorkspaceProfile: (workspaceId, profile) =>
-        getEnterpriseLeadWorkspaceService().updateWorkspaceProfile(workspaceId, profile),
+        getEnterpriseLeadWorkspaceService().deleteWorkspace(workspaceId),
+      updateWorkspaceProfile: input =>
+        getEnterpriseLeadWorkspaceService().updateWorkspaceProfile(input),
       updateWorkspaceSources: (workspaceId, sources) =>
         getEnterpriseLeadWorkspaceService().updateWorkspaceSources(workspaceId, sources),
       enqueueWorkspaceDocumentProcessing: (workspaceId, sources, sourceIndex) =>
@@ -11251,6 +11268,7 @@ if (!gotTheLock) {
 
   let isCleanupFinished = false;
   let isCleanupInProgress = false;
+  let appCleanupPromise: Promise<void> | null = null;
 
   const escapeDataMigrationHtml = (value: string): string =>
     value
@@ -11426,72 +11444,121 @@ if (!gotTheLock) {
     });
   };
 
-  const runAppCleanup = async (reason = 'quit'): Promise<void> => {
-    console.log(`[Main] App cleanup started for ${reason}`);
-    destroyTray();
-    skillManager?.stopWatching();
-    stopMediaPollTimer();
-    pendingMediaTasks.clear();
-    mediaTasksHandledByStatusPolling.clear();
-    mediaStatusPollCounts.clear();
+  const runAppCleanup = (reason = 'quit'): Promise<void> => {
+    if (appCleanupPromise) return appCleanupPromise;
 
-    // Stop Cowork sessions without blocking shutdown.
-    if (coworkEngineRouter) {
-      console.log('[Main] Stopping cowork sessions...');
-      coworkEngineRouter.stopAllSessions();
-    }
-    if (openClawRuntimeAdapter) {
-      openClawRuntimeAdapter.disconnectGatewayClient();
-    }
-
-    await stopCoworkOpenAICompatProxy().catch(error => {
-      console.error('Failed to stop OpenAI compatibility proxy:', error);
+    let resolveCleanup!: () => void;
+    let rejectCleanup!: (error: unknown) => void;
+    appCleanupPromise = new Promise<void>((resolve, reject) => {
+      resolveCleanup = resolve;
+      rejectCleanup = reject;
     });
+    void (async () => {
+      console.log(
+        reason === 'data migration restore'
+          ? '[Main] App cleanup started [APP_CLEANUP_DATA_MIGRATION_STARTED]'
+          : '[Main] App cleanup started [APP_CLEANUP_STARTED]',
+      );
 
-    await stopHtmlPreviewServer().catch(error => {
-      console.error('[HtmlPreviewServer] Failed to stop:', error);
-    });
+      // Seal knowledge workers before any other shutdown work can trigger a new wake.
+      let legacyWorkspaceShutdownPromise = Promise.resolve();
+      let knowledgeBaseShutdownPromise = Promise.resolve();
+      try {
+        if (enterpriseLeadWorkspaceService) {
+          legacyWorkspaceShutdownPromise = enterpriseLeadWorkspaceService.shutdown().catch(() => {
+            console.error(
+              '[EnterpriseLeadWorkspace] Shutdown failed '
+              + '[ENTERPRISE_LEAD_WORKSPACE_SHUTDOWN_FAILED]',
+            );
+          });
+          if (knowledgeBaseFoundation) {
+            knowledgeBaseFoundation.trackLegacyWork(legacyWorkspaceShutdownPromise);
+          }
+        }
+      } catch {
+        console.error(
+          '[EnterpriseLeadWorkspace] Shutdown failed '
+          + '[ENTERPRISE_LEAD_WORKSPACE_SHUTDOWN_FAILED]',
+        );
+      }
+      try {
+        if (knowledgeBaseFoundation) {
+          knowledgeBaseShutdownPromise = knowledgeBaseFoundation.shutdown().catch(() => {
+            console.error('[KnowledgeBase] Shutdown failed [KNOWLEDGE_BASE_SHUTDOWN_FAILED]');
+          });
+        }
+      } catch {
+        console.error('[KnowledgeBase] Shutdown failed [KNOWLEDGE_BASE_SHUTDOWN_FAILED]');
+      }
 
-    stopOpenClawTokenProxy();
+      try {
+        destroyTray();
+        skillManager?.stopWatching();
+        stopMediaPollTimer();
+        pendingMediaTasks.clear();
+        mediaTasksHandledByStatusPolling.clear();
+        mediaStatusPollCounts.clear();
 
-    // Stop skill services.
-    const skillServices = getSkillServiceManager();
-    await skillServices.stopAll();
+        // Stop Cowork sessions without blocking shutdown.
+        if (coworkEngineRouter) {
+          console.log('[Main] Stopping cowork sessions [APP_CLEANUP_COWORK_STOP_STARTED]');
+          coworkEngineRouter.stopAllSessions();
+        }
+        if (openClawRuntimeAdapter) {
+          openClawRuntimeAdapter.disconnectGatewayClient();
+        }
 
-    // Stop all IM gateways gracefully.
-    if (imGatewayManager) {
-      await imGatewayManager.stopAll().catch(err => {
-        console.error('[IM Gateway] Error stopping gateways on quit:', err);
-      });
-    }
+        await stopCoworkOpenAICompatProxy().catch(() => {
+          console.error('[Main] Compatibility proxy stop failed [APP_CLEANUP_PROXY_STOP_FAILED]');
+        });
 
-    if (openClawEngineManager) {
-      await openClawEngineManager.stopGateway().catch(error => {
-        console.error('[OpenClaw] Failed to stop gateway on quit:', error);
-      });
-    }
+        await stopHtmlPreviewServer().catch(() => {
+          console.error('[HtmlPreviewServer] Stop failed [APP_CLEANUP_HTML_PREVIEW_STOP_FAILED]');
+        });
 
-    // Stop the cron job polling
-    try {
-      getCronJobService().stopPolling();
-    } catch {
-      // CronJobService may not have been initialized — safe to ignore.
-    }
+        stopOpenClawTokenProxy();
 
-    sqliteBackupManager?.stopPeriodicBackupLoop();
+        // Stop skill services.
+        const skillServices = getSkillServiceManager();
+        await skillServices.stopAll().catch(() => {
+          console.error('[Main] Skill service stop failed [APP_CLEANUP_SKILL_STOP_FAILED]');
+        });
 
-    if (knowledgeBaseFoundation) {
-      await knowledgeBaseFoundation.shutdown().catch(error => {
-        console.error('[KnowledgeBase] Failed to stop local index worker:', error);
-      });
-    }
+        // Stop all IM gateways gracefully.
+        if (imGatewayManager) {
+          await imGatewayManager.stopAll().catch(() => {
+            console.error('[IM Gateway] Stop failed [APP_CLEANUP_IM_GATEWAY_STOP_FAILED]');
+          });
+        }
 
-    // Close the SQLite database to flush the WAL and release the file lock.
-    try {
-      getStore().close();
-    } catch {
-      // Store may not have been initialized — safe to ignore.
-    }
+        if (openClawEngineManager) {
+          await openClawEngineManager.stopGateway().catch(() => {
+            console.error('[OpenClaw] Gateway stop failed [APP_CLEANUP_GATEWAY_STOP_FAILED]');
+          });
+        }
+
+        // Stop the cron job polling
+        try {
+          getCronJobService().stopPolling();
+        } catch {
+          // CronJobService may not have been initialized — safe to ignore.
+        }
+
+        sqliteBackupManager?.stopPeriodicBackupLoop();
+      } finally {
+        await legacyWorkspaceShutdownPromise;
+        await knowledgeBaseShutdownPromise;
+
+        // Close the SQLite database to flush the WAL and release the file lock.
+        try {
+          getStore().close();
+        } catch {
+          // Store may not have been initialized — safe to ignore.
+        }
+      }
+    })().then(resolveCleanup, rejectCleanup);
+
+    return appCleanupPromise;
   };
 
   app.on('before-quit', e => {
@@ -11506,8 +11573,8 @@ if (!gotTheLock) {
     isQuitting = true;
 
     void runAppCleanup()
-      .catch(error => {
-        console.error('[Main] Cleanup error:', error);
+      .catch(() => {
+        console.error('[Main] App cleanup failed [APP_CLEANUP_FAILED]');
       })
       .finally(() => {
         isCleanupFinished = true;
@@ -11520,12 +11587,16 @@ if (!gotTheLock) {
     if (isCleanupFinished || isCleanupInProgress) {
       return;
     }
-    console.log(`[Main] Received ${signal}, running cleanup before exit...`);
+    console.log(
+      signal === 'SIGINT'
+        ? '[Main] SIGINT received [APP_SIGINT_RECEIVED]'
+        : '[Main] SIGTERM received [APP_SIGTERM_RECEIVED]',
+    );
     isCleanupInProgress = true;
     isQuitting = true;
     void runAppCleanup()
-      .catch(error => {
-        console.error(`[Main] Cleanup error during ${signal}:`, error);
+      .catch(() => {
+        console.error('[Main] App cleanup failed [APP_CLEANUP_FAILED]');
       })
       .finally(() => {
         isCleanupFinished = true;
@@ -11572,8 +11643,7 @@ if (!gotTheLock) {
 
     const knowledgeBase = getKnowledgeBaseFoundation();
     registerKnowledgeBaseHandlers({
-      documentService: knowledgeBase.documentService,
-      selectionTokenStore: knowledgeBase.selectionTokenStore,
+      foundation: knowledgeBase,
       showOpenDialog: async event => {
         const ownerWindow = BrowserWindow.fromWebContents(event.sender);
         const options = {
@@ -11617,8 +11687,8 @@ if (!gotTheLock) {
 
     void knowledgeBase
       .recoverMigrateAndStart(getEnterpriseLeadWorkspaceStore().listWorkspaces())
-      .catch(error => {
-        console.error('[KnowledgeBase] Shadow migration failed:', error);
+      .catch(() => {
+        console.error('[KnowledgeBase] Startup failed [KNOWLEDGE_BASE_STARTUP_FAILED]');
       });
 
     const startSqliteBackupLoop = async (): Promise<void> => {

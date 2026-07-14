@@ -2,11 +2,9 @@ import { randomUUID } from 'node:crypto';
 import { Worker, type WorkerOptions } from 'node:worker_threads';
 
 import { KnowledgeDocumentIndexErrorCode } from '../../shared/knowledgeBase/constants';
+import { isTransientSqliteBusyError } from '../libs/sqliteTransactionRetry';
 import { runKnowledgeDocumentIndexUntilIdle } from './knowledgeDocumentIndexRunner';
-import {
-  isTransientSqliteBusyError,
-  type KnowledgeDocumentIndexStore,
-} from './knowledgeDocumentIndexStore';
+import type { KnowledgeDocumentIndexStore } from './knowledgeDocumentIndexStore';
 import {
   type KnowledgeDocumentIndexRunResult,
   KnowledgeDocumentIndexWorkerMessage,

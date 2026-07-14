@@ -1,6 +1,14 @@
 import { describe, expect, test, vi } from 'vitest';
 
-import { KnowledgeBaseIpc, KnowledgeDocumentVisibility, } from '../../shared/knowledgeBase/constants';
+import {
+  KnowledgeBaseIpc,
+  KnowledgeDocumentVisibility,
+  KnowledgeFactArchiveProjectionDecision,
+  KnowledgeFactEvidenceState,
+  KnowledgeFactListView,
+  KnowledgeFactReviewDecision,
+  KnowledgeFactReviewStatus,
+} from '../../shared/knowledgeBase/constants';
 import { createKnowledgeBasePreloadBridge } from './preloadBridge';
 
 describe('createKnowledgeBasePreloadBridge', () => {
@@ -59,18 +67,172 @@ describe('createKnowledgeBasePreloadBridge', () => {
     });
   });
 
-  test('preload invokes the dedicated local-index retry channel', async () => {
+  test('routes every AI operation once through its exact channel and allowlisted payload', async () => {
     const invoke = vi.fn(async () => ({ success: true, data: null }));
     const bridge = createKnowledgeBasePreloadBridge(invoke);
 
-    await bridge.retryLocalIndex({
+    const retryLocalIndexInput = {
       documentId: 'document-a',
       documentVersionId: 'version-a',
-    });
+    };
+    const prepareAuthorizationInput = {
+      documentId: 'document-a',
+      documentVersionId: 'version-a',
+    };
+    const requestExtractionInput = { authorizationToken: 'authorization-a' };
+    const retryExtractionInput = {
+      requestId: 'request-a',
+      authorizationToken: 'authorization-b',
+    };
+    const cancelExtractionInput = { requestId: 'request-a', expectedRevision: 3 };
+    const listFactsInput = {
+      workspaceId: 'workspace-a',
+      view: KnowledgeFactListView.Active,
+      reviewStatuses: [KnowledgeFactReviewStatus.Pending],
+      evidenceState: KnowledgeFactEvidenceState.Active,
+      cursor: 'cursor-a',
+      limit: 25,
+    };
+    const reviewFactInput = {
+      factId: 'fact-a',
+      expectedRevision: 4,
+      decision: KnowledgeFactReviewDecision.Confirm,
+      replaceExisting: true,
+      expectedFieldRevision: 5,
+    };
+    const archiveFactInput = {
+      factId: 'fact-a',
+      expectedRevision: 6,
+      projectionDecision: KnowledgeFactArchiveProjectionDecision.RemoveCurrent,
+      expectedFieldRevision: 7,
+    };
+    const getFactEvidenceInput = {
+      factId: 'fact-a',
+      expectedRevision: 8,
+      cursor: 'cursor-b',
+      limit: 10,
+    };
+    const cases = [
+      {
+        channel: KnowledgeBaseIpc.RetryLocalIndex,
+        expectedKeys: ['documentId', 'documentVersionId'],
+        input: retryLocalIndexInput,
+        call: () => bridge.retryLocalIndex(retryLocalIndexInput),
+      },
+      {
+        channel: KnowledgeBaseIpc.PrepareExtractionAuthorization,
+        expectedKeys: ['documentId', 'documentVersionId'],
+        input: prepareAuthorizationInput,
+        call: () => bridge.prepareExtractionAuthorization(prepareAuthorizationInput),
+      },
+      {
+        channel: KnowledgeBaseIpc.RequestExtraction,
+        expectedKeys: ['authorizationToken'],
+        input: requestExtractionInput,
+        call: () => bridge.requestExtraction(requestExtractionInput),
+      },
+      {
+        channel: KnowledgeBaseIpc.RetryExtraction,
+        expectedKeys: ['requestId', 'authorizationToken'],
+        input: retryExtractionInput,
+        call: () => bridge.retryExtraction(retryExtractionInput),
+      },
+      {
+        channel: KnowledgeBaseIpc.CancelExtraction,
+        expectedKeys: ['requestId', 'expectedRevision'],
+        input: cancelExtractionInput,
+        call: () => bridge.cancelExtraction(cancelExtractionInput),
+      },
+      {
+        channel: KnowledgeBaseIpc.ListFacts,
+        expectedKeys: [
+          'workspaceId',
+          'view',
+          'reviewStatuses',
+          'evidenceState',
+          'cursor',
+          'limit',
+        ],
+        input: listFactsInput,
+        call: () => bridge.listFacts(listFactsInput),
+      },
+      {
+        channel: KnowledgeBaseIpc.ReviewFact,
+        expectedKeys: [
+          'factId',
+          'expectedRevision',
+          'decision',
+          'replaceExisting',
+          'expectedFieldRevision',
+        ],
+        input: reviewFactInput,
+        call: () => bridge.reviewFact(reviewFactInput),
+      },
+      {
+        channel: KnowledgeBaseIpc.ArchiveFact,
+        expectedKeys: [
+          'factId',
+          'expectedRevision',
+          'projectionDecision',
+          'expectedFieldRevision',
+        ],
+        input: archiveFactInput,
+        call: () => bridge.archiveFact(archiveFactInput),
+      },
+      {
+        channel: KnowledgeBaseIpc.GetFactEvidence,
+        expectedKeys: ['factId', 'expectedRevision', 'cursor', 'limit'],
+        input: getFactEvidenceInput,
+        call: () => bridge.getFactEvidence(getFactEvidenceInput),
+      },
+    ];
 
-    expect(invoke).toHaveBeenCalledWith(KnowledgeBaseIpc.RetryLocalIndex, {
-      documentId: 'document-a',
-      documentVersionId: 'version-a',
-    });
+    for (const testCase of cases) {
+      invoke.mockClear();
+      Object.freeze(testCase.input);
+      const inputSnapshot = JSON.stringify(testCase.input);
+
+      await testCase.call();
+
+      expect(invoke).toHaveBeenCalledTimes(1);
+      expect(invoke.mock.calls[0]).toHaveLength(2);
+      expect(invoke.mock.calls[0]?.[0]).toBe(testCase.channel);
+      expect(invoke.mock.calls[0]?.[1]).toBe(testCase.input);
+      expect(Object.keys(invoke.mock.calls[0]?.[1] as object)).toEqual(testCase.expectedKeys);
+      expect(JSON.stringify(invoke.mock.calls[0]?.[1])).toBe(inputSnapshot);
+      expect(Object.isFrozen(testCase.input)).toBe(true);
+      expect(JSON.stringify(testCase.input)).toBe(inputSnapshot);
+    }
+  });
+
+  test('exposes only the shared renderer operations', () => {
+    const bridge = createKnowledgeBasePreloadBridge(async () => ({ success: true, data: null }));
+
+    expect(Object.keys(bridge).sort()).toEqual(
+      [
+        'archiveFact',
+        'cancelExtraction',
+        'deleteDocument',
+        'getDocumentDetails',
+        'getFactEvidence',
+        'importSelection',
+        'listDocuments',
+        'listFacts',
+        'prepareExtractionAuthorization',
+        'requestExtraction',
+        'restoreDocument',
+        'retryDocument',
+        'retryExtraction',
+        'retryLocalIndex',
+        'reviewFact',
+        'selectFiles',
+      ].sort(),
+    );
+    expect(bridge).not.toHaveProperty('wake');
+    expect(bridge).not.toHaveProperty('shutdown');
+    expect(bridge).not.toHaveProperty('store');
+    expect(bridge).not.toHaveProperty('config');
+    expect(bridge).not.toHaveProperty('credentials');
+    expect(bridge).not.toHaveProperty('routes');
   });
 });

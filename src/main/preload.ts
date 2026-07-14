@@ -49,6 +49,7 @@ import type {
   KitSkillMetadata,
   ResolvedKitCapabilities,
 } from '../shared/kit/constants';
+import type { KnowledgeFactDomain } from '../shared/knowledgeBase/constants';
 import {
   type ListLocalWebServicesOptions,
   type LocalWebService,
@@ -213,10 +214,17 @@ contextBridge.exposeInMainWorld('electron', {
       ipcRenderer.invoke(EnterpriseLeadWorkspaceIpc.CreateWorkspace, draft),
     deleteWorkspace: (workspaceId: string) =>
       ipcRenderer.invoke(EnterpriseLeadWorkspaceIpc.DeleteWorkspace, workspaceId),
-    updateWorkspaceProfile: (workspaceId: string, profile: EnterpriseLeadWorkspaceProfile) =>
+    updateWorkspaceProfile: (
+      workspaceId: string,
+      profile: EnterpriseLeadWorkspaceProfile,
+      expectedProfileRevision: number,
+      touchedFields: KnowledgeFactDomain[],
+    ) =>
       ipcRenderer.invoke(EnterpriseLeadWorkspaceIpc.UpdateWorkspaceProfile, {
         workspaceId,
         profile,
+        expectedProfileRevision,
+        touchedFields,
       }),
     updateWorkspaceSources: (workspaceId: string, sources: EnterpriseLeadExtractionSource[]) =>
       ipcRenderer.invoke(EnterpriseLeadWorkspaceIpc.UpdateWorkspaceSources, {

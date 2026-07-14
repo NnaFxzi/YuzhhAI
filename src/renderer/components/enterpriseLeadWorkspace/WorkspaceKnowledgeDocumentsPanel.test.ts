@@ -8,12 +8,15 @@ import {
   KnowledgeDocumentSourceMode,
   KnowledgeDocumentStatus,
   KnowledgeDocumentVisibility,
+  KnowledgeEnrichmentStatus,
   KnowledgeIngestionJobStatus,
   KnowledgeIngestionStage,
 } from '../../../shared/knowledgeBase/constants';
 import type {
   KnowledgeDocumentIndexSummary,
   KnowledgeDocumentListItem,
+  KnowledgeEnrichmentSummary,
+  KnowledgeExtractionAuthorizationPreparation,
   KnowledgeImportBatchResult,
 } from '../../../shared/knowledgeBase/types';
 import { i18nService } from '../../services/i18n';
@@ -21,8 +24,10 @@ import { KnowledgeBaseServiceError } from '../../services/knowledgeBase';
 import type { WorkspaceKnowledgeDocumentsState } from './useWorkspaceKnowledgeDocuments';
 import {
   createWorkspaceKnowledgeDocumentsPanelActions,
+  createWorkspaceKnowledgeExtractionDialogActions,
   getWorkspaceKnowledgeDocumentCount,
   WorkspaceKnowledgeDocumentsPanelView,
+  WorkspaceKnowledgeExtractionIntentKind,
 } from './WorkspaceKnowledgeDocumentsPanel';
 
 const createDocument = (
@@ -39,6 +44,8 @@ const createDocument = (
   contentHash: 'safe-hash',
   currentJob: null,
   localIndex: null,
+  enrichment: null,
+  hasStalePriorVersionExtraction: false,
   createdAt: '2026-07-11T01:00:00.000Z',
   updatedAt: '2026-07-11T02:00:00.000Z',
   deletedAt: null,
@@ -59,6 +66,28 @@ const createIndexSummary = (
   ...overrides,
 });
 
+const createEnrichmentSummary = (
+  status: KnowledgeEnrichmentStatus,
+  overrides: Partial<KnowledgeEnrichmentSummary> = {},
+): KnowledgeEnrichmentSummary => ({
+  requestId: 'request-a',
+  documentId: 'document-a',
+  documentVersionId: 'version-a',
+  status,
+  progress: 0.62,
+  revision: 2,
+  attemptCount: 1,
+  validCandidateCount: 3,
+  discardedCandidateCount: 0,
+  pendingFactCount: 3,
+  partialReasons: [],
+  errorCode: null,
+  createdAt: '2026-07-11T02:00:00.000Z',
+  updatedAt: '2026-07-11T02:01:00.000Z',
+  completedAt: null,
+  ...overrides,
+});
+
 const createState = (
   overrides: Partial<WorkspaceKnowledgeDocumentsState> = {},
 ): WorkspaceKnowledgeDocumentsState => ({
@@ -70,6 +99,7 @@ const createState = (
   isLoading: false,
   isDetailsLoading: false,
   isMutating: false,
+  extractionMutatingDocumentIds: [],
   error: null,
   clearError: vi.fn(),
   refresh: vi.fn(async () => undefined),
@@ -78,6 +108,25 @@ const createState = (
   restoreDocument: vi.fn(async () => undefined),
   retryDocument: vi.fn(async () => undefined),
   retryLocalIndex: vi.fn(async () => undefined),
+  prepareExtractionAuthorization: vi.fn(async (): Promise<KnowledgeExtractionAuthorizationPreparation> => ({
+    authorizationToken: 'token-a',
+    descriptor: {
+      workspaceId: 'workspace-a',
+      documentId: 'document-a',
+      documentVersionId: 'version-a',
+      documentDisplayName: '产品手册.pdf',
+      providerId: 'provider-a',
+      providerLabel: 'Provider A',
+      modelId: 'model-a',
+      modelLabel: 'Model A',
+      plannedModelCalls: 1,
+      partial: false,
+      expiresAt: '2026-07-11T03:00:00.000Z',
+    },
+  })),
+  requestExtraction: vi.fn(async () => undefined),
+  retryExtraction: vi.fn(async () => undefined),
+  cancelExtraction: vi.fn(async () => undefined),
   loadDetails: vi.fn(async () => undefined),
   ...overrides,
 });
@@ -105,9 +154,19 @@ const renderView = (
       onRestore: vi.fn(),
       onRetry: vi.fn(),
       onRetryLocalIndex: vi.fn(),
+      onPrepareExtraction: vi.fn(),
+      onRetryExtraction: vi.fn(),
+      onCancelExtraction: vi.fn(),
       onCloseDetails: vi.fn(),
     }),
   );
+
+const getDocumentRowMarkup = (html: string, documentId: string): string => {
+  const documentMarker = html.indexOf(`data-document-id="${documentId}"`);
+  const rowStart = html.lastIndexOf('<article', documentMarker);
+  const rowEnd = html.indexOf('</article>', documentMarker);
+  return html.slice(rowStart, rowEnd);
+};
 
 describe('WorkspaceKnowledgeDocumentsPanel', () => {
   afterEach(() => {
@@ -154,6 +213,7 @@ describe('WorkspaceKnowledgeDocumentsPanel', () => {
     await actions.restore(deleted);
     await actions.retry(active);
     await actions.retryLocalIndex(active);
+    await actions.cancelExtraction(active);
 
     expect(state.selectAndImport).toHaveBeenCalledTimes(1);
     expect(state.loadDetails).toHaveBeenCalledWith(active.id);
@@ -161,6 +221,7 @@ describe('WorkspaceKnowledgeDocumentsPanel', () => {
     expect(state.restoreDocument).toHaveBeenCalledWith(deleted);
     expect(state.retryDocument).toHaveBeenCalledWith(active);
     expect(state.retryLocalIndex).toHaveBeenCalledWith(active);
+    expect(state.cancelExtraction).toHaveBeenCalledWith(active);
   });
 
   test('requests a workspace projection refresh after a successful normalized import', async () => {
@@ -482,6 +543,173 @@ describe('WorkspaceKnowledgeDocumentsPanel', () => {
 
     expect(state.retryLocalIndex).toHaveBeenCalledWith(document);
     expect(onWorkspaceProjectionChange).not.toHaveBeenCalled();
+  });
+
+  test('routes fresh authorization and first/retry send without a Profile projection callback', async () => {
+    const document = createDocument({
+      enrichment: createEnrichmentSummary(KnowledgeEnrichmentStatus.Failed),
+    });
+    Object.freeze(document.enrichment);
+    Object.freeze(document);
+    const state = createState({ documents: [document] });
+    const onWorkspaceProjectionChange = vi.fn();
+    const firstIntent = Object.freeze({
+      kind: WorkspaceKnowledgeExtractionIntentKind.Request,
+      documentId: document.id,
+      documentVersionId: document.currentVersionId,
+    });
+    const retryIntent = Object.freeze({
+      kind: WorkspaceKnowledgeExtractionIntentKind.Retry,
+      documentId: document.id,
+      documentVersionId: document.currentVersionId,
+    });
+    const first = createWorkspaceKnowledgeExtractionDialogActions(state, firstIntent);
+    const retry = createWorkspaceKnowledgeExtractionDialogActions(state, retryIntent);
+
+    await first.prepare();
+    await first.send('first-fresh-token');
+    await retry.prepare();
+    await retry.send('retry-fresh-token');
+    await createWorkspaceKnowledgeDocumentsPanelActions(
+      state,
+      onWorkspaceProjectionChange,
+    ).cancelExtraction(document);
+
+    expect(state.prepareExtractionAuthorization).toHaveBeenCalledTimes(2);
+    expect(state.prepareExtractionAuthorization).toHaveBeenNthCalledWith(1, document);
+    expect(state.prepareExtractionAuthorization).toHaveBeenNthCalledWith(2, document);
+    expect(state.requestExtraction).toHaveBeenCalledWith(document, 'first-fresh-token');
+    expect(state.retryExtraction).toHaveBeenCalledWith(document, 'retry-fresh-token');
+    expect(state.cancelExtraction).toHaveBeenCalledWith(document);
+    expect(onWorkspaceProjectionChange).not.toHaveBeenCalled();
+    expect(firstIntent).toEqual({
+      kind: WorkspaceKnowledgeExtractionIntentKind.Request,
+      documentId: 'document-a',
+      documentVersionId: 'version-a',
+    });
+    expect(retryIntent).toEqual({
+      kind: WorkspaceKnowledgeExtractionIntentKind.Retry,
+      documentId: 'document-a',
+      documentVersionId: 'version-a',
+    });
+  });
+
+  test('locks dialog actions to the exact current document version', async () => {
+    const currentDocument = createDocument({ currentVersionId: 'version-current' });
+    const state = createState({ documents: [currentDocument] });
+    const actions = createWorkspaceKnowledgeExtractionDialogActions(state, {
+      kind: WorkspaceKnowledgeExtractionIntentKind.Request,
+      documentId: currentDocument.id,
+      documentVersionId: 'version-old',
+    });
+
+    await expect(actions.prepare()).rejects.toMatchObject({
+      code: KnowledgeBaseErrorCode.InvalidRequest,
+    });
+    await expect(actions.send('must-not-be-used')).rejects.toMatchObject({
+      code: KnowledgeBaseErrorCode.InvalidRequest,
+    });
+    expect(state.prepareExtractionAuthorization).not.toHaveBeenCalled();
+    expect(state.requestExtraction).not.toHaveBeenCalled();
+  });
+
+  test('renders parsing, local-index, and AI-extraction rows with independent controls', () => {
+    const ready = createDocument({
+      localIndex: createIndexSummary(KnowledgeDocumentIndexStatus.Indexed),
+    });
+    const failedExtraction = createDocument({
+      id: 'document-failed-extraction',
+      localIndex: createIndexSummary(KnowledgeDocumentIndexStatus.Indexed),
+      enrichment: createEnrichmentSummary(KnowledgeEnrichmentStatus.Failed, {
+        documentId: 'document-failed-extraction',
+        errorCode: KnowledgeBaseErrorCode.ModelRequestFailed,
+      }),
+    });
+    const running = createDocument({
+      id: 'document-running',
+      localIndex: createIndexSummary(KnowledgeDocumentIndexStatus.Indexed),
+      enrichment: createEnrichmentSummary(KnowledgeEnrichmentStatus.Running, {
+        documentId: 'document-running',
+      }),
+      hasStalePriorVersionExtraction: true,
+    });
+    const queued = createDocument({
+      id: 'document-queued',
+      localIndex: createIndexSummary(KnowledgeDocumentIndexStatus.Indexed),
+      enrichment: createEnrichmentSummary(KnowledgeEnrichmentStatus.Queued, {
+        documentId: 'document-queued',
+      }),
+    });
+    const cancelled = createDocument({
+      id: 'document-cancelled-extraction',
+      localIndex: createIndexSummary(KnowledgeDocumentIndexStatus.Indexed),
+      enrichment: createEnrichmentSummary(KnowledgeEnrichmentStatus.Cancelled, {
+        documentId: 'document-cancelled-extraction',
+      }),
+    });
+    const html = renderView(
+      createState({ documents: [ready, failedExtraction, running, queued, cancelled] }),
+    );
+
+    expect(html.match(/data-knowledge-state="document-parsing"/g)).toHaveLength(5);
+    expect(html.match(/data-knowledge-state="local-index"/g)).toHaveLength(5);
+    expect(html.match(/data-knowledge-state="ai-extraction"/g)).toHaveLength(5);
+    expect(html).toContain('data-prepare-extraction-document-id="document-a"');
+    expect(getDocumentRowMarkup(html, 'document-failed-extraction')).toContain(
+      'data-extraction-action="retry"',
+    );
+    expect(getDocumentRowMarkup(html, 'document-cancelled-extraction')).toContain(
+      'data-extraction-action="retry"',
+    );
+    expect(getDocumentRowMarkup(html, 'document-running')).toContain(
+      'data-extraction-action="cancel"',
+    );
+    expect(getDocumentRowMarkup(html, 'document-queued')).toContain(
+      'data-extraction-action="cancel"',
+    );
+    const runningHtml = getDocumentRowMarkup(html, 'document-running');
+    expect(runningHtml).toContain(
+      i18nService.t('enterpriseKnowledgeAiExtractionRunningTitle'),
+    );
+    expect(runningHtml).toContain(
+      i18nService.t('enterpriseKnowledgeAiExtractionRunningDescription'),
+    );
+    expect(runningHtml).not.toContain('data-extraction-status-label');
+    expect(html).not.toContain('data-prepare-extraction-document-id="document-running"');
+    expect(html).not.toContain('data-retry-extraction-document-id="document-running"');
+  });
+
+  test('keeps terminal AI state visible beside parsing failure and hides AI controls in trash', () => {
+    const completedAfterParseFailure = createDocument({
+      status: KnowledgeDocumentStatus.Failed,
+      currentJob: {
+        id: 'job-failed',
+        documentVersionId: 'version-a',
+        stage: KnowledgeIngestionStage.Parsing,
+        status: KnowledgeIngestionJobStatus.Failed,
+        progress: 0.2,
+        errorCode: 'unsafe /private/path SQL stack',
+        updatedAt: '2026-07-11T02:00:00.000Z',
+      },
+      localIndex: createIndexSummary(KnowledgeDocumentIndexStatus.Indexed),
+      enrichment: createEnrichmentSummary(KnowledgeEnrichmentStatus.Completed),
+    });
+    const activeHtml = renderView(createState({ documents: [completedAfterParseFailure] }));
+    expect(activeHtml).toContain(i18nService.t('enterpriseKnowledgeDocumentStatusFailed'));
+    expect(activeHtml).toContain(i18nService.t('enterpriseKnowledgeLocalIndexStatusIndexed'));
+    expect(activeHtml).toContain(i18nService.t('enterpriseKnowledgeAiExtractionStatusCompleted'));
+    expect(activeHtml).not.toContain('/private/path');
+    expect(activeHtml).not.toContain('SQL stack');
+
+    const deleted = { ...completedAfterParseFailure, deletedAt: '2026-07-11T05:00:00.000Z' };
+    const deletedHtml = renderView(
+      createState({ deletedDocuments: [deleted] }),
+      KnowledgeDocumentVisibility.Deleted,
+    );
+    expect(deletedHtml).not.toContain('data-knowledge-state="local-index"');
+    expect(deletedHtml).not.toContain('data-knowledge-state="ai-extraction"');
+    expect(deletedHtml).not.toContain('data-prepare-extraction-document-id');
+    expect(deletedHtml).not.toContain('data-extraction-action');
   });
 
   test('marks document rows for deferred off-screen rendering', () => {

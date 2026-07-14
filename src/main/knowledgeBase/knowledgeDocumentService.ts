@@ -26,18 +26,26 @@ import type {
   KnowledgeRetryDocumentRequest,
   KnowledgeRetryLocalIndexRequest,
 } from '../../shared/knowledgeBase/types';
-import type { EnterpriseLeadKnowledgeCompatibilityAdapter } from './enterpriseLeadKnowledgeCompatibilityAdapter';
+import {
+  runTransientSqliteWriteTransaction,
+  runTransientSqliteWriteTransactionUntilSuccess,
+  type TransientSqliteBusyRetryDelay,
+} from '../libs/sqliteTransactionRetry';
+import {
+  buildKnowledgeDocumentLegacySourceId,
+  type EnterpriseLeadKnowledgeCompatibilityAdapter,
+} from './enterpriseLeadKnowledgeCompatibilityAdapter';
 import {
   KnowledgeDocumentIndexStateError,
   type KnowledgeDocumentIndexStore,
-  runTransientSqliteWriteTransactionUntilSuccess,
-  type TransientSqliteBusyRetryDelay,
 } from './knowledgeDocumentIndexStore';
 import type { KnowledgeDocumentIndexState } from './knowledgeDocumentIndexTypes';
 import {
   KnowledgeDocumentRevisionConflictError,
   KnowledgeDocumentStore,
 } from './knowledgeDocumentStore';
+import type { KnowledgeEnrichmentRequestStore } from './knowledgeEnrichmentRequestStore';
+import type { KnowledgeFactStore } from './knowledgeFactStore';
 import {
   inspectKnowledgeFile,
   type KnowledgeFileInspection,
@@ -56,28 +64,62 @@ import {
 
 type KnowledgeCompatibilityAdapter = Pick<
   EnterpriseLeadKnowledgeCompatibilityAdapter,
-  'removeDocument' | 'upsertDocument'
+  | 'removeDocument'
+  | 'removeDocumentInCurrentTransaction'
+  | 'upsertDocument'
+  | 'upsertDocumentInCurrentTransaction'
 >;
+
+export const KnowledgeDocumentLifecycleStage = {
+  AfterRevalidationBeforeFirstWrite: 'after_revalidation_before_first_write',
+  AfterRequestsStale: 'after_requests_stale',
+  AfterEvidenceStale: 'after_evidence_stale',
+  AfterIngestionCancelled: 'after_ingestion_cancelled',
+  AfterRawSourceDeleted: 'after_raw_source_deleted',
+  AfterLocalIndexDeleted: 'after_local_index_deleted',
+  AfterDocumentMutated: 'after_document_mutated',
+  AfterLocalIndexScheduled: 'after_local_index_scheduled',
+  AfterCompatibilityProjection: 'after_compatibility_projection',
+} as const;
+export type KnowledgeDocumentLifecycleStage =
+  (typeof KnowledgeDocumentLifecycleStage)[keyof typeof KnowledgeDocumentLifecycleStage];
 
 export interface KnowledgeDocumentServiceOptions {
   db: Database.Database;
   documentStore: KnowledgeDocumentStore;
   indexStore: Pick<KnowledgeDocumentIndexStore,
     | 'deactivateVersion'
+    | 'deactivateVersionInCurrentTransaction'
     | 'getState'
     | 'listStates'
     | 'retryFailedVersion'
     | 'scheduleCurrentVersion'
+    | 'scheduleCurrentVersionInCurrentTransaction'
   >;
   jobStore: KnowledgeIngestionJobStore;
   managedFileStore: KnowledgeManagedFileStore;
   selectionTokenStore: KnowledgeSelectionTokenStore;
   compatibilityAdapter: KnowledgeCompatibilityAdapter;
   workspaceExists: (workspaceId: string) => boolean;
+  enrichmentRequestStore?: Pick<
+    KnowledgeEnrichmentRequestStore,
+    | 'listDocumentIdsWithStalePriorVersionExtraction'
+    | 'listLatestSummariesForVersions'
+    | 'markVersionStaleInCurrentTransaction'
+  >;
+  factStore?: Pick<KnowledgeFactStore, 'markVersionEvidenceStaleInCurrentTransaction'>;
+  enrichmentLifecycle?: {
+    abortActiveAttemptForVersion(documentVersionId: string): void;
+  };
+  workspaceVectorLifecycle?: {
+    deleteWorkspaceDocumentSources(workspaceId: string, sourceIds: readonly string[]): number;
+    replaceWorkspaceDocumentSource(workspaceId: string, documentId: string): unknown;
+  };
   inspectFile?: (absolutePath: string) => Promise<KnowledgeFileInspection>;
   onJobsQueued?: () => void;
   onIndexQueued?: () => void;
   busyRetryDelay?: TransientSqliteBusyRetryDelay;
+  onLifecycleStage?: (stage: KnowledgeDocumentLifecycleStage) => void;
 }
 
 export class KnowledgeDocumentServiceError extends Error {
@@ -102,8 +144,21 @@ export class KnowledgeDocumentServiceError extends Error {
 export class KnowledgeDocumentService {
   private readonly inspectFile: (absolutePath: string) => Promise<KnowledgeFileInspection>;
 
+  private readonly pendingRawSourceRefreshes = new Set<Promise<void>>();
+
+  private rawSourceRefreshSealed = false;
+
+  private rawSourceRefreshShutdownPromise: Promise<void> | null = null;
+
   constructor(private readonly options: KnowledgeDocumentServiceOptions) {
     this.inspectFile = options.inspectFile ?? inspectKnowledgeFile;
+  }
+
+  shutdown(): Promise<void> {
+    this.rawSourceRefreshSealed = true;
+    if (this.rawSourceRefreshShutdownPromise) return this.rawSourceRefreshShutdownPromise;
+    this.rawSourceRefreshShutdownPromise = this.drainRawSourceRefreshes();
+    return this.rawSourceRefreshShutdownPromise;
   }
 
   async importSelection(input: {
@@ -172,13 +227,23 @@ export class KnowledgeDocumentService {
         .listStates(workspaceId)
         .map(state => [state.documentVersionId, state]),
     );
-    return this.options.documentStore.listDocuments(workspaceId, {
+    const documents = this.options.documentStore.listDocuments(workspaceId, {
       visibility: input.visibility,
-    }).map(document =>
+    });
+    const enrichmentByVersion = this.options.enrichmentRequestStore
+      ?.listLatestSummariesForVersions(
+        workspaceId,
+        documents.map(document => document.currentVersionId),
+      ) ?? new Map();
+    const staleHistoryDocumentIds = this.options.enrichmentRequestStore
+      ?.listDocumentIdsWithStalePriorVersionExtraction(workspaceId) ?? new Set<string>();
+    return documents.map(document =>
       this.toListItem(
         document,
         jobsByTarget.get(this.buildTargetKey(document.id, document.currentVersionId)) ?? null,
         statesByVersion.get(document.currentVersionId) ?? null,
+        enrichmentByVersion.get(document.currentVersionId) ?? null,
+        staleHistoryDocumentIds.has(document.id),
       ),
     );
   }
@@ -186,11 +251,18 @@ export class KnowledgeDocumentService {
   getDocumentDetails(input: KnowledgeDocumentDetailsRequest): KnowledgeDocumentDetails {
     const document = this.requireDocument(input.documentId);
     const version = this.requireVersion(document.currentVersionId);
+    const enrichment = this.options.enrichmentRequestStore
+      ?.listLatestSummariesForVersions(document.workspaceId, [version.id]).get(version.id) ?? null;
+    const hasStaleHistory = this.options.enrichmentRequestStore
+      ?.listDocumentIdsWithStalePriorVersionExtraction(document.workspaceId).has(document.id)
+      ?? false;
     return {
       document: this.toListItem(
         this.toSummary(document, version),
         this.options.jobStore.getCurrentJob(document.id, version.id),
         this.options.indexStore.getState(version.id),
+        enrichment,
+        hasStaleHistory,
       ),
       activeVersion: {
         id: version.id,
@@ -206,29 +278,51 @@ export class KnowledgeDocumentService {
     try {
       const transaction = this.options.db.transaction(() => {
         const existing = this.requireDocument(input.documentId);
-        const deleted = this.options.documentStore.softDeleteDocument(
-          existing.id,
-          input.expectedRevision,
+        this.emitLifecycleStage(KnowledgeDocumentLifecycleStage.AfterRevalidationBeforeFirstWrite);
+        const now = new Date().toISOString();
+        this.options.enrichmentRequestStore?.markVersionStaleInCurrentTransaction(
+          existing.currentVersionId,
+          now,
         );
-        this.options.jobStore.cancelQueuedJobsForDocument(existing.id);
-        const hadIndexState =
-          this.options.indexStore.getState(existing.currentVersionId) !== null;
+        this.options.factStore?.markVersionEvidenceStaleInCurrentTransaction(
+          existing.currentVersionId,
+          now,
+        );
+        this.options.jobStore.cancelJobsForVersionInCurrentTransaction(
+          existing.id,
+          existing.currentVersionId,
+          now,
+        );
+        this.deleteRawSourceInCurrentTransaction(existing);
+        this.emitLifecycleStage(KnowledgeDocumentLifecycleStage.AfterRequestsStale);
+        this.emitLifecycleStage(KnowledgeDocumentLifecycleStage.AfterEvidenceStale);
+        this.emitLifecycleStage(KnowledgeDocumentLifecycleStage.AfterIngestionCancelled);
+        this.emitLifecycleStage(KnowledgeDocumentLifecycleStage.AfterRawSourceDeleted);
+        const hadIndexState = this.options.indexStore.getState(existing.currentVersionId) !== null;
         if (hadIndexState) {
-          this.options.indexStore.deactivateVersion({
+          this.options.indexStore.deactivateVersionInCurrentTransaction({
             workspaceId: existing.workspaceId,
             documentId: existing.id,
             documentVersionId: existing.currentVersionId,
-          });
+          }, now);
         }
+        this.emitLifecycleStage(KnowledgeDocumentLifecycleStage.AfterLocalIndexDeleted);
+        const deleted = this.options.documentStore.softDeleteDocumentInCurrentTransaction(
+          existing.id,
+          input.expectedRevision,
+        );
+        this.emitLifecycleStage(KnowledgeDocumentLifecycleStage.AfterDocumentMutated);
         const item = this.toListItemFromDocument(deleted);
-        this.options.compatibilityAdapter.upsertDocument(
+        this.options.compatibilityAdapter.upsertDocumentInCurrentTransaction(
           deleted.workspaceId,
           item,
           this.getCompatibilityProjectionOptions(deleted),
         );
+        this.emitLifecycleStage(KnowledgeDocumentLifecycleStage.AfterCompatibilityProjection);
         return { item, hadIndexState };
       });
-      const result = transaction();
+      const result = runTransientSqliteWriteTransaction(() => transaction());
+      this.abortEnrichmentAfterCommit(result.item.currentVersionId);
       if (result.hadIndexState) {
         this.notifyIndexQueued();
       }
@@ -255,24 +349,29 @@ export class KnowledgeDocumentService {
             throw new KnowledgeDocumentServiceError(KnowledgeBaseErrorCodes.WorkspaceQuotaExceeded);
           }
         }
-        const restored = this.options.documentStore.restoreDocument(
+        this.emitLifecycleStage(KnowledgeDocumentLifecycleStage.AfterRevalidationBeforeFirstWrite);
+        const restored = this.options.documentStore.restoreDocumentInCurrentTransaction(
           existing.id,
           input.expectedRevision,
         );
-        const indexState = this.options.indexStore.scheduleCurrentVersion({
+        this.emitLifecycleStage(KnowledgeDocumentLifecycleStage.AfterDocumentMutated);
+        const indexState = this.options.indexStore.scheduleCurrentVersionInCurrentTransaction({
           workspaceId: restored.workspaceId,
           documentId: restored.id,
           documentVersionId: restored.currentVersionId,
         });
+        this.emitLifecycleStage(KnowledgeDocumentLifecycleStage.AfterLocalIndexScheduled);
         const item = this.toListItemFromDocument(restored);
-        this.options.compatibilityAdapter.upsertDocument(
+        this.options.compatibilityAdapter.upsertDocumentInCurrentTransaction(
           restored.workspaceId,
           item,
           this.getCompatibilityProjectionOptions(restored),
         );
+        this.emitLifecycleStage(KnowledgeDocumentLifecycleStage.AfterCompatibilityProjection);
         return { item, indexState };
       });
-      const result = transaction();
+      const result = runTransientSqliteWriteTransaction(() => transaction());
+      this.refreshRawSourceAfterCommit(result.item);
       if (result.indexState.status === KnowledgeDocumentIndexStatus.Pending) {
         this.notifyIndexQueued();
       }
@@ -296,38 +395,70 @@ export class KnowledgeDocumentService {
         if (existing.deletedAt) {
           throw new KnowledgeDocumentServiceError(KnowledgeBaseErrorCodes.JobStateConflict);
         }
-        const hadPreviousIndexState =
-          this.options.indexStore.getState(existing.currentVersionId) !== null;
+        this.emitLifecycleStage(KnowledgeDocumentLifecycleStage.AfterRevalidationBeforeFirstWrite);
+        const now = new Date().toISOString();
+        this.options.enrichmentRequestStore?.markVersionStaleInCurrentTransaction(
+          existing.currentVersionId,
+          now,
+        );
+        this.options.factStore?.markVersionEvidenceStaleInCurrentTransaction(
+          existing.currentVersionId,
+          now,
+        );
+        this.options.jobStore.cancelJobsForVersionInCurrentTransaction(
+          existing.id,
+          existing.currentVersionId,
+          now,
+        );
+        this.deleteRawSourceInCurrentTransaction(existing);
+        this.emitLifecycleStage(KnowledgeDocumentLifecycleStage.AfterRequestsStale);
+        this.emitLifecycleStage(KnowledgeDocumentLifecycleStage.AfterEvidenceStale);
+        this.emitLifecycleStage(KnowledgeDocumentLifecycleStage.AfterIngestionCancelled);
+        this.emitLifecycleStage(KnowledgeDocumentLifecycleStage.AfterRawSourceDeleted);
+        const hadPreviousIndexState = this.options.indexStore.getState(
+          existing.currentVersionId,
+        ) !== null;
         if (hadPreviousIndexState) {
-          this.options.indexStore.deactivateVersion({
+          this.options.indexStore.deactivateVersionInCurrentTransaction({
             workspaceId: existing.workspaceId,
             documentId: existing.id,
             documentVersionId: existing.currentVersionId,
-          });
+          }, now);
         }
+        this.emitLifecycleStage(KnowledgeDocumentLifecycleStage.AfterLocalIndexDeleted);
         const status = input.version.extractedText?.trim()
           ? KnowledgeDocumentStatus.Ready
           : KnowledgeDocumentStatus.CompletedWithoutText;
-        const replaced = this.options.documentStore.addVersion(
+        const replaced = this.options.documentStore.addVersionInCurrentTransaction(
           existing.id,
           input.expectedRevision,
           input.version,
           status,
         );
-        const indexState = this.options.indexStore.scheduleCurrentVersion({
+        this.emitLifecycleStage(KnowledgeDocumentLifecycleStage.AfterDocumentMutated);
+        const indexState = this.options.indexStore.scheduleCurrentVersionInCurrentTransaction({
           workspaceId: replaced.document.workspaceId,
           documentId: replaced.document.id,
           documentVersionId: replaced.version.id,
         });
+        this.emitLifecycleStage(KnowledgeDocumentLifecycleStage.AfterLocalIndexScheduled);
         const item = this.toListItemFromDocument(replaced.document);
-        this.options.compatibilityAdapter.upsertDocument(
+        this.options.compatibilityAdapter.upsertDocumentInCurrentTransaction(
           replaced.document.workspaceId,
           item,
           this.getCompatibilityProjectionOptions(replaced.document),
         );
-        return { item, indexState, hadPreviousIndexState };
+        this.emitLifecycleStage(KnowledgeDocumentLifecycleStage.AfterCompatibilityProjection);
+        return {
+          item,
+          indexState,
+          hadPreviousIndexState,
+          previousVersionId: existing.currentVersionId,
+        };
       });
-      const result = transaction();
+      const result = runTransientSqliteWriteTransaction(() => transaction());
+      this.abortEnrichmentAfterCommit(result.previousVersionId);
+      this.refreshRawSourceAfterCommit(result.item);
       if (
         result.hadPreviousIndexState ||
         result.indexState.status === KnowledgeDocumentIndexStatus.Pending
@@ -363,7 +494,7 @@ export class KnowledgeDocumentService {
         }
         const updated = this.requireDocument(document.id);
         const item = this.toListItemFromDocument(updated);
-        this.options.compatibilityAdapter.upsertDocument(
+        this.options.compatibilityAdapter.upsertDocumentInCurrentTransaction(
           updated.workspaceId,
           item,
           this.getCompatibilityProjectionOptions(updated),
@@ -463,7 +594,7 @@ export class KnowledgeDocumentService {
         : null;
       const indexState = inspection.canExtractText
         ? null
-        : this.options.indexStore.scheduleCurrentVersion({
+        : this.options.indexStore.scheduleCurrentVersionInCurrentTransaction({
             workspaceId,
             documentId: created.document.id,
             documentVersionId: created.version.id,
@@ -473,7 +604,7 @@ export class KnowledgeDocumentService {
         job,
         indexState,
       );
-      this.options.compatibilityAdapter.upsertDocument(
+      this.options.compatibilityAdapter.upsertDocumentInCurrentTransaction(
         workspaceId,
         item,
         this.getCompatibilityProjectionOptions(created.document),
@@ -520,10 +651,17 @@ export class KnowledgeDocumentService {
 
   private toListItemFromDocument(document: KnowledgeDocument): KnowledgeDocumentListItem {
     const version = this.requireVersion(document.currentVersionId);
+    const enrichment = this.options.enrichmentRequestStore
+      ?.listLatestSummariesForVersions(document.workspaceId, [version.id]).get(version.id) ?? null;
+    const hasStaleHistory = this.options.enrichmentRequestStore
+      ?.listDocumentIdsWithStalePriorVersionExtraction(document.workspaceId).has(document.id)
+      ?? false;
     return this.toListItem(
       this.toSummary(document, version),
       this.options.jobStore.getCurrentJob(document.id, document.currentVersionId),
       this.options.indexStore.getState(document.currentVersionId),
+      enrichment,
+      hasStaleHistory,
     );
   }
 
@@ -543,6 +681,8 @@ export class KnowledgeDocumentService {
     document: KnowledgeDocumentSummary,
     job: KnowledgeIngestionJob | null,
     indexState: KnowledgeDocumentIndexState | null,
+    enrichment: KnowledgeDocumentListItem['enrichment'] = null,
+    hasStalePriorVersionExtraction = false,
   ): KnowledgeDocumentListItem {
     return {
       id: document.id,
@@ -556,6 +696,8 @@ export class KnowledgeDocumentService {
       contentHash: document.contentHash,
       currentJob: job ? this.toJobSummary(job) : null,
       localIndex: this.toIndexSummary(indexState),
+      enrichment,
+      hasStalePriorVersionExtraction,
       createdAt: document.createdAt,
       updatedAt: document.updatedAt,
       deletedAt: document.deletedAt,
@@ -579,11 +721,68 @@ export class KnowledgeDocumentService {
     };
   }
 
+  private emitLifecycleStage(stage: KnowledgeDocumentLifecycleStage): void {
+    this.options.onLifecycleStage?.(stage);
+  }
+
+  private deleteRawSourceInCurrentTransaction(document: KnowledgeDocument): void {
+    const sourceId = document.legacySourceId?.trim()
+      || buildKnowledgeDocumentLegacySourceId(document.id);
+    this.options.workspaceVectorLifecycle?.deleteWorkspaceDocumentSources(
+      document.workspaceId,
+      [sourceId],
+    );
+  }
+
+  private abortEnrichmentAfterCommit(documentVersionId: string): void {
+    try {
+      this.options.enrichmentLifecycle?.abortActiveAttemptForVersion(documentVersionId);
+    } catch {
+      console.warn('[KnowledgeDocumentLifecycle]', { code: 'enrichment_abort_failed' });
+    }
+  }
+
+  private refreshRawSourceAfterCommit(document: KnowledgeDocumentListItem): void {
+    if (this.rawSourceRefreshSealed) return;
+    try {
+      const result = this.options.workspaceVectorLifecycle?.replaceWorkspaceDocumentSource(
+        this.requireDocument(document.id).workspaceId,
+        document.id,
+      );
+      this.trackRawSourceRefresh(result);
+    } catch {
+      this.logRawSourceRefreshFailure();
+    }
+  }
+
+  private trackRawSourceRefresh(result: unknown): void {
+    let tracked!: Promise<void>;
+    tracked = Promise.resolve(result)
+      .then((): void => undefined)
+      .catch(() => {
+        this.logRawSourceRefreshFailure();
+      })
+      .finally(() => {
+        this.pendingRawSourceRefreshes.delete(tracked);
+      });
+    this.pendingRawSourceRefreshes.add(tracked);
+  }
+
+  private async drainRawSourceRefreshes(): Promise<void> {
+    while (this.pendingRawSourceRefreshes.size > 0) {
+      await Promise.all([...this.pendingRawSourceRefreshes]);
+    }
+  }
+
+  private logRawSourceRefreshFailure(): void {
+    console.warn('[KnowledgeDocumentLifecycle]', { code: 'raw_source_refresh_failed' });
+  }
+
   private notifyIndexQueued(): void {
     try {
       this.options.onIndexQueued?.();
-    } catch (error) {
-      console.warn('[KnowledgeBase] Failed to wake local index worker:', error);
+    } catch {
+      console.warn('[KnowledgeDocumentLifecycle]', { code: 'index_worker_wake_failed' });
     }
   }
 

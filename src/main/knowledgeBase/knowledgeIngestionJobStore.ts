@@ -351,7 +351,18 @@ export class KnowledgeIngestionJobStore {
     attemptId: string,
     now = new Date().toISOString(),
   ): KnowledgeIngestionJob {
-    return this.finishRunningJob({
+    const transaction = this.db.transaction(() =>
+      this.completeInCurrentTransaction(jobId, attemptId, now));
+    return transaction();
+  }
+
+  completeInCurrentTransaction(
+    jobId: string,
+    attemptId: string,
+    now = new Date().toISOString(),
+  ): KnowledgeIngestionJob {
+    this.assertCurrentTransaction();
+    return this.finishRunningJobInCurrentTransaction({
       jobId,
       attemptId,
       jobStatus: KnowledgeIngestionJobStatus.Completed,
@@ -369,7 +380,19 @@ export class KnowledgeIngestionJobStore {
     error: { code: string; message: string },
     now = new Date().toISOString(),
   ): KnowledgeIngestionJob {
-    return this.finishRunningJob({
+    const transaction = this.db.transaction(() =>
+      this.failInCurrentTransaction(jobId, attemptId, error, now));
+    return transaction();
+  }
+
+  failInCurrentTransaction(
+    jobId: string,
+    attemptId: string,
+    error: { code: string; message: string },
+    now = new Date().toISOString(),
+  ): KnowledgeIngestionJob {
+    this.assertCurrentTransaction();
+    return this.finishRunningJobInCurrentTransaction({
       jobId,
       attemptId,
       jobStatus: KnowledgeIngestionJobStatus.Failed,
@@ -382,7 +405,16 @@ export class KnowledgeIngestionJobStore {
   }
 
   cancel(jobId: string, now = new Date().toISOString()): KnowledgeIngestionJob {
-    const transaction = this.db.transaction(() => {
+    const transaction = this.db.transaction(() =>
+      this.cancelInCurrentTransaction(jobId, now));
+    return transaction();
+  }
+
+  cancelInCurrentTransaction(
+    jobId: string,
+    now = new Date().toISOString(),
+  ): KnowledgeIngestionJob {
+    this.assertCurrentTransaction();
       const job = this.requireJob(jobId);
       if (
         job.status !== KnowledgeIngestionJobStatus.Queued &&
@@ -415,9 +447,7 @@ export class KnowledgeIngestionJobStore {
         `,
         )
         .run(KnowledgeIngestionJobStatus.Cancelled, now, jobId);
-      return this.requireJob(jobId);
-    });
-    return transaction();
+    return this.requireJob(jobId);
   }
 
   retry(jobId: string, now = new Date().toISOString()): KnowledgeIngestionJob {
@@ -470,6 +500,42 @@ export class KnowledgeIngestionJobStore {
         cleanRequiredText(documentId, 'Document id'),
         KnowledgeIngestionJobStatus.Queued,
       ).changes;
+  }
+
+  cancelJobsForVersionInCurrentTransaction(
+    documentId: string,
+    documentVersionId: string,
+    now = new Date().toISOString(),
+  ): number {
+    this.assertCurrentTransaction();
+    const normalizedDocumentId = cleanRequiredText(documentId, 'Document id');
+    const normalizedVersionId = cleanRequiredText(documentVersionId, 'Document version id');
+    this.db.prepare(`
+      UPDATE knowledge_ingestion_job_attempts
+      SET outcome = ?, finished_at = ?
+      WHERE outcome = ? AND job_id IN (
+        SELECT id FROM knowledge_ingestion_jobs
+        WHERE document_id = ? AND document_version_id = ?
+      )
+    `).run(
+      KnowledgeIngestionAttemptOutcome.Cancelled,
+      now,
+      KnowledgeIngestionAttemptOutcome.Running,
+      normalizedDocumentId,
+      normalizedVersionId,
+    );
+    return this.db.prepare(`
+      UPDATE knowledge_ingestion_jobs
+      SET status = ?, heartbeat_at = NULL, updated_at = ?
+      WHERE document_id = ? AND document_version_id = ? AND status IN (?, ?)
+    `).run(
+      KnowledgeIngestionJobStatus.Cancelled,
+      now,
+      normalizedDocumentId,
+      normalizedVersionId,
+      KnowledgeIngestionJobStatus.Queued,
+      KnowledgeIngestionJobStatus.Running,
+    ).changes;
   }
 
   recoverAbandonedJobs(staleBefore: string, now = new Date().toISOString()): number {
@@ -546,7 +612,14 @@ export class KnowledgeIngestionJobStore {
 
   deleteWorkspaceJobs(workspaceId: string): number {
     const normalizedWorkspaceId = cleanRequiredText(workspaceId, 'Workspace id');
-    const transaction = this.db.transaction(() => {
+    const transaction = this.db.transaction(() =>
+      this.deleteWorkspaceJobsInCurrentTransaction(normalizedWorkspaceId));
+    return transaction();
+  }
+
+  deleteWorkspaceJobsInCurrentTransaction(workspaceId: string): number {
+    this.assertCurrentTransaction();
+    const normalizedWorkspaceId = cleanRequiredText(workspaceId, 'Workspace id');
       this.db
         .prepare(
           `
@@ -557,14 +630,46 @@ export class KnowledgeIngestionJobStore {
         `,
         )
         .run(normalizedWorkspaceId);
-      return this.db
+    return this.db
         .prepare('DELETE FROM knowledge_ingestion_jobs WHERE workspace_id = ?')
         .run(normalizedWorkspaceId).changes;
-    });
-    return transaction();
   }
 
-  private finishRunningJob(input: {
+  deleteParentlessIngestionInCurrentTransaction(): number {
+    this.assertCurrentTransaction();
+    let deletedCount = this.db.prepare(`
+      DELETE FROM knowledge_ingestion_job_attempts
+      WHERE NOT EXISTS (
+        SELECT 1
+        FROM knowledge_ingestion_jobs AS job
+        JOIN knowledge_documents AS document
+          ON document.id = job.document_id
+        JOIN knowledge_document_versions AS version
+          ON version.id = job.document_version_id AND version.document_id = document.id
+        WHERE job.id = knowledge_ingestion_job_attempts.job_id
+      )
+    `).run().changes;
+    deletedCount += this.db.prepare(`
+      DELETE FROM knowledge_ingestion_jobs
+      WHERE NOT EXISTS (
+        SELECT 1
+        FROM knowledge_documents AS document
+        JOIN knowledge_document_versions AS version
+          ON version.document_id = document.id
+        WHERE document.id = knowledge_ingestion_jobs.document_id
+          AND version.id = knowledge_ingestion_jobs.document_version_id
+      )
+    `).run().changes;
+    return deletedCount;
+  }
+
+  private assertCurrentTransaction(): void {
+    if (!this.db.inTransaction) {
+      throw new KnowledgeIngestionJobStateError('Knowledge ingestion transaction required');
+    }
+  }
+
+  private finishRunningJobInCurrentTransaction(input: {
     jobId: string;
     attemptId: string;
     jobStatus: KnowledgeIngestionJob['status'];
@@ -574,7 +679,7 @@ export class KnowledgeIngestionJobStore {
     errorMessage: string | null;
     now: string;
   }): KnowledgeIngestionJob {
-    const transaction = this.db.transaction(() => {
+      this.assertCurrentTransaction();
       this.requireRunningAttempt(input.jobId, input.attemptId);
       this.db
         .prepare(
@@ -616,9 +721,7 @@ export class KnowledgeIngestionJobStore {
           input.jobId,
           KnowledgeIngestionJobStatus.Running,
         );
-      return this.requireJob(input.jobId);
-    });
-    return transaction();
+    return this.requireJob(input.jobId);
   }
 
   private requireRunningAttempt(jobId: string, attemptId: string): void {

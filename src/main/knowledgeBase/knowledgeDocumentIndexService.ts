@@ -13,6 +13,17 @@ interface KnowledgeDocumentIndexServiceOptions {
 const KNOWLEDGE_INDEX_BUSY_RETRY_BASE_DELAY_MS = 25;
 const KNOWLEDGE_INDEX_BUSY_RETRY_MAX_DELAY_MS = 250;
 
+export const KnowledgeDocumentIndexServiceLogStage = {
+  Drain: 'drain',
+  FailRunnableStates: 'fail_runnable_states',
+} as const;
+
+export const KnowledgeDocumentIndexServiceLogCode = {
+  DrainFailed: 'index_worker_drain_failed',
+  StatePersistenceFailed: 'index_worker_state_persistence_failed',
+  WorkerUnavailable: KnowledgeDocumentIndexErrorCode.WorkerUnavailable,
+} as const;
+
 const defaultBusyRetryDelay = (delayMs: number): Promise<void> =>
   new Promise(resolve => setTimeout(resolve, delayMs));
 
@@ -92,15 +103,24 @@ export class KnowledgeDocumentIndexService {
             this.indexStore.failRunnableStates(
               KnowledgeDocumentIndexErrorCode.WorkerUnavailable,
             );
-          } catch (persistError) {
+          } catch {
             console.error(
-              '[KnowledgeBase] Failed to persist unavailable local index worker state:',
-              persistError,
+              '[KnowledgeDocumentIndex]',
+              {
+                stage: KnowledgeDocumentIndexServiceLogStage.FailRunnableStates,
+                code: KnowledgeDocumentIndexServiceLogCode.StatePersistenceFailed,
+              },
             );
           }
-          console.error('[KnowledgeBase] Local index worker became unavailable:', error);
+          console.error('[KnowledgeDocumentIndex]', {
+            stage: KnowledgeDocumentIndexServiceLogStage.Drain,
+            code: KnowledgeDocumentIndexServiceLogCode.WorkerUnavailable,
+          });
         } else if (!this.closed) {
-          console.error('[KnowledgeBase] Local index worker drain failed:', error);
+          console.error('[KnowledgeDocumentIndex]', {
+            stage: KnowledgeDocumentIndexServiceLogStage.Drain,
+            code: KnowledgeDocumentIndexServiceLogCode.DrainFailed,
+          });
         }
         return;
       }

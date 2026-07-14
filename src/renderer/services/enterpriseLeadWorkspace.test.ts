@@ -1,7 +1,13 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
 
+import type { EnterpriseLeadWorkspace } from '../../shared/enterpriseLeadWorkspace/types';
 import { buildDefaultEnterpriseLeadWorkspaceSettings } from '../../shared/enterpriseLeadWorkspace/validation';
-import { enterpriseLeadWorkspaceService } from './enterpriseLeadWorkspace';
+import { KnowledgeFactDomain } from '../../shared/knowledgeBase/constants';
+import {
+  enterpriseLeadWorkspaceService,
+  EnterpriseLeadWorkspaceServiceError,
+  EnterpriseLeadWorkspaceServiceErrorCode,
+} from './enterpriseLeadWorkspace';
 
 const createWindowWithEnterpriseLeadWorkspace = (
   api: Partial<Window['electron']['enterpriseLeadWorkspace']>,
@@ -11,6 +17,51 @@ const createWindowWithEnterpriseLeadWorkspace = (
       enterpriseLeadWorkspace: api,
     },
   });
+};
+
+const createWorkspace = (): EnterpriseLeadWorkspace => ({
+  id: 'workspace-1',
+  name: 'Workspace 1',
+  type: 'enterprise_lead',
+  profile: {
+    companySummary: '',
+    productList: [],
+    productCapabilities: [],
+    targetCustomers: [],
+    applicationScenarios: [],
+    sellingPoints: [],
+    channelPreferences: [],
+    prohibitedClaims: [],
+    contactRules: [],
+    missingInfo: [],
+  },
+  profileRevision: 1,
+  extractionSources: [],
+  riskRules: [],
+  enabledAgentRoles: [],
+  settings: buildDefaultEnterpriseLeadWorkspaceSettings(),
+  workspaceAgents: [],
+  recentRunId: null,
+  createdAt: '2026-07-12T00:00:00.000Z',
+  updatedAt: '2026-07-12T00:00:00.000Z',
+});
+
+const defineChangingAccessor = (
+  target: object,
+  key: PropertyKey,
+  firstValue: unknown,
+  laterValue: unknown,
+): (() => number) => {
+  let reads = 0;
+  Object.defineProperty(target, key, {
+    configurable: true,
+    enumerable: true,
+    get: () => {
+      reads += 1;
+      return reads === 1 ? firstValue : laterValue;
+    },
+  });
+  return () => reads;
 };
 
 describe('enterpriseLeadWorkspaceService', () => {
@@ -23,7 +74,10 @@ describe('enterpriseLeadWorkspaceService', () => {
     createWindowWithEnterpriseLeadWorkspace({
       listWorkspaces: async () => ({
         success: false,
-        error: 'database unavailable',
+        error: {
+          code: 'operation_failed',
+          message: 'database unavailable',
+        },
       }),
     });
 
@@ -32,9 +86,401 @@ describe('enterpriseLeadWorkspaceService', () => {
     );
   });
 
+  test('forwards the complete Profile CAS contract through preload', async () => {
+    const updateWorkspaceProfile = vi.fn(async () => ({
+      success: true as const,
+      data: createWorkspace(),
+    }));
+    createWindowWithEnterpriseLeadWorkspace({ updateWorkspaceProfile });
+    const profile = {
+      companySummary: 'Updated summary',
+      productList: [],
+      productCapabilities: [],
+      targetCustomers: [],
+      applicationScenarios: [],
+      sellingPoints: [],
+      channelPreferences: [],
+      prohibitedClaims: [],
+      contactRules: [],
+      missingInfo: [],
+    };
+
+    await enterpriseLeadWorkspaceService.updateWorkspaceProfile(
+      'workspace-1',
+      profile,
+      7,
+      [KnowledgeFactDomain.CompanySummary],
+    );
+
+    expect(updateWorkspaceProfile).toHaveBeenCalledWith(
+      'workspace-1',
+      profile,
+      7,
+      [KnowledgeFactDomain.CompanySummary],
+    );
+  });
+
+  test('preserves the typed safe Profile conflict structure from IPC', async () => {
+    const conflictProfile = {
+      companySummary: 'Latest summary',
+      productList: ['Original product'],
+      productCapabilities: [],
+      targetCustomers: [],
+      applicationScenarios: [],
+      sellingPoints: [],
+      channelPreferences: [],
+      prohibitedClaims: [],
+      contactRules: [],
+      missingInfo: [],
+      confirmedKnowledgeKeys: ['productList:original product'],
+      ignoredKnowledgeKeys: ['sellingPoints:not for export'],
+      nestedSecret: 'renderer-nested-secret',
+    };
+    const latestProfile = {
+      id: 'workspace-1',
+      profile: conflictProfile,
+      profileRevision: 8,
+      updatedAt: '2026-07-12T06:00:00.000Z',
+      settings: { apiKey: 'sk-renderer-secret' },
+      extractionSources: [{ filePath: '/private/renderer-source.pdf' }],
+    };
+    createWindowWithEnterpriseLeadWorkspace({
+      updateWorkspaceProfile: async () => ({
+        success: false,
+        error: {
+          code: 'profile_revision_conflict',
+          message: 'Workspace profile revision conflict',
+          latestProfile: latestProfile as never,
+        },
+      }),
+    });
+
+    let thrown: unknown;
+    try {
+      await enterpriseLeadWorkspaceService.updateWorkspaceProfile(
+        'workspace-1',
+        latestProfile.profile,
+        7,
+        [KnowledgeFactDomain.CompanySummary],
+      );
+    } catch (error) {
+      thrown = error;
+    }
+    latestProfile.id = 'mutated-workspace';
+    conflictProfile.productList[0] = 'mutated product';
+    conflictProfile.confirmedKnowledgeKeys[0] = 'mutated confirmed key';
+    conflictProfile.ignoredKnowledgeKeys[0] = 'mutated ignored key';
+
+    expect(thrown).toBeInstanceOf(EnterpriseLeadWorkspaceServiceError);
+    expect(thrown).toEqual(expect.objectContaining({
+      code: 'profile_revision_conflict',
+      latestProfile: {
+        id: 'workspace-1',
+        profile: {
+          companySummary: 'Latest summary',
+          productList: ['Original product'],
+          productCapabilities: [],
+          targetCustomers: [],
+          applicationScenarios: [],
+          sellingPoints: [],
+          channelPreferences: [],
+          prohibitedClaims: [],
+          contactRules: [],
+          missingInfo: [],
+          confirmedKnowledgeKeys: ['productList:original product'],
+          ignoredKnowledgeKeys: ['sellingPoints:not for export'],
+        },
+        profileRevision: 8,
+        updatedAt: '2026-07-12T06:00:00.000Z',
+      },
+      message: 'Workspace profile revision conflict',
+    }));
+    expect(JSON.stringify(thrown)).not.toMatch(
+      /renderer-nested-secret|sk-renderer-secret|renderer-source|mutated product|mutated confirmed|mutated ignored/,
+    );
+  });
+
+  test('degrades an invalid renderer conflict snapshot to fixed operation_failed', async () => {
+    createWindowWithEnterpriseLeadWorkspace({
+      updateWorkspaceProfile: async () => ({
+        success: false,
+        error: {
+          code: 'profile_revision_conflict',
+          message: 'secret invalid conflict',
+          latestProfile: {
+            id: 'workspace-1',
+            profile: {
+              ...createWorkspace().profile,
+              productList: 'not-an-array',
+            },
+            profileRevision: 8,
+            updatedAt: '2026-07-12T06:00:00.000Z',
+          } as never,
+        },
+      }),
+    });
+
+    let thrown: unknown;
+    try {
+      await enterpriseLeadWorkspaceService.updateWorkspaceProfile(
+        'workspace-1',
+        createWorkspace().profile,
+        7,
+        [KnowledgeFactDomain.CompanySummary],
+      );
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(EnterpriseLeadWorkspaceServiceError);
+    expect(thrown).toMatchObject({
+      code: 'operation_failed',
+      message: 'Enterprise lead workspace operation failed',
+      latestProfile: undefined,
+    });
+    expect(JSON.stringify(thrown)).not.toContain('secret invalid conflict');
+  });
+
+  test('single-reads renderer conflict accessors and array items without leaking later values', async () => {
+    const confirmedKeys = new Array<string>(1);
+    const ignoredKeys = new Array<string>(1);
+    const confirmedItemReads = defineChangingAccessor(
+      confirmedKeys,
+      0,
+      'productList:original product',
+      'secret-renderer-confirmed-item',
+    );
+    const ignoredItemReads = defineChangingAccessor(
+      ignoredKeys,
+      0,
+      'sellingPoints:not for export',
+      'secret-renderer-ignored-item',
+    );
+    const safeProfile = createWorkspace().profile;
+    const sourceProfile: Record<string, unknown> = { ...safeProfile };
+    const companyReads = defineChangingAccessor(
+      sourceProfile,
+      'companySummary',
+      'Original summary',
+      'secret-renderer-company',
+    );
+    const domainReads = defineChangingAccessor(
+      sourceProfile,
+      KnowledgeFactDomain.ProductList,
+      ['Original product'],
+      ['secret-renderer-domain'],
+    );
+    const confirmedReads = defineChangingAccessor(
+      sourceProfile,
+      'confirmedKnowledgeKeys',
+      confirmedKeys,
+      ['secret-renderer-confirmed-array'],
+    );
+    const ignoredReads = defineChangingAccessor(
+      sourceProfile,
+      'ignoredKnowledgeKeys',
+      ignoredKeys,
+      ['secret-renderer-ignored-array'],
+    );
+    const sourceSnapshot: Record<string, unknown> = {};
+    const idReads = defineChangingAccessor(
+      sourceSnapshot,
+      'id',
+      'workspace-1',
+      'secret-renderer-workspace',
+    );
+    const profileReads = defineChangingAccessor(
+      sourceSnapshot,
+      'profile',
+      sourceProfile,
+      { ...safeProfile, companySummary: 'secret-renderer-profile' },
+    );
+    const revisionReads = defineChangingAccessor(sourceSnapshot, 'profileRevision', 8, 9);
+    const updatedAtReads = defineChangingAccessor(
+      sourceSnapshot,
+      'updatedAt',
+      '2026-07-12T06:00:00.000Z',
+      '2026-07-13T06:00:00.000Z',
+    );
+    createWindowWithEnterpriseLeadWorkspace({
+      updateWorkspaceProfile: async () => ({
+        success: false,
+        error: {
+          code: 'profile_revision_conflict',
+          message: 'Workspace profile revision conflict',
+          latestProfile: sourceSnapshot as never,
+        },
+      }),
+    });
+
+    let thrown: unknown;
+    try {
+      await enterpriseLeadWorkspaceService.updateWorkspaceProfile(
+        'workspace-1',
+        safeProfile,
+        7,
+        [KnowledgeFactDomain.CompanySummary],
+      );
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toEqual(expect.objectContaining({
+      code: 'profile_revision_conflict',
+      latestProfile: {
+        id: 'workspace-1',
+        profile: {
+          ...safeProfile,
+          companySummary: 'Original summary',
+          productList: ['Original product'],
+          confirmedKnowledgeKeys: ['productList:original product'],
+          ignoredKnowledgeKeys: ['sellingPoints:not for export'],
+        },
+        profileRevision: 8,
+        updatedAt: '2026-07-12T06:00:00.000Z',
+      },
+    }));
+    for (const readCount of [
+      idReads,
+      profileReads,
+      revisionReads,
+      updatedAtReads,
+      companyReads,
+      domainReads,
+      confirmedReads,
+      ignoredReads,
+      confirmedItemReads,
+      ignoredItemReads,
+    ]) {
+      expect(readCount()).toBe(1);
+    }
+    expect(JSON.stringify(thrown)).not.toContain('secret-renderer');
+  });
+
+  test('degrades sparse required and trust conflict arrays to fixed operation_failed', async () => {
+    for (const sparseField of [
+      KnowledgeFactDomain.ProductList,
+      'confirmedKnowledgeKeys',
+    ] as const) {
+      createWindowWithEnterpriseLeadWorkspace({
+        updateWorkspaceProfile: async () => ({
+          success: false,
+          error: {
+            code: 'profile_revision_conflict',
+            message: 'sparse renderer secret',
+            latestProfile: {
+              id: 'workspace-1',
+              profile: {
+                ...createWorkspace().profile,
+                [sparseField]: new Array<string>(1),
+              },
+              profileRevision: 8,
+              updatedAt: '2026-07-12T06:00:00.000Z',
+            } as never,
+          },
+        }),
+      });
+
+      let thrown: unknown;
+      try {
+        await enterpriseLeadWorkspaceService.updateWorkspaceProfile(
+          'workspace-1',
+          createWorkspace().profile,
+          7,
+          [KnowledgeFactDomain.CompanySummary],
+        );
+      } catch (error) {
+        thrown = error;
+      }
+
+      expect(thrown).toMatchObject({
+        code: 'operation_failed',
+        message: 'Enterprise lead workspace operation failed',
+        latestProfile: undefined,
+      });
+      expect(JSON.stringify(thrown)).not.toContain('sparse renderer secret');
+    }
+  });
+
+  test('logs request failures safely and never logs the complete Error object', async () => {
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const thrown = Object.assign(new Error('safe bridge failure'), {
+      apiKey: 'sk-custom-field-must-not-be-logged',
+      sourcePath: '/private/source/path',
+    });
+    createWindowWithEnterpriseLeadWorkspace({
+      listWorkspaces: async () => {
+        throw thrown;
+      },
+    });
+
+    await expect(enterpriseLeadWorkspaceService.listWorkspaces()).rejects.toMatchObject({
+      code: 'operation_failed',
+      message: 'Enterprise lead workspace operation failed',
+    });
+    expect(logged).toHaveBeenCalled();
+    for (const call of logged.mock.calls) {
+      expect(call).not.toContain(thrown);
+      expect(JSON.stringify(call)).not.toContain('sk-custom-field-must-not-be-logged');
+      expect(JSON.stringify(call)).not.toContain('/private/source/path');
+    }
+  });
+
+  test('never logs secrets from a rejected bridge Error message', async () => {
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const thrown = new Error(
+      'SECRET bridge failure /private/customer.sqlite SQL apiKey=sk-message-secret '
+      + 'endpoint=https://private-provider.example/v1',
+    );
+    createWindowWithEnterpriseLeadWorkspace({
+      listWorkspaces: async () => {
+        throw thrown;
+      },
+    });
+
+    let received: unknown;
+    try {
+      await enterpriseLeadWorkspaceService.listWorkspaces();
+    } catch (error) {
+      received = error;
+    }
+
+    expect(received).toBeInstanceOf(EnterpriseLeadWorkspaceServiceError);
+    expect(received).not.toBe(thrown);
+    expect(received).toMatchObject({
+      code: 'operation_failed',
+      message: 'Enterprise lead workspace operation failed',
+      latestProfile: undefined,
+    });
+    expect(logged).toHaveBeenCalledWith(
+      '[EnterpriseLeadWorkspace] listWorkspaces failed',
+      {
+        code: 'operation_failed',
+        message: 'Enterprise lead workspace operation failed',
+      },
+    );
+    expect(JSON.stringify(logged.mock.calls)).not.toMatch(
+      /SECRET|private\/customer|SQL|apiKey|sk-message-secret|private-provider|https:\/\//,
+    );
+    for (const serialized of [JSON.stringify(received), String(received), (received as Error).stack]) {
+      expect(serialized).not.toMatch(
+        /SECRET|private\/customer|SQL|apiKey|sk-message-secret|private-provider|https:\/\//,
+      );
+    }
+  });
+
+  test('exports API-unavailable codes separately from the typed service Error class', () => {
+    expect(EnterpriseLeadWorkspaceServiceErrorCode).toEqual({
+      ProcessDocumentSourceApiUnavailable: 'process_document_source_api_unavailable',
+      UpdateSourcesApiUnavailable: 'update_sources_api_unavailable',
+    });
+    expect(EnterpriseLeadWorkspaceServiceError).toEqual(expect.any(Function));
+  });
+
   test('saves workspace settings through the enterprise lead workspace API', async () => {
     const updateWorkspaceSettings = vi.fn(async () => ({
       success: true as const,
+      data: createWorkspace(),
     }));
     createWindowWithEnterpriseLeadWorkspace({ updateWorkspaceSettings });
 
@@ -108,6 +554,7 @@ describe('enterpriseLeadWorkspaceService', () => {
       recentRunId: null,
       createdAt: '2026-07-05T00:00:00.000Z',
       updatedAt: '2026-07-05T00:00:00.000Z',
+      profileRevision: 1,
     };
     const updateWorkspaceAgents = vi.fn(async () => ({
       success: true as const,
@@ -154,6 +601,7 @@ describe('enterpriseLeadWorkspaceService', () => {
       recentRunId: null,
       createdAt: '2026-07-05T00:00:00.000Z',
       updatedAt: '2026-07-05T00:00:00.000Z',
+      profileRevision: 1,
     };
     const processDocumentSource = vi.fn(async () => ({
       success: true as const,

@@ -403,3 +403,11 @@ export const EnterpriseLeadWorkspaceIpc = {
 } as const;
 export type EnterpriseLeadWorkspaceIpc =
   (typeof EnterpriseLeadWorkspaceIpc)[keyof typeof EnterpriseLeadWorkspaceIpc];
+
+export const EnterpriseLeadIpcErrorCode = {
+  InvalidRequest: 'invalid_request',
+  ProfileRevisionConflict: 'profile_revision_conflict',
+  OperationFailed: 'operation_failed',
+} as const;
+export type EnterpriseLeadIpcErrorCode =
+  (typeof EnterpriseLeadIpcErrorCode)[keyof typeof EnterpriseLeadIpcErrorCode];

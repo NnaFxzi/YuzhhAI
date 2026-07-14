@@ -27,7 +27,10 @@ const legacyExtractionStatusByDocumentStatus: Record<
 
 type CompatibilityWorkspaceStore = Pick<
   EnterpriseLeadWorkspaceStore,
-  'removeWorkspaceSourceById' | 'upsertWorkspaceSourceById'
+  | 'removeWorkspaceSourceById'
+  | 'removeWorkspaceSourceByIdInCurrentTransaction'
+  | 'upsertWorkspaceSourceById'
+  | 'upsertWorkspaceSourceByIdInCurrentTransaction'
 >;
 
 export const buildKnowledgeDocumentLegacySourceId = (documentId: string): string =>
@@ -78,6 +81,38 @@ export class EnterpriseLeadKnowledgeCompatibilityAdapter {
 
   removeDocument(workspaceId: string, documentId: string, legacySourceId?: string | null): void {
     this.workspaceStore.removeWorkspaceSourceById(
+      workspaceId,
+      legacySourceId?.trim() || buildKnowledgeDocumentLegacySourceId(documentId),
+    );
+  }
+
+  upsertDocumentInCurrentTransaction(
+    workspaceId: string,
+    document: KnowledgeDocumentListItem,
+    options: KnowledgeCompatibilityProjectionOptions = {},
+  ): void {
+    const sourceId =
+      options.legacySourceId?.trim() || buildKnowledgeDocumentLegacySourceId(document.id);
+    if (document.deletedAt) {
+      this.removeDocumentInCurrentTransaction(workspaceId, document.id, sourceId);
+      return;
+    }
+    this.workspaceStore.upsertWorkspaceSourceByIdInCurrentTransaction(
+      workspaceId,
+      this.buildSource(
+        document,
+        sourceId,
+        parseLegacySourceSnapshot(options.legacySourceSnapshotJson),
+      ),
+    );
+  }
+
+  removeDocumentInCurrentTransaction(
+    workspaceId: string,
+    documentId: string,
+    legacySourceId?: string | null,
+  ): void {
+    this.workspaceStore.removeWorkspaceSourceByIdInCurrentTransaction(
       workspaceId,
       legacySourceId?.trim() || buildKnowledgeDocumentLegacySourceId(documentId),
     );

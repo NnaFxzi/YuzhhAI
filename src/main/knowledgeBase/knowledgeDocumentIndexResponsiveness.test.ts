@@ -16,6 +16,7 @@ import {
 import { EnterpriseLeadWorkspaceStore } from '../enterpriseLeadWorkspace/store';
 import { applySqliteConnectionPolicy } from '../libs/sqliteConnectionPolicy';
 import { WorkerKnowledgeDocumentIndexExecutor } from './knowledgeDocumentIndexExecutor';
+import { KnowledgeDocumentIndexService } from './knowledgeDocumentIndexService';
 import { KnowledgeDocumentIndexStore } from './knowledgeDocumentIndexStore';
 import { KnowledgeDocumentStore } from './knowledgeDocumentStore';
 
@@ -143,6 +144,7 @@ runtimeTest(
   async () => {
     let fixture: ReturnType<typeof createFileBackedIndexFixture> | null = null;
     let executor: WorkerKnowledgeDocumentIndexExecutor | null = null;
+    let indexingService: KnowledgeDocumentIndexService | null = null;
     let timer: ReturnType<typeof setInterval> | null = null;
     const drifts: number[] = [];
     const mainWriteDurations: number[] = [];
@@ -159,6 +161,7 @@ runtimeTest(
         databasePath: fixture.databasePath,
         workerScriptPath: workerPath,
       });
+      indexingService = new KnowledgeDocumentIndexService(executor, fixture.indexStore);
       fixture.db.exec('CREATE TABLE responsiveness_probe (id INTEGER PRIMARY KEY, value INTEGER)');
       fixture.db.prepare('INSERT INTO responsiveness_probe (id, value) VALUES (1, 0)').run();
       const updateProbe = fixture.db.prepare(
@@ -178,10 +181,20 @@ runtimeTest(
         expectedAt = now + 25;
       }, 25);
 
-      const result = await executor.runUntilIdle();
+      indexingService.wake();
+      await indexingService.waitForIdle();
+      const states = fixture.indexStore.listStates(fixture.workspaceId);
+      const result = {
+        indexedCount: states.filter(
+          state => state.status === KnowledgeDocumentIndexStatus.Indexed,
+        ).length,
+        failedCount: states.filter(
+          state => state.status === KnowledgeDocumentIndexStatus.Failed,
+        ).length,
+      };
       expect(
         result,
-        JSON.stringify(fixture.indexStore.listStates(fixture.workspaceId)),
+        JSON.stringify(states),
       ).toEqual({
         indexedCount: 5,
         failedCount: 0,
@@ -203,7 +216,9 @@ runtimeTest(
       if (timer) {
         clearInterval(timer);
       }
-      if (executor) {
+      if (indexingService) {
+        await indexingService.shutdown().catch(() => undefined);
+      } else if (executor) {
         await executor.shutdown().catch(() => undefined);
       }
       fixture?.close();
@@ -213,14 +228,10 @@ runtimeTest(
 );
 
 runtimeTest(
-  'keeps the host responsive while a real worker purges a large inactive generation',
+  'deletes a large inactive generation atomically before indexing its replacement',
   async () => {
     let fixture: ReturnType<typeof createFileBackedIndexFixture> | null = null;
     let executor: WorkerKnowledgeDocumentIndexExecutor | null = null;
-    let timer: ReturnType<typeof setInterval> | null = null;
-    const drifts: number[] = [];
-    const mainWriteDurations: number[] = [];
-    const probeErrors: unknown[] = [];
 
     try {
       fixture = createFileBackedIndexFixture();
@@ -278,49 +289,13 @@ runtimeTest(
         SELECT COUNT(*) AS count
         FROM knowledge_document_chunks
         WHERE document_version_id = ?
-      `).get(initial.version.id) as { count: number }).count).toBe(oldChunkCount);
-      fixture.db.exec('CREATE TABLE cleanup_responsiveness_probe (id INTEGER PRIMARY KEY, value INTEGER)');
-      fixture.db.prepare(
-        'INSERT INTO cleanup_responsiveness_probe (id, value) VALUES (1, 0)',
-      ).run();
-      const updateProbe = fixture.db.prepare(
-        'UPDATE cleanup_responsiveness_probe SET value = value + 1 WHERE id = 1',
-      );
-      let expectedAt = performance.now() + 25;
-      timer = setInterval(() => {
-        const writeStartedAt = performance.now();
-        try {
-          updateProbe.run();
-        } catch (error) {
-          probeErrors.push(error);
-        }
-        const now = performance.now();
-        mainWriteDurations.push(now - writeStartedAt);
-        drifts.push(Math.max(0, now - expectedAt));
-        expectedAt = now + 25;
-      }, 25);
+      `).get(initial.version.id) as { count: number }).count).toBe(0);
 
       const result = await executor.runUntilIdle();
-      await new Promise(resolve => setTimeout(resolve, 75));
-      clearInterval(timer);
-      timer = null;
-
-      const maxTimerDriftMs = Math.max(0, ...drifts);
-      const maxMainWriteMs = Math.max(0, ...mainWriteDurations);
-      console.log('[KnowledgeBase] Inactive-generation cleanup responsiveness metrics:', {
-        oldChunkCount,
-        ...result,
-        maxTimerDriftMs,
-        maxMainWriteMs,
-      });
       expect(result).toEqual({
         indexedCount: 1,
         failedCount: 0,
       });
-      expect(probeErrors).toEqual([]);
-      expect(drifts.length).toBeGreaterThanOrEqual(10);
-      expect(maxTimerDriftMs).toBeLessThan(250);
-      expect(maxMainWriteMs).toBeLessThan(250);
       expect(fixture.indexStore.getState(initial.version.id)).toBeNull();
       expect(fixture.indexStore.getState(replacement.version.id)?.status).toBe(
         KnowledgeDocumentIndexStatus.Indexed,
@@ -336,9 +311,6 @@ runtimeTest(
         WHERE document_version_id = ?
       `).get(initial.version.id) as { count: number }).count).toBe(0);
     } finally {
-      if (timer) {
-        clearInterval(timer);
-      }
       if (executor) {
         await executor.shutdown().catch(() => undefined);
       }

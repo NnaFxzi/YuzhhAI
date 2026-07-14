@@ -10,6 +10,7 @@ import {
 import React, { useEffect, useMemo, useState } from 'react';
 
 import {
+  KnowledgeBaseErrorCode,
   KnowledgeDocumentIndexStatus as KnowledgeDocumentIndexStatuses,
   type KnowledgeDocumentStatus,
   KnowledgeDocumentStatus as KnowledgeDocumentStatuses,
@@ -21,14 +22,17 @@ import {
 } from '../../../shared/knowledgeBase/constants';
 import type {
   KnowledgeDocumentListItem,
+  KnowledgeExtractionAuthorizationPreparation,
   KnowledgeImportBatchResult,
   KnowledgeImportItemResult,
 } from '../../../shared/knowledgeBase/types';
 import { i18nService } from '../../services/i18n';
+import { KnowledgeBaseServiceError } from '../../services/knowledgeBase';
 import {
   canRetryKnowledgeDocumentIndex,
   filterKnowledgeDocuments,
   getKnowledgeDocumentErrorKey,
+  getKnowledgeDocumentExtractionPresentation,
   getKnowledgeDocumentIndexStatusKey,
   getKnowledgeDocumentStatusKey,
   type KnowledgeDocumentStatusFilter,
@@ -38,6 +42,8 @@ import {
   useWorkspaceKnowledgeDocuments,
   type WorkspaceKnowledgeDocumentsState,
 } from './useWorkspaceKnowledgeDocuments';
+import WorkspaceKnowledgeExtractionDialog from './WorkspaceKnowledgeExtractionDialog';
+import { WorkspaceKnowledgeExtractionStatus } from './WorkspaceKnowledgeExtractionStatus';
 
 export type WorkspaceProjectionChangeHandler = () => Promise<void> | void;
 
@@ -46,6 +52,7 @@ export interface WorkspaceKnowledgeDocumentsPanelProps {
   initialImportResult?: KnowledgeImportBatchResult;
   onDocumentCountChange?: (count: number) => void;
   onWorkspaceProjectionChange?: WorkspaceProjectionChangeHandler;
+  onAiKnowledgeMetricsRefresh?: WorkspaceProjectionChangeHandler;
 }
 
 export interface WorkspaceKnowledgeDocumentsPanelActions {
@@ -55,6 +62,7 @@ export interface WorkspaceKnowledgeDocumentsPanelActions {
   restore: (document: KnowledgeDocumentListItem) => Promise<void>;
   retry: (document: KnowledgeDocumentListItem) => Promise<void>;
   retryLocalIndex: (document: KnowledgeDocumentListItem) => Promise<void>;
+  cancelExtraction: (document: KnowledgeDocumentListItem) => Promise<void>;
 }
 
 export const createWorkspaceKnowledgeDocumentsPanelActions = (
@@ -85,7 +93,53 @@ export const createWorkspaceKnowledgeDocumentsPanelActions = (
   retryLocalIndex: async document => {
     await state.retryLocalIndex(document);
   },
+  cancelExtraction: async document => {
+    await state.cancelExtraction(document);
+  },
 });
+
+export const WorkspaceKnowledgeExtractionIntentKind = {
+  Request: 'request',
+  Retry: 'retry',
+} as const;
+export type WorkspaceKnowledgeExtractionIntentKind =
+  (typeof WorkspaceKnowledgeExtractionIntentKind)[keyof typeof WorkspaceKnowledgeExtractionIntentKind];
+
+export interface WorkspaceKnowledgeExtractionIntent {
+  kind: WorkspaceKnowledgeExtractionIntentKind;
+  documentId: string;
+  documentVersionId: string;
+}
+
+export interface WorkspaceKnowledgeExtractionDialogActions {
+  prepare: () => Promise<KnowledgeExtractionAuthorizationPreparation>;
+  send: (authorizationToken: string) => Promise<void>;
+}
+
+export const createWorkspaceKnowledgeExtractionDialogActions = (
+  state: WorkspaceKnowledgeDocumentsState,
+  intent: WorkspaceKnowledgeExtractionIntent,
+): WorkspaceKnowledgeExtractionDialogActions => {
+  const resolveDocument = (): KnowledgeDocumentListItem => {
+    const document = state.documents.find(
+      item =>
+        item.id === intent.documentId && item.currentVersionId === intent.documentVersionId,
+    );
+    if (!document) {
+      throw new KnowledgeBaseServiceError(KnowledgeBaseErrorCode.InvalidRequest);
+    }
+    return document;
+  };
+  return {
+    prepare: async () => state.prepareExtractionAuthorization(resolveDocument()),
+    send: async authorizationToken => {
+      const document = resolveDocument();
+      return intent.kind === WorkspaceKnowledgeExtractionIntentKind.Retry
+        ? state.retryExtraction(document, authorizationToken)
+        : state.requestExtraction(document, authorizationToken);
+    },
+  };
+};
 
 export const getWorkspaceKnowledgeDocumentCount = (
   state: Pick<WorkspaceKnowledgeDocumentsState, 'documents' | 'error' | 'isLoading'>,
@@ -164,6 +218,10 @@ interface KnowledgeDocumentRowProps {
   onRestore: () => void;
   onRetry: () => void;
   onRetryLocalIndex: () => void;
+  isExtractionMutating: boolean;
+  onPrepareExtraction: () => void;
+  onRetryExtraction: () => void;
+  onCancelExtraction: () => void;
 }
 
 const KnowledgeDocumentRow = ({
@@ -175,6 +233,10 @@ const KnowledgeDocumentRow = ({
   onRestore,
   onRetry,
   onRetryLocalIndex,
+  isExtractionMutating,
+  onPrepareExtraction,
+  onRetryExtraction,
+  onCancelExtraction,
 }: KnowledgeDocumentRowProps): React.ReactElement => {
   const currentJob = document.currentJob;
   const jobIsActive =
@@ -182,6 +244,7 @@ const KnowledgeDocumentRow = ({
     currentJob?.status === KnowledgeIngestionJobStatus.Running;
   const progress = Math.round(Math.min(100, Math.max(0, (currentJob?.progress ?? 0) * 100)));
   const isDeleted = visibility === KnowledgeDocumentVisibilities.Deleted;
+  const extraction = getKnowledgeDocumentExtractionPresentation(document);
 
   return (
     <article
@@ -214,6 +277,7 @@ const KnowledgeDocumentRow = ({
 
         <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
           <span
+            data-knowledge-state="document-parsing"
             className={`inline-flex rounded-md px-2 py-1 text-xs font-semibold ${
               isDeleted
                 ? 'bg-slate-500/10 text-slate-700 dark:text-slate-300'
@@ -287,7 +351,10 @@ const KnowledgeDocumentRow = ({
       ) : null}
 
       {!isDeleted ? (
-        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border/70 pt-3 text-xs">
+        <div
+          data-knowledge-state="local-index"
+          className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border/70 pt-3 text-xs"
+        >
           <span className="font-medium text-secondary">
             {i18nService.t('enterpriseKnowledgeLocalIndex')}
           </span>
@@ -326,6 +393,40 @@ const KnowledgeDocumentRow = ({
           </span>
         </div>
       ) : null}
+
+      {!isDeleted ? (
+        <div
+          data-knowledge-state="ai-extraction"
+          className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border/70 pt-3 text-xs"
+        >
+          <span className="font-medium text-secondary">
+            {i18nService.t('enterpriseKnowledgeAiExtraction')}
+          </span>
+          <div className="flex flex-wrap items-center justify-end gap-2 text-secondary">
+            <WorkspaceKnowledgeExtractionStatus
+              presentation={extraction}
+              isMutating={isExtractionMutating}
+              onCancel={onCancelExtraction}
+              onRetry={onRetryExtraction}
+            />
+            {extraction.canPrepare ? (
+              <button
+                type="button"
+                data-prepare-extraction-document-id={document.id}
+                disabled={isExtractionMutating}
+                className="h-8 rounded-md border border-primary/20 bg-primary/10 px-2.5 font-semibold text-primary disabled:opacity-45"
+                onClick={onPrepareExtraction}
+              >
+                {i18nService.t(
+                  extraction.showsStalePriorVersion
+                    ? 'enterpriseKnowledgeExtractCurrentVersion'
+                    : 'enterpriseKnowledgeExtractAiKnowledge',
+                )}
+              </button>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
     </article>
   );
 };
@@ -348,7 +449,11 @@ export interface WorkspaceKnowledgeDocumentsPanelViewProps {
   onRestore: (document: KnowledgeDocumentListItem) => void;
   onRetry: (document: KnowledgeDocumentListItem) => void;
   onRetryLocalIndex: (document: KnowledgeDocumentListItem) => void;
+  onPrepareExtraction: (document: KnowledgeDocumentListItem) => void;
+  onRetryExtraction: (document: KnowledgeDocumentListItem) => void;
+  onCancelExtraction: (document: KnowledgeDocumentListItem) => void;
   onCloseDetails: () => void;
+  extractionDialog?: React.ReactNode;
 }
 
 export const WorkspaceKnowledgeDocumentsPanelView = ({
@@ -369,7 +474,11 @@ export const WorkspaceKnowledgeDocumentsPanelView = ({
   onRestore,
   onRetry,
   onRetryLocalIndex,
+  onPrepareExtraction,
+  onRetryExtraction,
+  onCancelExtraction,
   onCloseDetails,
+  extractionDialog,
 }: WorkspaceKnowledgeDocumentsPanelViewProps): React.ReactElement => {
   const sourceRows =
     visibility === KnowledgeDocumentVisibilities.Active ? state.documents : state.deletedDocuments;
@@ -533,6 +642,10 @@ export const WorkspaceKnowledgeDocumentsPanelView = ({
                 onRestore={() => onRestore(document)}
                 onRetry={() => onRetry(document)}
                 onRetryLocalIndex={() => onRetryLocalIndex(document)}
+                isExtractionMutating={state.extractionMutatingDocumentIds.includes(document.id)}
+                onPrepareExtraction={() => onPrepareExtraction(document)}
+                onRetryExtraction={() => onRetryExtraction(document)}
+                onCancelExtraction={() => onCancelExtraction(document)}
               />
             ))}
           </div>
@@ -635,6 +748,8 @@ export const WorkspaceKnowledgeDocumentsPanelView = ({
           </div>
         </div>
       ) : null}
+
+      {extractionDialog}
     </section>
   );
 };
@@ -648,8 +763,11 @@ export default function WorkspaceKnowledgeDocumentsPanel({
   initialImportResult,
   onDocumentCountChange,
   onWorkspaceProjectionChange,
+  onAiKnowledgeMetricsRefresh,
 }: WorkspaceKnowledgeDocumentsPanelProps): React.ReactElement {
-  const state = useWorkspaceKnowledgeDocuments(workspaceId, initialImportResult);
+  const state = useWorkspaceKnowledgeDocuments(workspaceId, initialImportResult, {
+    onReviewRequired: onAiKnowledgeMetricsRefresh,
+  });
   const [visibility, setVisibility] = useState<KnowledgeDocumentVisibility>(
     KnowledgeDocumentVisibilities.Active,
   );
@@ -657,11 +775,27 @@ export default function WorkspaceKnowledgeDocumentsPanel({
   const [statusFilter, setStatusFilter] = useState<KnowledgeDocumentStatusFilter>('all');
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [extractionIntent, setExtractionIntent] =
+    useState<WorkspaceKnowledgeExtractionIntent | null>(null);
   const actions = useMemo(
     () => createWorkspaceKnowledgeDocumentsPanelActions(state, onWorkspaceProjectionChange),
     [onWorkspaceProjectionChange, state],
   );
   const activeDocumentCount = getWorkspaceKnowledgeDocumentCount(state);
+  const extractionDialogActions = useMemo(
+    () =>
+      extractionIntent
+        ? createWorkspaceKnowledgeExtractionDialogActions(state, extractionIntent)
+        : null,
+    [extractionIntent, state],
+  );
+  const extractionIntentDocument = extractionIntent
+    ? state.documents.find(
+        document =>
+          document.id === extractionIntent.documentId &&
+          document.currentVersionId === extractionIntent.documentVersionId,
+      ) ?? null
+    : null;
 
   useEffect(() => {
     if (activeDocumentCount !== null) {
@@ -675,7 +809,14 @@ export default function WorkspaceKnowledgeDocumentsPanel({
     setStatusFilter('all');
     setPendingDeleteId(null);
     setDetailsOpen(false);
+    setExtractionIntent(null);
   }, [workspaceId]);
+
+  useEffect(() => {
+    if (extractionIntent && !extractionIntentDocument) {
+      setExtractionIntent(null);
+    }
+  }, [extractionIntent, extractionIntentDocument]);
 
   return (
     <WorkspaceKnowledgeDocumentsPanelView
@@ -709,7 +850,34 @@ export default function WorkspaceKnowledgeDocumentsPanel({
       onRestore={document => ignoreRejectedAction(actions.restore(document))}
       onRetry={document => ignoreRejectedAction(actions.retry(document))}
       onRetryLocalIndex={document => ignoreRejectedAction(actions.retryLocalIndex(document))}
+      onPrepareExtraction={document =>
+        setExtractionIntent({
+          kind: WorkspaceKnowledgeExtractionIntentKind.Request,
+          documentId: document.id,
+          documentVersionId: document.currentVersionId,
+        })
+      }
+      onRetryExtraction={document =>
+        setExtractionIntent({
+          kind: WorkspaceKnowledgeExtractionIntentKind.Retry,
+          documentId: document.id,
+          documentVersionId: document.currentVersionId,
+        })
+      }
+      onCancelExtraction={document =>
+        ignoreRejectedAction(actions.cancelExtraction(document))
+      }
       onCloseDetails={() => setDetailsOpen(false)}
+      extractionDialog={
+        extractionIntent && extractionIntentDocument && extractionDialogActions ? (
+          <WorkspaceKnowledgeExtractionDialog
+            key={`${extractionIntent.kind}:${extractionIntent.documentId}:${extractionIntent.documentVersionId}`}
+            prepare={extractionDialogActions.prepare}
+            send={extractionDialogActions.send}
+            onClose={() => setExtractionIntent(null)}
+          />
+        ) : null
+      }
     />
   );
 }

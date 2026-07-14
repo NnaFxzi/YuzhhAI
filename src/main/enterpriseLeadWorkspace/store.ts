@@ -22,6 +22,7 @@ import type {
   EnterpriseLeadWorkspace,
   EnterpriseLeadWorkspaceAgentBinding,
   EnterpriseLeadWorkspaceProfile,
+  EnterpriseLeadWorkspaceProfileUpdateRequest,
   EnterpriseLeadWorkspaceRunAgentSnapshot,
   EnterpriseLeadWorkspaceSettings,
   EnterpriseLeadWorkspaceSettingsUpdate,
@@ -36,7 +37,16 @@ import {
   normalizeWorkspaceProfile,
 } from '../../shared/enterpriseLeadWorkspace/validation';
 import { KNOWLEDGE_DOCUMENT_LEGACY_SOURCE_PREFIX } from '../../shared/knowledgeBase/constants';
+import { hasCanonicalEnterpriseProfileKnowledgeTrustOverlap } from '../../shared/knowledgeBase/enterpriseLeadProfileKnowledge';
+import { KnowledgeTrustedProfileIndexStore } from '../knowledgeBase/knowledgeTrustedProfileIndexStore';
 import { buildLegacyKnowledgeSourceId } from '../knowledgeBase/legacyKnowledgeSourceIdentity';
+import { runTransientSqliteWriteTransaction } from '../libs/sqliteTransactionRetry';
+import {
+  EnterpriseLeadProfileInvalidRequestError,
+  type EnterpriseLeadWorkspaceProfilePersistenceFault,
+  EnterpriseLeadWorkspaceProfilePersistenceStage,
+  EnterpriseLeadWorkspaceProfileRevisionStore,
+} from './profileRevisionStore';
 
 const defaultRiskRules = [
   'no_real_publish',
@@ -101,6 +111,10 @@ export interface UpdateEnterpriseLeadRunProgressInput {
   status: EnterpriseLeadRunStatus;
   currentRole: EnterpriseLeadTaskAgentRole | null;
   controllerSummary: string;
+}
+
+export interface EnterpriseLeadWorkspaceStoreOptions {
+  faultInjector?: EnterpriseLeadWorkspaceProfilePersistenceFault;
 }
 
 type EnterpriseLeadWorkspaceRow = Omit<
@@ -234,8 +248,25 @@ const mapPendingVersionRow = (row: EnterpriseLeadPendingVersionRow): EnterpriseL
 });
 
 export class EnterpriseLeadWorkspaceStore {
-  constructor(private readonly db: Database.Database) {
+  private readonly trustedProfileIndexStore: KnowledgeTrustedProfileIndexStore;
+
+  private readonly profileRevisionStore: EnterpriseLeadWorkspaceProfileRevisionStore;
+
+  private readonly faultInjector?: EnterpriseLeadWorkspaceProfilePersistenceFault;
+
+  constructor(
+    private readonly db: Database.Database,
+    options: EnterpriseLeadWorkspaceStoreOptions = {},
+  ) {
+    this.faultInjector = options.faultInjector;
     this.initialize();
+    this.trustedProfileIndexStore = new KnowledgeTrustedProfileIndexStore(this.db);
+    this.profileRevisionStore = new EnterpriseLeadWorkspaceProfileRevisionStore({
+      db: this.db,
+      trustedProfileIndexStore: this.trustedProfileIndexStore,
+      loadWorkspace: workspaceId => this.getWorkspace(workspaceId),
+      faultInjector: this.faultInjector,
+    });
   }
 
   private initialize(): void {
@@ -413,11 +444,16 @@ export class EnterpriseLeadWorkspaceStore {
 
   createWorkspace(input: CreateEnterpriseLeadWorkspaceInput): EnterpriseLeadWorkspace {
     const now = new Date().toISOString();
+    const normalizedProfile = normalizeWorkspaceProfile(input.profile);
+    if (hasCanonicalEnterpriseProfileKnowledgeTrustOverlap(normalizedProfile)) {
+      throw new EnterpriseLeadProfileInvalidRequestError();
+    }
     const workspace: EnterpriseLeadWorkspace = {
       id: randomUUID(),
       name: input.name,
       type: input.type,
-      profile: input.profile,
+      profile: normalizedProfile,
+      profileRevision: 1,
       extractionSources: input.extractionSources,
       riskRules: input.riskRules ? [...input.riskRules] : cloneDefaultRiskRules(),
       enabledAgentRoles: input.enabledAgentRoles,
@@ -430,38 +466,55 @@ export class EnterpriseLeadWorkspaceStore {
       updatedAt: now,
     };
 
-    this.db.prepare(`
-      INSERT INTO enterprise_lead_workspaces (
-        id,
-        name,
-        type,
-        profile,
-        extraction_sources,
-        risk_rules,
-        enabled_agent_roles,
-        settings,
-        workspace_agents,
-        recent_run_id,
-        created_at,
-        updated_at
-      )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      workspace.id,
-      workspace.name,
-      workspace.type,
-      JSON.stringify(workspace.profile),
-      JSON.stringify(workspace.extractionSources),
-      JSON.stringify(workspace.riskRules),
-      JSON.stringify(workspace.enabledAgentRoles),
-      JSON.stringify(workspace.settings),
-      JSON.stringify(workspace.workspaceAgents),
-      workspace.recentRunId,
-      workspace.createdAt,
-      workspace.updatedAt,
-    );
+    const createTransaction = this.db.transaction(() => {
+      this.db.prepare(`
+        INSERT INTO enterprise_lead_workspaces (
+          id,
+          name,
+          type,
+          profile,
+          profile_revision,
+          extraction_sources,
+          risk_rules,
+          enabled_agent_roles,
+          settings,
+          workspace_agents,
+          recent_run_id,
+          created_at,
+          updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        workspace.id,
+        workspace.name,
+        workspace.type,
+        JSON.stringify(workspace.profile),
+        workspace.profileRevision,
+        JSON.stringify(workspace.extractionSources),
+        JSON.stringify(workspace.riskRules),
+        JSON.stringify(workspace.enabledAgentRoles),
+        JSON.stringify(workspace.settings),
+        JSON.stringify(workspace.workspaceAgents),
+        workspace.recentRunId,
+        workspace.createdAt,
+        workspace.updatedAt,
+      );
+      this.faultInjector?.(
+        EnterpriseLeadWorkspaceProfilePersistenceStage.AfterWorkspaceInsert,
+        { workspaceId: workspace.id },
+      );
+      this.profileRevisionStore.initializeWorkspaceProfileInCurrentTransaction({
+        workspaceId: workspace.id,
+        now,
+      });
+      const created = this.getWorkspace(workspace.id);
+      if (!created) {
+        throw new Error('Enterprise lead workspace not found');
+      }
+      return created;
+    });
 
-    return workspace;
+    return runTransientSqliteWriteTransaction(() => createTransaction.immediate());
   }
 
   listWorkspaces(): EnterpriseLeadWorkspace[] {
@@ -471,6 +524,7 @@ export class EnterpriseLeadWorkspaceStore {
         name,
         type,
         profile,
+        profile_revision as profileRevision,
         extraction_sources as extractionSources,
         risk_rules as riskRules,
         enabled_agent_roles as enabledAgentRoles,
@@ -493,6 +547,7 @@ export class EnterpriseLeadWorkspaceStore {
         name,
         type,
         profile,
+        profile_revision as profileRevision,
         extraction_sources as extractionSources,
         risk_rules as riskRules,
         enabled_agent_roles as enabledAgentRoles,
@@ -510,11 +565,23 @@ export class EnterpriseLeadWorkspaceStore {
   }
 
   deleteWorkspace(workspaceId: string): boolean {
-    const deleteTransaction = this.db.transaction(() => {
+    const deleteTransaction = this.db.transaction(() =>
+      this.deleteWorkspaceRowInCurrentTransaction(workspaceId));
+    return deleteTransaction();
+  }
+
+  deleteWorkspaceRowInCurrentTransaction(workspaceId: string): boolean {
+    if (!this.db.inTransaction) {
+      throw new Error('Enterprise lead workspace transaction required');
+    }
+    const normalizedWorkspaceId = workspaceId.trim();
+    if (!normalizedWorkspaceId) {
+      throw new Error('Enterprise lead workspace id is required');
+    }
       this.db.prepare(`
         DELETE FROM enterprise_lead_pending_versions
         WHERE workspace_id = ?
-      `).run(workspaceId);
+      `).run(normalizedWorkspaceId);
 
       this.db.prepare(`
         DELETE FROM enterprise_lead_agent_tasks
@@ -523,22 +590,19 @@ export class EnterpriseLeadWorkspaceStore {
           FROM enterprise_lead_runs
           WHERE workspace_id = ?
         )
-      `).run(workspaceId);
+      `).run(normalizedWorkspaceId);
 
       this.db.prepare(`
         DELETE FROM enterprise_lead_runs
         WHERE workspace_id = ?
-      `).run(workspaceId);
+      `).run(normalizedWorkspaceId);
 
       const result = this.db.prepare(`
         DELETE FROM enterprise_lead_workspaces
         WHERE id = ?
-      `).run(workspaceId);
+      `).run(normalizedWorkspaceId);
 
-      return result.changes > 0;
-    });
-
-    return deleteTransaction();
+    return result.changes > 0;
   }
 
   updateWorkspaceSettings(
@@ -577,33 +641,21 @@ export class EnterpriseLeadWorkspaceStore {
     return updated;
   }
 
-  updateWorkspaceProfile(
-    workspaceId: string,
-    profile: EnterpriseLeadWorkspaceProfile,
-  ): EnterpriseLeadWorkspace {
-    const workspace = this.getWorkspace(workspaceId);
-    if (!workspace) {
-      throw new Error('Enterprise lead workspace not found');
-    }
+  updateWorkspaceProfile(input: EnterpriseLeadWorkspaceProfileUpdateRequest): EnterpriseLeadWorkspace {
+    return this.profileRevisionStore.compareAndSwapProfile({
+      workspaceId: input.workspaceId,
+      expectedProfileRevision: input.expectedProfileRevision,
+      nextProfile: input.profile,
+      touchedFields: input.touchedFields,
+    }).workspace;
+  }
 
-    const normalizedProfile = normalizeWorkspaceProfile(profile);
-    const now = new Date().toISOString();
+  getProfileRevisionStore(): EnterpriseLeadWorkspaceProfileRevisionStore {
+    return this.profileRevisionStore;
+  }
 
-    this.db.prepare(`
-      UPDATE enterprise_lead_workspaces
-      SET profile = ?, updated_at = ?
-      WHERE id = ?
-    `).run(
-      JSON.stringify(normalizedProfile),
-      now,
-      workspace.id,
-    );
-
-    const updated = this.getWorkspace(workspace.id);
-    if (!updated) {
-      throw new Error('Enterprise lead workspace not found');
-    }
-    return updated;
+  getTrustedProfileIndexStore(): KnowledgeTrustedProfileIndexStore {
+    return this.trustedProfileIndexStore;
   }
 
   updateWorkspaceSources(
@@ -636,7 +688,18 @@ export class EnterpriseLeadWorkspaceStore {
     workspaceId: string,
     source: EnterpriseLeadExtractionSource,
   ): EnterpriseLeadWorkspace {
-    const transaction = this.db.transaction(() => {
+    const transaction = this.db.transaction(() =>
+      this.upsertWorkspaceSourceByIdInCurrentTransaction(workspaceId, source));
+    return transaction();
+  }
+
+  upsertWorkspaceSourceByIdInCurrentTransaction(
+    workspaceId: string,
+    source: EnterpriseLeadExtractionSource,
+  ): EnterpriseLeadWorkspace {
+    if (!this.db.inTransaction) {
+      throw new Error('Enterprise lead workspace transaction required');
+    }
       const workspace = this.getWorkspace(workspaceId);
       if (!workspace) {
         throw new Error('Enterprise lead workspace not found');
@@ -653,13 +716,19 @@ export class EnterpriseLeadWorkspaceStore {
       } else {
         sources.push(normalizedSource);
       }
-      return this.writeWorkspaceSources(workspaceId, sources);
-    });
-    return transaction();
+    return this.writeWorkspaceSources(workspaceId, sources);
   }
 
   removeWorkspaceSourceById(workspaceId: string, sourceId: string): boolean {
-    const transaction = this.db.transaction(() => {
+    const transaction = this.db.transaction(() =>
+      this.removeWorkspaceSourceByIdInCurrentTransaction(workspaceId, sourceId));
+    return transaction();
+  }
+
+  removeWorkspaceSourceByIdInCurrentTransaction(workspaceId: string, sourceId: string): boolean {
+    if (!this.db.inTransaction) {
+      throw new Error('Enterprise lead workspace transaction required');
+    }
       const workspace = this.getWorkspace(workspaceId);
       if (!workspace) {
         throw new Error('Enterprise lead workspace not found');
@@ -673,9 +742,7 @@ export class EnterpriseLeadWorkspaceStore {
         return false;
       }
       this.writeWorkspaceSources(workspaceId, sources);
-      return true;
-    });
-    return transaction();
+    return true;
   }
 
   private reconcileNormalizedKnowledgeSources(

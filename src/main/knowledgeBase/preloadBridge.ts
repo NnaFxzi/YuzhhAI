@@ -1,78 +1,50 @@
 import { KnowledgeBaseIpc } from '../../shared/knowledgeBase/constants';
-import type {
-  KnowledgeBaseIpcResult,
-  KnowledgeDocumentDetails,
-  KnowledgeDocumentDetailsRequest,
-  KnowledgeDocumentListItem,
-  KnowledgeDocumentRevisionRequest,
-  KnowledgeFileSelection,
-  KnowledgeImportBatchResult,
-  KnowledgeImportSelectionRequest,
-  KnowledgeListDocumentsRequest,
-  KnowledgeRetryDocumentRequest,
-  KnowledgeRetryLocalIndexRequest,
-} from '../../shared/knowledgeBase/types';
+import type { KnowledgeBaseRendererApi } from '../../shared/knowledgeBase/types';
 
 type Invoke = (channel: string, ...args: unknown[]) => Promise<unknown>;
 
-export interface KnowledgeBasePreloadBridge {
-  selectFiles: () => Promise<KnowledgeBaseIpcResult<KnowledgeFileSelection | null>>;
-  importSelection: (
-    input: KnowledgeImportSelectionRequest,
-  ) => Promise<KnowledgeBaseIpcResult<KnowledgeImportBatchResult>>;
-  listDocuments: (
-    input: KnowledgeListDocumentsRequest,
-  ) => Promise<KnowledgeBaseIpcResult<KnowledgeDocumentListItem[]>>;
-  getDocumentDetails: (
-    input: KnowledgeDocumentDetailsRequest,
-  ) => Promise<KnowledgeBaseIpcResult<KnowledgeDocumentDetails>>;
-  deleteDocument: (
-    input: KnowledgeDocumentRevisionRequest,
-  ) => Promise<KnowledgeBaseIpcResult<KnowledgeDocumentListItem>>;
-  restoreDocument: (
-    input: KnowledgeDocumentRevisionRequest,
-  ) => Promise<KnowledgeBaseIpcResult<KnowledgeDocumentListItem>>;
-  retryDocument: (
-    input: KnowledgeRetryDocumentRequest,
-  ) => Promise<KnowledgeBaseIpcResult<KnowledgeDocumentListItem>>;
-  retryLocalIndex: (
-    input: KnowledgeRetryLocalIndexRequest,
-  ) => Promise<KnowledgeBaseIpcResult<KnowledgeDocumentListItem>>;
-}
+export type KnowledgeBasePreloadBridge = KnowledgeBaseRendererApi;
+
+const invokeMethod = <Method extends keyof KnowledgeBaseRendererApi>(
+  invoke: Invoke,
+  channel: KnowledgeBaseIpc,
+  ...args: Parameters<KnowledgeBaseRendererApi[Method]>
+): ReturnType<KnowledgeBaseRendererApi[Method]> =>
+  invoke(channel, ...args) as ReturnType<KnowledgeBaseRendererApi[Method]>;
 
 export const createKnowledgeBasePreloadBridge = (
   invoke: Invoke,
 ): KnowledgeBasePreloadBridge => ({
-  selectFiles: () =>
-    invoke(KnowledgeBaseIpc.SelectFiles) as Promise<
-      KnowledgeBaseIpcResult<KnowledgeFileSelection | null>
-    >,
+  selectFiles: () => invokeMethod<'selectFiles'>(invoke, KnowledgeBaseIpc.SelectFiles),
   importSelection: input =>
-    invoke(KnowledgeBaseIpc.ImportSelection, input) as Promise<
-      KnowledgeBaseIpcResult<KnowledgeImportBatchResult>
-    >,
+    invokeMethod<'importSelection'>(invoke, KnowledgeBaseIpc.ImportSelection, input),
   listDocuments: input =>
-    invoke(KnowledgeBaseIpc.ListDocuments, input) as Promise<
-      KnowledgeBaseIpcResult<KnowledgeDocumentListItem[]>
-    >,
+    invokeMethod<'listDocuments'>(invoke, KnowledgeBaseIpc.ListDocuments, input),
   getDocumentDetails: input =>
-    invoke(KnowledgeBaseIpc.GetDocumentDetails, input) as Promise<
-      KnowledgeBaseIpcResult<KnowledgeDocumentDetails>
-    >,
+    invokeMethod<'getDocumentDetails'>(invoke, KnowledgeBaseIpc.GetDocumentDetails, input),
   deleteDocument: input =>
-    invoke(KnowledgeBaseIpc.DeleteDocument, input) as Promise<
-      KnowledgeBaseIpcResult<KnowledgeDocumentListItem>
-    >,
+    invokeMethod<'deleteDocument'>(invoke, KnowledgeBaseIpc.DeleteDocument, input),
   restoreDocument: input =>
-    invoke(KnowledgeBaseIpc.RestoreDocument, input) as Promise<
-      KnowledgeBaseIpcResult<KnowledgeDocumentListItem>
-    >,
+    invokeMethod<'restoreDocument'>(invoke, KnowledgeBaseIpc.RestoreDocument, input),
   retryDocument: input =>
-    invoke(KnowledgeBaseIpc.RetryDocument, input) as Promise<
-      KnowledgeBaseIpcResult<KnowledgeDocumentListItem>
-    >,
+    invokeMethod<'retryDocument'>(invoke, KnowledgeBaseIpc.RetryDocument, input),
   retryLocalIndex: input =>
-    invoke(KnowledgeBaseIpc.RetryLocalIndex, input) as Promise<
-      KnowledgeBaseIpcResult<KnowledgeDocumentListItem>
-    >,
+    invokeMethod<'retryLocalIndex'>(invoke, KnowledgeBaseIpc.RetryLocalIndex, input),
+  prepareExtractionAuthorization: input =>
+    invokeMethod<'prepareExtractionAuthorization'>(
+      invoke,
+      KnowledgeBaseIpc.PrepareExtractionAuthorization,
+      input,
+    ),
+  requestExtraction: input =>
+    invokeMethod<'requestExtraction'>(invoke, KnowledgeBaseIpc.RequestExtraction, input),
+  retryExtraction: input =>
+    invokeMethod<'retryExtraction'>(invoke, KnowledgeBaseIpc.RetryExtraction, input),
+  cancelExtraction: input =>
+    invokeMethod<'cancelExtraction'>(invoke, KnowledgeBaseIpc.CancelExtraction, input),
+  listFacts: input => invokeMethod<'listFacts'>(invoke, KnowledgeBaseIpc.ListFacts, input),
+  reviewFact: input => invokeMethod<'reviewFact'>(invoke, KnowledgeBaseIpc.ReviewFact, input),
+  archiveFact: input => invokeMethod<'archiveFact'>(invoke, KnowledgeBaseIpc.ArchiveFact, input),
+  getFactEvidence: input =>
+    invokeMethod<'getFactEvidence'>(invoke, KnowledgeBaseIpc.GetFactEvidence, input),
 });

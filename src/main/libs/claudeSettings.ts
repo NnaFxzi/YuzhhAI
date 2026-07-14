@@ -30,6 +30,10 @@ type AppConfig = {
   providers?: Record<string, LocalProviderConfig>;
 };
 
+export interface RawApiConfigResolutionOptions {
+  allowServerFallback?: boolean;
+}
+
 type ProviderModelConfig = {
   id: string;
   name: string;
@@ -268,7 +272,7 @@ function tryLobsteraiServerFallback(modelId?: string): MatchedProvider | null {
     ? normalizeProviderApiFormat(cachedMeta.apiFormat)
     : 'openai';
   console.debug('[ClaudeSettings] lobsterai-server provider resolved:', {
-    baseURL,
+    providerName: ProviderName.LobsteraiServer,
     modelId: effectiveModelId,
     apiFormat: effectiveApiFormat,
     supportsImage: cachedMeta?.supportsImage,
@@ -287,8 +291,14 @@ function tryLobsteraiServerFallback(modelId?: string): MatchedProvider | null {
   };
 }
 
-function resolveMatchedProvider(appConfig: AppConfig): { matched: MatchedProvider | null; error?: string } {
+function resolveMatchedProvider(
+  appConfig: AppConfig,
+  options: RawApiConfigResolutionOptions = {},
+): { matched: MatchedProvider | null; error?: string } {
   const providers = appConfig.providers ?? {};
+  const resolveServerFallback = (modelId?: string): MatchedProvider | null => (
+    options.allowServerFallback === false ? null : tryLobsteraiServerFallback(modelId)
+  );
 
   const resolveFallbackModel = (): {
     providerName: string;
@@ -317,7 +327,7 @@ function resolveMatchedProvider(appConfig: AppConfig): { matched: MatchedProvide
   if (!modelId) {
     const fallback = resolveFallbackModel();
     if (!fallback) {
-      const serverFallback = tryLobsteraiServerFallback(configuredModelId);
+      const serverFallback = resolveServerFallback(configuredModelId);
       if (serverFallback) return { matched: serverFallback };
       return { matched: null, error: 'No available model configured in enabled providers.' };
     }
@@ -329,7 +339,7 @@ function resolveMatchedProvider(appConfig: AppConfig): { matched: MatchedProvide
 
   // Handle lobsterai-server provider: dynamically construct from auth tokens
   if (preferredProviderName === ProviderName.LobsteraiServer) {
-    const serverMatch = tryLobsteraiServerFallback(modelId);
+    const serverMatch = resolveServerFallback(modelId);
     if (serverMatch) {
       return { matched: serverMatch };
     }
@@ -360,7 +370,7 @@ function resolveMatchedProvider(appConfig: AppConfig): { matched: MatchedProvide
       modelId = fallback.modelId;
       providerEntry = [fallback.providerName, fallback.providerConfig];
     } else {
-      const serverFallback = tryLobsteraiServerFallback(modelId);
+      const serverFallback = resolveServerFallback(modelId);
       if (serverFallback) return { matched: serverFallback };
       return { matched: null, error: `No enabled provider found for model: ${modelId}` };
     }
@@ -375,7 +385,7 @@ function resolveMatchedProvider(appConfig: AppConfig): { matched: MatchedProvide
   // MiniMax OAuth mode guard: if OAuth is selected but login has not been completed
   // (no access token), do not use the stale API key as an OAuth token.
   if (providerName === ProviderName.Minimax && (providerConfig as any).authType === 'oauth' && !(providerConfig as any).oauthAccessToken) {
-    const serverFallback = tryLobsteraiServerFallback(modelId);
+    const serverFallback = resolveServerFallback(modelId);
     if (serverFallback) return { matched: serverFallback };
     return { matched: null, error: 'MiniMax OAuth mode selected but login not completed.' };
   }
@@ -390,7 +400,7 @@ function resolveMatchedProvider(appConfig: AppConfig): { matched: MatchedProvide
   }
 
   if (!baseURL) {
-    const serverFallback = tryLobsteraiServerFallback(modelId);
+    const serverFallback = resolveServerFallback(modelId);
     if (serverFallback) return { matched: serverFallback };
     return { matched: null, error: `Provider ${providerName} is missing base URL.` };
   }
@@ -401,7 +411,7 @@ function resolveMatchedProvider(appConfig: AppConfig): { matched: MatchedProvide
     (providerName === ProviderName.Minimax && (providerConfig as any).authType === 'oauth' && !!(providerConfig as any).oauthAccessToken?.trim())
     || shouldUseOpenAICodexOAuth(providerName, providerConfig);
   if (apiFormat === 'anthropic' && providerRequiresApiKey(providerName) && !providerConfig.apiKey?.trim() && !hasApiKey && !hasOAuthCreds) {
-    const serverFallback = tryLobsteraiServerFallback(modelId);
+    const serverFallback = resolveServerFallback(modelId);
     if (serverFallback) return { matched: serverFallback };
     return { matched: null, error: `Provider ${providerName} requires API key for Anthropic-compatible mode.` };
   }
@@ -542,10 +552,16 @@ const resolveRawApiConfigFromMatchedProvider = (matched: MatchedProvider): ApiCo
     }
   }
 
-  console.log('[ClaudeSettings] resolved raw API config:', JSON.stringify({
-    ...matched,
-    providerConfig: { ...matched.providerConfig, apiKey: apiKey ? '***' : '' },
-  }));
+  console.debug('[ClaudeSettings] resolved raw API config:', {
+    providerName: matched.providerName,
+    modelId: matched.modelId,
+    apiType: effectiveApiFormat === 'anthropic' ? 'anthropic' : 'openai',
+    authType: matched.providerConfig.authType,
+    codingPlanEnabled: !!matched.providerConfig.codingPlanEnabled,
+    hasApiKey: Boolean(apiKey),
+    hasOAuthAccessToken: Boolean(matched.providerConfig.oauthAccessToken?.trim()),
+    hasOAuthRefreshToken: Boolean(matched.providerConfig.oauthRefreshToken?.trim()),
+  });
   // OpenClaw's gateway requires a non-empty apiKey for every provider — even
   // local servers (Ollama, vLLM, etc.) that don't enforce auth.  When the user
   // leaves the key blank we supply a placeholder so the gateway doesn't reject
@@ -571,8 +587,11 @@ const resolveRawApiConfigFromMatchedProvider = (matched: MatchedProvider): ApiCo
   };
 };
 
-export function resolveRawApiConfigFromAppConfig(appConfig: AppConfig): ApiConfigResolution {
-  const { matched, error } = resolveMatchedProvider(appConfig);
+export function resolveRawApiConfigFromAppConfig(
+  appConfig: AppConfig,
+  options: RawApiConfigResolutionOptions = {},
+): ApiConfigResolution {
+  const { matched, error } = resolveMatchedProvider(appConfig, options);
   if (!matched) {
     return { config: null, error };
   }

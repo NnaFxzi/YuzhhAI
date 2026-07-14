@@ -4,10 +4,15 @@ import {
   KNOWLEDGE_CHUNK_OVERLAP_CHARS,
   KNOWLEDGE_CHUNK_TARGET_CHARS,
   KnowledgeDocumentIndexAttemptOutcome,
+  KnowledgeDocumentIndexErrorCode,
   KnowledgeDocumentIndexStatus,
   KnowledgeDocumentIndexTokenizer,
 } from '../../shared/knowledgeBase/constants';
-import { runKnowledgeDocumentIndexUntilIdle } from './knowledgeDocumentIndexRunner';
+import {
+  KnowledgeDocumentIndexRunnerLogCode,
+  KnowledgeDocumentIndexRunnerLogStage,
+  runKnowledgeDocumentIndexUntilIdle,
+} from './knowledgeDocumentIndexRunner';
 import type { KnowledgeDocumentIndexStore } from './knowledgeDocumentIndexStore';
 import type { KnowledgeDocumentIndexClaim } from './knowledgeDocumentIndexTypes';
 
@@ -54,6 +59,14 @@ const createRunnerStore = (overrides: Record<string, unknown> = {}) => ({
   failAttempt: vi.fn(),
   ...overrides,
 }) as unknown as KnowledgeDocumentIndexStore;
+
+const createSensitiveFailure = (label: string): Error => Object.assign(
+  new Error(`${label} SECRET SELECT * FROM private_table /private/company.pdf`),
+  {
+    stack: `${label} STACK SECRET /private/stack.ts:42`,
+    cause: new Error(`${label} CAUSE SECRET api-key-value`),
+  },
+);
 
 describe('runKnowledgeDocumentIndexUntilIdle', () => {
   test('recovers any previous lease one millisecond past the captured drain time before cleanup', () => {
@@ -268,7 +281,7 @@ describe('runKnowledgeDocumentIndexUntilIdle', () => {
   });
 
   test('records a write-batch hook failure instead of publishing or silently continuing', () => {
-    const hookFailure = new Error('writer fairness hook failed');
+    const hookFailure = createSensitiveFailure('processing');
     const claim = createClaim();
     const failAttempt = vi.fn();
     const publishVersion = vi.fn();
@@ -290,10 +303,19 @@ describe('runKnowledgeDocumentIndexUntilIdle', () => {
         indexedCount: 0,
         failedCount: 1,
       });
-      expect(errorLog).toHaveBeenCalledWith(
-        '[KnowledgeBase] Local index attempt failed:',
-        hookFailure,
-      );
+      expect(errorLog).toHaveBeenCalledWith('[KnowledgeDocumentIndex]', {
+        workspaceId: claim.state.workspaceId,
+        documentId: claim.state.documentId,
+        documentVersionId: claim.state.documentVersionId,
+        attemptId: claim.attempt.id,
+        stage: KnowledgeDocumentIndexRunnerLogStage.ProcessClaim,
+        code: KnowledgeDocumentIndexErrorCode.ProcessingFailed,
+      });
+      const serializedLogs = JSON.stringify(errorLog.mock.calls);
+      expect(serializedLogs).not.toContain(hookFailure.message);
+      expect(serializedLogs).not.toContain(hookFailure.stack);
+      expect(serializedLogs).not.toContain('api-key-value');
+      expect(serializedLogs).not.toContain('/private/company.pdf');
       expect(failAttempt).toHaveBeenCalledTimes(1);
       expect(publishVersion).not.toHaveBeenCalled();
     } finally {
@@ -325,6 +347,53 @@ describe('runKnowledgeDocumentIndexUntilIdle', () => {
     try {
       expect(() => runKnowledgeDocumentIndexUntilIdle(store)).toThrow(busy);
       expect(failAttempt).toHaveBeenCalledTimes(1);
+    } finally {
+      errorLog.mockRestore();
+      warningLog.mockRestore();
+    }
+  });
+
+  test('does not expose a persistence Error while recording a local index failure', () => {
+    const processingFailure = createSensitiveFailure('processing');
+    const persistFailure = createSensitiveFailure('persist');
+    const claim = createClaim();
+    const store = createRunnerStore({
+      claimNext: vi.fn()
+        .mockReturnValueOnce(claim)
+        .mockReturnValueOnce(null),
+      stageVersionBatch: vi.fn(() => {
+        throw processingFailure;
+      }),
+      failAttempt: vi.fn(() => {
+        throw persistFailure;
+      }),
+    });
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const warningLog = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    try {
+      expect(runKnowledgeDocumentIndexUntilIdle(store)).toEqual({
+        indexedCount: 0,
+        failedCount: 1,
+      });
+      expect(warningLog).toHaveBeenCalledWith('[KnowledgeDocumentIndex]', {
+        workspaceId: claim.state.workspaceId,
+        documentId: claim.state.documentId,
+        documentVersionId: claim.state.documentVersionId,
+        attemptId: claim.attempt.id,
+        stage: KnowledgeDocumentIndexRunnerLogStage.PersistAttemptFailure,
+        code: KnowledgeDocumentIndexRunnerLogCode.FailurePersistenceFailed,
+      });
+      const serializedLogs = JSON.stringify([
+        ...errorLog.mock.calls,
+        ...warningLog.mock.calls,
+      ]);
+      for (const failure of [processingFailure, persistFailure]) {
+        expect(serializedLogs).not.toContain(failure.message);
+        expect(serializedLogs).not.toContain(failure.stack);
+      }
+      expect(serializedLogs).not.toContain('api-key-value');
+      expect(serializedLogs).not.toContain('/private/company.pdf');
     } finally {
       errorLog.mockRestore();
       warningLog.mockRestore();

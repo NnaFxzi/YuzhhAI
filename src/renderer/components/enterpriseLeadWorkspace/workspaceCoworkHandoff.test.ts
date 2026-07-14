@@ -24,6 +24,7 @@ const createWorkspace = (): EnterpriseLeadWorkspace => ({
     contactRules: ['先确认产线类型再推荐方案'],
     missingInfo: [],
   },
+  profileRevision: 1,
   extractionSources: [],
   riskRules: [],
   enabledAgentRoles: [],

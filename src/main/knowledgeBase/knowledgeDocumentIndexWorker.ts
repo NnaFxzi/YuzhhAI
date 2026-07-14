@@ -9,11 +9,9 @@ import {
   KnowledgeDocumentIndexErrorCode,
 } from '../../shared/knowledgeBase/constants';
 import { applySqliteConnectionPolicy } from '../libs/sqliteConnectionPolicy';
+import { isTransientSqliteBusyError } from '../libs/sqliteTransactionRetry';
 import { runKnowledgeDocumentIndexUntilIdle } from './knowledgeDocumentIndexRunner';
-import {
-  isTransientSqliteBusyError,
-  KnowledgeDocumentIndexStore,
-} from './knowledgeDocumentIndexStore';
+import { KnowledgeDocumentIndexStore } from './knowledgeDocumentIndexStore';
 import {
   KnowledgeDocumentIndexWorkerMessage,
   type KnowledgeDocumentIndexWorkerRequest,

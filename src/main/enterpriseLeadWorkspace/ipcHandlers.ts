@@ -1,6 +1,9 @@
 import { ipcMain } from 'electron';
 
-import { EnterpriseLeadWorkspaceIpc } from '../../shared/enterpriseLeadWorkspace/constants';
+import {
+  EnterpriseLeadIpcErrorCode,
+  EnterpriseLeadWorkspaceIpc,
+} from '../../shared/enterpriseLeadWorkspace/constants';
 import type {
   EnterpriseLeadAgentTask,
   EnterpriseLeadExtractionSource,
@@ -12,14 +15,22 @@ import type {
   EnterpriseLeadWorkspaceAgentCalibrationResponse,
   EnterpriseLeadWorkspaceDraft,
   EnterpriseLeadWorkspaceProfile,
+  EnterpriseLeadWorkspaceProfileUpdateRequest,
   EnterpriseLeadWorkspaceRunSummary,
   EnterpriseLeadWorkspaceSettingsUpdate,
   EnterpriseLeadWorkspaceSnapshot,
 } from '../../shared/enterpriseLeadWorkspace/types';
+import { normalizeEnterpriseLeadExtractionSources } from '../../shared/enterpriseLeadWorkspace/validation';
 import {
-  normalizeEnterpriseLeadExtractionSources,
-  normalizeWorkspaceProfile,
-} from '../../shared/enterpriseLeadWorkspace/validation';
+  type KnowledgeFactDomain,
+  KnowledgeFactDomains,
+} from '../../shared/knowledgeBase/constants';
+import {
+  cloneEnterpriseLeadProfileConflictSnapshot,
+  EnterpriseLeadProfileInvalidRequestError,
+  EnterpriseLeadProfileRevisionConflictError,
+  validateEnterpriseLeadWorkspaceProfileRequest,
+} from './profileRevisionStore';
 
 export interface EnterpriseLeadWorkspaceHandlerDeps {
   service: {
@@ -33,8 +44,7 @@ export interface EnterpriseLeadWorkspaceHandlerDeps {
     ) => EnterpriseLeadWorkspace | Promise<EnterpriseLeadWorkspace>;
     deleteWorkspace: (workspaceId: string) => boolean | Promise<boolean>;
     updateWorkspaceProfile: (
-      workspaceId: string,
-      profile: EnterpriseLeadWorkspaceProfile,
+      input: EnterpriseLeadWorkspaceProfileUpdateRequest,
     ) => EnterpriseLeadWorkspace | Promise<EnterpriseLeadWorkspace>;
     updateWorkspaceSources: (
       workspaceId: string,
@@ -90,12 +100,15 @@ export interface EnterpriseLeadWorkspaceHandlerDeps {
   };
 }
 
-const toErrorMessage = (error: unknown): string =>
-  error instanceof Error ? error.message : 'Unknown enterprise lead workspace error';
+class EnterpriseLeadIpcInvalidRequestError extends Error {}
 
-const requireNonEmptyString = (value: unknown, label: string): string => {
+const invalidRequest = (): never => {
+  throw new EnterpriseLeadIpcInvalidRequestError('Invalid enterprise lead workspace request');
+};
+
+const requireNonEmptyString = (value: unknown, _label: string): string => {
   if (typeof value !== 'string' || value.trim().length === 0) {
-    throw new Error(`${label} is required`);
+    return invalidRequest();
   }
   return value;
 };
@@ -108,28 +121,36 @@ const readSettingsUpdate = (value: unknown): EnterpriseLeadWorkspaceSettingsUpda
 };
 
 const readWorkspaceProfile = (value: unknown): EnterpriseLeadWorkspaceProfile =>
-  normalizeWorkspaceProfile(value);
+  validateEnterpriseLeadWorkspaceProfileRequest(value);
 
 const readWorkspaceSources = (value: unknown): EnterpriseLeadExtractionSource[] => {
   if (!Array.isArray(value)) {
-    throw new Error('Workspace sources are required');
+    return invalidRequest();
   }
   return normalizeEnterpriseLeadExtractionSources(value);
 };
 
-const requireNonNegativeInteger = (value: unknown, label: string): number => {
+const requireNonNegativeInteger = (value: unknown, _label: string): number => {
   if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) {
-    throw new Error(`${label} must be a non-negative integer`);
+    return invalidRequest();
   }
   return value;
 };
 
-const isPlainObject = (value: unknown): value is Record<string, unknown> =>
-  Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+const isPlainObject = (value: unknown): value is Record<string, unknown> => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return false;
+  }
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+};
+
+const hasOwn = (value: Record<string, unknown>, key: string): boolean =>
+  Object.prototype.hasOwnProperty.call(value, key);
 
 const readWorkspaceAgents = (value: unknown): EnterpriseLeadWorkspaceAgentBinding[] => {
   if (!Array.isArray(value)) {
-    throw new Error('Workspace agents are required');
+    return invalidRequest();
   }
   return value as EnterpriseLeadWorkspaceAgentBinding[];
 };
@@ -153,7 +174,7 @@ const readWorkspaceAgentCalibrationRequest = (
   value: unknown,
 ): EnterpriseLeadWorkspaceAgentCalibrationRequest => {
   if (!isPlainObject(value) || !isPlainObject(value.agent) || !isPlainObject(value.example)) {
-    throw new Error('Workspace Agent calibration request is required');
+    return invalidRequest();
   }
 
   return {
@@ -184,10 +205,96 @@ const ok = <T>(data: T): EnterpriseLeadIpcResult<T> => ({
   data,
 });
 
-const fail = <T>(error: unknown): EnterpriseLeadIpcResult<T> => ({
-  success: false,
-  error: toErrorMessage(error),
-});
+const fail = <T>(error: unknown): EnterpriseLeadIpcResult<T> => {
+  if (error instanceof EnterpriseLeadProfileRevisionConflictError) {
+    try {
+      return {
+        success: false,
+        error: {
+          code: EnterpriseLeadIpcErrorCode.ProfileRevisionConflict,
+          message: 'Workspace profile revision conflict',
+          latestProfile: cloneEnterpriseLeadProfileConflictSnapshot(error.latestProfile),
+        },
+      };
+    } catch {
+      return {
+        success: false,
+        error: {
+          code: EnterpriseLeadIpcErrorCode.OperationFailed,
+          message: 'Enterprise lead workspace operation failed',
+        },
+      };
+    }
+  }
+  if (
+    error instanceof EnterpriseLeadIpcInvalidRequestError ||
+    error instanceof EnterpriseLeadProfileInvalidRequestError
+  ) {
+    return {
+      success: false,
+      error: {
+        code: EnterpriseLeadIpcErrorCode.InvalidRequest,
+        message: 'Invalid enterprise lead workspace request',
+      },
+    };
+  }
+  return {
+    success: false,
+    error: {
+      code: EnterpriseLeadIpcErrorCode.OperationFailed,
+      message: 'Enterprise lead workspace operation failed',
+    },
+  };
+};
+
+const knowledgeFactDomainSet = new Set<string>(KnowledgeFactDomains);
+
+const readProfileRevision = (value: unknown): number => {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 1) {
+    return invalidRequest();
+  }
+  return value;
+};
+
+const readTouchedFields = (value: unknown): KnowledgeFactDomain[] => {
+  if (!Array.isArray(value) || value.length < 1 || value.length > KnowledgeFactDomains.length) {
+    return invalidRequest();
+  }
+  const fields: KnowledgeFactDomain[] = [];
+  const seen = new Set<string>();
+  for (const field of value) {
+    if (typeof field !== 'string' || !knowledgeFactDomainSet.has(field) || seen.has(field)) {
+      return invalidRequest();
+    }
+    seen.add(field);
+    fields.push(field as KnowledgeFactDomain);
+  }
+  return fields;
+};
+
+const readProfileUpdateRequest = (value: unknown): EnterpriseLeadWorkspaceProfileUpdateRequest => {
+  if (!isPlainObject(value)) {
+    return invalidRequest();
+  }
+  const requiredKeys = [
+    'workspaceId',
+    'profile',
+    'expectedProfileRevision',
+    'touchedFields',
+  ] as const;
+  if (
+    requiredKeys.some(key => !hasOwn(value, key)) ||
+    Object.keys(value).some(key => !requiredKeys.includes(key as typeof requiredKeys[number]))
+  ) {
+    return invalidRequest();
+  }
+  return {
+    workspaceId: requireNonEmptyString(value.workspaceId, 'Workspace id'),
+    profile: readWorkspaceProfile(value.profile),
+    expectedProfileRevision: readProfileRevision(value.expectedProfileRevision),
+    touchedFields: readTouchedFields(value.touchedFields),
+  };
+};
 
 export function registerEnterpriseLeadWorkspaceHandlers(
   deps: EnterpriseLeadWorkspaceHandlerDeps,
@@ -246,15 +353,9 @@ export function registerEnterpriseLeadWorkspaceHandlers(
 
   ipcMain.handle(
     EnterpriseLeadWorkspaceIpc.UpdateWorkspaceProfile,
-    async (_event, input: { workspaceId?: unknown; profile?: unknown }) => {
+    async (_event, input: unknown) => {
       try {
-        const workspaceId = requireNonEmptyString(input?.workspaceId, 'Workspace id');
-        return ok(
-          await deps.service.updateWorkspaceProfile(
-            workspaceId,
-            readWorkspaceProfile(input?.profile),
-          ),
-        );
+        return ok(await deps.service.updateWorkspaceProfile(readProfileUpdateRequest(input)));
       } catch (error) {
         return fail<EnterpriseLeadWorkspace>(error);
       }
