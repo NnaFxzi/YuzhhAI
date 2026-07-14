@@ -32,9 +32,9 @@ describe('startCreatedWorkflowRun', () => {
   });
 
   test('reconciles a fast terminal event after start returns an earlier snapshot', async () => {
-    let reconciledSnapshot: EnterpriseLeadWorkspaceSnapshot | null = null;
+    const reconciledSnapshots: EnterpriseLeadWorkspaceSnapshot[] = [];
     const reconcileRun = vi.fn(async () => {
-      reconciledSnapshot = completedSnapshot;
+      reconciledSnapshots.push(completedSnapshot);
     });
 
     const result = await startCreatedWorkflowRun({
@@ -48,7 +48,7 @@ describe('startCreatedWorkflowRun', () => {
     });
 
     expect(reconcileRun).toHaveBeenCalledWith('run-1');
-    expect(reconciledSnapshot?.currentRun?.status).toBe('completed');
+    expect(reconciledSnapshots[0]?.currentRun?.status).toBe('completed');
     expect(result).toEqual({ runId: 'run-1', error: null });
   });
 });
