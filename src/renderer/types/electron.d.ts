@@ -47,7 +47,7 @@ import type {
   EnterpriseLeadExtractionSource,
   EnterpriseLeadIpcResult,
   EnterpriseLeadPendingVersion,
-  EnterpriseLeadWorkflowEvent,
+  EnterpriseLeadWorkflowLiveEvent,
   EnterpriseLeadWorkspace,
   EnterpriseLeadWorkspaceAgentBinding,
   EnterpriseLeadWorkspaceAgentCalibrationRequest,
@@ -810,7 +810,7 @@ interface IElectronAPI {
       taskId: string,
       feedback: string,
     ) => Promise<EnterpriseLeadIpcResult<EnterpriseLeadWorkspaceSnapshot>>;
-    onEvent: (listener: (event: EnterpriseLeadWorkflowEvent) => void) => () => void;
+    onEvent: (listener: (event: EnterpriseLeadWorkflowLiveEvent) => void) => () => void;
   };
   getApiConfig: () => Promise<CoworkApiConfig | null>;
   checkApiConfig: (options?: {

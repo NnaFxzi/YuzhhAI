@@ -1,12 +1,14 @@
 import type { EnterpriseLeadWorkspaceSnapshot } from '../../../shared/enterpriseLeadWorkspace/types';
-import type { WorkflowEvent } from '../../../shared/enterpriseLeadWorkspace/workflowContracts';
+import type { WorkflowEventProjection } from '../../../shared/enterpriseLeadWorkspace/workflowContracts';
 
 export interface WorkflowRunState {
   runId: string;
   snapshot: EnterpriseLeadWorkspaceSnapshot | null;
-  events: WorkflowEvent[];
-  lastEvent: WorkflowEvent | null;
+  events: WorkflowEventProjection[];
+  lastEvent: WorkflowEventProjection | null;
   lastSequence: number;
+  snapshotSequence: number;
+  recoverySequence: number;
   needsSnapshotRecovery: boolean;
 }
 
@@ -16,12 +18,14 @@ export const createWorkflowRunState = (runId: string): WorkflowRunState => ({
   events: [],
   lastEvent: null,
   lastSequence: 0,
+  snapshotSequence: 0,
+  recoverySequence: 0,
   needsSnapshotRecovery: false,
 });
 
 export const reduceWorkflowRunState = (
   state: WorkflowRunState,
-  event: WorkflowEvent | null,
+  event: WorkflowEventProjection | null,
 ): WorkflowRunState => {
   if (!event || event.runId !== state.runId || !Number.isInteger(event.sequence) || event.sequence < 1) {
     return state;
@@ -35,6 +39,7 @@ export const reduceWorkflowRunState = (
     return {
       ...state,
       needsSnapshotRecovery: true,
+      recoverySequence: Math.max(state.recoverySequence, event.sequence),
     };
   }
 
@@ -54,6 +59,18 @@ export const recoverWorkflowRunState = (
   const historyEvents = snapshot?.workflowHistory?.events ?? [];
   const historyLastEvent = historyEvents[historyEvents.length - 1] ?? null;
   const historyLastSequence = historyLastEvent?.sequence ?? 0;
+  const recoverySequence = Math.max(
+    state.recoverySequence,
+    Number.isInteger(recoveredSequence) ? recoveredSequence : 0,
+  );
+  if (historyLastSequence < state.snapshotSequence || historyLastSequence < recoverySequence) {
+    return {
+      ...state,
+      lastSequence: Math.max(state.lastSequence, recoverySequence),
+      needsSnapshotRecovery: state.needsSnapshotRecovery || historyLastSequence < recoverySequence,
+      recoverySequence,
+    };
+  }
   return {
     ...state,
     snapshot,
@@ -62,8 +79,10 @@ export const recoverWorkflowRunState = (
     lastSequence: Math.max(
       state.lastSequence,
       historyLastSequence,
-      Number.isInteger(recoveredSequence) ? recoveredSequence : 0,
+      recoverySequence,
     ),
+    snapshotSequence: historyLastSequence,
+    recoverySequence: 0,
     needsSnapshotRecovery: false,
   };
 };

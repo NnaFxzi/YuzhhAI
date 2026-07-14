@@ -54,6 +54,7 @@ import {
 import {
   normalizeWorkflowReviewFeedback,
   normalizeWorkflowStartOptions,
+  projectWorkflowEventForRenderer,
   WORKFLOW_HISTORY_MAX_ENTRIES,
   type WorkflowArtifactRef,
   WorkflowExecutionMode,
@@ -1690,16 +1691,10 @@ export class EnterpriseLeadWorkspaceService {
   private getWorkflowHistory(runId: string): EnterpriseLeadWorkflowHistory {
     const events = this.workflowArtifactStore.listRecentEvents(runId, WORKFLOW_HISTORY_MAX_ENTRIES)
       .map(event => {
-        const feedback = normalizeWorkflowReviewFeedback(event.payload.feedback);
+        const projectedEvent = projectWorkflowEventForRenderer(event);
         return {
           id: event.id ?? '',
-          runId: event.runId,
-          sequence: event.sequence,
-          type: event.type,
-          ...(event.taskId ? { taskId: event.taskId } : {}),
-          ...(event.role ? { role: event.role } : {}),
-          ...(feedback ? { feedback } : {}),
-          createdAt: event.createdAt,
+          ...projectedEvent,
         };
       });
     const attempts = this.workflowArtifactStore.listRecentRunAttempts(runId, WORKFLOW_HISTORY_MAX_ENTRIES)

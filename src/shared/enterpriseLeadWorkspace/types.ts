@@ -21,6 +21,7 @@ import type {
 import type {
   WorkflowArtifactRef,
   WorkflowEvent,
+  WorkflowEventProjection,
   WorkflowExecutionMode,
 } from './workflowContracts';
 
@@ -39,6 +40,8 @@ export interface EnterpriseLeadWorkflowEvent extends WorkflowEvent {
   payload: Record<string, unknown>;
 }
 
+export type EnterpriseLeadWorkflowLiveEvent = WorkflowEventProjection;
+
 export interface EnterpriseLeadTaskAttempt {
   id: string;
   taskId: string;
@@ -50,9 +53,8 @@ export interface EnterpriseLeadTaskAttempt {
   endedAt: string | null;
 }
 
-export interface EnterpriseLeadWorkflowHistoryEvent extends Omit<WorkflowEvent, 'id'> {
+export interface EnterpriseLeadWorkflowHistoryEvent extends WorkflowEventProjection {
   id: string;
-  feedback?: string;
 }
 
 export interface EnterpriseLeadWorkflowHistoryAttempt {

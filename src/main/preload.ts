@@ -32,7 +32,7 @@ import {
 } from '../shared/enterpriseLeadWorkspace/constants';
 import type {
   EnterpriseLeadExtractionSource,
-  EnterpriseLeadWorkflowEvent,
+  EnterpriseLeadWorkflowLiveEvent,
   EnterpriseLeadWorkspaceAgentBinding,
   EnterpriseLeadWorkspaceAgentCalibrationRequest,
   EnterpriseLeadWorkspaceDraft,
@@ -280,8 +280,8 @@ contextBridge.exposeInMainWorld('electron', {
       ipcRenderer.invoke(EnterpriseLeadWorkflowIpc.ApproveTask, { workspaceId, runId, taskId }),
     rejectWorkflowTask: (workspaceId: string, runId: string, taskId: string, feedback: string) =>
       ipcRenderer.invoke(EnterpriseLeadWorkflowIpc.RejectTask, { workspaceId, runId, taskId, feedback }),
-    onEvent: (listener: (workflowEvent: EnterpriseLeadWorkflowEvent) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, payload: EnterpriseLeadWorkflowEvent) =>
+    onEvent: (listener: (workflowEvent: EnterpriseLeadWorkflowLiveEvent) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, payload: EnterpriseLeadWorkflowLiveEvent) =>
         listener(payload);
       ipcRenderer.on(EnterpriseLeadWorkflowIpc.Event, handler);
       return () => ipcRenderer.removeListener(EnterpriseLeadWorkflowIpc.Event, handler);

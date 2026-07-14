@@ -3,7 +3,7 @@ import type {
   EnterpriseLeadExtractionSource,
   EnterpriseLeadIpcResult,
   EnterpriseLeadPendingVersion,
-  EnterpriseLeadWorkflowEvent,
+  EnterpriseLeadWorkflowLiveEvent,
   EnterpriseLeadWorkspace,
   EnterpriseLeadWorkspaceAgentBinding,
   EnterpriseLeadWorkspaceAgentCalibrationRequest,
@@ -266,7 +266,7 @@ export const rejectWorkflowTask = async (
 
 export const onWorkflowEvent = (
   runId: string,
-  listener: (event: EnterpriseLeadWorkflowEvent) => void,
+  listener: (event: EnterpriseLeadWorkflowLiveEvent) => void,
 ): (() => void) => {
   const api = getApi();
   if (!api || typeof api.onEvent !== 'function') {

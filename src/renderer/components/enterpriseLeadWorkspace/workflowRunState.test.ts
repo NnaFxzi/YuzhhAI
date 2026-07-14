@@ -47,9 +47,41 @@ describe('workflowRunState', () => {
 
     const recovered = recoverWorkflowRunState(afterGap, null, 3);
 
-    expect(recovered.needsSnapshotRecovery).toBe(false);
+    expect(recovered.needsSnapshotRecovery).toBe(true);
     expect(recovered.lastSequence).toBe(3);
     expect(recovered.events).toEqual([]);
+  });
+
+  test('does not let an older snapshot replace newer terminal state or clear a gap recovery', () => {
+    const terminalSnapshot = {
+      currentRun: { id: 'run-1', status: 'completed' },
+      workflowHistory: {
+        events: [
+          { id: 'event-5', runId: 'run-1', sequence: 5, type: 'run_completed', createdAt: '2026-07-14T00:00:05.000Z' },
+        ],
+        attempts: [],
+      },
+    } as unknown as EnterpriseLeadWorkspaceSnapshot;
+    const staleSnapshot = {
+      currentRun: { id: 'run-1', status: 'running' },
+      workflowHistory: {
+        events: [
+          { id: 'event-2', runId: 'run-1', sequence: 2, type: 'task_started', createdAt: '2026-07-14T00:00:02.000Z' },
+        ],
+        attempts: [],
+      },
+    } as unknown as EnterpriseLeadWorkspaceSnapshot;
+
+    const terminal = recoverWorkflowRunState(createWorkflowRunState('run-1'), terminalSnapshot, 5);
+    const afterStaleRefresh = recoverWorkflowRunState(terminal, staleSnapshot, 3);
+    const afterGap = reduceWorkflowRunState(terminal, createEvent({ sequence: 7 }));
+    const staleRecovery = recoverWorkflowRunState(afterGap, staleSnapshot, 7);
+
+    expect(afterStaleRefresh.snapshot?.currentRun?.status).toBe('completed');
+    expect(afterStaleRefresh.events).toEqual(terminal.events);
+    expect(afterStaleRefresh.lastSequence).toBe(5);
+    expect(staleRecovery.needsSnapshotRecovery).toBe(true);
+    expect(staleRecovery.snapshot?.currentRun?.status).toBe('completed');
   });
 
   test('hydrates persisted history during snapshot recovery and resumes after its last sequence', () => {
@@ -76,6 +108,6 @@ describe('workflowRunState', () => {
     expect(recovered.events).toEqual(history.events);
     expect(recovered.lastSequence).toBe(4);
     expect(next.lastSequence).toBe(5);
-    expect(setWorkflowRunSnapshot(next, snapshot).events).toEqual(history.events);
+    expect(setWorkflowRunSnapshot(next, snapshot).events).toEqual(next.events);
   });
 });

@@ -334,6 +334,36 @@ describe('registerEnterpriseLeadWorkspaceHandlers', () => {
     expect(send).toHaveBeenCalledTimes(1);
   });
 
+  test('projects live workflow events without persisted payloads, summaries, or provider errors', async () => {
+    const { deps, service } = makeDeps();
+    const snapshot = {
+      workspace: { id: 'workspace-1' }, currentRun: { id: 'run-1' }, tasks: [], pendingVersions: [], deliverables: [], todos: [], archives: [],
+    } as EnterpriseLeadWorkspaceSnapshot;
+    const events: EnterpriseLeadWorkflowEvent[] = [];
+    service.getSnapshot = vi.fn(() => snapshot);
+    service.startWorkflow = vi.fn(() => {
+      events.push({
+        runId: 'run-1', sequence: 1, type: 'approval_rejected', taskId: 'task-1',
+        summary: 'provider error: private detail', payload: { feedback: 'Add source links.', providerError: 'private detail' },
+        createdAt: '2026-07-14T00:00:00.000Z',
+      });
+      return snapshot;
+    });
+    deps.listWorkflowEvents = vi.fn(() => events);
+    const send = vi.fn();
+    registerEnterpriseLeadWorkspaceHandlers(deps);
+
+    await registeredHandlers.get(EnterpriseLeadWorkflowIpc.Start)?.({ sender: { send } }, {
+      workspaceId: 'workspace-1', runId: 'run-1', options: { enabledOptionalNodes: [], maxConcurrency: 1 },
+    });
+
+    const liveEvent = send.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(liveEvent).toMatchObject({ runId: 'run-1', sequence: 1, type: 'approval_rejected', taskId: 'task-1', feedback: 'Add source links.' });
+    expect(liveEvent).not.toHaveProperty('payload');
+    expect(liveEvent).not.toHaveProperty('summary');
+    expect(liveEvent).not.toHaveProperty('providerError');
+  });
+
   test('subscribes Resume to newly produced events before the resumed workflow settles', async () => {
     const { deps, service } = makeDeps();
     const snapshot = {
@@ -467,7 +497,10 @@ describe('registerEnterpriseLeadWorkspaceHandlers', () => {
     expect(service.startWorkflow).toHaveBeenCalledTimes(1);
     expect(service.markRunErrorOnce).toHaveBeenCalledTimes(1);
     expect(send).toHaveBeenCalledTimes(1);
-    expect(send).toHaveBeenCalledWith(EnterpriseLeadWorkflowIpc.Event, runErrorEvent);
+    expect(send).toHaveBeenCalledWith(
+      EnterpriseLeadWorkflowIpc.Event,
+      expect.objectContaining({ runId: 'run-1', sequence: 1, type: 'run_error' }),
+    );
   });
 
   test('contains failure persistence errors after a concurrent terminal transition', async () => {
@@ -559,8 +592,14 @@ describe('registerEnterpriseLeadWorkspaceHandlers', () => {
 
     expect(service.startWorkflow).toHaveBeenCalledTimes(1);
     expect(service.markRunErrorOnce).toHaveBeenCalledTimes(1);
-    expect(firstSend).toHaveBeenCalledWith(EnterpriseLeadWorkflowIpc.Event, runErrorEvent);
-    expect(secondSend).toHaveBeenCalledWith(EnterpriseLeadWorkflowIpc.Event, runErrorEvent);
+    expect(firstSend).toHaveBeenCalledWith(
+      EnterpriseLeadWorkflowIpc.Event,
+      expect.objectContaining({ runId: 'run-1', sequence: 1, type: 'run_error' }),
+    );
+    expect(secondSend).toHaveBeenCalledWith(
+      EnterpriseLeadWorkflowIpc.Event,
+      expect.objectContaining({ runId: 'run-1', sequence: 1, type: 'run_error' }),
+    );
   });
 
   test('keeps one durable run error across sequential failed Start and Resume executions', async () => {
@@ -628,8 +667,14 @@ describe('registerEnterpriseLeadWorkspaceHandlers', () => {
     expect(service.resumeRun).toHaveBeenCalledTimes(1);
     expect(service.markRunErrorOnce).toHaveBeenCalledTimes(2);
     expect(events).toEqual([runErrorEvent]);
-    expect(startSend).toHaveBeenCalledWith(EnterpriseLeadWorkflowIpc.Event, runErrorEvent);
-    expect(resumeSend).not.toHaveBeenCalledWith(EnterpriseLeadWorkflowIpc.Event, runErrorEvent);
+    expect(startSend).toHaveBeenCalledWith(
+      EnterpriseLeadWorkflowIpc.Event,
+      expect.objectContaining({ runId: 'run-1', sequence: 1, type: 'run_error' }),
+    );
+    expect(resumeSend).not.toHaveBeenCalledWith(
+      EnterpriseLeadWorkflowIpc.Event,
+      expect.objectContaining({ runId: 'run-1', sequence: 1, type: 'run_error' }),
+    );
   });
 
   test('deduplicates Resume streams for one sender and run', async () => {
@@ -926,7 +971,10 @@ describe('registerEnterpriseLeadWorkspaceHandlers', () => {
       'gateway unavailable',
     );
     expect(callOrder).toEqual(['persist', 'event']);
-    expect(send).toHaveBeenCalledWith(EnterpriseLeadWorkflowIpc.Event, runErrorEvent);
+    expect(send).toHaveBeenCalledWith(
+      EnterpriseLeadWorkflowIpc.Event,
+      expect.objectContaining({ runId: 'run-1', sequence: 2, type: 'run_error' }),
+    );
   });
 
   test('does not emit a run error when cancellation rejects a late workflow failure', async () => {

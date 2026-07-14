@@ -11,6 +11,7 @@ import type {
   EnterpriseLeadIpcResult,
   EnterpriseLeadPendingVersion,
   EnterpriseLeadWorkflowEvent,
+  EnterpriseLeadWorkflowLiveEvent,
   EnterpriseLeadWorkspace,
   EnterpriseLeadWorkspaceAgentBinding,
   EnterpriseLeadWorkspaceAgentCalibrationRequest,
@@ -27,6 +28,7 @@ import {
 } from '../../shared/enterpriseLeadWorkspace/validation';
 import {
   normalizeWorkflowReviewFeedback,
+  projectWorkflowEventForRenderer,
   WorkflowOptionalNode,
   type WorkflowOptionalNode as WorkflowOptionalNodeType,
   type WorkflowStartOptions,
@@ -273,7 +275,7 @@ const assertWorkflowSnapshotIsNotArchived = (snapshot: EnterpriseLeadWorkspaceSn
 };
 
 type WorkflowEventSender = {
-  send: (channel: string, payload: EnterpriseLeadWorkflowEvent) => void;
+  send: (channel: string, payload: EnterpriseLeadWorkflowLiveEvent) => void;
   isDestroyed?: () => boolean;
   once?: (event: 'destroyed', listener: () => void) => unknown;
   removeListener?: (event: 'destroyed', listener: () => void) => unknown;
@@ -330,7 +332,7 @@ const sendNewWorkflowEvents = (
     .filter(workflowEvent => workflowEvent.sequence > cursor)
     .sort((left, right) => left.sequence - right.sequence);
   events.forEach(workflowEvent => {
-    sender.send(EnterpriseLeadWorkflowIpc.Event, workflowEvent);
+    sender.send(EnterpriseLeadWorkflowIpc.Event, projectWorkflowEventForRenderer(workflowEvent));
     setWorkflowEventCursor(sender, runId, workflowEvent.sequence);
   });
 };
@@ -340,7 +342,7 @@ const sendWorkflowEvent = (
   workflowEvent: EnterpriseLeadWorkflowEvent,
 ): void => {
   if (sender.isDestroyed?.()) return;
-  sender.send(EnterpriseLeadWorkflowIpc.Event, workflowEvent);
+  sender.send(EnterpriseLeadWorkflowIpc.Event, projectWorkflowEventForRenderer(workflowEvent));
   setWorkflowEventCursor(sender, workflowEvent.runId, workflowEvent.sequence);
 };
 

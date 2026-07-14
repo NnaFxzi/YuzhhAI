@@ -82,30 +82,62 @@ export const normalizeWorkflowStartOptions = (
   return { enabledOptionalNodes, maxConcurrency };
 };
 
+export const WorkflowEventType = {
+  RunStarted: 'run_started',
+  RunRetrying: 'run_retrying',
+  TaskReady: 'task_ready',
+  TaskStarted: 'task_started',
+  TaskRetrying: 'task_retrying',
+  TaskCompleted: 'task_completed',
+  TaskFailed: 'task_failed',
+  TaskBlocked: 'task_blocked',
+  TaskCancelled: 'task_cancelled',
+  ApprovalRequired: 'approval_required',
+  ApprovalRejected: 'approval_rejected',
+  RunCompleted: 'run_completed',
+  RunCancelled: 'run_cancelled',
+  RunError: 'run_error',
+} as const;
+export type WorkflowEventType = (typeof WorkflowEventType)[keyof typeof WorkflowEventType];
+
 export interface WorkflowEvent {
   id?: string;
   runId: string;
   sequence: number;
-  type:
-    | 'run_started'
-    | 'run_retrying'
-    | 'task_ready'
-    | 'task_started'
-    | 'task_retrying'
-    | 'task_completed'
-    | 'task_failed'
-    | 'task_blocked'
-    | 'task_cancelled'
-    | 'approval_required'
-    | 'approval_rejected'
-    | 'run_completed'
-    | 'run_cancelled'
-    | 'run_error';
+  type: WorkflowEventType;
   taskId?: string;
   role?: string;
   summary?: string;
   createdAt: string;
 }
+
+export interface WorkflowEventProjection {
+  runId: string;
+  sequence: number;
+  type: WorkflowEventType;
+  taskId?: string;
+  feedback?: string;
+  createdAt: string;
+}
+
+export const projectWorkflowEventForRenderer = (
+  event: WorkflowEvent & { payload?: unknown },
+): WorkflowEventProjection => {
+  const feedback = event.type === WorkflowEventType.ApprovalRejected
+    && event.payload
+    && typeof event.payload === 'object'
+    && !Array.isArray(event.payload)
+    ? normalizeWorkflowReviewFeedback((event.payload as Record<string, unknown>).feedback)
+    : null;
+  return {
+    runId: event.runId,
+    sequence: event.sequence,
+    type: event.type,
+    ...(event.taskId ? { taskId: event.taskId } : {}),
+    ...(feedback ? { feedback } : {}),
+    createdAt: event.createdAt,
+  };
+};
 
 export function normalizeWorkflowArtifactRef(value: unknown): WorkflowArtifactRef | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
