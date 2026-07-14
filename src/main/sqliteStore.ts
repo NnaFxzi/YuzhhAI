@@ -274,6 +274,10 @@ export class SqliteStore {
         agent_id TEXT,
         task TEXT,
         label TEXT,
+        workflow_run_id TEXT,
+        enterprise_task_id TEXT,
+        workspace_agent_id TEXT,
+        role TEXT,
         status TEXT NOT NULL DEFAULT 'running',
         created_at INTEGER NOT NULL,
         ended_at INTEGER
@@ -308,6 +312,29 @@ export class SqliteStore {
         this.db.exec('ALTER TABLE subagent_runs ADD COLUMN messages_persisted INTEGER NOT NULL DEFAULT 0;');
         this.didRunMigration = true;
       }
+    } catch {
+      // Migration not needed
+    }
+
+    // Migration: link subagent runs to enterprise workflow tasks without rebuilding the table.
+    try {
+      const subagentCols = this.db.pragma('table_info(subagent_runs)') as Array<{ name: string }>;
+      const workflowColumns = [
+        ['workflow_run_id', 'TEXT'],
+        ['enterprise_task_id', 'TEXT'],
+        ['workspace_agent_id', 'TEXT'],
+        ['role', 'TEXT'],
+      ] as const;
+      for (const [name, type] of workflowColumns) {
+        if (!subagentCols.some(column => column.name === name)) {
+          this.db.exec(`ALTER TABLE subagent_runs ADD COLUMN ${name} ${type};`);
+          this.didRunMigration = true;
+        }
+      }
+      this.db.exec(`
+        CREATE INDEX IF NOT EXISTS idx_subagent_runs_workflow_task
+        ON subagent_runs(parent_session_id, workflow_run_id, enterprise_task_id);
+      `);
     } catch {
       // Migration not needed
     }

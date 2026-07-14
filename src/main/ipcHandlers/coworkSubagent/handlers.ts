@@ -5,13 +5,18 @@ import { CoworkIpcChannel } from '../../../shared/cowork/constants';
 export interface CoworkSubagentRuntimeAdapter {
   getSubTaskHistory: (
     parentSessionId: string,
-    agentId: string,
+    runId: string,
     sessionKey?: string,
   ) => Promise<unknown>;
   listSubagentRuns: (parentSessionId: string) => unknown[];
 }
 
 export interface CoworkSubagentEngineRouter {
+  getWorkflowTaskSubagentSession: (
+    parentSessionId: string,
+    workflowRunId: string,
+    taskId: string,
+  ) => unknown | null;
   deleteSubagentSession: (parentSessionId: string, runId: string) => Promise<boolean>;
 }
 
@@ -29,7 +34,7 @@ export function registerCoworkSubagentHandlers(deps: CoworkSubagentHandlerDeps):
       _event,
       options: {
         parentSessionId: string;
-        agentId: string;
+        runId: string;
         sessionKey?: string;
       },
     ) => {
@@ -40,7 +45,7 @@ export function registerCoworkSubagentHandlers(deps: CoworkSubagentHandlerDeps):
       try {
         const messages = await adapter.getSubTaskHistory(
           options.parentSessionId,
-          options.agentId,
+          options.runId,
           options.sessionKey,
         );
         return { success: true, messages };
@@ -59,6 +64,24 @@ export function registerCoworkSubagentHandlers(deps: CoworkSubagentHandlerDeps):
     const runs = adapter.listSubagentRuns(options.parentSessionId);
     return { success: true, runs };
   });
+
+  ipcMain.handle(
+    CoworkIpcChannel.SubagentWorkflowTaskGet,
+    async (_event, options: { parentSessionId: string; workflowRunId: string; taskId: string }) => {
+      const parentSessionId = options?.parentSessionId?.trim();
+      const workflowRunId = options?.workflowRunId?.trim();
+      const taskId = options?.taskId?.trim();
+      if (!parentSessionId || !workflowRunId || !taskId) {
+        return { success: false, error: 'Workflow task lookup requires parentSessionId, workflowRunId, and taskId' };
+      }
+      const run = getCoworkEngineRouter().getWorkflowTaskSubagentSession(
+        parentSessionId,
+        workflowRunId,
+        taskId,
+      );
+      return { success: true, run };
+    },
+  );
 
   ipcMain.handle(
     CoworkIpcChannel.SubagentDelete,

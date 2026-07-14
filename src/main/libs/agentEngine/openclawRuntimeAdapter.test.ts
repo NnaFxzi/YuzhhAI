@@ -11,6 +11,7 @@ import {
 } from '../../../common/coworkSystemMessages';
 import { AgentAnswerShape, defaultAgentResponseContract } from '../../../shared/agent';
 import { CoworkSelectedTextSource } from '../../../shared/cowork/selectedText';
+import { SubagentRunStore } from '../../subagentRunStore';
 import { ContentKnowledgeSourceType } from '../contentKnowledgeRetrieval';
 import { ContentKnowledgeVectorStore } from '../contentKnowledgeVectorStore';
 import {
@@ -61,6 +62,56 @@ test('plan mode allows read-only shell inspection on macOS and Windows', () => {
     true,
   );
   expect(isPlanModeSafeExecCommand('sed -n "1,10p" file.ts')).toBe(true);
+});
+
+test('returns the subagent session linked to an exact workflow task', () => {
+  const db = new Database(':memory:');
+  db.exec(`
+    CREATE TABLE subagent_runs (
+      id TEXT PRIMARY KEY,
+      parent_session_id TEXT NOT NULL,
+      session_key TEXT,
+      agent_id TEXT,
+      task TEXT,
+      label TEXT,
+      workflow_run_id TEXT,
+      enterprise_task_id TEXT,
+      workspace_agent_id TEXT,
+      role TEXT,
+      status TEXT NOT NULL DEFAULT 'running',
+      created_at INTEGER NOT NULL,
+      ended_at INTEGER,
+      messages_persisted INTEGER NOT NULL DEFAULT 0
+    );
+  `);
+  const runStore = new SubagentRunStore(db);
+  runStore.insertSubagentRun({
+    id: 'spawn-1',
+    parentSessionId: 'parent-1',
+    sessionKey: 'agent:main:subagent:spawn-1',
+    agentId: 'promotion_data_scraping',
+    task: 'collect leads',
+    label: 'scraper',
+    workflowRunId: 'run-1',
+    taskId: 'task-1',
+    workspaceAgentId: 'promotion_data_scraping',
+    role: 'promotion_data_scraping',
+    status: 'done',
+    createdAt: 1,
+  });
+
+  const { store } = createReconcileStore([]);
+  const adapter = new OpenClawRuntimeAdapter(store, {}, {}, runStore);
+
+  expect(adapter.getWorkflowTaskSubagentSession('parent-1', 'run-1', 'task-1')).toMatchObject({
+    id: 'spawn-1',
+    workflowRunId: 'run-1',
+    taskId: 'task-1',
+    role: 'promotion_data_scraping',
+  });
+  expect(adapter.getWorkflowTaskSubagentSession('parent-2', 'run-1', 'task-1')).toBeNull();
+
+  db.close();
 });
 
 test('plan mode blocks shell commands with mutation paths', () => {

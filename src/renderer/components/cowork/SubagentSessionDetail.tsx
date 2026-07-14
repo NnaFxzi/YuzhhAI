@@ -37,7 +37,7 @@ const SubagentSessionDetail: React.FC<SubagentSessionDetailProps> = ({ subagent,
     try {
       const result = await window.electron?.cowork?.getSubTaskHistory({
         parentSessionId: subagent.parentSessionId,
-        agentId: subagent.id,
+        runId: subagent.id,
         sessionKey: subagent.sessionKey ?? undefined,
       });
       if (result?.success && result.messages) {

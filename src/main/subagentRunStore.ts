@@ -9,6 +9,10 @@ export interface SubagentRun {
   agentId: string | null;
   task: string | null;
   label: string | null;
+  workflowRunId?: string;
+  taskId?: string;
+  workspaceAgentId?: string;
+  role?: string;
   status: SubagentRunStatus;
   createdAt: number;
   endedAt: number | null;
@@ -24,8 +28,11 @@ export class SubagentRunStore {
   insertSubagentRun(run: Omit<SubagentRun, 'endedAt'> & { endedAt?: number | null }): void {
     this.db
       .prepare(
-        `INSERT OR REPLACE INTO subagent_runs (id, parent_session_id, session_key, agent_id, task, label, status, created_at, ended_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT OR REPLACE INTO subagent_runs (
+          id, parent_session_id, session_key, agent_id, task, label,
+          workflow_run_id, enterprise_task_id, workspace_agent_id, role,
+          status, created_at, ended_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         run.id,
@@ -34,6 +41,10 @@ export class SubagentRunStore {
         run.agentId ?? null,
         run.task ?? null,
         run.label ?? null,
+        run.workflowRunId ?? null,
+        run.taskId ?? null,
+        run.workspaceAgentId ?? null,
+        run.role ?? null,
         run.status,
         run.createdAt,
         run.endedAt ?? null,
@@ -56,54 +67,43 @@ export class SubagentRunStore {
   }
 
   listSubagentRuns(parentSessionId: string): SubagentRun[] {
-    interface Row {
-      id: string;
-      parent_session_id: string;
-      session_key: string | null;
-      agent_id: string | null;
-      task: string | null;
-      label: string | null;
-      status: string;
-      created_at: number;
-      ended_at: number | null;
-    }
-
     const rows = this.db
       .prepare(`SELECT * FROM subagent_runs WHERE parent_session_id = ? ORDER BY created_at ASC`)
-      .all(parentSessionId) as Row[];
+      .all(parentSessionId) as SubagentRunRow[];
 
-    return rows.map((row) => ({
-      id: row.id,
-      parentSessionId: row.parent_session_id,
-      sessionKey: row.session_key,
-      agentId: row.agent_id,
-      task: row.task,
-      label: row.label,
-      status: row.status as SubagentRunStatus,
-      createdAt: row.created_at,
-      endedAt: row.ended_at,
-    }));
+    return rows.map((row) => this.toSubagentRun(row));
+  }
+
+  findSubagentRunByWorkflowTask(
+    parentSessionId: string,
+    workflowRunId: string,
+    taskId: string,
+  ): SubagentRun | null {
+    const row = this.db
+      .prepare(
+        `SELECT * FROM subagent_runs
+         WHERE parent_session_id = ?
+           AND workflow_run_id = ?
+           AND enterprise_task_id = ?
+         ORDER BY created_at DESC
+         LIMIT 1`,
+      )
+      .get(parentSessionId, workflowRunId, taskId) as SubagentRunRow | undefined;
+
+    return row ? this.toSubagentRun(row) : null;
   }
 
   getSubagentRun(id: string): SubagentRun | null {
-    interface Row {
-      id: string;
-      parent_session_id: string;
-      session_key: string | null;
-      agent_id: string | null;
-      task: string | null;
-      label: string | null;
-      status: string;
-      created_at: number;
-      ended_at: number | null;
-    }
-
     const row = this.db
       .prepare('SELECT * FROM subagent_runs WHERE id = ?')
-      .get(id) as Row | undefined;
+      .get(id) as SubagentRunRow | undefined;
 
     if (!row) return null;
 
+    return this.toSubagentRun(row);
+  }
+
+  private toSubagentRun(row: SubagentRunRow): SubagentRun {
     return {
       id: row.id,
       parentSessionId: row.parent_session_id,
@@ -114,6 +114,10 @@ export class SubagentRunStore {
       status: row.status as SubagentRunStatus,
       createdAt: row.created_at,
       endedAt: row.ended_at,
+      ...(row.workflow_run_id ? { workflowRunId: row.workflow_run_id } : {}),
+      ...(row.enterprise_task_id ? { taskId: row.enterprise_task_id } : {}),
+      ...(row.workspace_agent_id ? { workspaceAgentId: row.workspace_agent_id } : {}),
+      ...(row.role ? { role: row.role } : {}),
     };
   }
 
@@ -145,4 +149,20 @@ export class SubagentRunStore {
     this.db.prepare('DELETE FROM subagent_runs WHERE id = ?')
       .run(id);
   }
+}
+
+interface SubagentRunRow {
+  id: string;
+  parent_session_id: string;
+  session_key: string | null;
+  agent_id: string | null;
+  task: string | null;
+  label: string | null;
+  workflow_run_id: string | null;
+  enterprise_task_id: string | null;
+  workspace_agent_id: string | null;
+  role: string | null;
+  status: string;
+  created_at: number;
+  ended_at: number | null;
 }

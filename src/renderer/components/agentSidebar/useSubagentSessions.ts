@@ -55,6 +55,9 @@ export const useSubagentSessions = (
         status: run.status,
         createdAt: run.createdAt,
         endedAt: run.endedAt,
+        ...(run.workflowRunId ? { workflowRunId: run.workflowRunId } : {}),
+        ...(run.taskId ? { taskId: run.taskId } : {}),
+        ...(run.role ? { role: run.role } : {}),
       }));
 
       setSubagentsBySessionId((prev) => {

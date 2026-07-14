@@ -1090,7 +1090,7 @@ interface IElectronAPI {
     cancelMediaTask: (taskId: string) => Promise<{ success: boolean; message?: string }>;
     getSubTaskHistory: (options: {
       parentSessionId: string;
-      agentId: string;
+      runId: string;
       sessionKey?: string;
     }) => Promise<{
       success: boolean;
@@ -1121,7 +1121,31 @@ interface IElectronAPI {
         status: 'running' | 'done' | 'error';
         createdAt: number;
         endedAt: number | null;
+        workflowRunId?: string;
+        taskId?: string;
+        role?: string;
       }>;
+      error?: string;
+    }>;
+    getWorkflowTaskSubagentSession: (options: {
+      parentSessionId: string;
+      workflowRunId: string;
+      taskId: string;
+    }) => Promise<{
+      success: boolean;
+      run?: {
+        id: string;
+        agentId: string | null;
+        task: string | null;
+        label: string | null;
+        sessionKey: string | null;
+        status: 'running' | 'done' | 'error';
+        createdAt: number;
+        endedAt: number | null;
+        workflowRunId?: string;
+        taskId?: string;
+        role?: string;
+      } | null;
       error?: string;
     }>;
     deleteSubagentSession: (options: {
