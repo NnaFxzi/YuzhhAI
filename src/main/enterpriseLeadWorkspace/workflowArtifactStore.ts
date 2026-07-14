@@ -276,6 +276,34 @@ export class WorkflowArtifactStore {
     return rows.map(mapEvent);
   }
 
+  listRecentEvents(runId: string, limit: number): EnterpriseLeadWorkflowEvent[] {
+    const rows = this.db.prepare(`
+      SELECT id, run_id, sequence, type, task_id, role, summary, payload, created_at
+      FROM (
+        SELECT id, run_id, sequence, type, task_id, role, summary, payload, created_at
+        FROM enterprise_lead_workflow_events
+        WHERE run_id = ?
+        ORDER BY sequence DESC
+        LIMIT ?
+      )
+      ORDER BY sequence ASC
+    `).all(runId, limit) as EventRow[];
+    return rows.map(mapEvent);
+  }
+
+  listRecentRunAttempts(runId: string, limit: number): EnterpriseLeadTaskAttempt[] {
+    const rows = this.db.prepare(`
+      SELECT attempts.id, attempts.task_id, attempts.attempt, attempts.execution_mode,
+        attempts.status, attempts.error, attempts.started_at, attempts.ended_at
+      FROM enterprise_lead_task_attempts AS attempts
+      INNER JOIN enterprise_lead_agent_tasks AS tasks ON tasks.id = attempts.task_id
+      WHERE tasks.run_id = ?
+      ORDER BY attempts.started_at DESC, attempts.id DESC
+      LIMIT ?
+    `).all(runId, limit) as AttemptRow[];
+    return rows.reverse().map(mapAttempt);
+  }
+
   createAttempt(input: CreateTaskAttemptInput): EnterpriseLeadTaskAttempt {
     const attemptNumber = input.attempt ?? (this.db.prepare(`
       SELECT COALESCE(MAX(attempt), 0) + 1 AS attempt

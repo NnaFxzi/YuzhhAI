@@ -6347,8 +6347,8 @@ if (!gotTheLock) {
         getEnterpriseLeadWorkspaceService().cancelRun(workspaceId, runId),
       approveTask: (workspaceId, runId, taskId) =>
         getEnterpriseLeadWorkspaceService().approveTask(workspaceId, runId, taskId),
-      rejectTask: (workspaceId, runId, taskId) =>
-        getEnterpriseLeadWorkspaceService().rejectTask(workspaceId, runId, taskId),
+      rejectTask: (workspaceId, runId, taskId, feedback) =>
+        getEnterpriseLeadWorkspaceService().rejectTask(workspaceId, runId, taskId, feedback),
     },
     listWorkflowEvents: runId => enterpriseLeadWorkflowArtifactStore.listEvents(runId),
   });

@@ -1,10 +1,12 @@
 import { describe, expect, test } from 'vitest';
 
+import type { EnterpriseLeadWorkspaceSnapshot } from '../../../shared/enterpriseLeadWorkspace/types';
 import type { WorkflowEvent } from '../../../shared/enterpriseLeadWorkspace/workflowContracts';
 import {
   createWorkflowRunState,
   recoverWorkflowRunState,
   reduceWorkflowRunState,
+  setWorkflowRunSnapshot,
 } from './workflowRunState';
 
 const createEvent = (overrides: Partial<WorkflowEvent> = {}): WorkflowEvent => ({
@@ -48,5 +50,32 @@ describe('workflowRunState', () => {
     expect(recovered.needsSnapshotRecovery).toBe(false);
     expect(recovered.lastSequence).toBe(3);
     expect(recovered.events).toEqual([]);
+  });
+
+  test('hydrates persisted history during snapshot recovery and resumes after its last sequence', () => {
+    const snapshot = {
+      workflowHistory: {
+        events: [
+          {
+            id: 'event-4',
+            runId: 'run-1',
+            sequence: 4,
+            type: 'approval_rejected',
+            feedback: 'Add sources.',
+            createdAt: '2026-07-14T00:00:00.000Z',
+          },
+        ],
+        attempts: [],
+      },
+    } as unknown as EnterpriseLeadWorkspaceSnapshot;
+    const history = snapshot.workflowHistory!;
+
+    const recovered = recoverWorkflowRunState(createWorkflowRunState('run-1'), snapshot, 3);
+    const next = reduceWorkflowRunState(recovered, createEvent({ sequence: 5 }));
+
+    expect(recovered.events).toEqual(history.events);
+    expect(recovered.lastSequence).toBe(4);
+    expect(next.lastSequence).toBe(5);
+    expect(setWorkflowRunSnapshot(next, snapshot).events).toEqual(history.events);
   });
 });

@@ -48,6 +48,20 @@ describe('WorkflowArtifactStore', () => {
     expect(store.listEvents('run-1').map(event => event.sequence)).toEqual([1, 2]);
   });
 
+  test('returns a bounded, sequence-stable event history for one run', () => {
+    const store = createStore();
+
+    store.appendEvent({ runId: 'run-1', type: 'run_started' });
+    store.appendEvent({ runId: 'run-2', type: 'run_started' });
+    store.appendEvent({ runId: 'run-1', type: 'task_ready', taskId: 'task-1' });
+    store.appendEvent({ runId: 'run-1', type: 'task_started', taskId: 'task-1' });
+
+    expect(store.listRecentEvents('run-1', 2).map(event => event.sequence)).toEqual([2, 3]);
+    expect(store.listRecentEvents('run-1', 2)).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ runId: 'run-2' })]),
+    );
+  });
+
   test('round trips artifacts, events, and task attempts through JSON storage', () => {
     const store = createStore();
     const artifact = store.createArtifact({

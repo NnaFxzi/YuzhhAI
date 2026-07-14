@@ -50,22 +50,28 @@ export const recoverWorkflowRunState = (
   state: WorkflowRunState,
   snapshot: EnterpriseLeadWorkspaceSnapshot | null,
   recoveredSequence: number = state.lastSequence,
-): WorkflowRunState => ({
-  ...state,
-  snapshot,
-  events: [],
-  lastEvent: null,
-  lastSequence:
-    Number.isInteger(recoveredSequence) && recoveredSequence >= state.lastSequence
-      ? recoveredSequence
-      : state.lastSequence,
-  needsSnapshotRecovery: false,
-});
+): WorkflowRunState => {
+  const historyEvents = snapshot?.workflowHistory?.events ?? [];
+  const historyLastEvent = historyEvents[historyEvents.length - 1] ?? null;
+  const historyLastSequence = historyLastEvent?.sequence ?? 0;
+  return {
+    ...state,
+    snapshot,
+    events: historyEvents,
+    lastEvent: historyLastEvent,
+    lastSequence: Math.max(
+      state.lastSequence,
+      historyLastSequence,
+      Number.isInteger(recoveredSequence) ? recoveredSequence : 0,
+    ),
+    needsSnapshotRecovery: false,
+  };
+};
 
 export const setWorkflowRunSnapshot = (
   state: WorkflowRunState,
   snapshot: EnterpriseLeadWorkspaceSnapshot | null,
-): WorkflowRunState => ({
-  ...state,
-  snapshot,
-});
+): WorkflowRunState => {
+  if (!snapshot?.workflowHistory) return { ...state, snapshot };
+  return recoverWorkflowRunState(state, snapshot);
+};

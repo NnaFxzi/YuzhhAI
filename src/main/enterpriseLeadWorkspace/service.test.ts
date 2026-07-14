@@ -254,6 +254,51 @@ describe('EnterpriseLeadWorkspaceService', () => {
     db = undefined;
   });
 
+  test('returns bounded owner-scoped workflow history without event payloads or attempt errors', () => {
+    const setup = createService();
+    db = setup.db;
+    const workspace = setup.service.createWorkspace({
+      ...draftPayload(),
+      workspaceAgents: buildDefaultPromotionDepartmentWorkspaceAgents(),
+    });
+    const created = setup.service.createRun(workspace.id, 'Review promotion history');
+    const runId = created.currentRun?.id;
+    const task = created.tasks[0];
+    if (!runId || !task) throw new Error('Expected promotion run and task');
+
+    const artifacts = new WorkflowArtifactStore(setup.db);
+    artifacts.appendEvent({
+      runId,
+      type: 'approval_rejected',
+      taskId: task.id,
+      summary: 'sensitive provider detail',
+      payload: { feedback: 'Add source links.', secret: 'do-not-expose' },
+    });
+    const attempt = artifacts.createAttempt({ taskId: task.id, executionMode: 'inline' });
+    artifacts.finishAttempt(attempt.id, { status: 'error', error: 'sensitive provider failure' });
+
+    const recovered = setup.service.getSnapshot(workspace.id, runId);
+
+    expect(recovered.workflowHistory?.events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'approval_rejected',
+          feedback: 'Add source links.',
+        }),
+      ]),
+    );
+    expect(recovered.workflowHistory?.attempts).toEqual([
+      expect.objectContaining({
+        taskId: task.id,
+        attempt: 1,
+        status: 'error',
+      }),
+    ]);
+    expect(recovered.workflowHistory?.events.find(event => event.type === 'approval_rejected')).not.toHaveProperty('payload');
+    expect(recovered.workflowHistory?.events.find(event => event.type === 'approval_rejected')).not.toHaveProperty('summary');
+    expect(recovered.workflowHistory?.attempts[0]).not.toHaveProperty('error');
+  });
+
   test('extracts a workspace draft from conversation text', async () => {
     const setup = createService();
     db = setup.db;

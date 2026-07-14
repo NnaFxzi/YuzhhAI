@@ -258,9 +258,10 @@ export const rejectWorkflowTask = async (
   workspaceId: string,
   runId: string,
   taskId: string,
+  feedback: string,
 ): Promise<EnterpriseLeadWorkspaceSnapshot | null> =>
   requestOrThrow<EnterpriseLeadWorkspaceSnapshot | null>('rejectWorkflowTask', null, api =>
-    api.rejectWorkflowTask(workspaceId, runId, taskId),
+    api.rejectWorkflowTask(workspaceId, runId, taskId, feedback),
   );
 
 export const onWorkflowEvent = (

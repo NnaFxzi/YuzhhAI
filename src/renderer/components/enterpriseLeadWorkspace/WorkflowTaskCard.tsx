@@ -11,7 +11,7 @@ interface WorkflowTaskCardProps {
   task: EnterpriseLeadAgentTask;
   disabled?: boolean;
   onApprove: (task: EnterpriseLeadAgentTask) => void;
-  onReject: (task: EnterpriseLeadAgentTask) => void;
+  onReject: (task: EnterpriseLeadAgentTask, feedback: string) => void;
   onOpenChildSession?: (sessionId: string) => void;
 }
 

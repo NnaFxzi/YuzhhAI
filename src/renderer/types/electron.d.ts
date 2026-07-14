@@ -808,6 +808,7 @@ interface IElectronAPI {
       workspaceId: string,
       runId: string,
       taskId: string,
+      feedback: string,
     ) => Promise<EnterpriseLeadIpcResult<EnterpriseLeadWorkspaceSnapshot>>;
     onEvent: (listener: (event: EnterpriseLeadWorkflowEvent) => void) => () => void;
   };

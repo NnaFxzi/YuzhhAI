@@ -26,6 +26,7 @@ import {
   normalizeWorkspaceProfile,
 } from '../../shared/enterpriseLeadWorkspace/validation';
 import {
+  normalizeWorkflowReviewFeedback,
   WorkflowOptionalNode,
   type WorkflowOptionalNode as WorkflowOptionalNodeType,
   type WorkflowStartOptions,
@@ -126,6 +127,7 @@ export interface EnterpriseLeadWorkspaceHandlerDeps {
       workspaceId: string,
       runId: string,
       taskId: string,
+      feedback: string,
     ) => EnterpriseLeadWorkspaceSnapshot | Promise<EnterpriseLeadWorkspaceSnapshot>;
   };
   listWorkflowEvents: (runId: string) => EnterpriseLeadWorkflowEvent[];
@@ -840,13 +842,17 @@ export function registerEnterpriseLeadWorkspaceHandlers(
 
   ipcMain.handle(
     EnterpriseLeadWorkflowIpc.RejectTask,
-    async (event, input: { workspaceId?: unknown; runId?: unknown; taskId?: unknown }) => {
+    async (event, input: { workspaceId?: unknown; runId?: unknown; taskId?: unknown; feedback?: unknown }) => {
       try {
         const workspaceId = requireNonEmptyString(input?.workspaceId, 'Workspace id');
         const runId = requireNonEmptyString(input?.runId, 'Run id');
         const taskId = requireNonEmptyString(input?.taskId, 'Task id');
+        const feedback = normalizeWorkflowReviewFeedback(input?.feedback);
+        if (!feedback) {
+          throw new Error('Workflow review feedback is required and must be within the allowed length');
+        }
         primeWorkflowEventCursor(event.sender, runId, deps.listWorkflowEvents);
-        const snapshot = await deps.service.rejectTask(workspaceId, runId, taskId);
+        const snapshot = await deps.service.rejectTask(workspaceId, runId, taskId, feedback);
         sendNewWorkflowEvents(event.sender, runId, deps.listWorkflowEvents);
         return ok(snapshot);
       } catch (error) {

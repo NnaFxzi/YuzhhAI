@@ -6,7 +6,11 @@ import {
   type PromotionTaskResult,
 } from './promotionTaskContracts';
 import { PROMOTION_WORKFLOW_GRAPH } from './promotionWorkflowGraph';
-import { normalizeWorkflowArtifactRef } from './workflowContracts';
+import {
+  normalizeWorkflowArtifactRef,
+  normalizeWorkflowReviewFeedback,
+  WORKFLOW_REVIEW_FEEDBACK_MAX_LENGTH,
+} from './workflowContracts';
 
 const taskResult = (outputs: Record<string, unknown>): PromotionTaskResult => ({
   role: EnterpriseLeadAgentRole.PromotionDataScraping,
@@ -57,6 +61,12 @@ describe('promotion workflow contracts', () => {
       id: 'a',
       kind: 'clean_leads',
     });
+  });
+
+  test('normalizes bounded nonblank workflow review feedback', () => {
+    expect(normalizeWorkflowReviewFeedback('  请补充来源链接。  ')).toBe('请补充来源链接。');
+    expect(normalizeWorkflowReviewFeedback('   ')).toBeNull();
+    expect(normalizeWorkflowReviewFeedback('x'.repeat(WORKFLOW_REVIEW_FEEDBACK_MAX_LENGTH + 1))).toBeNull();
   });
 
   test('requires source evidence for scraped items', () => {

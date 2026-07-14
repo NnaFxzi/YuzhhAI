@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
 
 import type { EnterpriseLeadAgentTask } from '../../../shared/enterpriseLeadWorkspace/types';
+import { WORKFLOW_REVIEW_FEEDBACK_MAX_LENGTH } from '../../../shared/enterpriseLeadWorkspace/workflowContracts';
 import { i18nService } from '../../services/i18n';
 
 interface WorkflowApprovalPanelProps {
   task: EnterpriseLeadAgentTask;
   disabled?: boolean;
   onApprove: (task: EnterpriseLeadAgentTask) => void;
-  onReject: (task: EnterpriseLeadAgentTask) => void;
+  onReject: (task: EnterpriseLeadAgentTask, feedback: string) => void;
 }
 
 export const WorkflowApprovalPanel: React.FC<WorkflowApprovalPanelProps> = ({
@@ -27,6 +28,7 @@ export const WorkflowApprovalPanel: React.FC<WorkflowApprovalPanelProps> = ({
         value={feedback}
         onChange={event => setFeedback(event.target.value)}
         placeholder={i18nService.t('enterpriseLeadWorkflowApprovalFeedbackPlaceholder')}
+        maxLength={WORKFLOW_REVIEW_FEEDBACK_MAX_LENGTH}
         className="mt-2 min-h-20 w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
       />
       <div className="mt-3 flex flex-wrap gap-2">
@@ -40,8 +42,8 @@ export const WorkflowApprovalPanel: React.FC<WorkflowApprovalPanelProps> = ({
         </button>
         <button
           type="button"
-          disabled={disabled || !feedback.trim()}
-          onClick={() => onReject(task)}
+          disabled={disabled || !feedback.trim() || feedback.trim().length > WORKFLOW_REVIEW_FEEDBACK_MAX_LENGTH}
+          onClick={() => onReject(task, feedback)}
           className="rounded-md border border-amber-500/40 px-3 py-1.5 text-xs font-semibold text-amber-800 disabled:cursor-not-allowed disabled:opacity-60 dark:text-amber-200"
         >
           {i18nService.t('enterpriseLeadWorkflowReject')}

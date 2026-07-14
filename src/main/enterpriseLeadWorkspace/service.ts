@@ -35,6 +35,7 @@ import type {
   EnterpriseLeadTodo,
   EnterpriseLeadTodoInput,
   EnterpriseLeadWorkflowEvent,
+  EnterpriseLeadWorkflowHistory,
   EnterpriseLeadWorkspace,
   EnterpriseLeadWorkspaceAgentBinding,
   EnterpriseLeadWorkspaceAgentCalibrationRequest,
@@ -51,7 +52,9 @@ import {
   normalizeWorkspaceDraftInput,
 } from '../../shared/enterpriseLeadWorkspace/validation';
 import {
+  normalizeWorkflowReviewFeedback,
   normalizeWorkflowStartOptions,
+  WORKFLOW_HISTORY_MAX_ENTRIES,
   type WorkflowArtifactRef,
   WorkflowExecutionMode,
   type WorkflowStartOptions,
@@ -1505,10 +1508,15 @@ export class EnterpriseLeadWorkspaceService {
     workspaceId: string,
     runId: string,
     taskId: string,
+    feedback: string,
   ): Promise<EnterpriseLeadWorkspaceSnapshot> {
     const run = this.getRunForWorkspace(workspaceId, runId);
+    const normalizedFeedback = normalizeWorkflowReviewFeedback(feedback);
+    if (!normalizedFeedback) {
+      throw new Error('Workflow review feedback is required and must be within the allowed length');
+    }
     if (this.isPromotionWorkflowRun(run)) {
-      await this.workflowOrchestrator.rejectTask(workspaceId, run.id, taskId);
+      await this.workflowOrchestrator.rejectTask(workspaceId, run.id, taskId, normalizedFeedback);
       return this.getSnapshot(workspaceId, run.id);
     }
     this.updateLegacyApprovalTask(run.id, taskId, EnterpriseLeadTaskStatus.Stale);
@@ -1675,7 +1683,37 @@ export class EnterpriseLeadWorkspaceService {
       deliverables: currentRun ? this.deriveDeliverables(workspace, currentRun, tasks) : [],
       todos: currentRun ? this.deriveTodos(workspace, currentRun, tasks) : [],
       archives: this.deriveArchives(workspace),
+      ...(currentRun ? { workflowHistory: this.getWorkflowHistory(currentRun.id) } : {}),
     };
+  }
+
+  private getWorkflowHistory(runId: string): EnterpriseLeadWorkflowHistory {
+    const events = this.workflowArtifactStore.listRecentEvents(runId, WORKFLOW_HISTORY_MAX_ENTRIES)
+      .map(event => {
+        const feedback = normalizeWorkflowReviewFeedback(event.payload.feedback);
+        return {
+          id: event.id ?? '',
+          runId: event.runId,
+          sequence: event.sequence,
+          type: event.type,
+          ...(event.taskId ? { taskId: event.taskId } : {}),
+          ...(event.role ? { role: event.role } : {}),
+          ...(feedback ? { feedback } : {}),
+          createdAt: event.createdAt,
+        };
+      });
+    const attempts = this.workflowArtifactStore.listRecentRunAttempts(runId, WORKFLOW_HISTORY_MAX_ENTRIES)
+      .map(attempt => ({
+        id: attempt.id,
+        taskId: attempt.taskId,
+        attempt: attempt.attempt,
+        executionMode: attempt.executionMode,
+        status: attempt.status,
+        startedAt: attempt.startedAt,
+        endedAt: attempt.endedAt,
+      }));
+
+    return { events, attempts };
   }
 
   private resolveLegacyRunRoles(workspace: EnterpriseLeadWorkspace): EnterpriseLeadAgentRole[] {

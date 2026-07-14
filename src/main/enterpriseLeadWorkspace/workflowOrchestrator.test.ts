@@ -162,6 +162,46 @@ describe('EnterpriseLeadWorkflowOrchestrator', () => {
     expect(resumed.currentRun?.status).toBe(EnterpriseLeadRunStatus.Completed);
   });
 
+  test('persists bounded rejection feedback as a durable approval event', async () => {
+    const adapter = new FakeWorkflowExecutionAdapter({
+      [EnterpriseLeadAgentRole.PromotionDataCleaning]: {
+        status: EnterpriseLeadTaskStatus.AwaitingApproval,
+        summary: 'Review cleaned leads',
+      },
+    });
+    const setupResult = setup(adapter);
+    databases.push(setupResult.database);
+
+    const paused = await setupResult.orchestrator.startRun(setupResult.workspace.id, setupResult.run.id);
+    const task = paused.tasks.find(item => item.role === EnterpriseLeadAgentRole.PromotionDataCleaning);
+    if (!task) throw new Error('Expected approval task');
+
+    await expect(
+      setupResult.orchestrator.rejectTask(
+        setupResult.workspace.id,
+        setupResult.run.id,
+        task.id,
+        ' ',
+      ),
+    ).rejects.toThrow('Workflow review feedback is required');
+
+    await setupResult.orchestrator.rejectTask(
+      setupResult.workspace.id,
+      setupResult.run.id,
+      task.id,
+      '  Please add source links.  ',
+    );
+
+    expect(setupResult.artifacts.listEvents(setupResult.run.id)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'approval_rejected',
+          payload: { feedback: 'Please add source links.' },
+        }),
+      ]),
+    );
+  });
+
   test('retries errors on resume without rerunning completed tasks', async () => {
     const adapter = new FakeWorkflowExecutionAdapter({
       [EnterpriseLeadAgentRole.PromotionDataCleaning]: [

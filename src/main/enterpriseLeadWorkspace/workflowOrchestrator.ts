@@ -10,6 +10,7 @@ import type {
   EnterpriseLeadWorkspaceSnapshot,
 } from '../../shared/enterpriseLeadWorkspace/types';
 import {
+  normalizeWorkflowReviewFeedback,
   normalizeWorkflowStartOptions,
   type WorkflowArtifactRef,
   WorkflowExecutionMode,
@@ -156,8 +157,13 @@ export class EnterpriseLeadWorkflowOrchestrator {
     workspaceId: string,
     runId: string,
     taskId: string,
+    feedback: string,
   ): Promise<EnterpriseLeadWorkspaceSnapshot> {
     this.assertRunWorkspace(workspaceId, runId);
+    const normalizedFeedback = normalizeWorkflowReviewFeedback(feedback);
+    if (!normalizedFeedback) {
+      throw new Error('Workflow review feedback is required and must be within the allowed length');
+    }
     const task = this.requireApprovalTask(runId, taskId);
     this.options.store.updateWorkflowTaskStatus(task.id, EnterpriseLeadTaskStatus.Stale, {
       summary: `${task.summary} Rejected and queued for revision.`,
@@ -168,6 +174,7 @@ export class EnterpriseLeadWorkflowOrchestrator {
       taskId: task.id,
       role: task.role,
       summary: 'Approval rejected; task can be retried on resume.',
+      payload: { feedback: normalizedFeedback },
     });
     return this.getSnapshot(workspaceId, runId);
   }

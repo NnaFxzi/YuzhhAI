@@ -50,6 +50,26 @@ export interface EnterpriseLeadTaskAttempt {
   endedAt: string | null;
 }
 
+export interface EnterpriseLeadWorkflowHistoryEvent extends Omit<WorkflowEvent, 'id'> {
+  id: string;
+  feedback?: string;
+}
+
+export interface EnterpriseLeadWorkflowHistoryAttempt {
+  id: string;
+  taskId: string;
+  attempt: number;
+  executionMode: WorkflowExecutionMode;
+  status: string;
+  startedAt: string;
+  endedAt: string | null;
+}
+
+export interface EnterpriseLeadWorkflowHistory {
+  events: EnterpriseLeadWorkflowHistoryEvent[];
+  attempts: EnterpriseLeadWorkflowHistoryAttempt[];
+}
+
 export interface EnterpriseLeadWorkspaceProfile {
   companySummary: string;
   productList: string[];
@@ -403,6 +423,7 @@ export interface EnterpriseLeadWorkspaceSnapshot {
   deliverables: EnterpriseLeadDeliverable[];
   todos: EnterpriseLeadTodo[];
   archives: EnterpriseLeadArchive[];
+  workflowHistory?: EnterpriseLeadWorkflowHistory;
 }
 
 export interface EnterpriseLeadIpcResult<T> {

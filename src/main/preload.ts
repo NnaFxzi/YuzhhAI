@@ -278,8 +278,8 @@ contextBridge.exposeInMainWorld('electron', {
       ipcRenderer.invoke(EnterpriseLeadWorkflowIpc.Cancel, { workspaceId, runId }),
     approveWorkflowTask: (workspaceId: string, runId: string, taskId: string) =>
       ipcRenderer.invoke(EnterpriseLeadWorkflowIpc.ApproveTask, { workspaceId, runId, taskId }),
-    rejectWorkflowTask: (workspaceId: string, runId: string, taskId: string) =>
-      ipcRenderer.invoke(EnterpriseLeadWorkflowIpc.RejectTask, { workspaceId, runId, taskId }),
+    rejectWorkflowTask: (workspaceId: string, runId: string, taskId: string, feedback: string) =>
+      ipcRenderer.invoke(EnterpriseLeadWorkflowIpc.RejectTask, { workspaceId, runId, taskId, feedback }),
     onEvent: (listener: (workflowEvent: EnterpriseLeadWorkflowEvent) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, payload: EnterpriseLeadWorkflowEvent) =>
         listener(payload);

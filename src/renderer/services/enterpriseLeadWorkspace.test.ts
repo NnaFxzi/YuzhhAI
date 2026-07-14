@@ -240,6 +240,25 @@ describe('enterpriseLeadWorkspaceService', () => {
     expect(unsubscribe).toHaveBeenCalledOnce();
   });
 
+  test('sends rejection feedback through the preload bridge', async () => {
+    const rejectWorkflowTask = vi.fn(async () => ({ success: true as const }));
+    createWindowWithEnterpriseLeadWorkspace({ rejectWorkflowTask });
+
+    await enterpriseLeadWorkspaceService.rejectWorkflowTask(
+      'workspace-1',
+      'run-1',
+      'task-1',
+      'Please add source links.',
+    );
+
+    expect(rejectWorkflowTask).toHaveBeenCalledWith(
+      'workspace-1',
+      'run-1',
+      'task-1',
+      'Please add source links.',
+    );
+  });
+
   test('tests workspace Agent drafts through bridge', async () => {
     const testWorkspaceAgent = vi.fn(async () => ({
       success: true as const,

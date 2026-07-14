@@ -53,6 +53,15 @@ export const DEFAULT_WORKFLOW_START_OPTIONS: WorkflowStartOptions = {
   maxConcurrency: 3,
 };
 
+export const WORKFLOW_REVIEW_FEEDBACK_MAX_LENGTH = 2_000;
+export const WORKFLOW_HISTORY_MAX_ENTRIES = 200;
+
+export const normalizeWorkflowReviewFeedback = (value: unknown): string | null => {
+  if (typeof value !== 'string') return null;
+  const feedback = value.trim();
+  return feedback && feedback.length <= WORKFLOW_REVIEW_FEEDBACK_MAX_LENGTH ? feedback : null;
+};
+
 export const normalizeWorkflowStartOptions = (
   options?: Partial<WorkflowStartOptions>,
 ): WorkflowStartOptions => {

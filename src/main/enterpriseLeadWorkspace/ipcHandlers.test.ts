@@ -224,6 +224,25 @@ describe('registerEnterpriseLeadWorkspaceHandlers', () => {
     });
   });
 
+  test('rejects blank workflow rejection feedback before dispatching', async () => {
+    const { deps, service } = makeDeps();
+    registerEnterpriseLeadWorkspaceHandlers(deps);
+
+    const handler = registeredHandlers.get(EnterpriseLeadWorkflowIpc.RejectTask);
+    const result = await handler?.({ sender: { send: vi.fn() } }, {
+      workspaceId: 'workspace-1',
+      runId: 'run-1',
+      taskId: 'task-1',
+      feedback: ' ',
+    });
+
+    expect(service.rejectTask).not.toHaveBeenCalled();
+    expect(result).toEqual({
+      success: false,
+      error: 'Workflow review feedback is required and must be within the allowed length',
+    });
+  });
+
   test('rejects workflow options outside the supported promotion graph and concurrency range', async () => {
     const { deps, service } = makeDeps();
     registerEnterpriseLeadWorkspaceHandlers(deps);
@@ -840,11 +859,19 @@ describe('registerEnterpriseLeadWorkspaceHandlers', () => {
 
     await registeredHandlers.get(EnterpriseLeadWorkflowIpc.Cancel)?.(event, input);
     await registeredHandlers.get(EnterpriseLeadWorkflowIpc.ApproveTask)?.(event, input);
-    await registeredHandlers.get(EnterpriseLeadWorkflowIpc.RejectTask)?.(event, input);
+    await registeredHandlers.get(EnterpriseLeadWorkflowIpc.RejectTask)?.(event, {
+      ...input,
+      feedback: 'Please revise the source list.',
+    });
 
     expect(service.cancelRun).toHaveBeenCalledWith('workspace-1', 'run-1');
     expect(service.approveTask).toHaveBeenCalledWith('workspace-1', 'run-1', 'task-1');
-    expect(service.rejectTask).toHaveBeenCalledWith('workspace-1', 'run-1', 'task-1');
+    expect(service.rejectTask).toHaveBeenCalledWith(
+      'workspace-1',
+      'run-1',
+      'task-1',
+      'Please revise the source list.',
+    );
     expect(event.sender.send).toHaveBeenCalledTimes(1);
     expect(event.sender.send).toHaveBeenCalledWith(
       EnterpriseLeadWorkflowIpc.Event,
