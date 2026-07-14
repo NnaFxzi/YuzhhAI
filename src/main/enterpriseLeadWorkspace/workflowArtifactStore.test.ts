@@ -138,6 +138,45 @@ describe('WorkflowArtifactStore', () => {
     ]);
   });
 
+  test('keeps a cancelled run unchanged when a late workflow rejection arrives', () => {
+    database = new Database(':memory:');
+    const workspaceStore = new EnterpriseLeadWorkspaceStore(database);
+    const store = new WorkflowArtifactStore(database);
+    const workspace = workspaceStore.createWorkspace({
+      name: 'Promotion workspace',
+      type: EnterpriseLeadWorkspaceType.EnterpriseLead,
+      profile: {
+        companySummary: '',
+        productList: [],
+        productCapabilities: [],
+        targetCustomers: [],
+        applicationScenarios: [],
+        sellingPoints: [],
+        channelPreferences: [],
+        prohibitedClaims: [],
+        contactRules: [],
+        missingInfo: [],
+      },
+      extractionSources: [],
+      enabledAgentRoles: [],
+    });
+    const run = workspaceStore.createRun({
+      workspaceId: workspace.id,
+      userGoal: 'Run promotion workflow',
+      roles: [],
+    });
+    workspaceStore.cancelWorkflowRun(run.id);
+
+    const result = store.markRunErrorOnce(run.id, 'late gateway failure');
+
+    expect(result).toEqual({ transitioned: false });
+    expect(workspaceStore.getRun(run.id)).toMatchObject({
+      status: EnterpriseLeadRunStatus.Cancelled,
+      controllerSummary: 'Workflow cancelled.',
+    });
+    expect(store.listEvents(run.id).filter(event => event.type === 'run_error')).toEqual([]);
+  });
+
   test('closes string-path connections without closing caller-owned databases', () => {
     const store = createWorkflowArtifactStore(':memory:');
     expect(() => store.close()).not.toThrow();

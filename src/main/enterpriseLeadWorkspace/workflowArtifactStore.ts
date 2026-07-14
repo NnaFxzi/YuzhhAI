@@ -185,7 +185,8 @@ export class WorkflowArtifactStore {
         UPDATE enterprise_lead_runs
         SET status = ?, controller_summary = ?, updated_at = ?
         WHERE id = ?
-          AND status != ?
+          AND archive_status <> 'archived'
+          AND status NOT IN (?, ?, ?, ?)
           AND NOT EXISTS (
             SELECT 1
             FROM enterprise_lead_workflow_events
@@ -196,7 +197,10 @@ export class WorkflowArtifactStore {
         message,
         now,
         runId,
+        EnterpriseLeadRunStatus.Completed,
+        EnterpriseLeadRunStatus.Cancelled,
         EnterpriseLeadRunStatus.Error,
+        EnterpriseLeadRunStatus.Archived,
         runId,
       );
       if (update.changes === 0) return { transitioned: false };

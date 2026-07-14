@@ -13,6 +13,7 @@ vi.mock('electron', () => ({
 }));
 
 import {
+  EnterpriseLeadRunStatus,
   EnterpriseLeadWorkflowIpc,
   EnterpriseLeadWorkspaceIpc,
 } from '../../shared/enterpriseLeadWorkspace/constants';
@@ -766,5 +767,44 @@ describe('registerEnterpriseLeadWorkspaceHandlers', () => {
     );
     expect(callOrder).toEqual(['persist', 'event']);
     expect(send).toHaveBeenCalledWith(EnterpriseLeadWorkflowIpc.Event, runErrorEvent);
+  });
+
+  test('does not emit a run error when cancellation rejects a late workflow failure', async () => {
+    const { deps, service } = makeDeps();
+    const snapshot = {
+      workspace: { id: 'workspace-1' },
+      currentRun: { id: 'run-1', status: EnterpriseLeadRunStatus.Cancelled },
+      tasks: [],
+      pendingVersions: [],
+      deliverables: [],
+      todos: [],
+      archives: [],
+    } as EnterpriseLeadWorkspaceSnapshot;
+    service.getSnapshot = vi.fn(() => snapshot);
+    service.startWorkflow = vi.fn(async () => {
+      throw new Error('gateway unavailable after cancellation');
+    });
+    service.markRunErrorOnce = vi.fn(() => ({ transitioned: false }));
+    const send = vi.fn();
+    registerEnterpriseLeadWorkspaceHandlers(deps);
+
+    const handler = registeredHandlers.get(EnterpriseLeadWorkflowIpc.Start);
+    await handler?.({ sender: { send } }, {
+      workspaceId: 'workspace-1',
+      runId: 'run-1',
+      options: { enabledOptionalNodes: [], maxConcurrency: 1 },
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(service.markRunErrorOnce).toHaveBeenCalledWith(
+      'workspace-1',
+      'run-1',
+      'gateway unavailable after cancellation',
+    );
+    expect(send).not.toHaveBeenCalledWith(
+      EnterpriseLeadWorkflowIpc.Event,
+      expect.objectContaining({ type: 'run_error' }),
+    );
   });
 });

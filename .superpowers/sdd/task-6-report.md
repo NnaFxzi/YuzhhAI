@@ -60,3 +60,10 @@ Feature commit: `6e8bf3c9 feat(workflow): expose promotion run control IPC`
 - Routed IPC failure handling through the durable transition result, while preserving background execution and retry/resume entry points.
 - Removed each completed stream's `webContents` destroyed listener, and guarded event delivery/stream startup against an already-destroyed sender.
 - Added focused regression coverage for sequential failed Start/Resume executions, durable single-event persistence across retry state, and normal listener cleanup.
+
+## Review-fix5
+
+- Made `cancelWorkflowRun` atomically transition only active, non-archived runs. Completed, cancelled, errored, and archived runs now leave their run row and tasks untouched; the orchestrator only records cancellation events after that store transition succeeds.
+- Restricted `markRunErrorOnce` to the same non-terminal run states, so a late IPC rejection after cancellation cannot overwrite `Cancelled` or append `run_error`.
+- Preserved existing error-resume behavior: an active failure still writes one durable error event, while a resumed attempt cannot create a duplicate.
+- Added regression coverage for cancelling a completed run without mutations, cancellation followed by a late error transition, and IPC non-emission when durable error persistence is rejected.

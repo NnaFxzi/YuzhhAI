@@ -1536,22 +1536,39 @@ export class EnterpriseLeadWorkspaceStore {
     markStale();
   }
 
-  cancelWorkflowRun(runId: string): void {
-    this.assertRunMutable(runId);
+  cancelWorkflowRun(runId: string): boolean {
+    const run = this.getRun(runId);
+    if (!run) {
+      throw new Error('Enterprise lead run not found');
+    }
     const now = new Date().toISOString();
     const cancel = this.db.transaction(() => {
+      const update = this.db.prepare(`
+        UPDATE enterprise_lead_runs
+        SET status = ?, current_role = NULL, controller_summary = ?, updated_at = ?
+        WHERE id = ?
+          AND archive_status <> 'archived'
+          AND status NOT IN (?, ?, ?, ?)
+      `).run(
+        EnterpriseLeadRunStatus.Cancelled,
+        'Workflow cancelled.',
+        now,
+        runId,
+        EnterpriseLeadRunStatus.Completed,
+        EnterpriseLeadRunStatus.Cancelled,
+        EnterpriseLeadRunStatus.Error,
+        EnterpriseLeadRunStatus.Archived,
+      );
+      if (update.changes === 0) return false;
+
       this.db.prepare(`
         UPDATE enterprise_lead_agent_tasks
         SET status = ?, updated_at = ?
         WHERE run_id = ? AND status <> ?
       `).run(EnterpriseLeadTaskStatus.Cancelled, now, runId, EnterpriseLeadTaskStatus.Completed);
-      this.db.prepare(`
-        UPDATE enterprise_lead_runs
-        SET status = ?, current_role = NULL, controller_summary = ?, updated_at = ?
-        WHERE id = ?
-      `).run(EnterpriseLeadRunStatus.Cancelled, 'Workflow cancelled.', now, runId);
+      return true;
     });
-    cancel();
+    return cancel();
   }
 
   createPendingVersion(input: CreateEnterpriseLeadPendingVersionInput): EnterpriseLeadPendingVersion {

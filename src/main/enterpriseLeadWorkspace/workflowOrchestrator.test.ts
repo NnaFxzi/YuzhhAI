@@ -349,6 +349,27 @@ describe('EnterpriseLeadWorkflowOrchestrator', () => {
     expect(events.map(event => event.type)).toContain('run_cancelled');
   });
 
+  test('does not cancel a completed run or append cancellation events', async () => {
+    const setupResult = setup();
+    databases.push(setupResult.database);
+
+    const completed = await setupResult.orchestrator.startRun(
+      setupResult.workspace.id,
+      setupResult.run.id,
+    );
+    const eventsBeforeCancel = setupResult.artifacts.listEvents(setupResult.run.id);
+
+    const afterCancel = await setupResult.orchestrator.cancelRun(
+      setupResult.workspace.id,
+      setupResult.run.id,
+    );
+
+    expect(completed.currentRun?.status).toBe(EnterpriseLeadRunStatus.Completed);
+    expect(afterCancel.currentRun?.status).toBe(EnterpriseLeadRunStatus.Completed);
+    expect(afterCancel.tasks).toEqual(completed.tasks);
+    expect(setupResult.artifacts.listEvents(setupResult.run.id)).toEqual(eventsBeforeCancel);
+  });
+
   test('clears a cancellation marker after the active run settles', async () => {
     let releaseExecution: (() => void) | undefined;
     const adapter: WorkflowExecutionAdapter = {

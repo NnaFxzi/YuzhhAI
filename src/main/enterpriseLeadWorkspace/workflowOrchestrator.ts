@@ -99,7 +99,6 @@ export class EnterpriseLeadWorkflowOrchestrator {
 
   async cancelRun(workspaceId: string, runId: string): Promise<EnterpriseLeadWorkspaceSnapshot> {
     this.assertRunWorkspace(workspaceId, runId);
-    if (this.activeRuns.has(runId)) this.cancelledRuns.add(runId);
     const unfinishedTasks = this.options.store
       .listTasks(runId)
       .filter(
@@ -107,7 +106,10 @@ export class EnterpriseLeadWorkflowOrchestrator {
           task.status !== EnterpriseLeadTaskStatus.Completed &&
           task.status !== EnterpriseLeadTaskStatus.Cancelled,
       );
-    this.options.store.cancelWorkflowRun(runId);
+    if (!this.options.store.cancelWorkflowRun(runId)) {
+      return this.getSnapshot(workspaceId, runId);
+    }
+    if (this.activeRuns.has(runId)) this.cancelledRuns.add(runId);
     unfinishedTasks.forEach(task => {
       this.options.artifactStore.appendEvent({
         runId,
