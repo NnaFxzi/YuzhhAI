@@ -62,7 +62,7 @@ const makeDeps = (): {
     applyPendingVersion: vi.fn(),
     archiveRun: vi.fn(),
     startWorkflow: vi.fn(),
-    markRunError: vi.fn(),
+    markRunErrorOnce: vi.fn(),
     resumeRun: vi.fn(),
     cancelRun: vi.fn(),
     approveTask: vi.fn(),
@@ -73,7 +73,6 @@ const makeDeps = (): {
     deps: {
       service,
       listWorkflowEvents: vi.fn(() => []),
-      appendWorkflowEvent: vi.fn(),
     },
     service,
   };
@@ -387,8 +386,7 @@ describe('registerEnterpriseLeadWorkspaceHandlers', () => {
           rejectWorkflow = reject;
         }),
     );
-    service.markRunError = vi.fn(() => snapshot);
-    deps.appendWorkflowEvent = vi.fn(() => runErrorEvent);
+    service.markRunErrorOnce = vi.fn(() => ({ transitioned: true, event: runErrorEvent }));
     const send = vi.fn();
     registerEnterpriseLeadWorkspaceHandlers(deps);
 
@@ -406,8 +404,7 @@ describe('registerEnterpriseLeadWorkspaceHandlers', () => {
     await Promise.resolve();
 
     expect(service.startWorkflow).toHaveBeenCalledTimes(1);
-    expect(service.markRunError).toHaveBeenCalledTimes(1);
-    expect(deps.appendWorkflowEvent).toHaveBeenCalledTimes(1);
+    expect(service.markRunErrorOnce).toHaveBeenCalledTimes(1);
     expect(send).toHaveBeenCalledTimes(1);
     expect(send).toHaveBeenCalledWith(EnterpriseLeadWorkflowIpc.Event, runErrorEvent);
   });
@@ -438,8 +435,7 @@ describe('registerEnterpriseLeadWorkspaceHandlers', () => {
           rejectWorkflow = reject;
         }),
     );
-    service.markRunError = vi.fn(() => snapshot);
-    deps.appendWorkflowEvent = vi.fn(() => runErrorEvent);
+    service.markRunErrorOnce = vi.fn(() => ({ transitioned: true, event: runErrorEvent }));
     const firstSend = vi.fn();
     const secondSend = vi.fn();
     registerEnterpriseLeadWorkspaceHandlers(deps);
@@ -457,10 +453,78 @@ describe('registerEnterpriseLeadWorkspaceHandlers', () => {
     await Promise.resolve();
 
     expect(service.startWorkflow).toHaveBeenCalledTimes(1);
-    expect(service.markRunError).toHaveBeenCalledTimes(1);
-    expect(deps.appendWorkflowEvent).toHaveBeenCalledTimes(1);
+    expect(service.markRunErrorOnce).toHaveBeenCalledTimes(1);
     expect(firstSend).toHaveBeenCalledWith(EnterpriseLeadWorkflowIpc.Event, runErrorEvent);
     expect(secondSend).toHaveBeenCalledWith(EnterpriseLeadWorkflowIpc.Event, runErrorEvent);
+  });
+
+  test('keeps one durable run error across sequential failed Start and Resume executions', async () => {
+    const { deps, service } = makeDeps();
+    const snapshot = {
+      workspace: { id: 'workspace-1' },
+      currentRun: { id: 'run-1' },
+      tasks: [],
+      pendingVersions: [],
+      deliverables: [],
+      todos: [],
+      archives: [],
+    } as EnterpriseLeadWorkspaceSnapshot;
+    const events: EnterpriseLeadWorkflowEvent[] = [];
+    const runErrorEvent = {
+      runId: 'run-1',
+      sequence: 1,
+      type: 'run_error',
+      payload: {},
+      createdAt: '2026-07-14T00:00:00.000Z',
+    } satisfies EnterpriseLeadWorkflowEvent;
+    let rejectStart: ((error: Error) => void) | undefined;
+    let rejectResume: ((error: Error) => void) | undefined;
+    service.getSnapshot = vi.fn(() => snapshot);
+    service.startWorkflow = vi.fn(
+      () =>
+        new Promise<EnterpriseLeadWorkspaceSnapshot>((_resolve, reject) => {
+          rejectStart = reject;
+        }),
+    );
+    service.resumeRun = vi.fn(
+      () =>
+        new Promise<EnterpriseLeadWorkspaceSnapshot>((_resolve, reject) => {
+          rejectResume = reject;
+        }),
+    );
+    service.markRunErrorOnce = vi.fn(() => {
+      if (events.length > 0) return { transitioned: false };
+      events.push(runErrorEvent);
+      return { transitioned: true, event: runErrorEvent };
+    });
+    deps.listWorkflowEvents = vi.fn(() => events);
+    const startSend = vi.fn();
+    const resumeSend = vi.fn();
+    registerEnterpriseLeadWorkspaceHandlers(deps);
+
+    await registeredHandlers.get(EnterpriseLeadWorkflowIpc.Start)?.({ sender: { send: startSend } }, {
+      workspaceId: 'workspace-1',
+      runId: 'run-1',
+      options: { enabledOptionalNodes: [], maxConcurrency: 1 },
+    });
+    rejectStart?.(new Error('gateway unavailable'));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    await registeredHandlers.get(EnterpriseLeadWorkflowIpc.Resume)?.({ sender: { send: resumeSend } }, {
+      workspaceId: 'workspace-1',
+      runId: 'run-1',
+    });
+    rejectResume?.(new Error('gateway unavailable again'));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(service.startWorkflow).toHaveBeenCalledTimes(1);
+    expect(service.resumeRun).toHaveBeenCalledTimes(1);
+    expect(service.markRunErrorOnce).toHaveBeenCalledTimes(2);
+    expect(events).toEqual([runErrorEvent]);
+    expect(startSend).toHaveBeenCalledWith(EnterpriseLeadWorkflowIpc.Event, runErrorEvent);
+    expect(resumeSend).not.toHaveBeenCalledWith(EnterpriseLeadWorkflowIpc.Event, runErrorEvent);
   });
 
   test('deduplicates Resume streams for one sender and run', async () => {
@@ -520,6 +584,7 @@ describe('registerEnterpriseLeadWorkspaceHandlers', () => {
       const sender = {
         send: vi.fn(),
         once: vi.fn((_event: string, listener: () => void) => destroyedListeners.push(listener)),
+        removeListener: vi.fn(),
       };
       registerEnterpriseLeadWorkspaceHandlers(deps);
 
@@ -538,6 +603,9 @@ describe('registerEnterpriseLeadWorkspaceHandlers', () => {
 
       resolveWorkflow?.();
       await Promise.resolve();
+      await Promise.resolve();
+
+      expect(sender.removeListener).toHaveBeenCalledWith('destroyed', destroyedListeners[0]);
     } finally {
       vi.useRealTimers();
     }
@@ -569,8 +637,7 @@ describe('registerEnterpriseLeadWorkspaceHandlers', () => {
           rejectWorkflow = reject;
         }),
     );
-    service.markRunError = vi.fn(() => snapshot);
-    deps.appendWorkflowEvent = vi.fn(() => runErrorEvent);
+    service.markRunErrorOnce = vi.fn(() => ({ transitioned: true, event: runErrorEvent }));
     const destroyedListeners: Array<() => void> = [];
     const send = vi.fn();
     const sender = {
@@ -590,12 +657,11 @@ describe('registerEnterpriseLeadWorkspaceHandlers', () => {
     await Promise.resolve();
     await Promise.resolve();
 
-    expect(service.markRunError).toHaveBeenCalledWith('workspace-1', 'run-1', 'gateway unavailable');
-    expect(deps.appendWorkflowEvent).toHaveBeenCalledWith({
-      runId: 'run-1',
-      type: 'run_error',
-      summary: 'gateway unavailable',
-    });
+    expect(service.markRunErrorOnce).toHaveBeenCalledWith(
+      'workspace-1',
+      'run-1',
+      'gateway unavailable',
+    );
     expect(send).not.toHaveBeenCalledWith(EnterpriseLeadWorkflowIpc.Event, runErrorEvent);
   });
 
@@ -676,13 +742,10 @@ describe('registerEnterpriseLeadWorkspaceHandlers', () => {
       throw new Error('gateway unavailable');
     });
     const callOrder: string[] = [];
-    service.markRunError = vi.fn(() => {
+    service.markRunErrorOnce = vi.fn(() => {
       callOrder.push('persist');
-      return snapshot;
-    });
-    deps.appendWorkflowEvent = vi.fn(() => {
       callOrder.push('event');
-      return runErrorEvent;
+      return { transitioned: true, event: runErrorEvent };
     });
     const send = vi.fn();
     registerEnterpriseLeadWorkspaceHandlers(deps);
@@ -696,12 +759,11 @@ describe('registerEnterpriseLeadWorkspaceHandlers', () => {
     await Promise.resolve();
     await Promise.resolve();
 
-    expect(service.markRunError).toHaveBeenCalledWith('workspace-1', 'run-1', 'gateway unavailable');
-    expect(deps.appendWorkflowEvent).toHaveBeenCalledWith({
-      runId: 'run-1',
-      type: 'run_error',
-      summary: 'gateway unavailable',
-    });
+    expect(service.markRunErrorOnce).toHaveBeenCalledWith(
+      'workspace-1',
+      'run-1',
+      'gateway unavailable',
+    );
     expect(callOrder).toEqual(['persist', 'event']);
     expect(send).toHaveBeenCalledWith(EnterpriseLeadWorkflowIpc.Event, runErrorEvent);
   });

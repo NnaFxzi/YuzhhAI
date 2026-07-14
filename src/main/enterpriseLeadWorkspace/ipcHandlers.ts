@@ -29,7 +29,6 @@ import {
   type WorkflowOptionalNode as WorkflowOptionalNodeType,
   type WorkflowStartOptions,
 } from '../../shared/enterpriseLeadWorkspace/workflowContracts';
-import type { AppendWorkflowEventInput } from './workflowArtifactStore';
 
 export interface EnterpriseLeadWorkspaceHandlerDeps {
   service: {
@@ -102,11 +101,13 @@ export interface EnterpriseLeadWorkspaceHandlerDeps {
       runId: string,
       options: WorkflowStartOptions,
     ) => EnterpriseLeadWorkspaceSnapshot | Promise<EnterpriseLeadWorkspaceSnapshot>;
-    markRunError: (
+    markRunErrorOnce: (
       workspaceId: string,
       runId: string,
       error: string,
-    ) => EnterpriseLeadWorkspaceSnapshot | Promise<EnterpriseLeadWorkspaceSnapshot>;
+    ) =>
+      | { transitioned: boolean; event?: EnterpriseLeadWorkflowEvent }
+      | Promise<{ transitioned: boolean; event?: EnterpriseLeadWorkflowEvent }>;
     resumeRun: (
       workspaceId: string,
       runId: string,
@@ -127,7 +128,6 @@ export interface EnterpriseLeadWorkspaceHandlerDeps {
     ) => EnterpriseLeadWorkspaceSnapshot | Promise<EnterpriseLeadWorkspaceSnapshot>;
   };
   listWorkflowEvents: (runId: string) => EnterpriseLeadWorkflowEvent[];
-  appendWorkflowEvent: (input: AppendWorkflowEventInput) => EnterpriseLeadWorkflowEvent;
 }
 
 const toErrorMessage = (error: unknown): string =>
@@ -261,7 +261,9 @@ const fail = <T>(error: unknown): EnterpriseLeadIpcResult<T> => ({
 
 type WorkflowEventSender = {
   send: (channel: string, payload: EnterpriseLeadWorkflowEvent) => void;
+  isDestroyed?: () => boolean;
   once?: (event: 'destroyed', listener: () => void) => unknown;
+  removeListener?: (event: 'destroyed', listener: () => void) => unknown;
 };
 
 const workflowEventCursors = new WeakMap<WorkflowEventSender, Map<string, number>>();
@@ -269,6 +271,7 @@ interface WorkflowEventStream {
   sender: WorkflowEventSender;
   interval: ReturnType<typeof setInterval> | undefined;
   disposed: boolean;
+  destroyedListener: (() => void) | undefined;
   execution: WorkflowRunExecution | undefined;
 }
 
@@ -308,6 +311,7 @@ const sendNewWorkflowEvents = (
   runId: string,
   listWorkflowEvents: (runId: string) => EnterpriseLeadWorkflowEvent[],
 ): void => {
+  if (sender.isDestroyed?.()) return;
   const cursor = getWorkflowEventCursor(sender, runId) ?? 0;
   const events = listWorkflowEvents(runId)
     .filter(workflowEvent => workflowEvent.sequence > cursor)
@@ -322,6 +326,7 @@ const sendWorkflowEvent = (
   sender: WorkflowEventSender,
   workflowEvent: EnterpriseLeadWorkflowEvent,
 ): void => {
+  if (sender.isDestroyed?.()) return;
   sender.send(EnterpriseLeadWorkflowIpc.Event, workflowEvent);
   setWorkflowEventCursor(sender, workflowEvent.runId, workflowEvent.sequence);
 };
@@ -349,6 +354,10 @@ const clearWorkflowEventStream = (
   if (stream.disposed) return;
   stream.disposed = true;
   if (stream.interval) clearInterval(stream.interval);
+  if (stream.destroyedListener) {
+    sender.removeListener?.('destroyed', stream.destroyedListener);
+    stream.destroyedListener = undefined;
+  }
   stream.execution?.streams.delete(stream);
   stream.execution = undefined;
 
@@ -394,11 +403,12 @@ const settleWorkflowRunExecution = async (
     await runExecution.execution;
   } catch (error) {
     const message = toErrorMessage(error);
-    await deps.service.markRunError(workspaceId, runId, message);
-    const workflowEvent = deps.appendWorkflowEvent({ runId, type: 'run_error', summary: message });
-    runExecution.streams.forEach(stream => {
-      if (!stream.disposed) sendWorkflowEvent(stream.sender, workflowEvent);
-    });
+    const result = await deps.service.markRunErrorOnce(workspaceId, runId, message);
+    if (result.transitioned && result.event) {
+      runExecution.streams.forEach(stream => {
+        if (!stream.disposed) sendWorkflowEvent(stream.sender, result.event!);
+      });
+    }
   } finally {
     [...runExecution.streams].forEach(stream => {
       if (!stream.disposed) {
@@ -446,6 +456,7 @@ const startWorkflowEventStream = (
     sender,
     interval: undefined,
     disposed: false,
+    destroyedListener: undefined,
     execution: undefined,
   };
   setWorkflowEventStream(sender, runId, stream);
@@ -453,10 +464,21 @@ const startWorkflowEventStream = (
   stream.execution = runExecution;
   runExecution.streams.add(stream);
   const cleanup = () => clearWorkflowEventStream(sender, runId, stream);
+  stream.destroyedListener = cleanup;
+  if (sender.isDestroyed?.()) {
+    cleanup();
+    return;
+  }
 
   sendNewWorkflowEvents(sender, runId, deps.listWorkflowEvents);
   stream.interval = setInterval(
-    () => sendNewWorkflowEvents(sender, runId, deps.listWorkflowEvents),
+    () => {
+      if (sender.isDestroyed?.()) {
+        cleanup();
+        return;
+      }
+      sendNewWorkflowEvents(sender, runId, deps.listWorkflowEvents);
+    },
     50,
   );
   sender.once?.('destroyed', cleanup);

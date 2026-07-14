@@ -34,6 +34,7 @@ import type {
   EnterpriseLeadTaskAgentRole,
   EnterpriseLeadTodo,
   EnterpriseLeadTodoInput,
+  EnterpriseLeadWorkflowEvent,
   EnterpriseLeadWorkspace,
   EnterpriseLeadWorkspaceAgentBinding,
   EnterpriseLeadWorkspaceAgentCalibrationRequest,
@@ -1435,14 +1436,27 @@ export class EnterpriseLeadWorkspaceService {
     runId: string,
     error: string,
   ): EnterpriseLeadWorkspaceSnapshot {
+    return this.markRunErrorOnce(workspaceId, runId, error).snapshot;
+  }
+
+  markRunErrorOnce(
+    workspaceId: string,
+    runId: string,
+    error: string,
+  ): {
+    transitioned: boolean;
+    event?: EnterpriseLeadWorkflowEvent;
+    snapshot: EnterpriseLeadWorkspaceSnapshot;
+  } {
     const run = this.getRunForWorkspace(workspaceId, runId);
-    this.store.updateRunProgress({
-      runId: run.id,
-      status: EnterpriseLeadRunStatus.Error,
-      currentRole: run.currentRole,
-      controllerSummary: error,
-    });
-    return this.getSnapshot(workspaceId, run.id);
+    if (run.status === EnterpriseLeadRunStatus.Archived || run.archiveStatus === 'archived') {
+      throw new Error('Enterprise lead run is archived');
+    }
+    const result = this.workflowArtifactStore.markRunErrorOnce(run.id, error);
+    return {
+      ...result,
+      snapshot: this.getSnapshot(workspaceId, run.id),
+    };
   }
 
   async resumeRun(workspaceId: string, runId: string): Promise<EnterpriseLeadWorkspaceSnapshot> {

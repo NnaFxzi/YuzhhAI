@@ -1,6 +1,10 @@
 import Database from 'better-sqlite3';
 import { afterEach, describe, expect, test } from 'vitest';
 
+import {
+  EnterpriseLeadRunStatus,
+  EnterpriseLeadWorkspaceType,
+} from '../../shared/enterpriseLeadWorkspace/constants';
 import { WorkflowExecutionMode } from '../../shared/enterpriseLeadWorkspace/workflowContracts';
 import { EnterpriseLeadWorkspaceStore } from './store';
 import { createWorkflowArtifactStore, WorkflowArtifactStore } from './workflowArtifactStore';
@@ -84,6 +88,54 @@ describe('WorkflowArtifactStore', () => {
       startedAt: attempt.startedAt,
       endedAt: expect.any(String),
     });
+  });
+
+  test('persists a terminal run error only once across sequential failure attempts', () => {
+    database = new Database(':memory:');
+    const workspaceStore = new EnterpriseLeadWorkspaceStore(database);
+    const store = new WorkflowArtifactStore(database);
+    const workspace = workspaceStore.createWorkspace({
+      name: 'Promotion workspace',
+      type: EnterpriseLeadWorkspaceType.EnterpriseLead,
+      profile: {
+        companySummary: '',
+        productList: [],
+        productCapabilities: [],
+        targetCustomers: [],
+        applicationScenarios: [],
+        sellingPoints: [],
+        channelPreferences: [],
+        prohibitedClaims: [],
+        contactRules: [],
+        missingInfo: [],
+      },
+      extractionSources: [],
+      enabledAgentRoles: [],
+    });
+    const run = workspaceStore.createRun({
+      workspaceId: workspace.id,
+      userGoal: 'Run promotion workflow',
+      roles: [],
+    });
+
+    const firstFailure = store.markRunErrorOnce(run.id, 'first gateway failure');
+    workspaceStore.updateRunProgress({
+      runId: run.id,
+      status: EnterpriseLeadRunStatus.Running,
+      currentRole: null,
+      controllerSummary: 'Retrying the workflow.',
+    });
+    const resumedFailure = store.markRunErrorOnce(run.id, 'second gateway failure');
+
+    expect(firstFailure).toMatchObject({ transitioned: true, event: { type: 'run_error' } });
+    expect(resumedFailure).toEqual({ transitioned: false });
+    expect(workspaceStore.getRun(run.id)).toMatchObject({
+      status: EnterpriseLeadRunStatus.Running,
+      controllerSummary: 'Retrying the workflow.',
+    });
+    expect(store.listEvents(run.id).filter(event => event.type === 'run_error')).toEqual([
+      expect.objectContaining({ summary: 'first gateway failure' }),
+    ]);
   });
 
   test('closes string-path connections without closing caller-owned databases', () => {

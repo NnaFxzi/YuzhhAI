@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 import Database from 'better-sqlite3';
 
+import { EnterpriseLeadRunStatus } from '../../shared/enterpriseLeadWorkspace/constants';
 import type {
   EnterpriseLeadTaskAttempt,
   EnterpriseLeadWorkflowArtifact,
@@ -22,6 +23,11 @@ export interface CreateWorkflowArtifactInput {
 export type AppendWorkflowEventInput = Omit<WorkflowEvent, 'sequence' | 'createdAt'> & {
   payload?: Record<string, unknown>;
 };
+
+export interface MarkWorkflowRunErrorOnceResult {
+  transitioned: boolean;
+  event?: EnterpriseLeadWorkflowEvent;
+}
 
 export interface CreateTaskAttemptInput {
   taskId: string;
@@ -169,36 +175,42 @@ export class WorkflowArtifactStore {
   }
 
   appendEvent(input: AppendWorkflowEventInput): EnterpriseLeadWorkflowEvent {
-    const append = this.db.transaction(() => {
-      const nextSequence = this.db.prepare(`
-        SELECT COALESCE(MAX(sequence), 0) + 1 AS sequence
-        FROM enterprise_lead_workflow_events WHERE run_id = ?
-      `).get(input.runId) as { sequence: number };
-      const event: EnterpriseLeadWorkflowEvent = {
-        ...input,
-        id: randomUUID(),
-        sequence: nextSequence.sequence,
-        payload: input.payload ?? {},
-        createdAt: new Date().toISOString(),
-      };
-      this.db.prepare(`
-        INSERT INTO enterprise_lead_workflow_events
-          (id, run_id, sequence, type, task_id, role, summary, payload, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    return this.db.transaction(() => this.appendEventUnsafe(input))();
+  }
+
+  markRunErrorOnce(runId: string, message: string): MarkWorkflowRunErrorOnceResult {
+    const markError = this.db.transaction(() => {
+      const now = new Date().toISOString();
+      const update = this.db.prepare(`
+        UPDATE enterprise_lead_runs
+        SET status = ?, controller_summary = ?, updated_at = ?
+        WHERE id = ?
+          AND status != ?
+          AND NOT EXISTS (
+            SELECT 1
+            FROM enterprise_lead_workflow_events
+            WHERE run_id = ? AND type = 'run_error'
+          )
       `).run(
-        event.id,
-        event.runId,
-        event.sequence,
-        event.type,
-        event.taskId ?? null,
-        event.role ?? null,
-        event.summary ?? null,
-        JSON.stringify(event.payload),
-        event.createdAt,
+        EnterpriseLeadRunStatus.Error,
+        message,
+        now,
+        runId,
+        EnterpriseLeadRunStatus.Error,
+        runId,
       );
-      return event;
+      if (update.changes === 0) return { transitioned: false };
+
+      return {
+        transitioned: true,
+        event: this.appendEventUnsafe({
+          runId,
+          type: 'run_error',
+          summary: message,
+        }),
+      };
     });
-    return append();
+    return markError();
   }
 
   listEvents(runId: string): EnterpriseLeadWorkflowEvent[] {
@@ -271,6 +283,36 @@ export class WorkflowArtifactStore {
       LIMIT 1
     `).get(taskId, attempt) as { id: string } | undefined;
     return row ? this.finishAttempt(row.id, { status: 'error', error }) : null;
+  }
+
+  private appendEventUnsafe(input: AppendWorkflowEventInput): EnterpriseLeadWorkflowEvent {
+    const nextSequence = this.db.prepare(`
+      SELECT COALESCE(MAX(sequence), 0) + 1 AS sequence
+      FROM enterprise_lead_workflow_events WHERE run_id = ?
+    `).get(input.runId) as { sequence: number };
+    const event: EnterpriseLeadWorkflowEvent = {
+      ...input,
+      id: randomUUID(),
+      sequence: nextSequence.sequence,
+      payload: input.payload ?? {},
+      createdAt: new Date().toISOString(),
+    };
+    this.db.prepare(`
+      INSERT INTO enterprise_lead_workflow_events
+        (id, run_id, sequence, type, task_id, role, summary, payload, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      event.id,
+      event.runId,
+      event.sequence,
+      event.type,
+      event.taskId ?? null,
+      event.role ?? null,
+      event.summary ?? null,
+      JSON.stringify(event.payload),
+      event.createdAt,
+    );
+    return event;
   }
 }
 

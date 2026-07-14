@@ -53,3 +53,10 @@ Feature commit: `6e8bf3c9 feat(workflow): expose promotion run control IPC`
 - Persisted `markRunError` and the `run_error` event before subscriber delivery, so a renderer destroyed before rejection cannot suppress durable failure state.
 - Broadcast the one persisted failure event to every still-live sender stream, while destroyed streams are removed safely and terminal run bookkeeping is released after settlement.
 - Added coverage for two live senders receiving a single persisted failure event, durable failure persistence after the only sender is destroyed, and settling the destroyed-stream fixture to avoid leaking a pending run between tests.
+
+## Review-fix4
+
+- Added an atomic SQLite-backed `markRunErrorOnce` transition that conditionally marks a run as errored and appends its `run_error` event in one transaction; later Start/Resume failures for that run receive no duplicate terminal failure artifact.
+- Routed IPC failure handling through the durable transition result, while preserving background execution and retry/resume entry points.
+- Removed each completed stream's `webContents` destroyed listener, and guarded event delivery/stream startup against an already-destroyed sender.
+- Added focused regression coverage for sequential failed Start/Resume executions, durable single-event persistence across retry state, and normal listener cleanup.

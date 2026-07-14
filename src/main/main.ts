@@ -6351,7 +6351,6 @@ if (!gotTheLock) {
         getEnterpriseLeadWorkspaceService().rejectTask(workspaceId, runId, taskId),
     },
     listWorkflowEvents: runId => enterpriseLeadWorkflowArtifactStore.listEvents(runId),
-    appendWorkflowEvent: input => enterpriseLeadWorkflowArtifactStore.appendEvent(input),
   });
 
   ipcMain.handle(OpenClawEngineIpc.GetStatus, async () => {
