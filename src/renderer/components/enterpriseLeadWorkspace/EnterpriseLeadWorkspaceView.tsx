@@ -27,6 +27,7 @@ import {
   getShellModeForEnterpriseLeadWorkspaceScreen,
   sortWorkspacesByRecentUpdate,
 } from './enterpriseLeadWorkspaceUi';
+import WorkflowRunView from './WorkflowRunView';
 import { buildEnterpriseLeadCoworkHandoffRequest } from './workspaceCoworkHandoff';
 import {
   getWorkspaceSidebarActiveChatSessionId,
@@ -479,6 +480,7 @@ export const EnterpriseLeadWorkspaceView: React.FC<EnterpriseLeadWorkspaceViewPr
   const renderPreparingPanel = (page: EnterpriseLeadWorkspaceInternalPageType): React.ReactNode => {
     const pageLabels = {
       [EnterpriseLeadWorkspaceInternalPage.Workbench]: 'enterpriseLeadWorkbenchNavWorkbench',
+      [EnterpriseLeadWorkspaceInternalPage.Workflow]: 'enterpriseLeadWorkbenchNavWorkflow',
       [EnterpriseLeadWorkspaceInternalPage.AiChat]: 'enterpriseLeadWorkbenchNavAiChat',
       [EnterpriseLeadWorkspaceInternalPage.Search]: 'enterpriseLeadWorkbenchNavSearch',
       [EnterpriseLeadWorkspaceInternalPage.KnowledgeBase]:
@@ -518,6 +520,15 @@ export const EnterpriseLeadWorkspaceView: React.FC<EnterpriseLeadWorkspaceViewPr
         <WorkspaceStart
           workspace={workspace}
           onOpenPage={nextPage => handleInternalPageChange(nextPage, workspace)}
+        />
+      );
+    }
+
+    if (page === EnterpriseLeadWorkspaceInternalPage.Workflow) {
+      return (
+        <WorkflowRunView
+          workspace={workspace}
+          onOpenCowork={() => handleInternalPageChange(EnterpriseLeadWorkspaceInternalPage.AiChat, workspace)}
         />
       );
     }

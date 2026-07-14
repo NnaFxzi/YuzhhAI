@@ -416,6 +416,7 @@ export interface AgentTaskDisplayMetadata {
 
 export const EnterpriseLeadWorkbenchNavItem = {
   Workbench: 'workbench',
+  Workflow: 'workflow',
   AiChat: 'ai_chat',
   Search: 'search',
   KnowledgeBase: 'knowledge_base',
@@ -432,6 +433,7 @@ export type EnterpriseLeadWorkspaceInternalPage =
 
 export const EnterpriseLeadWorkbenchNavIcon = {
   Dashboard: 'dashboard',
+  Workflow: 'workflow',
   Chat: 'chat',
   Search: 'search',
   Knowledge: 'knowledge',
@@ -833,6 +835,11 @@ const WORKBENCH_SIDEBAR_ITEMS: WorkbenchSidebarItem[] = [
     id: EnterpriseLeadWorkbenchNavItem.Workbench,
     icon: EnterpriseLeadWorkbenchNavIcon.Dashboard,
     labelKey: 'enterpriseLeadWorkbenchNavWorkbench',
+  },
+  {
+    id: EnterpriseLeadWorkbenchNavItem.Workflow,
+    icon: EnterpriseLeadWorkbenchNavIcon.Workflow,
+    labelKey: 'enterpriseLeadWorkbenchNavWorkflow',
   },
   {
     id: EnterpriseLeadWorkbenchNavItem.AiChat,
@@ -1656,7 +1663,7 @@ export const getWorkspaceStartActionTarget = (
   if (action === EnterpriseLeadWorkspaceStartAction.StartWorkflow) {
     return sourceState === EnterpriseLeadWorkspaceStartSourceState.Blank
       ? EnterpriseLeadWorkspaceInternalPage.KnowledgeBase
-      : EnterpriseLeadWorkspaceInternalPage.AiChat;
+      : EnterpriseLeadWorkspaceInternalPage.Workflow;
   }
 
   return EnterpriseLeadWorkspaceInternalPage.KnowledgeBase;

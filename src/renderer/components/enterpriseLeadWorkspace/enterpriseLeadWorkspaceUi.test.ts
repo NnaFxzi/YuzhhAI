@@ -1779,6 +1779,7 @@ describe('enterprise lead workspace UI helpers', () => {
   test('defines workbench sidebar navigation with knowledge base entry', () => {
     expect(getWorkbenchSidebarItems().map(item => item.labelKey)).toEqual([
       'enterpriseLeadWorkbenchNavWorkbench',
+      'enterpriseLeadWorkbenchNavWorkflow',
       'enterpriseLeadWorkbenchNavAiChat',
       'enterpriseLeadWorkbenchNavSearch',
       'enterpriseLeadWorkbenchNavKnowledgeBase',
@@ -1790,6 +1791,7 @@ describe('enterprise lead workspace UI helpers', () => {
   test('defines workspace internal pages in sidebar order', () => {
     expect(getWorkspaceInternalPages().map(page => page.id)).toEqual([
       'workbench',
+      'workflow',
       'ai_chat',
       'search',
       'knowledge_base',
@@ -1829,7 +1831,7 @@ describe('enterprise lead workspace UI helpers', () => {
         EnterpriseLeadWorkspaceStartAction.StartWorkflow,
         EnterpriseLeadWorkspaceStartSourceState.Material,
       ),
-    ).toBe(EnterpriseLeadWorkspaceInternalPage.AiChat);
+    ).toBe(EnterpriseLeadWorkspaceInternalPage.Workflow);
   });
 
   test('resolves start dashboard state for pasted-content workspaces', () => {
@@ -2147,6 +2149,7 @@ describe('enterprise lead workspace UI helpers', () => {
   test('defines icon navigation for the workbench rail', () => {
     expect(getWorkbenchSidebarItems().map(item => item.icon)).toEqual([
       'dashboard',
+      'workflow',
       'chat',
       'search',
       'knowledge',
