@@ -315,6 +315,174 @@ describe('registerEnterpriseLeadWorkspaceHandlers', () => {
     expect(send).toHaveBeenCalledTimes(1);
   });
 
+  test('subscribes Resume to newly produced events before the resumed workflow settles', async () => {
+    const { deps, service } = makeDeps();
+    const snapshot = {
+      workspace: { id: 'workspace-1' },
+      currentRun: { id: 'run-1' },
+      tasks: [],
+      pendingVersions: [],
+      deliverables: [],
+      todos: [],
+      archives: [],
+    } as EnterpriseLeadWorkspaceSnapshot;
+    const events: EnterpriseLeadWorkflowEvent[] = [];
+    let resolveWorkflow: (() => void) | undefined;
+    service.getSnapshot = vi.fn(() => snapshot);
+    service.resumeRun = vi.fn(() => {
+      events.push({
+        runId: 'run-1',
+        sequence: 2,
+        type: 'task_started',
+        payload: {},
+        createdAt: '2026-07-14T00:00:00.000Z',
+      });
+      return new Promise<EnterpriseLeadWorkspaceSnapshot>(resolve => {
+        resolveWorkflow = () => resolve(snapshot);
+      });
+    });
+    deps.listWorkflowEvents = vi.fn(() => events);
+    const send = vi.fn();
+    registerEnterpriseLeadWorkspaceHandlers(deps);
+
+    const handler = registeredHandlers.get(EnterpriseLeadWorkflowIpc.Resume);
+    const response = handler?.({ sender: { send } }, {
+      workspaceId: 'workspace-1',
+      runId: 'run-1',
+    });
+    await Promise.resolve();
+
+    expect(send).toHaveBeenCalledWith(
+      EnterpriseLeadWorkflowIpc.Event,
+      expect.objectContaining({ sequence: 2, type: 'task_started' }),
+    );
+    expect(await response).toEqual({ success: true, data: snapshot });
+
+    resolveWorkflow?.();
+  });
+
+  test('deduplicates Start streams for one sender and reports one rejected run error', async () => {
+    const { deps, service } = makeDeps();
+    const snapshot = {
+      workspace: { id: 'workspace-1' },
+      currentRun: { id: 'run-1' },
+      tasks: [],
+      pendingVersions: [],
+      deliverables: [],
+      todos: [],
+      archives: [],
+    } as EnterpriseLeadWorkspaceSnapshot;
+    let rejectWorkflow: ((error: Error) => void) | undefined;
+    const runErrorEvent = {
+      runId: 'run-1',
+      sequence: 1,
+      type: 'run_error',
+      payload: {},
+      createdAt: '2026-07-14T00:00:00.000Z',
+    } satisfies EnterpriseLeadWorkflowEvent;
+    service.getSnapshot = vi.fn(() => snapshot);
+    service.startWorkflow = vi.fn(
+      () =>
+        new Promise<EnterpriseLeadWorkspaceSnapshot>((_resolve, reject) => {
+          rejectWorkflow = reject;
+        }),
+    );
+    service.markRunError = vi.fn(() => snapshot);
+    deps.appendWorkflowEvent = vi.fn(() => runErrorEvent);
+    const send = vi.fn();
+    registerEnterpriseLeadWorkspaceHandlers(deps);
+
+    const handler = registeredHandlers.get(EnterpriseLeadWorkflowIpc.Start);
+    const event = { sender: { send } };
+    const input = {
+      workspaceId: 'workspace-1',
+      runId: 'run-1',
+      options: { enabledOptionalNodes: [], maxConcurrency: 1 },
+    };
+    await handler?.(event, input);
+    await handler?.(event, input);
+    rejectWorkflow?.(new Error('gateway unavailable'));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(service.startWorkflow).toHaveBeenCalledTimes(1);
+    expect(service.markRunError).toHaveBeenCalledTimes(1);
+    expect(deps.appendWorkflowEvent).toHaveBeenCalledTimes(1);
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(send).toHaveBeenCalledWith(EnterpriseLeadWorkflowIpc.Event, runErrorEvent);
+  });
+
+  test('deduplicates Resume streams for one sender and run', async () => {
+    const { deps, service } = makeDeps();
+    const snapshot = {
+      workspace: { id: 'workspace-1' },
+      currentRun: { id: 'run-1' },
+      tasks: [],
+      pendingVersions: [],
+      deliverables: [],
+      todos: [],
+      archives: [],
+    } as EnterpriseLeadWorkspaceSnapshot;
+    let resolveWorkflow: (() => void) | undefined;
+    service.getSnapshot = vi.fn(() => snapshot);
+    service.resumeRun = vi.fn(
+      () =>
+        new Promise<EnterpriseLeadWorkspaceSnapshot>(resolve => {
+          resolveWorkflow = () => resolve(snapshot);
+        }),
+    );
+    registerEnterpriseLeadWorkspaceHandlers(deps);
+
+    const handler = registeredHandlers.get(EnterpriseLeadWorkflowIpc.Resume);
+    const event = { sender: { send: vi.fn() } };
+    const input = { workspaceId: 'workspace-1', runId: 'run-1' };
+    await handler?.(event, input);
+    await handler?.(event, input);
+
+    expect(service.resumeRun).toHaveBeenCalledTimes(1);
+
+    resolveWorkflow?.();
+  });
+
+  test('cleans a workflow stream when its renderer is destroyed', async () => {
+    vi.useFakeTimers();
+    try {
+      const { deps, service } = makeDeps();
+      const snapshot = {
+        workspace: { id: 'workspace-1' },
+        currentRun: { id: 'run-1' },
+        tasks: [],
+        pendingVersions: [],
+        deliverables: [],
+        todos: [],
+        archives: [],
+      } as EnterpriseLeadWorkspaceSnapshot;
+      service.getSnapshot = vi.fn(() => snapshot);
+      service.startWorkflow = vi.fn(() => new Promise<EnterpriseLeadWorkspaceSnapshot>(() => undefined));
+      const destroyedListeners: Array<() => void> = [];
+      const sender = {
+        send: vi.fn(),
+        once: vi.fn((_event: string, listener: () => void) => destroyedListeners.push(listener)),
+      };
+      registerEnterpriseLeadWorkspaceHandlers(deps);
+
+      const handler = registeredHandlers.get(EnterpriseLeadWorkflowIpc.Start);
+      await handler?.({ sender }, {
+        workspaceId: 'workspace-1',
+        runId: 'run-1',
+        options: { enabledOptionalNodes: [], maxConcurrency: 1 },
+      });
+      expect(vi.getTimerCount()).toBe(1);
+
+      destroyedListeners.forEach(listener => listener());
+
+      expect(vi.getTimerCount()).toBe(0);
+      expect(sender.once).toHaveBeenCalledWith('destroyed', expect.any(Function));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   test('dispatches only newly produced control events without replaying run history', async () => {
     const { deps, service } = makeDeps();
     const snapshot = {

@@ -39,3 +39,10 @@ Feature commit: `6e8bf3c9 feat(workflow): expose promotion run control IPC`
 - Replaced post-completion event replay with per-sender/run cursor polling, so only new events stream during execution and control handlers never replay full histories.
 - Persisted run error status and summary before creating/sending `run_error`.
 - Added coverage for the registered IPC handlers, bridge option forwarding, streamed timing/deduplication, strict validation, and persisted error state.
+
+## Review-fix2
+
+- Refactored Start and Resume onto one sender/run-scoped event-stream helper. Resume now returns its snapshot and begins forwarding newly produced events without awaiting terminal workflow completion.
+- Added per-sender/run stream guards, one rejection path per stream, and cleanup for terminal completion, rejection, and destroyed renderer `webContents`; controls retain cursor-based no-history replay behavior.
+- Cleared active-run cancellation markers in generation-aware finalization so cancellation bookkeeping does not accumulate or erase a newer generation's state.
+- Added focused coverage for Resume timing, duplicate Start and Resume calls, one persisted/sent `run_error`, destroyed-renderer stream cleanup, and post-settlement cancellation cleanup.

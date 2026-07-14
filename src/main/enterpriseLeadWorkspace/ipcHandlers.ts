@@ -261,9 +261,16 @@ const fail = <T>(error: unknown): EnterpriseLeadIpcResult<T> => ({
 
 type WorkflowEventSender = {
   send: (channel: string, payload: EnterpriseLeadWorkflowEvent) => void;
+  once?: (event: 'destroyed', listener: () => void) => unknown;
 };
 
 const workflowEventCursors = new WeakMap<WorkflowEventSender, Map<string, number>>();
+interface WorkflowEventStream {
+  interval: ReturnType<typeof setInterval> | undefined;
+  disposed: boolean;
+}
+
+const workflowEventStreams = new WeakMap<WorkflowEventSender, Map<string, WorkflowEventStream>>();
 
 const getWorkflowEventCursor = (sender: WorkflowEventSender, runId: string): number | undefined =>
   workflowEventCursors.get(sender)?.get(runId);
@@ -310,38 +317,77 @@ const sendWorkflowEvent = (
   setWorkflowEventCursor(sender, workflowEvent.runId, workflowEvent.sequence);
 };
 
-const streamWorkflowExecution = (
+const getWorkflowEventStream = (
+  sender: WorkflowEventSender,
+  runId: string,
+): WorkflowEventStream | undefined => workflowEventStreams.get(sender)?.get(runId);
+
+const setWorkflowEventStream = (
+  sender: WorkflowEventSender,
+  runId: string,
+  stream: WorkflowEventStream,
+): void => {
+  const streams = workflowEventStreams.get(sender) ?? new Map<string, WorkflowEventStream>();
+  streams.set(runId, stream);
+  workflowEventStreams.set(sender, streams);
+};
+
+const clearWorkflowEventStream = (
+  sender: WorkflowEventSender,
+  runId: string,
+  stream: WorkflowEventStream,
+): void => {
+  if (stream.disposed) return;
+  stream.disposed = true;
+  if (stream.interval) clearInterval(stream.interval);
+
+  const streams = workflowEventStreams.get(sender);
+  if (streams?.get(runId) !== stream) return;
+  streams.delete(runId);
+  if (streams.size === 0) workflowEventStreams.delete(sender);
+};
+
+const startWorkflowEventStream = (
   deps: EnterpriseLeadWorkspaceHandlerDeps,
   sender: WorkflowEventSender,
   workspaceId: string,
   runId: string,
-  options: WorkflowStartOptions,
+  execute: () => EnterpriseLeadWorkspaceSnapshot | Promise<EnterpriseLeadWorkspaceSnapshot>,
 ): void => {
+  if (getWorkflowEventStream(sender, runId)) return;
+
   let execution: Promise<EnterpriseLeadWorkspaceSnapshot>;
   try {
-    execution = Promise.resolve(deps.service.startWorkflow(workspaceId, runId, options));
+    execution = Promise.resolve(execute());
   } catch (error) {
     execution = Promise.reject(error);
   }
-  sendNewWorkflowEvents(sender, runId, deps.listWorkflowEvents);
+  const stream: WorkflowEventStream = { interval: undefined, disposed: false };
+  setWorkflowEventStream(sender, runId, stream);
+  const cleanup = () => clearWorkflowEventStream(sender, runId, stream);
 
-  const interval = setInterval(
+  sendNewWorkflowEvents(sender, runId, deps.listWorkflowEvents);
+  stream.interval = setInterval(
     () => sendNewWorkflowEvents(sender, runId, deps.listWorkflowEvents),
     50,
   );
+  sender.once?.('destroyed', cleanup);
+
   void (async () => {
     try {
       await execution;
     } catch (error) {
       const message = toErrorMessage(error);
       await deps.service.markRunError(workspaceId, runId, message);
-      sendWorkflowEvent(
-        sender,
-        deps.appendWorkflowEvent({ runId, type: 'run_error', summary: message }),
-      );
+      if (!stream.disposed) {
+        sendWorkflowEvent(
+          sender,
+          deps.appendWorkflowEvent({ runId, type: 'run_error', summary: message }),
+        );
+      }
     } finally {
-      clearInterval(interval);
-      sendNewWorkflowEvents(sender, runId, deps.listWorkflowEvents);
+      if (!stream.disposed) sendNewWorkflowEvents(sender, runId, deps.listWorkflowEvents);
+      cleanup();
     }
   })();
 };
@@ -617,7 +663,9 @@ export function registerEnterpriseLeadWorkspaceHandlers(
         const options = readWorkflowStartOptions(input?.options);
         const snapshot = await deps.service.getSnapshot(workspaceId, runId);
         primeWorkflowEventCursor(event.sender, runId, deps.listWorkflowEvents);
-        streamWorkflowExecution(deps, event.sender, workspaceId, runId, options);
+        startWorkflowEventStream(deps, event.sender, workspaceId, runId, () =>
+          deps.service.startWorkflow(workspaceId, runId, options),
+        );
 
         return ok(snapshot);
       } catch (error) {
@@ -632,9 +680,11 @@ export function registerEnterpriseLeadWorkspaceHandlers(
       try {
         const workspaceId = requireNonEmptyString(input?.workspaceId, 'Workspace id');
         const runId = requireNonEmptyString(input?.runId, 'Run id');
+        const snapshot = await deps.service.getSnapshot(workspaceId, runId);
         primeWorkflowEventCursor(event.sender, runId, deps.listWorkflowEvents);
-        const snapshot = await deps.service.resumeRun(workspaceId, runId);
-        sendNewWorkflowEvents(event.sender, runId, deps.listWorkflowEvents);
+        startWorkflowEventStream(deps, event.sender, workspaceId, runId, () =>
+          deps.service.resumeRun(workspaceId, runId),
+        );
         return ok(snapshot);
       } catch (error) {
         return fail<EnterpriseLeadWorkspaceSnapshot>(error);

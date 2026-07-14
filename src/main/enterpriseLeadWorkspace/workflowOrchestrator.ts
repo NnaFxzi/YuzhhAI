@@ -43,6 +43,8 @@ const dedupeWorkflowArtifactRefs = (artifactRefs: WorkflowArtifactRef[]): Workfl
 export class EnterpriseLeadWorkflowOrchestrator {
   private readonly activeRuns = new Map<string, Promise<EnterpriseLeadWorkspaceSnapshot>>();
   private readonly cancelledRuns = new Set<string>();
+  private readonly runGenerations = new Map<string, number>();
+  private nextRunGeneration = 0;
 
   constructor(private readonly options: EnterpriseLeadWorkflowOrchestratorOptions) {}
 
@@ -97,7 +99,7 @@ export class EnterpriseLeadWorkflowOrchestrator {
 
   async cancelRun(workspaceId: string, runId: string): Promise<EnterpriseLeadWorkspaceSnapshot> {
     this.assertRunWorkspace(workspaceId, runId);
-    this.cancelledRuns.add(runId);
+    if (this.activeRuns.has(runId)) this.cancelledRuns.add(runId);
     const unfinishedTasks = this.options.store
       .listTasks(runId)
       .filter(
@@ -206,8 +208,14 @@ export class EnterpriseLeadWorkflowOrchestrator {
     if (active) return active;
 
     this.cancelledRuns.delete(runId);
+    const generation = ++this.nextRunGeneration;
+    this.runGenerations.set(runId, generation);
     const promise = this.runSchedule(workspaceId, runId).finally(() => {
-      this.activeRuns.delete(runId);
+      if (this.activeRuns.get(runId) === promise) this.activeRuns.delete(runId);
+      if (this.runGenerations.get(runId) === generation) {
+        this.runGenerations.delete(runId);
+        this.cancelledRuns.delete(runId);
+      }
     });
     this.activeRuns.set(runId, promise);
     return promise;

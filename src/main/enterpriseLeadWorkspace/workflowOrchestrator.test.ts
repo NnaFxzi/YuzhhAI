@@ -349,6 +349,40 @@ describe('EnterpriseLeadWorkflowOrchestrator', () => {
     expect(events.map(event => event.type)).toContain('run_cancelled');
   });
 
+  test('clears a cancellation marker after the active run settles', async () => {
+    let releaseExecution: (() => void) | undefined;
+    const adapter: WorkflowExecutionAdapter = {
+      async execute(context) {
+        await new Promise<void>(resolve => {
+          releaseExecution = resolve;
+        });
+        return {
+          role: context.role,
+          status: EnterpriseLeadTaskStatus.Completed,
+          summary: `${context.role} completed`,
+          outputs: { role: context.role },
+          missingInfo: [],
+          todos: [],
+          risks: [],
+          handoffContext: {},
+          artifactRefs: [],
+        } as PromotionTaskResult;
+      },
+    };
+    const setupResult = setup(adapter);
+    databases.push(setupResult.database);
+
+    const activeRun = setupResult.orchestrator.startRun(setupResult.workspace.id, setupResult.run.id);
+    await Promise.resolve();
+    await setupResult.orchestrator.cancelRun(setupResult.workspace.id, setupResult.run.id);
+    releaseExecution?.();
+    await activeRun;
+
+    expect((setupResult.orchestrator as unknown as { cancelledRuns: Set<string> }).cancelledRuns.has(
+      setupResult.run.id,
+    )).toBe(false);
+  });
+
   test('settles the remaining parallel task when another task fails', async () => {
     const adapter: WorkflowExecutionAdapter = {
       async execute(context) {
