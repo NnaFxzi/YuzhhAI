@@ -8,6 +8,8 @@ import {
 } from '../../shared/enterpriseLeadWorkspace/constants';
 import type { EnterpriseLeadWorkspaceAgentBinding } from '../../shared/enterpriseLeadWorkspace/types';
 
+export const PROMOTION_WORKFLOW_VERSION = 'promotion-v1';
+
 export interface EnterpriseLeadAgentMetadata {
   role: EnterpriseLeadAgentRole;
   title: string;

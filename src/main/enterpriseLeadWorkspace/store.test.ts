@@ -16,6 +16,7 @@ import {
   EnterpriseLeadWorkspaceType,
 } from '../../shared/enterpriseLeadWorkspace/constants';
 import { buildDefaultEnterpriseLeadWorkspaceSettings } from '../../shared/enterpriseLeadWorkspace/validation';
+import { WorkflowExecutionMode } from '../../shared/enterpriseLeadWorkspace/workflowContracts';
 import {
   KnowledgeDocumentSourceMode,
   KnowledgeDocumentStatus,
@@ -844,6 +845,20 @@ describe('EnterpriseLeadWorkspaceStore', () => {
       roles: [EnterpriseLeadAgentRole.SalesHandoff],
     });
 
+    expect(() => store.archiveRun(workspace.id, run.id)).toThrow(
+      'Enterprise lead run must be completed before archive',
+    );
+    expect(store.getRun(run.id)).toMatchObject({
+      status: EnterpriseLeadRunStatus.Running,
+      archiveStatus: 'not_archived',
+    });
+    store.updateRunProgress({
+      runId: run.id,
+      status: EnterpriseLeadRunStatus.Completed,
+      currentRole: null,
+      controllerSummary: 'Ready to archive.',
+    });
+
     const archivedRun = store.archiveRun(workspace.id, run.id);
 
     expect(archivedRun).toEqual(
@@ -856,6 +871,51 @@ describe('EnterpriseLeadWorkspaceStore', () => {
     );
     expect(archivedRun.completedAt).toBeTruthy();
     expect(store.getRun(run.id)).toEqual(archivedRun);
+    expect(() => store.archiveRun(workspace.id, run.id)).toThrow(
+      'Enterprise lead run is already archived',
+    );
+  });
+
+  test('atomically rejects progress writes that would replace terminal runs', () => {
+    setupStore();
+    const workspace = store.createWorkspace({
+      name: '华南重包获客工作台',
+      type: EnterpriseLeadWorkspaceType.EnterpriseLead,
+      profile,
+      extractionSources: [],
+      enabledAgentRoles: [],
+    });
+    const completed = store.createRun({
+      workspaceId: workspace.id,
+      userGoal: '已完成运行',
+      roles: [EnterpriseLeadAgentRole.Controller],
+    });
+    const cancelled = store.createRun({
+      workspaceId: workspace.id,
+      userGoal: '已取消运行',
+      roles: [EnterpriseLeadAgentRole.Controller],
+    });
+
+    store.updateRunProgress({
+      runId: completed.id,
+      status: EnterpriseLeadRunStatus.Completed,
+      currentRole: null,
+      controllerSummary: 'Completed.',
+    });
+    store.cancelWorkflowRun(cancelled.id);
+
+    [completed, cancelled].forEach(run => {
+      const before = store.getRun(run.id);
+      expect(() =>
+        store.updateRunProgress({
+          runId: run.id,
+          status: EnterpriseLeadRunStatus.Running,
+          currentRole: EnterpriseLeadAgentRole.Controller,
+          controllerSummary: 'Late progress.',
+        }),
+      ).toThrow('Enterprise lead run is terminal');
+      expect(store.getRun(run.id)).toEqual(before);
+    });
   });
 
   test('rejects archive when run does not belong to workspace', () => {
@@ -960,6 +1020,70 @@ describe('EnterpriseLeadWorkspaceStore', () => {
       error: '',
       stale: false,
     });
+  });
+
+  test('persists artifact references across task-store reloads', () => {
+    setupStore();
+    const workspace = store.createWorkspace({
+      name: '华南重包获客工作台',
+      type: EnterpriseLeadWorkspaceType.EnterpriseLead,
+      profile,
+      extractionSources: [],
+      enabledAgentRoles: [],
+    });
+    const run = store.createRun({
+      workspaceId: workspace.id,
+      userGoal: '保存推广产物引用',
+      roles: [EnterpriseLeadAgentRole.PromotionDataScraping],
+    });
+    const task = store.listTasks(run.id)[0];
+    const artifactRefs = [
+      {
+        id: 'artifact-source-1',
+        kind: 'scraped_leads',
+        schemaVersion: 1,
+        summary: '已抓取的一条来源线索',
+        producerTaskId: task.id,
+        evidenceIds: ['source-1'],
+      },
+    ];
+
+    store.updateTaskResult(task.id, {
+      role: task.role,
+      status: EnterpriseLeadTaskStatus.Completed,
+      summary: '来源线索已保存。',
+      outputs: {},
+      missingInfo: [],
+      todos: [],
+      risks: [],
+      handoffContext: {},
+      artifactRefs,
+    });
+    const reloadedStore = new EnterpriseLeadWorkspaceStore(db!);
+
+    expect(reloadedStore.getTask(task.id)?.artifactRefs).toEqual(artifactRefs);
+  });
+
+  test('migrates legacy workflow tasks without an execution mode to inline execution', () => {
+    setupStore();
+    const workspace = store.createWorkspace({
+      name: '兼容旧版推广任务',
+      type: EnterpriseLeadWorkspaceType.EnterpriseLead,
+      profile,
+      extractionSources: [],
+      enabledAgentRoles: [],
+    });
+    const run = store.createRun({
+      workspaceId: workspace.id,
+      userGoal: '恢复旧版推广任务',
+      roles: [EnterpriseLeadAgentRole.PromotionDataScraping],
+    });
+    const task = store.listTasks(run.id)[0];
+    db!.prepare('UPDATE enterprise_lead_agent_tasks SET execution_mode = NULL WHERE id = ?').run(task.id);
+
+    const reloadedStore = new EnterpriseLeadWorkspaceStore(db!);
+
+    expect(reloadedStore.getTask(task.id)?.executionMode).toBe(WorkflowExecutionMode.Inline);
   });
 
   test('creates and applies a pending agent version', () => {
@@ -1074,6 +1198,98 @@ describe('EnterpriseLeadWorkspaceStore', () => {
     expect(store.getTask(salesTask.id)).toMatchObject({
       status: EnterpriseLeadTaskStatus.Stale,
       stale: true,
+    });
+  });
+
+  test('marks only transitive DAG dependents stale after applying a pending version', () => {
+    setupStore();
+    const workspace = store.createWorkspace({
+      name: '推广工作流依赖失效测试',
+      type: EnterpriseLeadWorkspaceType.EnterpriseLead,
+      profile,
+      extractionSources: [],
+      enabledAgentRoles: [],
+    });
+    const run = store.createRun({
+      workspaceId: workspace.id,
+      userGoal: '验证推广 DAG 失效范围',
+      tasks: [
+        { role: EnterpriseLeadAgentRole.PromotionController, nodeId: 'controller' },
+        {
+          role: EnterpriseLeadAgentRole.PromotionDataScraping,
+          nodeId: 'scraping',
+          dependsOnTaskIds: ['controller'],
+        },
+        {
+          role: EnterpriseLeadAgentRole.ProductSellingPoint,
+          nodeId: 'selling',
+          dependsOnTaskIds: ['controller'],
+        },
+        {
+          role: EnterpriseLeadAgentRole.PromotionDataCleaning,
+          nodeId: 'cleaning',
+          dependsOnTaskIds: ['scraping', 'selling'],
+        },
+        {
+          role: EnterpriseLeadAgentRole.PromotionCompetitorInsight,
+          nodeId: 'insight',
+          dependsOnTaskIds: ['cleaning'],
+        },
+        {
+          role: EnterpriseLeadAgentRole.PromotionLeadScoring,
+          nodeId: 'scoring',
+          dependsOnTaskIds: ['cleaning'],
+        },
+      ],
+    });
+    const tasksByRole = new Map(store.listTasks(run.id).map(task => [task.role, task]));
+    const scrapingTask = tasksByRole.get(EnterpriseLeadAgentRole.PromotionDataScraping)!;
+    const sellingTask = tasksByRole.get(EnterpriseLeadAgentRole.ProductSellingPoint)!;
+    const cleaningTask = tasksByRole.get(EnterpriseLeadAgentRole.PromotionDataCleaning)!;
+    const insightTask = tasksByRole.get(EnterpriseLeadAgentRole.PromotionCompetitorInsight)!;
+    const scoringTask = tasksByRole.get(EnterpriseLeadAgentRole.PromotionLeadScoring)!;
+    const completedResult = (task: typeof scrapingTask) => ({
+      role: task.role,
+      status: EnterpriseLeadTaskStatus.Completed,
+      summary: `${task.role} completed`,
+      outputs: {},
+      missingInfo: [],
+      todos: [],
+      risks: [],
+      handoffContext: {},
+    });
+
+    [sellingTask, cleaningTask, insightTask, scoringTask].forEach(task => {
+      store.updateTaskResult(task.id, completedResult(task));
+    });
+    const pendingVersion = store.createPendingVersion({
+      taskId: scrapingTask.id,
+      userMessage: '重新抓取线索来源',
+      summary: '新版抓取结果。',
+      outputPayload: {},
+      missingInfo: [],
+      todos: [],
+      risks: [],
+      handoffContext: {},
+    });
+
+    store.applyPendingVersion(pendingVersion.id);
+
+    expect(store.getTask(cleaningTask.id)).toMatchObject({
+      status: EnterpriseLeadTaskStatus.Stale,
+      stale: true,
+    });
+    expect(store.getTask(insightTask.id)).toMatchObject({
+      status: EnterpriseLeadTaskStatus.Stale,
+      stale: true,
+    });
+    expect(store.getTask(scoringTask.id)).toMatchObject({
+      status: EnterpriseLeadTaskStatus.Stale,
+      stale: true,
+    });
+    expect(store.getTask(sellingTask.id)).toMatchObject({
+      status: EnterpriseLeadTaskStatus.Completed,
+      stale: false,
     });
   });
 
@@ -1418,6 +1634,50 @@ describe('EnterpriseLeadWorkspaceStore', () => {
     });
   });
 
+  test('does not initialize or replace workflow tasks on terminal runs', () => {
+    setupStore();
+    const workspace = store.createWorkspace({
+      name: 'Workflow transition guard',
+      type: EnterpriseLeadWorkspaceType.EnterpriseLead,
+      profile,
+      extractionSources: [],
+      enabledAgentRoles: [],
+    });
+    const zeroTaskRun = store.createRun({
+      workspaceId: workspace.id,
+      userGoal: 'Do not initialize after cancellation',
+    });
+    const waitingTaskRun = store.createRun({
+      workspaceId: workspace.id,
+      userGoal: 'Do not replace after cancellation',
+      tasks: [{ role: EnterpriseLeadAgentRole.PromotionController, nodeId: 'controller' }],
+    });
+    const waitingTask = store.listTasks(waitingTaskRun.id)[0];
+
+    store.cancelWorkflowRun(zeroTaskRun.id);
+    store.cancelWorkflowRun(waitingTaskRun.id);
+
+    expect(() =>
+      store.initializeWorkflowRun(
+        zeroTaskRun.id,
+        [{ role: EnterpriseLeadAgentRole.PromotionController, nodeId: 'controller' }],
+        { enabledOptionalNodes: [], maxConcurrency: 1 },
+      ),
+    ).toThrow('Enterprise lead run is terminal');
+    expect(() =>
+      store.replaceUnstartedWorkflowRun(
+        waitingTaskRun.id,
+        [{ role: EnterpriseLeadAgentRole.PromotionDataScraping, nodeId: 'scraping' }],
+        { enabledOptionalNodes: [], maxConcurrency: 1 },
+      ),
+    ).toThrow('Enterprise lead run is terminal');
+
+    expect(store.listTasks(zeroTaskRun.id)).toEqual([]);
+    expect(store.listTasks(waitingTaskRun.id)).toEqual([
+      expect.objectContaining({ id: waitingTask.id, status: EnterpriseLeadTaskStatus.Cancelled }),
+    ]);
+  });
+
   test('migrates legacy run tables without archive columns', () => {
     db = new Database(':memory:');
     db.exec(`
@@ -1513,6 +1773,12 @@ describe('EnterpriseLeadWorkspaceStore', () => {
       workspaceId: 'workspace-legacy-runs',
       userGoal: '迁移后新运行',
       roles: [EnterpriseLeadAgentRole.SalesHandoff],
+    });
+    store.updateRunProgress({
+      runId: createdRun.id,
+      status: EnterpriseLeadRunStatus.Completed,
+      currentRole: null,
+      controllerSummary: '迁移后运行已完成。',
     });
     const archivedRun = store.archiveRun('workspace-legacy-runs', createdRun.id);
 

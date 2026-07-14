@@ -20,6 +20,59 @@ import type {
   EnterpriseLeadWorkspaceAgentSource,
   EnterpriseLeadWorkspaceType,
 } from './constants';
+import type {
+  WorkflowArtifactRef,
+  WorkflowEvent,
+  WorkflowEventProjection,
+  WorkflowExecutionMode,
+} from './workflowContracts';
+
+export interface EnterpriseLeadWorkflowArtifact {
+  id: string;
+  runId: string;
+  taskId: string;
+  kind: string;
+  schemaVersion: number;
+  payload: Record<string, unknown>;
+  evidenceIds: string[];
+  createdAt: string;
+}
+
+export interface EnterpriseLeadWorkflowEvent extends WorkflowEvent {
+  payload: Record<string, unknown>;
+}
+
+export type EnterpriseLeadWorkflowLiveEvent = WorkflowEventProjection;
+
+export interface EnterpriseLeadTaskAttempt {
+  id: string;
+  taskId: string;
+  attempt: number;
+  executionMode: WorkflowExecutionMode;
+  status: string;
+  error: string;
+  startedAt: string;
+  endedAt: string | null;
+}
+
+export interface EnterpriseLeadWorkflowHistoryEvent extends WorkflowEventProjection {
+  id: string;
+}
+
+export interface EnterpriseLeadWorkflowHistoryAttempt {
+  id: string;
+  taskId: string;
+  attempt: number;
+  executionMode: WorkflowExecutionMode;
+  status: string;
+  startedAt: string;
+  endedAt: string | null;
+}
+
+export interface EnterpriseLeadWorkflowHistory {
+  events: EnterpriseLeadWorkflowHistoryEvent[];
+  attempts: EnterpriseLeadWorkflowHistoryAttempt[];
+}
 
 export interface EnterpriseLeadWorkspaceProfile {
   companySummary: string;
@@ -239,6 +292,7 @@ export interface EnterpriseLeadRun {
   workspaceId: string;
   userGoal: string;
   status: EnterpriseLeadRunStatus;
+  workflowVersion?: string;
   currentRole: EnterpriseLeadTaskAgentRole | null;
   controllerSummary: string;
   archiveStatus: 'not_archived' | 'archived';
@@ -266,6 +320,7 @@ export interface EnterpriseLeadAgentTaskResult {
   role: EnterpriseLeadTaskAgentRole;
   summary: string;
   outputs: Record<string, unknown>;
+  artifactRefs?: WorkflowArtifactRef[];
   missingInfo: string[];
   todos: EnterpriseLeadTodoInput[];
   risks: EnterpriseLeadRiskItem[];
@@ -277,6 +332,11 @@ export interface EnterpriseLeadAgentTask {
   id: string;
   runId: string;
   role: EnterpriseLeadTaskAgentRole;
+  nodeId?: string;
+  dependsOnTaskIds?: string[];
+  attempt?: number;
+  executionMode?: WorkflowExecutionMode;
+  artifactRefs?: WorkflowArtifactRef[];
   workspaceAgentId: string | null;
   agentSnapshot: EnterpriseLeadWorkspaceRunAgentSnapshot | null;
   status: EnterpriseLeadTaskStatus;
@@ -301,7 +361,9 @@ export interface EnterpriseLeadPendingVersion {
   role: EnterpriseLeadTaskAgentRole;
   userMessage: string;
   summary: string;
+  taskStatus?: EnterpriseLeadTaskStatus;
   outputPayload: Record<string, unknown>;
+  artifactRefs?: WorkflowArtifactRef[];
   missingInfo: string[];
   todos: EnterpriseLeadTodoInput[];
   risks: EnterpriseLeadRiskItem[];
@@ -366,6 +428,7 @@ export interface EnterpriseLeadWorkspaceSnapshot {
   deliverables: EnterpriseLeadDeliverable[];
   todos: EnterpriseLeadTodo[];
   archives: EnterpriseLeadArchive[];
+  workflowHistory?: EnterpriseLeadWorkflowHistory;
 }
 
 export interface EnterpriseLeadProfileConflictSnapshot {

@@ -62,6 +62,20 @@ export type CoworkContextUsage = {
   updatedAt: number;
 };
 
+export interface SubagentSessionSummary {
+  id: string;
+  agentId: string | null;
+  task: string | null;
+  label: string | null;
+  sessionKey: string | null;
+  status: 'running' | 'done' | 'error';
+  createdAt: number;
+  endedAt: number | null;
+  workflowRunId?: string;
+  taskId?: string;
+  role?: string;
+}
+
 export type CoworkForkCompactionSummary = {
   summary: string;
   sessionKey: string;
@@ -152,6 +166,11 @@ export interface CoworkRuntime {
   respondToPermission(requestId: string, result: PermissionResult): void;
   isSessionActive(sessionId: string): boolean;
   getSessionConfirmationMode(sessionId: string): 'modal' | 'text' | null;
+  getWorkflowTaskSubagentSession?(
+    parentSessionId: string,
+    workflowRunId: string,
+    taskId: string,
+  ): SubagentSessionSummary | null;
   deleteSubagentSession?(parentSessionId: string, runId: string): Promise<boolean>;
   onSessionDeleted?(sessionId: string): void;
 }

@@ -110,6 +110,7 @@ const normalizeWorkspaceAgentOverrides = (
   const systemPrompt = cleanOptionalText(record.systemPrompt);
   const icon = cleanOptionalText(record.icon);
   const model = cleanOptionalText(record.model);
+  const skillIds = Array.isArray(record.skillIds) ? cleanSkillIds(record.skillIds) : undefined;
 
   if (name) overrides.name = name;
   if (description) overrides.description = description;
@@ -117,6 +118,7 @@ const normalizeWorkspaceAgentOverrides = (
   if (systemPrompt) overrides.systemPrompt = systemPrompt;
   if (icon) overrides.icon = icon;
   if (model) overrides.model = model;
+  if (skillIds) overrides.skillIds = skillIds;
 
   return overrides;
 };
@@ -895,6 +897,7 @@ export function normalizeAgentTaskResultInput(value: unknown): EnterpriseLeadAge
   if (!role) throw new Error('agent task result role is required');
   const summary = cleanText(record.summary);
   if (!summary) throw new Error('agent task result summary is required');
+  const status = cleanText(record.status);
 
   return {
     role,
@@ -914,7 +917,11 @@ export function normalizeAgentTaskResultInput(value: unknown): EnterpriseLeadAge
         })
       : [],
     handoffContext: readRecord(record.handoffContext),
-    status: cleanText(record.status) || EnterpriseLeadTaskStatus.Completed,
+    status: !status
+      ? EnterpriseLeadTaskStatus.Completed
+      : Object.values(EnterpriseLeadTaskStatus).includes(status as EnterpriseLeadTaskStatus)
+        ? (status as EnterpriseLeadTaskStatus)
+        : EnterpriseLeadTaskStatus.NeedsInput,
   };
 }
 

@@ -1,0 +1,125 @@
+import {
+  EnterpriseLeadRunStatus,
+  type EnterpriseLeadRunStatus as EnterpriseLeadRunStatusValue,
+  EnterpriseLeadTaskStatus,
+  type EnterpriseLeadTaskStatus as EnterpriseLeadTaskStatusValue,
+} from '../../../shared/enterpriseLeadWorkspace/constants';
+import {
+  PromotionMonitoringPresentation,
+  PromotionMonitoringReason,
+} from '../../../shared/enterpriseLeadWorkspace/promotionContracts';
+import {
+  DEFAULT_WORKFLOW_START_OPTIONS,
+  WorkflowEventType,
+  type WorkflowEventType as WorkflowEventTypeValue,
+  WorkflowOptionalNode,
+  type WorkflowStartOptions,
+} from '../../../shared/enterpriseLeadWorkspace/workflowContracts';
+
+export const WorkflowRunMode = {
+  Core: 'core',
+  Full: 'full',
+} as const;
+export type WorkflowRunMode = (typeof WorkflowRunMode)[keyof typeof WorkflowRunMode];
+
+export const workflowRunModeOptions: Array<{
+  id: WorkflowRunMode;
+  labelKey: string;
+  descriptionKey: string;
+}> = [
+  { id: WorkflowRunMode.Core, labelKey: 'enterpriseLeadWorkflowModeCore', descriptionKey: 'enterpriseLeadWorkflowModeCoreDescription' },
+  { id: WorkflowRunMode.Full, labelKey: 'enterpriseLeadWorkflowModeFull', descriptionKey: 'enterpriseLeadWorkflowModeFullDescription' },
+];
+
+export const getWorkflowStartOptionsForMode = (mode: WorkflowRunMode): WorkflowStartOptions => ({
+  ...DEFAULT_WORKFLOW_START_OPTIONS,
+  enabledOptionalNodes: mode === WorkflowRunMode.Full ? Object.values(WorkflowOptionalNode) : [],
+});
+
+const workflowEventLabelKeys: Record<WorkflowEventTypeValue, string> = {
+  [WorkflowEventType.RunStarted]: 'enterpriseLeadWorkflowEventRunStarted',
+  [WorkflowEventType.RunRetrying]: 'enterpriseLeadWorkflowEventRunRetrying',
+  [WorkflowEventType.TaskReady]: 'enterpriseLeadWorkflowEventTaskReady',
+  [WorkflowEventType.TaskStarted]: 'enterpriseLeadWorkflowEventTaskStarted',
+  [WorkflowEventType.TaskRetrying]: 'enterpriseLeadWorkflowEventTaskRetrying',
+  [WorkflowEventType.TaskCompleted]: 'enterpriseLeadWorkflowEventTaskCompleted',
+  [WorkflowEventType.TaskFailed]: 'enterpriseLeadWorkflowEventTaskFailed',
+  [WorkflowEventType.TaskBlocked]: 'enterpriseLeadWorkflowEventTaskBlocked',
+  [WorkflowEventType.TaskCancelled]: 'enterpriseLeadWorkflowEventTaskCancelled',
+  [WorkflowEventType.ApprovalRequired]: 'enterpriseLeadWorkflowEventApprovalRequired',
+  [WorkflowEventType.ApprovalRejected]: 'enterpriseLeadWorkflowEventApprovalRejected',
+  [WorkflowEventType.RunCompleted]: 'enterpriseLeadWorkflowEventRunCompleted',
+  [WorkflowEventType.RunCancelled]: 'enterpriseLeadWorkflowEventRunCancelled',
+  [WorkflowEventType.RunError]: 'enterpriseLeadWorkflowEventRunError',
+};
+
+const workflowControllerSummaryKeys: Record<EnterpriseLeadRunStatusValue, string> = {
+  [EnterpriseLeadRunStatus.Draft]: 'enterpriseLeadWorkflowSummaryDraft',
+  [EnterpriseLeadRunStatus.Running]: 'enterpriseLeadWorkflowSummaryRunning',
+  [EnterpriseLeadRunStatus.NeedsInput]: 'enterpriseLeadWorkflowSummaryNeedsInput',
+  [EnterpriseLeadRunStatus.AwaitingApproval]: 'enterpriseLeadWorkflowSummaryAwaitingApproval',
+  [EnterpriseLeadRunStatus.Blocked]: 'enterpriseLeadWorkflowSummaryBlocked',
+  [EnterpriseLeadRunStatus.Completed]: 'enterpriseLeadWorkflowSummaryCompleted',
+  [EnterpriseLeadRunStatus.Cancelled]: 'enterpriseLeadWorkflowSummaryCancelled',
+  [EnterpriseLeadRunStatus.Archived]: 'enterpriseLeadWorkflowSummaryArchived',
+  [EnterpriseLeadRunStatus.Error]: 'enterpriseLeadWorkflowSummaryError',
+};
+
+const legacyWorkflowControllerSummaryKeys: Record<string, string> = {
+  'Promotion workflow is processing ready tasks.': 'enterpriseLeadWorkflowSummaryRunning',
+  'Workflow requires manual attention.': 'enterpriseLeadWorkflowSummaryManualAttention',
+  'Promotion workflow completed with draft-only outputs.': 'enterpriseLeadWorkflowSummaryCompleted',
+  [PromotionMonitoringPresentation.ReviewBlocked]: 'enterpriseLeadWorkflowMonitoringReviewBlocked',
+};
+
+const workflowTaskSummaryKeys: Record<string, string> = {
+  [PromotionMonitoringPresentation.NeedsVerifiedInput]: 'enterpriseLeadWorkflowMonitoringNeedsInput',
+};
+
+const promotionMonitoringReasonKeys: Record<PromotionMonitoringReason, string> = {
+  [PromotionMonitoringReason.MetricSnapshot]: 'enterpriseLeadWorkflowMonitoringReasonMetricSnapshot',
+  [PromotionMonitoringReason.MetricPlatform]: 'enterpriseLeadWorkflowMonitoringReasonMetricPlatform',
+  [PromotionMonitoringReason.MetricSource]: 'enterpriseLeadWorkflowMonitoringReasonMetricSource',
+  [PromotionMonitoringReason.MetricPeriod]: 'enterpriseLeadWorkflowMonitoringReasonMetricPeriod',
+  [PromotionMonitoringReason.IdempotencyKey]: 'enterpriseLeadWorkflowMonitoringReasonIdempotencyKey',
+  [PromotionMonitoringReason.Workspace]: 'enterpriseLeadWorkflowMonitoringReasonWorkspace',
+  [PromotionMonitoringReason.Run]: 'enterpriseLeadWorkflowMonitoringReasonRun',
+  [PromotionMonitoringReason.MonitoringAgent]: 'enterpriseLeadWorkflowMonitoringReasonMonitoringAgent',
+};
+
+const workflowControllerSummaryFallbackKey = 'enterpriseLeadWorkflowSummaryManualAttention';
+
+const workflowAttemptStatusLabelKeys: Record<EnterpriseLeadTaskStatusValue, string> = {
+  [EnterpriseLeadTaskStatus.Waiting]: 'enterpriseLeadAgentStatusWaiting',
+  [EnterpriseLeadTaskStatus.Ready]: 'enterpriseLeadAgentStatusReady',
+  [EnterpriseLeadTaskStatus.Running]: 'enterpriseLeadAgentStatusRunning',
+  [EnterpriseLeadTaskStatus.NeedsInput]: 'enterpriseLeadAgentStatusNeedsInput',
+  [EnterpriseLeadTaskStatus.AwaitingApproval]: 'enterpriseLeadAgentStatusAwaitingApproval',
+  [EnterpriseLeadTaskStatus.Completed]: 'enterpriseLeadAgentStatusCompleted',
+  [EnterpriseLeadTaskStatus.Stale]: 'enterpriseLeadAgentStatusStale',
+  [EnterpriseLeadTaskStatus.Blocked]: 'enterpriseLeadAgentStatusBlocked',
+  [EnterpriseLeadTaskStatus.Cancelled]: 'enterpriseLeadAgentStatusCancelled',
+  [EnterpriseLeadTaskStatus.Error]: 'enterpriseLeadAgentStatusError',
+};
+
+export const getWorkflowEventLabelKey = (type: string): string =>
+  workflowEventLabelKeys[type as WorkflowEventTypeValue] ?? 'enterpriseLeadWorkflowEventUnknown';
+
+export const getWorkflowControllerSummaryKey = (
+  status: EnterpriseLeadRunStatusValue,
+  legacyControllerSummary?: string,
+): string =>
+  legacyWorkflowControllerSummaryKeys[legacyControllerSummary ?? ''] ??
+  workflowControllerSummaryKeys[status] ??
+  workflowControllerSummaryFallbackKey;
+
+export const getWorkflowAttemptStatusLabelKey = (status: string): string =>
+  workflowAttemptStatusLabelKeys[status as EnterpriseLeadTaskStatusValue] ??
+  workflowControllerSummaryFallbackKey;
+
+export const getWorkflowTaskSummaryKey = (summary: string): string | null =>
+  workflowTaskSummaryKeys[summary] ?? null;
+
+export const getPromotionMonitoringReasonKey = (reason: string): string =>
+  promotionMonitoringReasonKeys[reason as PromotionMonitoringReason] ??
+  'enterpriseLeadWorkflowMonitoringReasonGeneric';

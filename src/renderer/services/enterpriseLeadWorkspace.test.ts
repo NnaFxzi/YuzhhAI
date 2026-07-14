@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
 
-import type { EnterpriseLeadWorkspace } from '../../shared/enterpriseLeadWorkspace/types';
+import type {
+  EnterpriseLeadWorkflowEvent,
+  EnterpriseLeadWorkspace,
+} from '../../shared/enterpriseLeadWorkspace/types';
 import { buildDefaultEnterpriseLeadWorkspaceSettings } from '../../shared/enterpriseLeadWorkspace/validation';
 import { KnowledgeFactDomain } from '../../shared/knowledgeBase/constants';
 import {
@@ -647,6 +650,63 @@ describe('enterpriseLeadWorkspaceService', () => {
 
     expect(listRuns).toHaveBeenCalledWith('workspace-1');
     expect(result).toEqual([]);
+  });
+
+  test('filters workflow events by run and unsubscribes the preload listener', () => {
+    let preloadListener: ((event: EnterpriseLeadWorkflowEvent) => void) | undefined;
+    const unsubscribe = vi.fn();
+    const onEvent = vi.fn((listener: (event: EnterpriseLeadWorkflowEvent) => void) => {
+      preloadListener = listener;
+      return unsubscribe;
+    });
+    const listener = vi.fn();
+    createWindowWithEnterpriseLeadWorkspace({ onEvent });
+
+    const stop = enterpriseLeadWorkspaceService.onWorkflowEvent('run-1', listener);
+    preloadListener?.({
+      runId: 'run-2',
+      sequence: 1,
+      type: 'task_started',
+      payload: {},
+      createdAt: '2026-07-14T00:00:00.000Z',
+    });
+    preloadListener?.({
+      runId: 'run-1',
+      sequence: 2,
+      type: 'task_completed',
+      payload: {},
+      createdAt: '2026-07-14T00:00:01.000Z',
+    });
+    stop();
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(listener).toHaveBeenCalledWith({
+      runId: 'run-1',
+      sequence: 2,
+      type: 'task_completed',
+      payload: {},
+      createdAt: '2026-07-14T00:00:01.000Z',
+    });
+    expect(unsubscribe).toHaveBeenCalledOnce();
+  });
+
+  test('sends rejection feedback through the preload bridge', async () => {
+    const rejectWorkflowTask = vi.fn(async () => ({ success: true as const }));
+    createWindowWithEnterpriseLeadWorkspace({ rejectWorkflowTask });
+
+    await enterpriseLeadWorkspaceService.rejectWorkflowTask(
+      'workspace-1',
+      'run-1',
+      'task-1',
+      'Please add source links.',
+    );
+
+    expect(rejectWorkflowTask).toHaveBeenCalledWith(
+      'workspace-1',
+      'run-1',
+      'task-1',
+      'Please add source links.',
+    );
   });
 
   test('tests workspace Agent drafts through bridge', async () => {

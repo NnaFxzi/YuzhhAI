@@ -72,8 +72,10 @@ export const EnterpriseLeadRunStatus = {
   Draft: 'draft',
   Running: 'running',
   NeedsInput: 'needs_input',
+  AwaitingApproval: 'awaiting_approval',
   Blocked: 'blocked',
   Completed: 'completed',
+  Cancelled: 'cancelled',
   Archived: 'archived',
   Error: 'error',
 } as const;
@@ -82,11 +84,14 @@ export type EnterpriseLeadRunStatus =
 
 export const EnterpriseLeadTaskStatus = {
   Waiting: 'waiting',
+  Ready: 'ready',
   Running: 'running',
   NeedsInput: 'needs_input',
+  AwaitingApproval: 'awaiting_approval',
   Completed: 'completed',
   Stale: 'stale',
   Blocked: 'blocked',
+  Cancelled: 'cancelled',
   Error: 'error',
 } as const;
 export type EnterpriseLeadTaskStatus =
@@ -411,3 +416,14 @@ export const EnterpriseLeadIpcErrorCode = {
 } as const;
 export type EnterpriseLeadIpcErrorCode =
   (typeof EnterpriseLeadIpcErrorCode)[keyof typeof EnterpriseLeadIpcErrorCode];
+
+export const EnterpriseLeadWorkflowIpc = {
+  Start: 'enterpriseLeadWorkflow:start',
+  Resume: 'enterpriseLeadWorkflow:resume',
+  Cancel: 'enterpriseLeadWorkflow:cancel',
+  ApproveTask: 'enterpriseLeadWorkflow:approveTask',
+  RejectTask: 'enterpriseLeadWorkflow:rejectTask',
+  Event: 'enterpriseLeadWorkflow:event',
+} as const;
+export type EnterpriseLeadWorkflowIpc =
+  (typeof EnterpriseLeadWorkflowIpc)[keyof typeof EnterpriseLeadWorkflowIpc];

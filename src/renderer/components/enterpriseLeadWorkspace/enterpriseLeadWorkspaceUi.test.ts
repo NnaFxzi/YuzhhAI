@@ -3605,7 +3605,7 @@ describe('enterprise lead workspace UI helpers', () => {
     expect(messages[1]).toMatchObject({
       id: 'run:run-1:controller',
       labelKey: 'enterpriseLeadCreationConversationController',
-      content: '总控已完成本次 UI 巡检。',
+      content: '推广工作流正在处理任务。',
     });
     expect(messages[2]).toMatchObject({
       id: 'task-content_planning:reply',
@@ -3616,6 +3616,58 @@ describe('enterprise lead workspace UI helpers', () => {
         { key: 'passed', value: 'true' },
       ],
     });
+  });
+
+  test('uses safe localized controller status summaries in creation history', () => {
+    const previousLanguage = i18nService.getLanguage();
+    const workspace = createWorkspace('workspace-1');
+    const snapshot = createSnapshot(workspace);
+    snapshot.currentRun = {
+      ...createRun(workspace.id),
+      controllerSummary: 'Provider request failed: api-key=secret',
+    };
+
+    try {
+      i18nService.setLanguage('zh', { persist: false });
+      expect(buildCreationRecordConversationMessages(snapshot)[1]?.content).toBe('推广工作流正在处理任务。');
+
+      i18nService.setLanguage('en', { persist: false });
+      expect(buildCreationRecordConversationMessages(snapshot)[1]?.content).toBe('Promotion workflow is processing tasks.');
+    } finally {
+      i18nService.setLanguage(previousLanguage, { persist: false });
+    }
+  });
+
+  test('uses a generic safe status when persisted controller data has an unknown status', () => {
+    const workspace = createWorkspace('workspace-1');
+    const snapshot = createSnapshot(workspace);
+    snapshot.currentRun = {
+      ...createRun(workspace.id),
+      status: 'provider_failure' as EnterpriseLeadRunStatus,
+      controllerSummary: 'Provider request failed: api-key=secret',
+    };
+
+    const messages = buildCreationRecordConversationMessages(snapshot);
+
+    expect(messages[1]?.content).toBe(i18nService.t('enterpriseLeadWorkflowSummaryManualAttention'));
+    expect(messages[1]?.content).not.toContain('api-key=secret');
+  });
+
+  test('never includes persisted task errors in creation history', () => {
+    const workspace = createWorkspace('workspace-1');
+    const snapshot = createSnapshot(workspace);
+    snapshot.tasks = [{
+      ...createTask(workspace.id),
+      summary: '',
+      error: 'Provider request failed: api-key=secret',
+      status: EnterpriseLeadTaskStatus.Error,
+    }];
+
+    const messages = buildCreationRecordConversationMessages(snapshot);
+    const taskMessage = messages.find(message => message.id === 'task-content_planning:reply');
+
+    expect(taskMessage?.content).toBe(i18nService.t('enterpriseLeadAgentStatusError'));
+    expect(taskMessage?.content).not.toContain('api-key=secret');
   });
 
   test('returns localized label metadata for known agent roles', () => {
@@ -3702,6 +3754,29 @@ describe('enterprise lead workspace UI helpers', () => {
     );
   });
 
+  test('renders newly introduced workflow task statuses', () => {
+    const statuses: EnterpriseLeadTaskStatus[] = [
+      EnterpriseLeadTaskStatus.Ready,
+      EnterpriseLeadTaskStatus.AwaitingApproval,
+      EnterpriseLeadTaskStatus.Cancelled,
+    ];
+
+    expect(statuses.map(status => getAgentStatusLabelKey(status))).toEqual([
+      'enterpriseLeadAgentStatusReady',
+      'enterpriseLeadAgentStatusAwaitingApproval',
+      'enterpriseLeadAgentStatusCancelled',
+    ]);
+    expect(getAgentCardTone(EnterpriseLeadTaskStatus.Ready).statusClassName).toContain(
+      'text-primary',
+    );
+    expect(getAgentCardTone(EnterpriseLeadTaskStatus.AwaitingApproval).statusClassName).toContain(
+      'text-amber',
+    );
+    expect(getAgentCardTone(EnterpriseLeadTaskStatus.Cancelled).statusClassName).toContain(
+      'text-slate',
+    );
+  });
+
   test('detects task output from summary text or output payload', () => {
     expect(hasTaskOutput({ summary: '  Done  ', outputPayload: {} })).toBe(true);
     expect(hasTaskOutput({ summary: '', outputPayload: { draft: 'Draft text' } })).toBe(true);
@@ -3723,6 +3798,7 @@ describe('enterprise lead workspace UI helpers', () => {
   test('defines workbench sidebar navigation with knowledge base entry', () => {
     expect(getWorkbenchSidebarItems().map(item => item.labelKey)).toEqual([
       'enterpriseLeadWorkbenchNavWorkbench',
+      'enterpriseLeadWorkbenchNavWorkflow',
       'enterpriseLeadWorkbenchNavAiChat',
       'enterpriseLeadWorkbenchNavSearch',
       'enterpriseLeadWorkbenchNavKnowledgeBase',
@@ -3734,6 +3810,7 @@ describe('enterprise lead workspace UI helpers', () => {
   test('defines workspace internal pages in sidebar order', () => {
     expect(getWorkspaceInternalPages().map(page => page.id)).toEqual([
       'workbench',
+      'workflow',
       'ai_chat',
       'search',
       'knowledge_base',
@@ -3773,7 +3850,7 @@ describe('enterprise lead workspace UI helpers', () => {
         EnterpriseLeadWorkspaceStartAction.StartWorkflow,
         EnterpriseLeadWorkspaceStartSourceState.Material,
       ),
-    ).toBe(EnterpriseLeadWorkspaceInternalPage.AiChat);
+    ).toBe(EnterpriseLeadWorkspaceInternalPage.Workflow);
   });
 
   test('resolves start dashboard state for pasted-content workspaces', () => {
@@ -4091,6 +4168,7 @@ describe('enterprise lead workspace UI helpers', () => {
   test('defines icon navigation for the workbench rail', () => {
     expect(getWorkbenchSidebarItems().map(item => item.icon)).toEqual([
       'dashboard',
+      'workflow',
       'chat',
       'search',
       'knowledge',

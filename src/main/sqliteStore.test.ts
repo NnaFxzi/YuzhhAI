@@ -128,6 +128,46 @@ test('creates continuity capsule table during startup migration', async () => {
   store.close();
 });
 
+test('adds workflow association columns to legacy subagent runs without rebuilding the table', async () => {
+  const userDataPath = createTempUserDataPath();
+  createLegacyDatabase(userDataPath);
+  const db = new Database(path.join(userDataPath, DB_FILENAME));
+  db.exec(`
+    CREATE TABLE subagent_runs (
+      id TEXT PRIMARY KEY,
+      parent_session_id TEXT NOT NULL,
+      session_key TEXT,
+      agent_id TEXT,
+      task TEXT,
+      label TEXT,
+      status TEXT NOT NULL DEFAULT 'running',
+      created_at INTEGER NOT NULL,
+      ended_at INTEGER
+    );
+  `);
+  db.prepare(`
+    INSERT INTO subagent_runs (
+      id, parent_session_id, session_key, agent_id, task, label, status, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run('legacy-run', 'parent-1', 'agent:main:subagent:legacy-run', 'worker', 'inspect', 'worker', 'done', 1);
+  db.close();
+
+  const store = await SqliteStore.create(userDataPath);
+  const columns = store.getDatabase().pragma('table_info(subagent_runs)') as Array<{ name: string }>;
+  const row = store.getDatabase().prepare('SELECT id, task FROM subagent_runs WHERE id = ?')
+    .get('legacy-run') as { id: string; task: string };
+
+  expect(columns.map(column => column.name)).toEqual(expect.arrayContaining([
+    'workflow_run_id',
+    'enterprise_task_id',
+    'workspace_agent_id',
+    'role',
+  ]));
+  expect(row).toEqual({ id: 'legacy-run', task: 'inspect' });
+
+  store.close();
+});
+
 test('upgrades legacy default agent name during migration', async () => {
   const userDataPath = createTempUserDataPath();
   createLegacyDatabase(userDataPath);

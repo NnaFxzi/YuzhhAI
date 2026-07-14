@@ -10,6 +10,7 @@ import type {
   CoworkRuntimeEvents,
   CoworkStartOptions,
   PermissionResult,
+  SubagentSessionSummary,
 } from './types';
 import { ENGINE_SWITCHED_CODE } from './types';
 
@@ -138,6 +139,18 @@ export class CoworkEngineRouter extends EventEmitter implements CoworkRuntime {
 
   getSessionConfirmationMode(sessionId: string): 'modal' | 'text' | null {
     return this.runtime.getSessionConfirmationMode(sessionId);
+  }
+
+  getWorkflowTaskSubagentSession(
+    parentSessionId: string,
+    workflowRunId: string,
+    taskId: string,
+  ): SubagentSessionSummary | null {
+    return this.runtime.getWorkflowTaskSubagentSession?.(
+      parentSessionId,
+      workflowRunId,
+      taskId,
+    ) ?? null;
   }
 
   async deleteSubagentSession(parentSessionId: string, runId: string): Promise<boolean> {

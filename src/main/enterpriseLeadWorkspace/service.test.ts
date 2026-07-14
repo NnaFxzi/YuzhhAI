@@ -21,6 +21,7 @@ import {
   EnterpriseLeadWorkspaceAgentCalibrationCheckId,
   EnterpriseLeadWorkspaceAgentSource,
 } from '../../shared/enterpriseLeadWorkspace/constants';
+import { PROMOTION_WORKFLOW_GRAPH } from '../../shared/enterpriseLeadWorkspace/promotionWorkflowGraph';
 import type { EnterpriseLeadWorkspaceDraft } from '../../shared/enterpriseLeadWorkspace/types';
 import { buildDefaultEnterpriseLeadWorkspaceSettings } from '../../shared/enterpriseLeadWorkspace/validation';
 import {
@@ -54,7 +55,9 @@ import {
   buildDefaultEnterpriseLeadWorkspaceAgents,
   buildDefaultPromotionDepartmentWorkspaceAgents,
   ENTERPRISE_LEAD_AGENT_WORKFLOW,
+  PROMOTION_WORKFLOW_VERSION,
 } from './workflow';
+import { WorkflowArtifactStore } from './workflowArtifactStore';
 
 class FakeModelClient implements ModelClientAdapter {
   readonly prompts: ModelGenerationInput[] = [];
@@ -151,6 +154,26 @@ const createService = (
     } as never),
     store,
   };
+};
+
+const createLegacyWorkspaceRun = (
+  service: EnterpriseLeadWorkspaceService,
+  store: EnterpriseLeadWorkspaceStore,
+  workspaceId: string,
+  userGoal: string,
+) => {
+  const workspace = service.getWorkspace(workspaceId);
+  if (!workspace) {
+    throw new Error('Expected workspace');
+  }
+  const roles = workspace.workspaceAgents
+    .filter(agent => agent.enabled)
+    .map(agent => agent.agentId)
+    .filter((role): role is EnterpriseLeadAgentRole =>
+      Object.values(EnterpriseLeadAgentRole).includes(role as EnterpriseLeadAgentRole),
+    );
+  const run = store.createRun({ workspaceId, userGoal, roles });
+  return service.getSnapshot(workspaceId, run.id);
 };
 
 const draftPayload = (): EnterpriseLeadWorkspaceDraft => ({
@@ -298,6 +321,51 @@ describe('EnterpriseLeadWorkspaceService', () => {
 
     expect(() => setup.service.createWorkspace(draftPayload())).toThrow();
     expect(setup.onTrustedRefreshCommitted).not.toHaveBeenCalled();
+  });
+
+  test('returns bounded owner-scoped workflow history without event payloads or attempt errors', () => {
+    const setup = createService();
+    db = setup.db;
+    const workspace = setup.service.createWorkspace({
+      ...draftPayload(),
+      workspaceAgents: buildDefaultPromotionDepartmentWorkspaceAgents(),
+    });
+    const created = setup.service.createRun(workspace.id, 'Review promotion history');
+    const runId = created.currentRun?.id;
+    const task = created.tasks[0];
+    if (!runId || !task) throw new Error('Expected promotion run and task');
+
+    const artifacts = new WorkflowArtifactStore(setup.db);
+    artifacts.appendEvent({
+      runId,
+      type: 'approval_rejected',
+      taskId: task.id,
+      summary: 'sensitive provider detail',
+      payload: { feedback: 'Add source links.', secret: 'do-not-expose' },
+    });
+    const attempt = artifacts.createAttempt({ taskId: task.id, executionMode: 'inline' });
+    artifacts.finishAttempt(attempt.id, { status: 'error', error: 'sensitive provider failure' });
+
+    const recovered = setup.service.getSnapshot(workspace.id, runId);
+
+    expect(recovered.workflowHistory?.events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'approval_rejected',
+          feedback: 'Add source links.',
+        }),
+      ]),
+    );
+    expect(recovered.workflowHistory?.attempts).toEqual([
+      expect.objectContaining({
+        taskId: task.id,
+        attempt: 1,
+        status: 'error',
+      }),
+    ]);
+    expect(recovered.workflowHistory?.events.find(event => event.type === 'approval_rejected')).not.toHaveProperty('payload');
+    expect(recovered.workflowHistory?.events.find(event => event.type === 'approval_rejected')).not.toHaveProperty('summary');
+    expect(recovered.workflowHistory?.attempts[0]).not.toHaveProperty('error');
   });
 
   test('extracts a workspace draft from conversation text', async () => {
@@ -1525,7 +1593,7 @@ describe('EnterpriseLeadWorkspaceService', () => {
       identity: 'Workspace identity',
       systemPrompt: 'Workspace-only execution prompt',
       model: 'gpt-4.1',
-      skillIds: [],
+      skillIds: ['workspace-skill'],
     });
     expect(snapshot.tasks[1].agentSnapshot).toMatchObject({
       agentId: 'agent-risk',
@@ -1709,7 +1777,7 @@ describe('EnterpriseLeadWorkspaceService', () => {
       systemPrompt: 'Global system prompt',
       icon: 'global',
       model: 'global-model',
-      skillIds: [],
+      skillIds: ['global-skill'],
     });
     expect(agentProvider.getAgent).toHaveBeenCalledWith('agent-content');
   });
@@ -1754,7 +1822,7 @@ describe('EnterpriseLeadWorkspaceService', () => {
     const snapshot = setup.service.createRun(workspace.id, '只使用空间技能');
     const task = snapshot.tasks[0];
 
-    expect(task.agentSnapshot?.skillIds).toEqual(['space-skill']);
+    expect(task.agentSnapshot?.skillIds).toEqual(['space-skill', 'agent-skill']);
 
     setup.modelClient.enqueue({
       role: task.role,
@@ -1771,9 +1839,8 @@ describe('EnterpriseLeadWorkspaceService', () => {
 
     const taskPrompt = setup.modelClient.prompts.at(-1)?.prompt ?? '';
     expect(taskPrompt).toContain('space-skill');
-    expect(taskPrompt).toMatch(/"workspaceAgents": \[\s*\{[\s\S]*"skillIds": \[\]/);
-    expect(taskPrompt).toMatch(/"agentSnapshot": \{[\s\S]*"skillIds": \[\s*"space-skill"\s*\]/);
-    expect(taskPrompt).not.toContain('agent-skill');
+    expect(taskPrompt).toMatch(/"workspaceAgents": \[\s*\{[\s\S]*"skillIds": \[\s*"agent-skill"\s*\]/);
+    expect(taskPrompt).toMatch(/"agentSnapshot": \{[\s\S]*"skillIds": \[\s*"space-skill",\s*"agent-skill"\s*\]/);
     expect(taskPrompt).not.toContain('global-skill');
   });
 
@@ -1860,14 +1927,14 @@ describe('EnterpriseLeadWorkspaceService', () => {
       name: 'Original content Agent',
       systemPrompt: 'Original prompt',
       model: 'gpt-original',
-      skillIds: [],
+      skillIds: ['original-skill'],
     });
     expect(secondSnapshot.tasks[0].agentSnapshot).toMatchObject({
       agentId: 'agent-content',
       name: 'Edited content Agent',
       systemPrompt: 'Edited prompt',
       model: 'gpt-edited',
-      skillIds: [],
+      skillIds: ['edited-skill'],
     });
   });
 
@@ -2233,6 +2300,9 @@ describe('EnterpriseLeadWorkspaceService', () => {
         draft: '您好，我们可以先根据尺寸做包装建议。',
       },
     });
+    expect(appliedSnapshot.tasks.find(item => item.id === task.id)?.outputPayload).toEqual({
+      draft: '您好，我们可以先根据尺寸做包装建议。',
+    });
     expect(appliedSnapshot.pendingVersions[0]).toMatchObject({
       id: pendingVersion.id,
       status: 'applied',
@@ -2391,6 +2461,359 @@ describe('EnterpriseLeadWorkspaceService', () => {
     });
   });
 
+  test('downgrades malformed promotion results before they persist as completed', async () => {
+    const setup = createService();
+    db = setup.db;
+    const workspace = setup.service.createWorkspace({
+      ...draftPayload(),
+      workspaceAgents: buildDefaultPromotionDepartmentWorkspaceAgents(),
+    });
+    const snapshot = createLegacyWorkspaceRun(
+      setup.service,
+      setup.store,
+      workspace.id,
+      '抓取有来源的推广线索',
+    );
+    const task = snapshot.tasks.find(
+      item => item.role === EnterpriseLeadAgentRole.PromotionDataScraping,
+    );
+    if (!task) throw new Error('Expected promotion scraping task');
+    setup.modelClient.enqueue({
+      role: EnterpriseLeadAgentRole.PromotionDataScraping,
+      status: EnterpriseLeadTaskStatus.Completed,
+      summary: '已抓取一条线索。',
+      outputs: {
+        items: [
+          {
+            sourceKind: 'search',
+            title: '缺少来源的线索',
+            content: '模型没有提供来源证据。',
+            capturedAt: '2026-07-12T00:00:00.000Z',
+            confidence: 'high',
+          },
+        ],
+      },
+      missingInfo: [],
+      todos: [],
+      risks: [],
+      handoffContext: {},
+    });
+
+    const updatedTask = await setup.service.runTask(task.id);
+
+    expect(updatedTask).toMatchObject({
+      status: EnterpriseLeadTaskStatus.NeedsInput,
+      outputPayload: {},
+    });
+    expect(setup.store.getTask(task.id)).toMatchObject({
+      status: EnterpriseLeadTaskStatus.NeedsInput,
+      outputPayload: {},
+    });
+  });
+
+  test.each([
+    {
+      role: EnterpriseLeadAgentRole.PromotionDataScraping,
+      outputs: { items: [] },
+    },
+    {
+      role: EnterpriseLeadAgentRole.PromotionDataCleaning,
+      outputs: { records: [], duplicates: [], missingFields: [] },
+    },
+    {
+      role: EnterpriseLeadAgentRole.PromotionLeadScoring,
+      outputs: { leads: [] },
+    },
+    {
+      role: EnterpriseLeadAgentRole.PromotionMultiPlatformAssets,
+      outputs: { assets: [] },
+    },
+    {
+      role: EnterpriseLeadAgentRole.PromotionAccountMonitoring,
+      outputs: { metrics: [], anomalies: [], hypotheses: [], adjustmentActions: [] },
+    },
+  ])('downgrades empty $role deliverables before persisting as completed', async ({ role, outputs }) => {
+    const setup = createService();
+    db = setup.db;
+    const workspace = setup.service.createWorkspace({
+      ...draftPayload(),
+      workspaceAgents: buildDefaultPromotionDepartmentWorkspaceAgents(),
+    });
+    const snapshot = createLegacyWorkspaceRun(setup.service, setup.store, workspace.id, '验证推广交付物');
+    const task = snapshot.tasks.find(item => item.role === role);
+    if (!task) throw new Error(`Expected promotion task for ${role}`);
+    setup.modelClient.enqueue({
+      role,
+      status: EnterpriseLeadTaskStatus.Completed,
+      summary: '模型声称已完成。',
+      outputs,
+      missingInfo: [],
+      todos: [],
+      risks: [],
+      handoffContext: {},
+    });
+
+    const updatedTask = await setup.service.runTask(task.id);
+
+    expect(updatedTask).toMatchObject({
+      status: EnterpriseLeadTaskStatus.NeedsInput,
+      outputPayload: {},
+    });
+    expect(setup.store.getTask(task.id)).toMatchObject({
+      status: EnterpriseLeadTaskStatus.NeedsInput,
+      outputPayload: {},
+    });
+  });
+
+  test('downgrades malformed promotion text arrays before they persist as completed', async () => {
+    const setup = createService();
+    db = setup.db;
+    const workspace = setup.service.createWorkspace({
+      ...draftPayload(),
+      workspaceAgents: buildDefaultPromotionDepartmentWorkspaceAgents(),
+    });
+    const snapshot = createLegacyWorkspaceRun(setup.service, setup.store, workspace.id, '生成推广卖点');
+    const task = snapshot.tasks.find(
+      item => item.role === EnterpriseLeadAgentRole.ProductSellingPoint,
+    );
+    if (!task) throw new Error('Expected promotion selling point task');
+    setup.modelClient.enqueue({
+      role: EnterpriseLeadAgentRole.ProductSellingPoint,
+      status: EnterpriseLeadTaskStatus.Completed,
+      summary: '已生成卖点。',
+      outputs: { sellingPoints: [123] },
+      missingInfo: [],
+      todos: [],
+      risks: [],
+      handoffContext: {},
+    });
+
+    const updatedTask = await setup.service.runTask(task.id);
+
+    expect(updatedTask).toMatchObject({
+      status: EnterpriseLeadTaskStatus.NeedsInput,
+      outputPayload: {},
+    });
+    expect(setup.store.getTask(task.id)).toMatchObject({
+      status: EnterpriseLeadTaskStatus.NeedsInput,
+      outputPayload: {},
+    });
+  });
+
+  test('downgrades malformed publishing schedule results before they persist as completed', async () => {
+    const setup = createService();
+    db = setup.db;
+    const workspace = setup.service.createWorkspace({
+      ...draftPayload(),
+      workspaceAgents: buildDefaultPromotionDepartmentWorkspaceAgents(),
+    });
+    const snapshot = createLegacyWorkspaceRun(setup.service, setup.store, workspace.id, '生成发布排期草稿');
+    const task = snapshot.tasks.find(
+      item => item.role === EnterpriseLeadAgentRole.PromotionPublishingSchedule,
+    );
+    if (!task) throw new Error('Expected promotion publishing schedule task');
+    setup.modelClient.enqueue({
+      role: EnterpriseLeadAgentRole.PromotionPublishingSchedule,
+      status: EnterpriseLeadTaskStatus.Completed,
+      summary: '已经完成发布。',
+      outputs: {},
+      missingInfo: [],
+      todos: [],
+      risks: [],
+      handoffContext: {},
+    });
+
+    const updatedTask = await setup.service.runTask(task.id);
+
+    expect(updatedTask).toMatchObject({
+      status: EnterpriseLeadTaskStatus.NeedsInput,
+      outputPayload: {},
+    });
+    expect(setup.store.getTask(task.id)).toMatchObject({
+      status: EnterpriseLeadTaskStatus.NeedsInput,
+      outputPayload: {},
+    });
+  });
+
+  test('downgrades malformed competitor insight results before they persist as completed', async () => {
+    const setup = createService();
+    db = setup.db;
+    const workspace = setup.service.createWorkspace({
+      ...draftPayload(),
+      workspaceAgents: buildDefaultPromotionDepartmentWorkspaceAgents(),
+    });
+    const snapshot = createLegacyWorkspaceRun(setup.service, setup.store, workspace.id, '分析竞品推广机会');
+    const task = snapshot.tasks.find(
+      item => item.role === EnterpriseLeadAgentRole.PromotionCompetitorInsight,
+    );
+    if (!task) throw new Error('Expected promotion competitor insight task');
+    setup.modelClient.enqueue({
+      role: EnterpriseLeadAgentRole.PromotionCompetitorInsight,
+      status: EnterpriseLeadTaskStatus.Completed,
+      summary: '竞品分析完成。',
+      outputs: {},
+      missingInfo: [],
+      todos: [],
+      risks: [],
+      handoffContext: {},
+    });
+
+    const updatedTask = await setup.service.runTask(task.id);
+
+    expect(updatedTask).toMatchObject({
+      status: EnterpriseLeadTaskStatus.NeedsInput,
+      outputPayload: {},
+    });
+  });
+
+  test('applies malformed promotion chat revisions as needs-input instead of completed', async () => {
+    const setup = createService();
+    db = setup.db;
+    const workspace = setup.service.createWorkspace({
+      ...draftPayload(),
+      workspaceAgents: buildDefaultPromotionDepartmentWorkspaceAgents(),
+    });
+    const snapshot = createLegacyWorkspaceRun(setup.service, setup.store, workspace.id, '修订推广线索');
+    const task = snapshot.tasks.find(
+      item => item.role === EnterpriseLeadAgentRole.PromotionDataScraping,
+    );
+    if (!task) throw new Error('Expected promotion scraping task');
+    setup.modelClient.enqueue({
+      role: EnterpriseLeadAgentRole.PromotionDataScraping,
+      status: EnterpriseLeadTaskStatus.Completed,
+      summary: '缺少来源的推广线索。',
+      outputs: {
+        items: [
+          {
+            sourceKind: 'search',
+            title: '缺少来源证据的线索',
+            content: '模型没有提供来源 URL。',
+            capturedAt: '2026-07-12T00:00:00.000Z',
+            confidence: 'high',
+          },
+        ],
+      },
+      missingInfo: [],
+      todos: [],
+      risks: [],
+      handoffContext: {},
+    });
+
+    const pendingVersion = await setup.service.createPendingVersionFromChat(
+      task.id,
+      '补上来源后再生成一版。',
+    );
+    const appliedSnapshot = setup.service.applyPendingVersion(pendingVersion.id);
+
+    expect(pendingVersion).toMatchObject({
+      outputPayload: {},
+      artifactRefs: [],
+    });
+    expect(appliedSnapshot.tasks.find(item => item.id === task.id)).toMatchObject({
+      status: EnterpriseLeadTaskStatus.NeedsInput,
+      outputPayload: {},
+      artifactRefs: [],
+    });
+  });
+
+  test('applies malformed promotion sales handoff revisions as needs-input instead of completed', async () => {
+    const setup = createService();
+    db = setup.db;
+    const workspace = setup.service.createWorkspace({
+      ...draftPayload(),
+      workspaceAgents: [
+        ...buildDefaultPromotionDepartmentWorkspaceAgents(),
+        ...buildDefaultEnterpriseLeadWorkspaceAgents([EnterpriseLeadAgentRole.SalesHandoff]),
+      ],
+    });
+    const snapshot = createLegacyWorkspaceRun(setup.service, setup.store, workspace.id, '生成销售交接草稿');
+    const task = snapshot.tasks.find(item => item.role === EnterpriseLeadAgentRole.SalesHandoff);
+    if (!task) throw new Error('Expected promotion sales handoff task');
+    setup.modelClient.enqueue({
+      role: EnterpriseLeadAgentRole.SalesHandoff,
+      status: EnterpriseLeadTaskStatus.Completed,
+      summary: '已联系客户并完成交接。',
+      outputs: {},
+      missingInfo: [],
+      todos: [],
+      risks: [],
+      handoffContext: {},
+    });
+
+    const pendingVersion = await setup.service.createPendingVersionFromChat(
+      task.id,
+      '生成仅供人工审核的销售交接草稿。',
+    );
+    const appliedSnapshot = setup.service.applyPendingVersion(pendingVersion.id);
+
+    expect(pendingVersion).toMatchObject({
+      taskStatus: EnterpriseLeadTaskStatus.NeedsInput,
+      outputPayload: {},
+    });
+    expect(appliedSnapshot.tasks.find(item => item.id === task.id)).toMatchObject({
+      status: EnterpriseLeadTaskStatus.NeedsInput,
+      outputPayload: {},
+    });
+  });
+
+  test('preserves promotion chat revision artifact references through application', async () => {
+    const setup = createService();
+    db = setup.db;
+    const workspace = setup.service.createWorkspace({
+      ...draftPayload(),
+      workspaceAgents: buildDefaultPromotionDepartmentWorkspaceAgents(),
+    });
+    const snapshot = createLegacyWorkspaceRun(setup.service, setup.store, workspace.id, '修订推广线索');
+    const task = snapshot.tasks.find(
+      item => item.role === EnterpriseLeadAgentRole.PromotionDataScraping,
+    );
+    if (!task) throw new Error('Expected promotion scraping task');
+    const artifactRefs = [
+      {
+        id: 'source-evidence-1',
+        kind: 'scraped_lead',
+        schemaVersion: 1,
+        summary: '官网公开采购线索',
+        producerTaskId: task.id,
+        evidenceIds: ['https://example.com/lead'],
+      },
+    ];
+    setup.modelClient.enqueue({
+      role: EnterpriseLeadAgentRole.PromotionDataScraping,
+      status: EnterpriseLeadTaskStatus.Completed,
+      summary: '已补充来源证据的推广线索。',
+      outputs: {
+        items: [
+          {
+            sourceKind: 'website',
+            sourceUrl: 'https://example.com/lead',
+            title: '公开采购线索',
+            content: '公开页面显示包装采购需求。',
+            capturedAt: '2026-07-12T00:00:00.000Z',
+            confidence: 'high',
+          },
+        ],
+        artifactRefs,
+      },
+      missingInfo: [],
+      todos: [],
+      risks: [],
+      handoffContext: {},
+    });
+
+    const pendingVersion = await setup.service.createPendingVersionFromChat(
+      task.id,
+      '保留来源证据后再生成一版。',
+    );
+    const appliedSnapshot = setup.service.applyPendingVersion(pendingVersion.id);
+
+    expect(pendingVersion).toMatchObject({ artifactRefs });
+    expect(appliedSnapshot.tasks.find(item => item.id === task.id)).toMatchObject({
+      status: EnterpriseLeadTaskStatus.Completed,
+      artifactRefs,
+    });
+  });
+
   test('parses fenced and extra text model JSON objects with clear errors', () => {
     expect(cleanModelJsonText('```json\n{"name":"A"}\n```')).toBe('{"name":"A"}');
     expect(parseModelJsonObject('prefix {"name":"B"} suffix')).toEqual({ name: 'B' });
@@ -2545,6 +2968,340 @@ describe('EnterpriseLeadWorkspaceService', () => {
       summary: '',
       stale: false,
     });
+  });
+
+  test('creates a versioned promotion DAG and routes it through the orchestrator', async () => {
+    const setup = createService();
+    db = setup.db;
+    const workspace = setup.service.createWorkspace({
+      ...draftPayload(),
+      workspaceAgents: buildDefaultPromotionDepartmentWorkspaceAgents(),
+    });
+    const created = setup.service.createRun(workspace.id, '生成推广获客方案');
+    if (!created.currentRun) {
+      throw new Error('Expected a promotion run');
+    }
+    setup.modelClient.enqueue({
+      role: EnterpriseLeadAgentRole.PromotionController,
+      status: EnterpriseLeadTaskStatus.NeedsInput,
+      summary: '推广总控计划已生成。',
+      outputs: {
+        controlPlan: '先完成线索调研和内容草稿。',
+        priorityTasks: ['调研'],
+        riskNotes: ['仅生成草稿'],
+      },
+      missingInfo: [],
+      todos: [
+        {
+          kind: EnterpriseLeadTodoKind.ManualPublish,
+          title: '确认首发平台',
+          description: '确认推广草稿的首发平台。',
+          role: EnterpriseLeadAgentRole.PromotionController,
+        },
+      ],
+      risks: [],
+      handoffContext: {},
+    });
+
+    expect(created.currentRun).toMatchObject({ workflowVersion: PROMOTION_WORKFLOW_VERSION });
+    expect(created.tasks.map(task => task.nodeId)).toEqual(
+      PROMOTION_WORKFLOW_GRAPH.filter(node => !node.optional).map(node => node.role),
+    );
+    const cleaningTask = created.tasks.find(
+      task => task.role === EnterpriseLeadAgentRole.PromotionDataCleaning,
+    );
+    const scrapingTask = created.tasks.find(
+      task => task.role === EnterpriseLeadAgentRole.PromotionDataScraping,
+    );
+    const sellingPointTask = created.tasks.find(
+      task => task.role === EnterpriseLeadAgentRole.ProductSellingPoint,
+    );
+    if (!cleaningTask || !scrapingTask || !sellingPointTask) {
+      throw new Error('Expected promotion graph tasks');
+    }
+    expect(cleaningTask.dependsOnTaskIds).toEqual(
+      expect.arrayContaining([scrapingTask.id, sellingPointTask.id]),
+    );
+    expect(cleaningTask.executionMode).toBe('inline');
+
+    const snapshot = await setup.service.runWorkflow(workspace.id, created.currentRun.id);
+    const controllerTask = snapshot.tasks.find(
+      task => task.role === EnterpriseLeadAgentRole.PromotionController,
+    );
+
+    expect(controllerTask).toMatchObject({
+      status: EnterpriseLeadTaskStatus.NeedsInput,
+      nodeId: EnterpriseLeadAgentRole.PromotionController,
+      executionMode: 'inline',
+    });
+    expect(snapshot.deliverables).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          role: EnterpriseLeadAgentRole.PromotionController,
+          summary: '推广总控计划已生成。',
+        }),
+      ]),
+    );
+    expect(snapshot.todos).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          title: '确认首发平台',
+          role: EnterpriseLeadAgentRole.PromotionController,
+        }),
+      ]),
+    );
+    expect(new WorkflowArtifactStore(setup.db).listEvents(created.currentRun.id)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ type: 'run_started' })]),
+    );
+  });
+
+  test('starts an untouched promotion draft with the requested optional graph nodes', async () => {
+    const setup = createService();
+    db = setup.db;
+    const workspace = setup.service.createWorkspace({
+      ...draftPayload(),
+      workspaceAgents: buildDefaultPromotionDepartmentWorkspaceAgents(),
+    });
+    const created = setup.service.createRun(workspace.id, '启动销售交接推广流程');
+    const runId = created.currentRun?.id;
+    if (!runId) throw new Error('Expected a promotion run');
+    setup.modelClient.enqueue({
+      role: EnterpriseLeadAgentRole.PromotionController,
+      status: EnterpriseLeadTaskStatus.NeedsInput,
+      summary: '需要确认推广范围。',
+      outputs: {
+        controlPlan: '先确认范围。',
+        priorityTasks: ['确认范围'],
+        riskNotes: [],
+      },
+      missingInfo: [],
+      todos: [],
+      risks: [],
+      handoffContext: {},
+    });
+
+    const started = await setup.service.startWorkflow(workspace.id, runId, {
+      enabledOptionalNodes: ['sales_handoff_requested'],
+      maxConcurrency: 2,
+    });
+
+    expect(started.tasks.map(task => task.nodeId)).toContain(EnterpriseLeadAgentRole.SalesHandoff);
+    expect(started.tasks.map(task => task.nodeId)).not.toContain(
+      EnterpriseLeadAgentRole.PromotionAccountMonitoring,
+    );
+    expect(setup.store.getWorkflowStartOptions(runId)).toEqual({
+      enabledOptionalNodes: ['sales_handoff_requested'],
+      maxConcurrency: 2,
+    });
+  });
+
+  test('persists a workflow error state on the run before it is reported to the renderer', () => {
+    const setup = createService();
+    db = setup.db;
+    const workspace = setup.service.createWorkspace({
+      ...draftPayload(),
+      workspaceAgents: buildDefaultPromotionDepartmentWorkspaceAgents(),
+    });
+    const created = setup.service.createRun(workspace.id, '记录流程错误');
+    const runId = created.currentRun?.id;
+    if (!runId) throw new Error('Expected a promotion run');
+
+    const snapshot = setup.service.markRunError(workspace.id, runId, 'gateway unavailable');
+
+    expect(snapshot.currentRun).toMatchObject({
+      status: EnterpriseLeadRunStatus.Error,
+      controllerSummary: 'gateway unavailable',
+    });
+    expect(setup.store.getRun(runId)).toMatchObject({
+      status: EnterpriseLeadRunStatus.Error,
+      controllerSummary: 'gateway unavailable',
+    });
+  });
+
+  test('recovers a legacy zero-task promotion run into an executing DAG', async () => {
+    const setup = createService();
+    db = setup.db;
+    const workspace = setup.service.createWorkspace({
+      ...draftPayload(),
+      workspaceAgents: buildDefaultPromotionDepartmentWorkspaceAgents(),
+    });
+    const legacyRun = setup.store.createRun({
+      workspaceId: workspace.id,
+      userGoal: '恢复历史推广任务',
+    });
+    expect(setup.store.listTasks(legacyRun.id)).toHaveLength(0);
+    setup.modelClient.enqueue({
+      role: EnterpriseLeadAgentRole.PromotionController,
+      status: EnterpriseLeadTaskStatus.NeedsInput,
+      summary: '推广总控计划已生成，需要确认执行范围。',
+      outputs: {
+        controlPlan: '先完成线索调研。',
+        priorityTasks: ['调研'],
+        riskNotes: ['仅生成草稿'],
+      },
+      missingInfo: ['执行范围'],
+      todos: [],
+      risks: [],
+      handoffContext: {},
+    });
+
+    const recovered = await setup.service.runWorkflow(workspace.id, legacyRun.id);
+
+    expect(recovered.currentRun).toMatchObject({
+      id: legacyRun.id,
+      workflowVersion: PROMOTION_WORKFLOW_VERSION,
+      status: EnterpriseLeadRunStatus.NeedsInput,
+    });
+    expect(recovered.tasks.map(task => task.nodeId)).toEqual(
+      PROMOTION_WORKFLOW_GRAPH.filter(node => !node.optional).map(node => node.role),
+    );
+    expect(recovered.tasks.find(task => task.role === EnterpriseLeadAgentRole.PromotionController)).toMatchObject({
+      status: EnterpriseLeadTaskStatus.NeedsInput,
+    });
+  });
+
+  test('requires product selling points and scraped data before running promotion cleaning', async () => {
+    const setup = createService();
+    db = setup.db;
+    const workspace = setup.service.createWorkspace({
+      ...draftPayload(),
+      workspaceAgents: buildDefaultPromotionDepartmentWorkspaceAgents(),
+    });
+    const snapshot = setup.service.createRun(workspace.id, '清洗推广线索');
+    const controller = snapshot.tasks.find(
+      task => task.role === EnterpriseLeadAgentRole.PromotionController,
+    );
+    const scraping = snapshot.tasks.find(
+      task => task.role === EnterpriseLeadAgentRole.PromotionDataScraping,
+    );
+    const sellingPoint = snapshot.tasks.find(
+      task => task.role === EnterpriseLeadAgentRole.ProductSellingPoint,
+    );
+    const cleaning = snapshot.tasks.find(
+      task => task.role === EnterpriseLeadAgentRole.PromotionDataCleaning,
+    );
+    if (!controller || !scraping || !sellingPoint || !cleaning) {
+      throw new Error('Expected promotion graph tasks');
+    }
+
+    setup.store.updateWorkflowTaskStatus(controller.id, EnterpriseLeadTaskStatus.Completed);
+    setup.store.updateWorkflowTaskStatus(scraping.id, EnterpriseLeadTaskStatus.Completed);
+
+    await expect(setup.service.runTask(cleaning.id)).rejects.toThrow(
+      'Workflow task dependencies are not completed',
+    );
+
+    setup.store.updateWorkflowTaskStatus(sellingPoint.id, EnterpriseLeadTaskStatus.Completed);
+    setup.modelClient.enqueue({
+      role: EnterpriseLeadAgentRole.PromotionDataCleaning,
+      status: EnterpriseLeadTaskStatus.Completed,
+      summary: '线索清洗完成。',
+      outputs: {
+        records: [
+          {
+            id: 'lead-1',
+            companyName: '华南机械厂',
+            industry: '机械制造',
+            contactHint: '采购负责人',
+            fieldConfidence: { companyName: 'high' },
+          },
+        ],
+        duplicates: ['无重复记录'],
+        missingFields: ['联系电话'],
+      },
+      missingInfo: [],
+      todos: [],
+      risks: [],
+      handoffContext: {},
+    });
+
+    const updated = await setup.service.runTask(cleaning.id);
+
+    expect(updated.status).toBe(EnterpriseLeadTaskStatus.Completed);
+    expect(updated.artifactRefs).toEqual(
+      expect.arrayContaining([expect.objectContaining({ kind: 'promotion_data_cleaning_output' })]),
+    );
+    expect(setup.modelClient.prompts.at(-1)?.prompt).not.toContain('outputPayload');
+  });
+
+  test('rerunning a promotion node stales only graph descendants without deleting artifacts or events', async () => {
+    const setup = createService();
+    db = setup.db;
+    const workspace = setup.service.createWorkspace({
+      ...draftPayload(),
+      workspaceAgents: buildDefaultPromotionDepartmentWorkspaceAgents(),
+    });
+    const snapshot = setup.service.createRun(workspace.id, '重新清洗推广线索');
+    const tasksByRole = new Map(snapshot.tasks.map(task => [task.role, task]));
+    const cleaning = tasksByRole.get(EnterpriseLeadAgentRole.PromotionDataCleaning);
+    const competitor = tasksByRole.get(EnterpriseLeadAgentRole.PromotionCompetitorInsight);
+    const scoring = tasksByRole.get(EnterpriseLeadAgentRole.PromotionLeadScoring);
+    const assets = tasksByRole.get(EnterpriseLeadAgentRole.PromotionMultiPlatformAssets);
+    if (!cleaning || !competitor || !scoring || !assets || !snapshot.currentRun) {
+      throw new Error('Expected promotion graph tasks');
+    }
+
+    [
+      EnterpriseLeadAgentRole.PromotionController,
+      EnterpriseLeadAgentRole.PromotionDataScraping,
+      EnterpriseLeadAgentRole.ProductSellingPoint,
+      EnterpriseLeadAgentRole.PromotionDataCleaning,
+    ].forEach(role => {
+      const task = tasksByRole.get(role);
+      if (!task) throw new Error(`Expected ${role} task`);
+      setup.store.updateWorkflowTaskStatus(task.id, EnterpriseLeadTaskStatus.Completed);
+    });
+    [competitor, scoring, assets].forEach(task =>
+      setup.store.updateWorkflowTaskStatus(task.id, EnterpriseLeadTaskStatus.Completed),
+    );
+    const artifacts = new WorkflowArtifactStore(setup.db);
+    const preservedArtifact = artifacts.createArtifact({
+      runId: snapshot.currentRun.id,
+      taskId: assets.id,
+      kind: 'preserved_output',
+      schemaVersion: 1,
+      payload: { draft: 'existing material' },
+      evidenceIds: [],
+    });
+    const preservedEvent = artifacts.appendEvent({
+      runId: snapshot.currentRun.id,
+      type: 'task_completed',
+      taskId: assets.id,
+      role: assets.role,
+    });
+    setup.modelClient.enqueue({
+      role: EnterpriseLeadAgentRole.PromotionDataCleaning,
+      status: EnterpriseLeadTaskStatus.Completed,
+      summary: '线索重新清洗完成。',
+      outputs: {
+        records: [
+          {
+            id: 'lead-2',
+            companyName: '华东设备厂',
+            industry: '设备制造',
+            contactHint: '销售线索',
+            fieldConfidence: { companyName: 'high' },
+          },
+        ],
+        duplicates: ['重复记录已合并'],
+        missingFields: ['预算范围'],
+      },
+      missingInfo: [],
+      todos: [],
+      risks: [],
+      handoffContext: {},
+    });
+
+    await setup.service.rerunTask(cleaning.id);
+
+    [competitor, scoring, assets].forEach(task => {
+      expect(setup.store.getTask(task.id)).toMatchObject({
+        status: EnterpriseLeadTaskStatus.Stale,
+        stale: true,
+      });
+    });
+    expect(artifacts.getArtifact(preservedArtifact.id)).not.toBeNull();
+    expect(artifacts.listEvents(snapshot.currentRun.id).map(event => event.id)).toContain(preservedEvent.id);
   });
 
   test('archiveRun archives a workspace run and rejects foreign runs', () => {
@@ -2781,7 +3538,6 @@ describe('EnterpriseLeadWorkspaceService', () => {
     const task = snapshot.tasks.find(item => item.role === EnterpriseLeadAgentRole.TopicPlanning);
     if (!task || !snapshot.currentRun)
       throw new Error('Expected content planning task and current run');
-    markRunReadyToArchive(setup.store, snapshot.currentRun.id);
     setup.modelClient.enqueue({
       role: EnterpriseLeadAgentRole.TopicPlanning,
       status: EnterpriseLeadTaskStatus.Completed,
@@ -2799,6 +3555,7 @@ describe('EnterpriseLeadWorkspaceService', () => {
       '归档前先生成一版',
     );
 
+    markRunReadyToArchive(setup.store, snapshot.currentRun.id);
     setup.service.archiveRun(workspace.id, snapshot.currentRun.id);
 
     await expect(setup.service.rerunTask(task.id)).rejects.toThrow(
@@ -2820,11 +3577,11 @@ describe('EnterpriseLeadWorkspaceService', () => {
     const task = snapshot.tasks.find(item => item.role === EnterpriseLeadAgentRole.TopicPlanning);
     if (!task || !snapshot.currentRun)
       throw new Error('Expected content planning task and current run');
-    markRunReadyToArchive(setup.store, snapshot.currentRun.id);
     const pendingGeneration = setup.modelClient.enqueuePending();
 
     const runTaskPromise = setup.service.runTask(task.id);
     expect(setup.modelClient.prompts).toHaveLength(1);
+    markRunReadyToArchive(setup.store, snapshot.currentRun.id);
     setup.service.archiveRun(workspace.id, snapshot.currentRun.id);
     pendingGeneration.resolve({
       role: EnterpriseLeadAgentRole.TopicPlanning,
@@ -2847,6 +3604,53 @@ describe('EnterpriseLeadWorkspaceService', () => {
     });
   });
 
+  test('promotion RunTask leaves no output artifact after cancellation during model generation', async () => {
+    const setup = createService();
+    db = setup.db;
+    const workspace = setup.service.createWorkspace({
+      ...draftPayload(),
+      workspaceAgents: buildDefaultPromotionDepartmentWorkspaceAgents(),
+    });
+    const snapshot = setup.service.createRun(workspace.id, '取消时不保存推广产物');
+    const task = snapshot.tasks.find(
+      item => item.role === EnterpriseLeadAgentRole.PromotionController,
+    );
+    if (!task || !snapshot.currentRun) {
+      throw new Error('Expected promotion controller task and current run');
+    }
+    const artifacts = new WorkflowArtifactStore(setup.db);
+    const eventsBeforeCancellation = artifacts.listEvents(snapshot.currentRun.id);
+    const pendingGeneration = setup.modelClient.enqueuePending();
+
+    const runTaskPromise = setup.service.runTask(task.id);
+    await setup.service.cancelRun(workspace.id, snapshot.currentRun.id);
+    const eventsAfterCancellation = artifacts.listEvents(snapshot.currentRun.id);
+    pendingGeneration.resolve({
+      role: EnterpriseLeadAgentRole.PromotionController,
+      status: EnterpriseLeadTaskStatus.Completed,
+      summary: 'Cancelled result must not persist.',
+      outputs: {
+        controlPlan: 'must-not-land',
+        priorityTasks: ['Do not persist'],
+        riskNotes: [],
+      },
+      missingInfo: [],
+      todos: [],
+      risks: [],
+      handoffContext: {},
+    });
+
+    await expect(runTaskPromise).rejects.toThrow('Enterprise lead run is terminal');
+    expect(artifacts.listRunArtifacts(snapshot.currentRun.id)).toEqual([]);
+    expect(artifacts.listEvents(snapshot.currentRun.id)).toEqual(eventsAfterCancellation);
+    expect(eventsAfterCancellation).not.toEqual(eventsBeforeCancellation);
+    expect(setup.store.getTask(task.id)).toMatchObject({
+      status: EnterpriseLeadTaskStatus.Cancelled,
+      outputPayload: {},
+      artifactRefs: [],
+    });
+  });
+
   test('createPendingVersionFromChat rejects if run is archived while model generation is pending', async () => {
     const setup = createService();
     db = setup.db;
@@ -2855,7 +3659,6 @@ describe('EnterpriseLeadWorkspaceService', () => {
     const task = snapshot.tasks.find(item => item.role === EnterpriseLeadAgentRole.TopicPlanning);
     if (!task || !snapshot.currentRun)
       throw new Error('Expected content planning task and current run');
-    markRunReadyToArchive(setup.store, snapshot.currentRun.id);
     const pendingGeneration = setup.modelClient.enqueuePending();
 
     const pendingVersionPromise = setup.service.createPendingVersionFromChat(
@@ -2863,6 +3666,7 @@ describe('EnterpriseLeadWorkspaceService', () => {
       '生成待确认版本',
     );
     expect(setup.modelClient.prompts).toHaveLength(1);
+    markRunReadyToArchive(setup.store, snapshot.currentRun.id);
     setup.service.archiveRun(workspace.id, snapshot.currentRun.id);
     pendingGeneration.resolve({
       role: EnterpriseLeadAgentRole.TopicPlanning,
@@ -2959,7 +3763,7 @@ describe('EnterpriseLeadWorkspaceService', () => {
       ...draftPayload(),
       workspaceAgents: buildDefaultPromotionDepartmentWorkspaceAgents(),
     });
-    const snapshot = setup.service.createRun(workspace.id, '执行推广部闭环');
+    const snapshot = createLegacyWorkspaceRun(setup.service, setup.store, workspace.id, '执行推广部闭环');
     const runId = snapshot.currentRun?.id;
     if (!runId) throw new Error('Expected promotion department run');
 
@@ -3012,6 +3816,510 @@ describe('EnterpriseLeadWorkspaceService', () => {
         }),
       ]),
     );
+  });
+
+  test('scheduled monitoring needs input without a known platform, source, and time window', async () => {
+    const setup = createService();
+    db = setup.db;
+    const workspace = setup.service.createWorkspace({
+      ...draftPayload(),
+      workspaceAgents: buildDefaultPromotionDepartmentWorkspaceAgents(),
+    });
+    const run = setup.store.createRun({
+      workspaceId: workspace.id,
+      userGoal: '监控推广账户',
+      workflowVersion: PROMOTION_WORKFLOW_VERSION,
+      tasks: [
+        { role: EnterpriseLeadAgentRole.PromotionAccountMonitoring, nodeId: 'monitoring' },
+        {
+          role: EnterpriseLeadAgentRole.PromotionPerformanceReview,
+          nodeId: 'review',
+          dependsOnTaskIds: ['monitoring'],
+        },
+      ],
+    });
+
+    const result = await setup.service.runScheduledPromotionMonitoring({
+      workspaceId: workspace.id,
+      runId: run.id,
+      agentId: EnterpriseLeadAgentRole.PromotionAccountMonitoring,
+      metricSource: {
+        channel: 'unknown',
+        accountName: 'LobsterAI',
+        capturedAt: '2026-07-14T08:00:00.000Z',
+        impressions: 100,
+        clicks: 10,
+        interactions: 6,
+        leads: 2,
+        cost: 32,
+      },
+      idempotencyKey: 'workspace-1:unknown:2026-07-07',
+      window: { start: '', end: '' },
+    });
+
+    expect(result.status).toBe(EnterpriseLeadTaskStatus.NeedsInput);
+    expect(setup.modelClient.prompts).toHaveLength(0);
+    expect(setup.store.listTasks(run.id)[0]).toMatchObject({
+      status: EnterpriseLeadTaskStatus.NeedsInput,
+      missingInfo: expect.arrayContaining(['metric_platform', 'metric_source', 'metric_period']),
+    });
+  });
+
+  test('scheduled monitoring turns malformed non-empty metric periods into needs input', async () => {
+    const setup = createService();
+    db = setup.db;
+    const workspace = setup.service.createWorkspace({
+      ...draftPayload(),
+      workspaceAgents: buildDefaultPromotionDepartmentWorkspaceAgents(),
+    });
+    const run = setup.store.createRun({
+      workspaceId: workspace.id,
+      userGoal: '监控推广账户',
+      workflowVersion: PROMOTION_WORKFLOW_VERSION,
+      tasks: [
+        { role: EnterpriseLeadAgentRole.PromotionAccountMonitoring, nodeId: 'monitoring' },
+        { role: EnterpriseLeadAgentRole.PromotionPerformanceReview, nodeId: 'review', dependsOnTaskIds: ['monitoring'] },
+      ],
+    });
+
+    await expect(setup.service.runScheduledPromotionMonitoring({
+      workspaceId: workspace.id,
+      runId: run.id,
+      agentId: EnterpriseLeadAgentRole.PromotionAccountMonitoring,
+      metricSource: {
+        channel: 'xiaohongshu', accountName: 'LobsterAI', capturedAt: '2026-07-14T08:00:00.000Z',
+        impressions: 100, clicks: 10, interactions: 6, leads: 2, cost: 32,
+        sourceId: 'metric-source-1', periodStart: 'invalid-timestamp', periodEnd: '2026-07-13T23:59:59.000Z',
+      },
+      idempotencyKey: 'invalid-period',
+      window: { start: '2026-07-07T00:00:00.000Z', end: '2026-07-13T23:59:59.000Z' },
+    })).resolves.toMatchObject({ status: EnterpriseLeadTaskStatus.NeedsInput, duplicate: false });
+    expect(setup.store.listTasks(run.id)[0]).toMatchObject({
+      status: EnterpriseLeadTaskStatus.NeedsInput,
+      missingInfo: expect.arrayContaining(['metric_period']),
+    });
+    expect(setup.modelClient.prompts).toHaveLength(0);
+  });
+
+  test('does not make a non-completed proposed-knowledge review approvable or durable', async () => {
+    const setup = createService();
+    db = setup.db;
+    const workspace = setup.service.createWorkspace({
+      ...draftPayload(),
+      workspaceAgents: buildDefaultPromotionDepartmentWorkspaceAgents(),
+    });
+    const run = setup.store.createRun({
+      workspaceId: workspace.id,
+      userGoal: '监控推广账户',
+      workflowVersion: PROMOTION_WORKFLOW_VERSION,
+      tasks: [
+        { role: EnterpriseLeadAgentRole.PromotionAccountMonitoring, nodeId: 'monitoring' },
+        { role: EnterpriseLeadAgentRole.PromotionPerformanceReview, nodeId: 'review', dependsOnTaskIds: ['monitoring'] },
+      ],
+    });
+    setup.modelClient.enqueue({
+      role: EnterpriseLeadAgentRole.PromotionAccountMonitoring,
+      status: EnterpriseLeadTaskStatus.Completed,
+      summary: '账户指标报告已生成。',
+      outputs: { metrics: [{}], anomalies: [{}], hypotheses: ['有效'], adjustmentActions: ['继续'] },
+      missingInfo: [], todos: [], risks: [], handoffContext: {},
+    });
+    setup.modelClient.enqueue({
+      role: EnterpriseLeadAgentRole.PromotionPerformanceReview,
+      status: EnterpriseLeadTaskStatus.NeedsInput,
+      summary: '复盘需要更多证据。',
+      outputs: {
+        reviewSummary: '不应归档。', effectiveStrategies: [], improvementActions: [],
+        proposedKnowledge: ['不应被持久化的复盘知识'],
+      },
+      missingInfo: ['verified review evidence'], todos: [], risks: [], handoffContext: {},
+    });
+
+    const result = await setup.service.runScheduledPromotionMonitoring({
+      workspaceId: workspace.id, runId: run.id, agentId: EnterpriseLeadAgentRole.PromotionAccountMonitoring,
+      metricSource: {
+        channel: 'xiaohongshu', accountName: 'LobsterAI', capturedAt: '2026-07-14T08:00:00.000Z',
+        impressions: 100, clicks: 10, interactions: 6, leads: 2, cost: 32,
+        sourceId: 'metric-source-1', periodStart: '2026-07-07T00:00:00.000Z', periodEnd: '2026-07-13T23:59:59.000Z',
+      },
+      idempotencyKey: 'needs-input-review',
+      window: { start: '2026-07-07T00:00:00.000Z', end: '2026-07-13T23:59:59.000Z' },
+    });
+    const review = setup.store.listTasks(run.id).find(
+      task => task.role === EnterpriseLeadAgentRole.PromotionPerformanceReview,
+    );
+    if (!review) throw new Error('Expected performance review task');
+
+    expect(result.status).toBe(EnterpriseLeadTaskStatus.NeedsInput);
+    expect(review.status).toBe(EnterpriseLeadTaskStatus.NeedsInput);
+    await expect(setup.service.approveTask(workspace.id, run.id, review.id)).rejects.toThrow(
+      'not awaiting approval',
+    );
+    expect(setup.service.getWorkspace(workspace.id)?.extractionSources).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ text: '不应被持久化的复盘知识' })]),
+    );
+  });
+
+  test('scheduled monitoring is idempotent and passes its metric report artifact to performance review', async () => {
+    const setup = createService();
+    db = setup.db;
+    const workspace = setup.service.createWorkspace({
+      ...draftPayload(),
+      workspaceAgents: buildDefaultPromotionDepartmentWorkspaceAgents(),
+    });
+    const run = setup.store.createRun({
+      workspaceId: workspace.id,
+      userGoal: '监控推广账户',
+      workflowVersion: PROMOTION_WORKFLOW_VERSION,
+      tasks: [
+        { role: EnterpriseLeadAgentRole.PromotionAccountMonitoring, nodeId: 'monitoring' },
+        {
+          role: EnterpriseLeadAgentRole.PromotionPerformanceReview,
+          nodeId: 'review',
+          dependsOnTaskIds: ['monitoring'],
+        },
+      ],
+    });
+    const input = {
+      workspaceId: workspace.id,
+      runId: run.id,
+      agentId: EnterpriseLeadAgentRole.PromotionAccountMonitoring,
+      metricSource: {
+        channel: 'xiaohongshu',
+        accountName: 'LobsterAI',
+        capturedAt: '2026-07-14T08:00:00.000Z',
+        impressions: 100,
+        clicks: 10,
+        interactions: 6,
+        leads: 2,
+        cost: 32,
+        sourceId: 'metric-source-1',
+        periodStart: '2026-07-07T00:00:00.000Z',
+        periodEnd: '2026-07-13T23:59:59.000Z',
+        currency: 'CNY',
+        evidenceIds: ['evidence-1'],
+      },
+      idempotencyKey: 'workspace-1:metric-source-1:2026-07-07',
+      window: {
+        start: '2026-07-07T00:00:00.000Z',
+        end: '2026-07-13T23:59:59.000Z',
+      },
+    };
+    setup.modelClient.enqueue({
+      role: EnterpriseLeadAgentRole.PromotionAccountMonitoring,
+      status: EnterpriseLeadTaskStatus.Completed,
+      summary: '账户指标报告已生成。',
+      outputs: {
+        metrics: [{ ctr: 0.1 }],
+        anomalies: [{ metric: 'clicks', direction: 'up' }],
+        hypotheses: ['内容匹配度提升'],
+        adjustmentActions: ['人工确认后保留当前素材方向'],
+      },
+      missingInfo: [],
+      todos: [],
+      risks: [],
+      handoffContext: {},
+    });
+    setup.modelClient.enqueue({
+      role: EnterpriseLeadAgentRole.PromotionPerformanceReview,
+      status: EnterpriseLeadTaskStatus.Completed,
+      summary: '推广复盘已生成。',
+      outputs: {
+        reviewSummary: '点击率稳定提升。',
+        effectiveStrategies: ['保留当前选题方向'],
+        improvementActions: ['人工确认后扩大测试样本'],
+        proposedKnowledge: ['当前选题方向在小红书表现稳定'],
+      },
+      missingInfo: [],
+      todos: [],
+      risks: [],
+      handoffContext: {},
+    });
+
+    const first = await setup.service.runScheduledPromotionMonitoring(input);
+    const artifacts = new WorkflowArtifactStore(setup.db).listRunArtifacts(run.id);
+    const review = setup.store
+      .listTasks(run.id)
+      .find(task => task.role === EnterpriseLeadAgentRole.PromotionPerformanceReview);
+    if (!review) throw new Error('Expected performance review task');
+
+    expect(first.status).toBe(EnterpriseLeadTaskStatus.AwaitingApproval);
+    expect(artifacts).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: EnterpriseLeadDeliverableKind.PromotionMetricReport }),
+      expect.objectContaining({ kind: EnterpriseLeadDeliverableKind.PromotionPerformanceReview }),
+    ]));
+    expect(review.artifactRefs).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: EnterpriseLeadDeliverableKind.PromotionMetricReport }),
+    ]));
+    expect(setup.modelClient.prompts[1].prompt).toContain(EnterpriseLeadDeliverableKind.PromotionMetricReport);
+    expect(review.status).toBe(EnterpriseLeadTaskStatus.AwaitingApproval);
+    expect(workspace.extractionSources.some(source =>
+      source.text?.includes('当前选题方向在小红书表现稳定'),
+    )).toBe(false);
+
+    const approved = await setup.service.approveTask(workspace.id, run.id, review.id);
+    expect(approved.tasks.find(task => task.id === review.id)?.status).toBe(
+      EnterpriseLeadTaskStatus.Completed,
+    );
+    expect(setup.service.getWorkspace(workspace.id)?.extractionSources).toEqual(expect.arrayContaining([
+      expect.objectContaining({ text: '当前选题方向在小红书表现稳定' }),
+    ]));
+
+    const duplicate = await setup.service.runScheduledPromotionMonitoring(input);
+
+    expect(duplicate.duplicate).toBe(true);
+    expect(setup.modelClient.prompts).toHaveLength(2);
+    expect(new WorkflowArtifactStore(setup.db).listRunArtifacts(run.id)).toHaveLength(2);
+
+    const duplicateWithDifferentClientKey = await setup.service.runScheduledPromotionMonitoring({
+      ...input,
+      idempotencyKey: 'different-client-key-for-the-same-window',
+    });
+    expect(duplicateWithDifferentClientKey.duplicate).toBe(true);
+    expect(setup.modelClient.prompts).toHaveLength(2);
+
+    setup.modelClient.enqueue({
+      role: EnterpriseLeadAgentRole.PromotionAccountMonitoring,
+      status: EnterpriseLeadTaskStatus.Completed,
+      summary: '不应重复生成的指标报告。',
+      outputs: { metrics: [{}], anomalies: [{}], hypotheses: ['不应执行'], adjustmentActions: ['不应执行'] },
+      missingInfo: [], todos: [], risks: [], handoffContext: {},
+    });
+    setup.modelClient.enqueue({
+      role: EnterpriseLeadAgentRole.PromotionPerformanceReview,
+      status: EnterpriseLeadTaskStatus.Completed,
+      summary: '不应重复生成的复盘。',
+      outputs: { reviewSummary: '不应执行。', effectiveStrategies: [], improvementActions: [], proposedKnowledge: [] },
+      missingInfo: [], todos: [], risks: [], handoffContext: {},
+    });
+    const offsetEquivalentDuplicate = await setup.service.runScheduledPromotionMonitoring({
+      ...input,
+      idempotencyKey: 'equivalent-offset-window',
+      metricSource: {
+        ...input.metricSource,
+        periodStart: '2026-07-07T08:00:00+08:00',
+        periodEnd: '2026-07-14T07:59:59+08:00',
+      },
+      window: { start: '2026-07-07T08:00:00+08:00', end: '2026-07-14T07:59:59+08:00' },
+    });
+    expect(offsetEquivalentDuplicate.duplicate).toBe(true);
+    expect(setup.modelClient.prompts).toHaveLength(2);
+
+    const arbitraryAgent = await setup.service.runScheduledPromotionMonitoring({
+      ...input,
+      idempotencyKey: 'different-window',
+      agentId: 'arbitrary-agent-id',
+      window: {
+        start: '2026-07-14T00:00:00.000Z',
+        end: '2026-07-20T23:59:59.000Z',
+      },
+    });
+    expect(arbitraryAgent.status).toBe(EnterpriseLeadTaskStatus.NeedsInput);
+    expect(setup.modelClient.prompts).toHaveLength(2);
+  });
+
+  test('a failed later review preserves the prior successful review', async () => {
+    const setup = createService();
+    db = setup.db;
+    const workspace = setup.service.createWorkspace({
+      ...draftPayload(),
+      workspaceAgents: buildDefaultPromotionDepartmentWorkspaceAgents(),
+    });
+    const run = setup.store.createRun({
+      workspaceId: workspace.id,
+      userGoal: '监控推广账户',
+      workflowVersion: PROMOTION_WORKFLOW_VERSION,
+      tasks: [
+        { role: EnterpriseLeadAgentRole.PromotionAccountMonitoring, nodeId: 'monitoring' },
+        {
+          role: EnterpriseLeadAgentRole.PromotionPerformanceReview,
+          nodeId: 'review',
+          dependsOnTaskIds: ['monitoring'],
+        },
+      ],
+    });
+    const baseInput = {
+      workspaceId: workspace.id,
+      runId: run.id,
+      agentId: EnterpriseLeadAgentRole.PromotionAccountMonitoring,
+      metricSource: {
+        channel: 'xiaohongshu', accountName: 'LobsterAI', capturedAt: '2026-07-14T08:00:00.000Z',
+        impressions: 100, clicks: 10, interactions: 6, leads: 2, cost: 32,
+        sourceId: 'metric-source-1', periodStart: '2026-07-07T00:00:00.000Z',
+        periodEnd: '2026-07-13T23:59:59.000Z',
+      },
+      window: { start: '2026-07-07T00:00:00.000Z', end: '2026-07-13T23:59:59.000Z' },
+    };
+    const monitoringResponse = {
+      role: EnterpriseLeadAgentRole.PromotionAccountMonitoring,
+      status: EnterpriseLeadTaskStatus.Completed,
+      summary: '账户指标报告已生成。',
+      outputs: {
+        metrics: [{ ctr: 0.1 }], anomalies: [{ metric: 'clicks' }], hypotheses: ['选题有效'],
+        adjustmentActions: ['人工确认后继续测试'],
+      },
+      missingInfo: [], todos: [], risks: [], handoffContext: {},
+    };
+    const reviewResponse = {
+      role: EnterpriseLeadAgentRole.PromotionPerformanceReview,
+      status: EnterpriseLeadTaskStatus.Completed,
+      summary: '首轮复盘已生成。',
+      outputs: {
+        reviewSummary: '首轮结论。', effectiveStrategies: ['选题有效'],
+        improvementActions: ['扩大样本'], proposedKnowledge: ['首轮复盘知识'],
+      },
+      missingInfo: [], todos: [], risks: [], handoffContext: {},
+    };
+    setup.modelClient.enqueue(monitoringResponse);
+    setup.modelClient.enqueue(reviewResponse);
+    await setup.service.runScheduledPromotionMonitoring({ ...baseInput, idempotencyKey: 'window-1' });
+    const priorReview = setup.store
+      .listTasks(run.id)
+      .find(task => task.role === EnterpriseLeadAgentRole.PromotionPerformanceReview);
+    if (!priorReview) throw new Error('Expected performance review task');
+
+    setup.modelClient.enqueue(monitoringResponse);
+    setup.modelClient.enqueue({
+      ...reviewResponse,
+      status: EnterpriseLeadTaskStatus.NeedsInput,
+      summary: '复盘缺少人工确认。',
+      missingInfo: ['approved review input'],
+      outputs: { ...reviewResponse.outputs, proposedKnowledge: [] },
+    });
+    const failed = await setup.service.runScheduledPromotionMonitoring({
+      ...baseInput,
+      idempotencyKey: 'window-2',
+      window: { start: '2026-07-14T00:00:00.000Z', end: '2026-07-20T23:59:59.000Z' },
+    });
+
+    expect(failed.status).toBe(EnterpriseLeadTaskStatus.NeedsInput);
+    expect(setup.store.getTask(priorReview.id)).toMatchObject({
+      status: EnterpriseLeadTaskStatus.AwaitingApproval,
+      summary: '首轮复盘已生成。',
+      outputPayload: priorReview.outputPayload,
+    });
+
+    setup.modelClient.enqueue(monitoringResponse);
+    const errored = await setup.service.runScheduledPromotionMonitoring({
+      ...baseInput,
+      idempotencyKey: 'window-3',
+      window: { start: '2026-07-21T00:00:00.000Z', end: '2026-07-27T23:59:59.000Z' },
+    });
+
+    expect(errored.status).toBe(EnterpriseLeadTaskStatus.Error);
+    expect(setup.store.getTask(priorReview.id)).toMatchObject({
+      status: EnterpriseLeadTaskStatus.AwaitingApproval,
+      summary: '首轮复盘已生成。',
+      outputPayload: priorReview.outputPayload,
+      artifactRefs: priorReview.artifactRefs,
+    });
+  });
+
+  test('atomically claims a monitoring window when concurrent callers use different client keys', async () => {
+    const setup = createService();
+    db = setup.db;
+    const workspace = setup.service.createWorkspace({
+      ...draftPayload(),
+      workspaceAgents: buildDefaultPromotionDepartmentWorkspaceAgents(),
+    });
+    const run = setup.store.createRun({
+      workspaceId: workspace.id,
+      userGoal: '监控推广账户',
+      workflowVersion: PROMOTION_WORKFLOW_VERSION,
+      tasks: [
+        { role: EnterpriseLeadAgentRole.PromotionAccountMonitoring, nodeId: 'monitoring' },
+        { role: EnterpriseLeadAgentRole.PromotionPerformanceReview, nodeId: 'review', dependsOnTaskIds: ['monitoring'] },
+      ],
+    });
+    const pendingMonitoring = setup.modelClient.enqueuePending();
+    setup.modelClient.enqueue({
+      role: EnterpriseLeadAgentRole.PromotionPerformanceReview,
+      status: EnterpriseLeadTaskStatus.Completed,
+      summary: '复盘完成。',
+      outputs: { reviewSummary: '复盘完成。', effectiveStrategies: ['保留'], improvementActions: ['继续'], proposedKnowledge: [] },
+      missingInfo: [], todos: [], risks: [], handoffContext: {},
+    });
+    const baseInput = {
+      workspaceId: workspace.id, runId: run.id, agentId: EnterpriseLeadAgentRole.PromotionAccountMonitoring,
+      metricSource: {
+        channel: 'xiaohongshu', accountName: 'LobsterAI', capturedAt: '2026-07-14T08:00:00.000Z',
+        impressions: 100, clicks: 10, interactions: 6, leads: 2, cost: 32,
+        sourceId: 'metric-source-1', periodStart: '2026-07-07T00:00:00.000Z', periodEnd: '2026-07-13T23:59:59.000Z',
+      },
+      window: { start: '2026-07-07T00:00:00.000Z', end: '2026-07-13T23:59:59.000Z' },
+    };
+    const first = setup.service.runScheduledPromotionMonitoring({ ...baseInput, idempotencyKey: 'key-a' });
+    await vi.waitFor(() => expect(setup.modelClient.prompts).toHaveLength(1));
+    const second = setup.service.runScheduledPromotionMonitoring({ ...baseInput, idempotencyKey: 'key-b' });
+    pendingMonitoring.resolve({
+      role: EnterpriseLeadAgentRole.PromotionAccountMonitoring,
+      status: EnterpriseLeadTaskStatus.Completed,
+      summary: '指标完成。',
+      outputs: { metrics: [{ ctr: 0.1 }], anomalies: [{ metric: 'clicks' }], hypotheses: ['有效'], adjustmentActions: ['继续'] },
+      missingInfo: [], todos: [], risks: [], handoffContext: {},
+    });
+
+    const [, duplicate] = await Promise.all([first, second]);
+
+    expect(duplicate.duplicate).toBe(true);
+    expect(setup.modelClient.prompts).toHaveLength(2);
+    expect(new WorkflowArtifactStore(setup.db).listRunArtifacts(run.id)).toHaveLength(2);
+  });
+
+  test('rejects model artifact references from another monitoring run', async () => {
+    const setup = createService();
+    db = setup.db;
+    const workspace = setup.service.createWorkspace({
+      ...draftPayload(),
+      workspaceAgents: buildDefaultPromotionDepartmentWorkspaceAgents(),
+    });
+    const createMonitoringRun = () => setup.store.createRun({
+      workspaceId: workspace.id,
+      userGoal: '监控推广账户',
+      workflowVersion: PROMOTION_WORKFLOW_VERSION,
+      tasks: [
+        { role: EnterpriseLeadAgentRole.PromotionAccountMonitoring, nodeId: 'monitoring' },
+        { role: EnterpriseLeadAgentRole.PromotionPerformanceReview, nodeId: 'review', dependsOnTaskIds: ['monitoring'] },
+      ],
+    });
+    const foreignRun = createMonitoringRun();
+    const foreignTask = setup.store.listTasks(foreignRun.id)[0];
+    const foreignArtifact = new WorkflowArtifactStore(setup.db).createArtifact({
+      runId: foreignRun.id,
+      taskId: foreignTask.id,
+      kind: EnterpriseLeadDeliverableKind.PromotionMetricReport,
+      schemaVersion: 1,
+      payload: { metric: 'foreign' },
+      evidenceIds: [],
+    });
+    const run = createMonitoringRun();
+    setup.modelClient.enqueue({
+      role: EnterpriseLeadAgentRole.PromotionAccountMonitoring,
+      status: EnterpriseLeadTaskStatus.Completed,
+      summary: '指标完成。',
+      outputs: {
+        metrics: [{ ctr: 0.1 }], anomalies: [{ metric: 'clicks' }], hypotheses: ['有效'], adjustmentActions: ['继续'],
+        artifactRefs: [{
+          id: foreignArtifact.id, kind: foreignArtifact.kind, schemaVersion: 1, summary: 'foreign',
+          producerTaskId: foreignTask.id, evidenceIds: [],
+        }],
+      },
+      missingInfo: [], todos: [], risks: [], handoffContext: {},
+    });
+
+    const result = await setup.service.runScheduledPromotionMonitoring({
+      workspaceId: workspace.id, runId: run.id, agentId: EnterpriseLeadAgentRole.PromotionAccountMonitoring,
+      metricSource: {
+        channel: 'xiaohongshu', accountName: 'LobsterAI', capturedAt: '2026-07-14T08:00:00.000Z',
+        impressions: 100, clicks: 10, interactions: 6, leads: 2, cost: 32,
+        sourceId: 'metric-source-1', periodStart: '2026-07-07T00:00:00.000Z', periodEnd: '2026-07-13T23:59:59.000Z',
+      },
+      idempotencyKey: 'foreign-ref',
+      window: { start: '2026-07-07T00:00:00.000Z', end: '2026-07-13T23:59:59.000Z' },
+    });
+
+    expect(result.status).toBe(EnterpriseLeadTaskStatus.NeedsInput);
+    expect(new WorkflowArtifactStore(setup.db).listRunArtifacts(run.id)).toEqual([]);
   });
 
   test('listRuns returns summaries with counts newest first', () => {

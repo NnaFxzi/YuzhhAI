@@ -7,6 +7,7 @@ import type {
   EnterpriseLeadWorkspaceRunSummary,
   EnterpriseLeadWorkspaceSnapshot,
 } from '../../../shared/enterpriseLeadWorkspace/types';
+import { normalizeWorkflowArtifactRef, type WorkflowArtifactRef } from '../../../shared/enterpriseLeadWorkspace/workflowContracts';
 import { enterpriseLeadWorkspaceService } from '../../services/enterpriseLeadWorkspace';
 import { i18nService } from '../../services/i18n';
 import {
@@ -14,6 +15,7 @@ import {
   type CreationRecordConversationMessage,
   CreationRecordConversationRole,
   type CreationRecordSummary,
+  getAgentStatusLabelKey,
   getCreationRecordSummary,
 } from './enterpriseLeadWorkspaceUi';
 
@@ -26,8 +28,10 @@ const runStatusLabelKeys: Record<string, string> = {
   [EnterpriseLeadRunStatus.Draft]: 'enterpriseLeadCreationRunStatusDraft',
   [EnterpriseLeadRunStatus.Running]: 'enterpriseLeadCreationRunStatusRunning',
   [EnterpriseLeadRunStatus.NeedsInput]: 'enterpriseLeadCreationRunStatusNeedsInput',
+  [EnterpriseLeadRunStatus.AwaitingApproval]: 'enterpriseLeadCreationRunStatusAwaitingApproval',
   [EnterpriseLeadRunStatus.Blocked]: 'enterpriseLeadCreationRunStatusBlocked',
   [EnterpriseLeadRunStatus.Completed]: 'enterpriseLeadCreationRunStatusCompleted',
+  [EnterpriseLeadRunStatus.Cancelled]: 'enterpriseLeadCreationRunStatusCancelled',
   [EnterpriseLeadRunStatus.Archived]: 'enterpriseLeadCreationRunStatusArchived',
   [EnterpriseLeadRunStatus.Error]: 'enterpriseLeadCreationRunStatusError',
 };
@@ -36,8 +40,10 @@ const runStatusClassNames: Record<string, string> = {
   [EnterpriseLeadRunStatus.Draft]: 'bg-slate-500/10 text-slate-600 dark:text-slate-300',
   [EnterpriseLeadRunStatus.Running]: 'bg-primary/10 text-primary',
   [EnterpriseLeadRunStatus.NeedsInput]: 'bg-amber-500/10 text-amber-700 dark:text-amber-300',
+  [EnterpriseLeadRunStatus.AwaitingApproval]: 'bg-amber-500/10 text-amber-700 dark:text-amber-300',
   [EnterpriseLeadRunStatus.Blocked]: 'bg-orange-500/10 text-orange-700 dark:text-orange-300',
   [EnterpriseLeadRunStatus.Completed]: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
+  [EnterpriseLeadRunStatus.Cancelled]: 'bg-slate-500/10 text-slate-600 dark:text-slate-300',
   [EnterpriseLeadRunStatus.Archived]: 'bg-slate-500/10 text-slate-600 dark:text-slate-300',
   [EnterpriseLeadRunStatus.Error]: 'bg-red-500/10 text-red-700 dark:text-red-300',
 };
@@ -81,6 +87,26 @@ export const getInitialCreationRecordId = (
 
 const getConversationLabel = (message: CreationRecordConversationMessage): string =>
   message.labelKey ? i18nService.t(message.labelKey) : (message.labelText ?? '');
+
+const getTaskArtifacts = (task: EnterpriseLeadWorkspaceSnapshot['tasks'][number]): WorkflowArtifactRef[] => {
+  if (task.artifactRefs?.length) return task.artifactRefs;
+  const rawArtifacts = task.outputPayload?.artifactRefs;
+  return Array.isArray(rawArtifacts)
+    ? rawArtifacts.map(normalizeWorkflowArtifactRef).filter((item): item is WorkflowArtifactRef => item !== null)
+    : [];
+};
+
+const WorkflowHistoryDag: React.FC<{ snapshot: EnterpriseLeadWorkspaceSnapshot }> = ({ snapshot }) => (
+  <section className="mx-auto mb-5 max-w-4xl rounded-lg border border-border bg-surface p-4">
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <h3 className="text-sm font-semibold text-foreground">{i18nService.t('enterpriseLeadWorkflowHistoryDag')}</h3>
+      {snapshot.currentRun?.status === EnterpriseLeadRunStatus.Archived ? <span className="rounded-full bg-slate-500/10 px-2 py-1 text-xs text-secondary">{i18nService.t('enterpriseLeadWorkflowHistoryReadOnly')}</span> : null}
+    </div>
+    <div className="mt-3 grid gap-2 sm:grid-cols-2">
+      {snapshot.tasks.map(task => <div key={task.id} className="rounded-md border border-border bg-background px-3 py-2"><p className="text-xs font-semibold text-foreground">{task.agentSnapshot?.name || task.role}</p><p className="mt-1 text-xs text-secondary">{i18nService.t(getAgentStatusLabelKey(task.status, task.stale))}{task.dependsOnTaskIds?.length ? ` · ${task.dependsOnTaskIds.join(', ')}` : ''}</p>{getTaskArtifacts(task).map(artifact => <p key={artifact.id} className="mt-1 truncate text-xs text-secondary">{i18nService.t('enterpriseLeadWorkflowArtifactVersion').replace('{version}', String(artifact.schemaVersion)).replace('{source}', artifact.producerTaskId || artifact.id)}</p>)}</div>)}
+    </div>
+  </section>
+);
 
 const RunSummaryButton: React.FC<{
   summary: CreationRecordSummary;
@@ -342,6 +368,7 @@ export const WorkspaceCreationRecords: React.FC<WorkspaceCreationRecordsProps> =
               </div>
             </header>
             <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+              <WorkflowHistoryDag snapshot={snapshot} />
               {conversationMessages.length > 0 ? (
                 <div className="mx-auto max-w-4xl space-y-4">
                   {conversationMessages.map(message => (

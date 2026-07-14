@@ -1,11 +1,12 @@
 import crypto from 'node:crypto';
 
 import type { SubagentMessageStore } from '../../subagentMessageStore';
-import type { SubagentRunStore } from '../../subagentRunStore';
+import type { SubagentRun, SubagentRunStore } from '../../subagentRunStore';
 import {
   extractGatewayMessageText,
   shouldSuppressHeartbeatText,
 } from '../openclawHistory';
+import type { SubagentSessionSummary } from './types';
 
 const isRecord = (value: unknown): value is Record<string, unknown> => {
   return Boolean(value && typeof value === 'object' && !Array.isArray(value));
@@ -100,6 +101,10 @@ export class SubagentTracker {
     agentId: string;
     task: string | null;
     label: string | null;
+    workflowRunId?: string;
+    taskId?: string;
+    workspaceAgentId?: string;
+    role?: string;
     parentSessionId: string;
     createdAt: number;
   }>();
@@ -132,6 +137,7 @@ export class SubagentTracker {
           : toolCallId;
     const task = typeof args?.task === 'string' ? args.task : '';
     const label = typeof args?.label === 'string' ? args.label : undefined;
+    const workflowMetadata = this.resolveWorkflowMetadata(args, agentId);
     if (agentId) {
       if (!this.subagentMessages.has(toolCallId)) {
         this.subagentMessages.set(toolCallId, []);
@@ -149,6 +155,7 @@ export class SubagentTracker {
         agentId,
         task: task || null,
         label: label ?? null,
+        ...workflowMetadata,
         parentSessionId: sessionId,
         createdAt: Date.now(),
       });
@@ -307,16 +314,7 @@ export class SubagentTracker {
    * Records stuck in 'running' from a previous app session (no in-memory state)
    * are automatically marked as 'error'.
    */
-  listSubagentRuns(parentSessionId: string): Array<{
-    id: string;
-    agentId: string | null;
-    task: string | null;
-    label: string | null;
-    sessionKey: string | null;
-    status: 'running' | 'done' | 'error';
-    createdAt: number;
-    endedAt: number | null;
-  }> {
+  listSubagentRuns(parentSessionId: string): SubagentSessionSummary[] {
     const runs = this.store.listSubagentRuns(parentSessionId);
     return runs.map((run) => {
       const memoryStatus = this.subagentStatus.get(run.id);
@@ -327,29 +325,31 @@ export class SubagentTracker {
       if (run.status === 'running' && !memoryStatus && !this.pendingSpawnInfo.has(run.id)) {
         const endedAt = Date.now();
         this.store.updateSubagentRunStatus(run.id, 'error', endedAt);
-        return {
-          id: run.id,
-          agentId: run.agentId,
-          task: run.task,
-          label: run.label,
-          sessionKey: memorySessionKey ?? run.sessionKey,
-          status: 'error' as const,
-          createdAt: run.createdAt,
-          endedAt,
-        };
+        return this.toSummary(run, 'error', endedAt, memorySessionKey ?? run.sessionKey);
       }
 
-      return {
-        id: run.id,
-        agentId: run.agentId,
-        task: run.task,
-        label: run.label,
-        sessionKey: memorySessionKey ?? run.sessionKey,
-        status: memoryStatus ?? run.status,
-        createdAt: run.createdAt,
-        endedAt: run.endedAt,
-      };
+      return this.toSummary(
+        run,
+        memoryStatus ?? run.status,
+        run.endedAt,
+        memorySessionKey ?? run.sessionKey,
+      );
     });
+  }
+
+  getWorkflowTaskSubagentRun(
+    parentSessionId: string,
+    workflowRunId: string,
+    taskId: string,
+  ): SubagentSessionSummary | null {
+    const run = this.store.findSubagentRunByWorkflowTask(parentSessionId, workflowRunId, taskId);
+    if (!run) return null;
+    return this.toSummary(
+      run,
+      this.subagentStatus.get(run.id) ?? run.status,
+      run.endedAt,
+      this.subagentSessionKeys.get(run.id) ?? run.sessionKey,
+    );
   }
 
   /**
@@ -450,6 +450,10 @@ export class SubagentTracker {
         agentId: pending.agentId,
         task: pending.task,
         label: pending.label,
+        workflowRunId: pending.workflowRunId,
+        taskId: pending.taskId,
+        workspaceAgentId: pending.workspaceAgentId,
+        role: pending.role,
         status,
         createdAt: pending.createdAt,
         endedAt: isError ? Date.now() : null,
@@ -475,6 +479,55 @@ export class SubagentTracker {
         this.agentIdToToolCallIds.delete(agentId);
       }
     }
+  }
+
+  private resolveWorkflowMetadata(
+    args: Record<string, unknown>,
+    agentId: string,
+  ): {
+    workflowRunId?: string;
+    taskId?: string;
+    workspaceAgentId?: string;
+    role?: string;
+  } {
+    if (!isRecord(args.lobsterai)) return {};
+    const workflowRunId = this.readNonEmptyString(args.lobsterai.workflowRunId);
+    const taskId = this.readNonEmptyString(args.lobsterai.taskId);
+    const role = this.readNonEmptyString(args.lobsterai.role);
+    const workspaceAgentId = this.readNonEmptyString(args.lobsterai.workspaceAgentId) ?? agentId;
+    return {
+      ...(workflowRunId ? { workflowRunId } : {}),
+      ...(taskId ? { taskId } : {}),
+      ...(workspaceAgentId ? { workspaceAgentId } : {}),
+      ...(role ? { role } : {}),
+    };
+  }
+
+  private readNonEmptyString(value: unknown): string | undefined {
+    if (typeof value !== 'string') return undefined;
+    const normalized = value.trim();
+    return normalized || undefined;
+  }
+
+  private toSummary(
+    run: SubagentRun,
+    status: 'running' | 'done' | 'error',
+    endedAt: number | null,
+    sessionKey: string | null,
+  ): SubagentSessionSummary {
+    return {
+      id: run.id,
+      agentId: run.agentId,
+      task: run.task,
+      label: run.label,
+      sessionKey,
+      status,
+      createdAt: run.createdAt,
+      endedAt,
+      ...(run.workflowRunId ? { workflowRunId: run.workflowRunId } : {}),
+      ...(run.taskId ? { taskId: run.taskId } : {}),
+      ...(run.role ? { role: run.role } : {}),
+    };
   }
 
   private enqueueGatewaySessionDelete(sessionKey: string): void {

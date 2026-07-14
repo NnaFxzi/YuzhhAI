@@ -128,8 +128,13 @@ import {
 import { buildDevServerUnavailableDataUrl } from './devServerErrorPage';
 import { buildCoworkWorkspaceAgentTeamPrompt } from './enterpriseLeadWorkspace/coworkAgentTeamBridge';
 import { registerEnterpriseLeadWorkspaceHandlers } from './enterpriseLeadWorkspace/ipcHandlers';
+import {
+  createEnterpriseLeadWorkflowEventDeps,
+  createEnterpriseLeadWorkflowHandlerDeps,
+} from './enterpriseLeadWorkspace/mainBridge';
 import { EnterpriseLeadWorkspaceService } from './enterpriseLeadWorkspace/service';
 import { EnterpriseLeadWorkspaceStore } from './enterpriseLeadWorkspace/store';
+import { WorkflowArtifactStore } from './enterpriseLeadWorkspace/workflowArtifactStore';
 import { setLanguage, t } from './i18n';
 import { IMGatewayConfig, IMGatewayManager } from './im';
 import {
@@ -1355,6 +1360,7 @@ let industryPackLoader: IndustryPackLoader | null = null;
 let industryPackStore: IndustryPackStore | null = null;
 let enterpriseLeadWorkspaceStore: EnterpriseLeadWorkspaceStore | null = null;
 let enterpriseLeadWorkspaceService: EnterpriseLeadWorkspaceService | null = null;
+let enterpriseLeadWorkflowArtifactStore: WorkflowArtifactStore | null = null;
 let knowledgeBaseFoundation: KnowledgeBaseFoundation | null = null;
 let enterpriseKnowledgeModelClient: ModelClientAdapter | null = null;
 let contentKnowledgeVectorStore: ContentKnowledgeVectorStore | null = null;
@@ -1669,6 +1675,13 @@ const getEnterpriseLeadWorkspaceService = (): EnterpriseLeadWorkspaceService => 
     });
   }
   return enterpriseLeadWorkspaceService;
+};
+
+const getEnterpriseLeadWorkflowArtifactStore = (): WorkflowArtifactStore => {
+  if (!enterpriseLeadWorkflowArtifactStore) {
+    enterpriseLeadWorkflowArtifactStore = new WorkflowArtifactStore(getStore().getDatabase());
+  }
+  return enterpriseLeadWorkflowArtifactStore;
 };
 
 const getKnowledgeBaseFoundation = (): KnowledgeBaseFoundation => {
@@ -6354,7 +6367,17 @@ if (!gotTheLock) {
         getEnterpriseLeadWorkspaceService().applyPendingVersion(pendingVersionId),
       archiveRun: (workspaceId, runId) =>
         getEnterpriseLeadWorkspaceService().archiveRun(workspaceId, runId),
+      ...createEnterpriseLeadWorkflowHandlerDeps(getEnterpriseLeadWorkspaceService),
+      resumeRun: (workspaceId, runId) =>
+        getEnterpriseLeadWorkspaceService().resumeRun(workspaceId, runId),
+      cancelRun: (workspaceId, runId) =>
+        getEnterpriseLeadWorkspaceService().cancelRun(workspaceId, runId),
+      approveTask: (workspaceId, runId, taskId) =>
+        getEnterpriseLeadWorkspaceService().approveTask(workspaceId, runId, taskId),
+      rejectTask: (workspaceId, runId, taskId, feedback) =>
+        getEnterpriseLeadWorkspaceService().rejectTask(workspaceId, runId, taskId, feedback),
     },
+    ...createEnterpriseLeadWorkflowEventDeps(getEnterpriseLeadWorkflowArtifactStore),
   });
 
   ipcMain.handle(OpenClawEngineIpc.GetStatus, async () => {
@@ -8619,6 +8642,8 @@ if (!gotTheLock) {
 
   initCronJobServiceManager({
     getOpenClawRuntimeAdapter: () => openClawRuntimeAdapter,
+    runScheduledPromotionMonitoring: context =>
+      getEnterpriseLeadWorkspaceService().runScheduledPromotionMonitoring(context),
   });
   initScheduledTaskHelpers({
     getIMGatewayManager: () => ({

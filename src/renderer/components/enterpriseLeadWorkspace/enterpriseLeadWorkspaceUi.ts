@@ -24,6 +24,8 @@ import type {
   EnterpriseLeadWorkspaceSettings,
   EnterpriseLeadWorkspaceSnapshot,
 } from '../../../shared/enterpriseLeadWorkspace/types';
+import { i18nService } from '../../services/i18n';
+import { getWorkflowControllerSummaryKey } from './workflowRunPresentation';
 
 export const EnterpriseLeadWorkspaceLaunchMode = {
   FirstLaunch: 'first_launch',
@@ -416,6 +418,7 @@ export interface AgentTaskDisplayMetadata {
 
 export const EnterpriseLeadWorkbenchNavItem = {
   Workbench: 'workbench',
+  Workflow: 'workflow',
   AiChat: 'ai_chat',
   Search: 'search',
   KnowledgeBase: 'knowledge_base',
@@ -432,6 +435,7 @@ export type EnterpriseLeadWorkspaceInternalPage =
 
 export const EnterpriseLeadWorkbenchNavIcon = {
   Dashboard: 'dashboard',
+  Workflow: 'workflow',
   Chat: 'chat',
   Search: 'search',
   Knowledge: 'knowledge',
@@ -835,6 +839,11 @@ const WORKBENCH_SIDEBAR_ITEMS: WorkbenchSidebarItem[] = [
     labelKey: 'enterpriseLeadWorkbenchNavWorkbench',
   },
   {
+    id: EnterpriseLeadWorkbenchNavItem.Workflow,
+    icon: EnterpriseLeadWorkbenchNavIcon.Workflow,
+    labelKey: 'enterpriseLeadWorkbenchNavWorkflow',
+  },
+  {
     id: EnterpriseLeadWorkbenchNavItem.AiChat,
     icon: EnterpriseLeadWorkbenchNavIcon.Chat,
     labelKey: 'enterpriseLeadWorkbenchNavAiChat',
@@ -1053,10 +1062,22 @@ const AGENT_CARD_TONES: Record<EnterpriseLeadTaskStatusType, AgentCardTone> = {
     statusClassName: 'bg-surface-raised text-secondary',
     actionClassName: DEFAULT_AGENT_CARD_ACTION,
   },
+  [EnterpriseLeadTaskStatus.Ready]: {
+    containerClassName: 'border-primary/30 bg-primary/5',
+    avatarClassName: 'bg-primary/10 text-primary',
+    statusClassName: 'bg-primary/10 text-primary',
+    actionClassName: DEFAULT_AGENT_CARD_ACTION,
+  },
   [EnterpriseLeadTaskStatus.Running]: {
     containerClassName: 'border-primary/40 bg-primary/5',
     avatarClassName: 'bg-primary/10 text-primary',
     statusClassName: 'bg-primary/10 text-primary',
+    actionClassName: DEFAULT_AGENT_CARD_ACTION,
+  },
+  [EnterpriseLeadTaskStatus.AwaitingApproval]: {
+    containerClassName: 'border-amber-400/50 bg-amber-500/5',
+    avatarClassName: 'bg-amber-500/10 text-amber-700 dark:text-amber-300',
+    statusClassName: 'bg-amber-500/10 text-amber-700 dark:text-amber-300',
     actionClassName: DEFAULT_AGENT_CARD_ACTION,
   },
   [EnterpriseLeadTaskStatus.Completed]: {
@@ -1089,16 +1110,25 @@ const AGENT_CARD_TONES: Record<EnterpriseLeadTaskStatusType, AgentCardTone> = {
     statusClassName: 'bg-amber-500/15 text-amber-800 dark:text-amber-200',
     actionClassName: 'bg-amber-600 text-white hover:bg-amber-700 focus:ring-amber-500/30',
   },
+  [EnterpriseLeadTaskStatus.Cancelled]: {
+    containerClassName: 'border-slate-400/40 bg-slate-500/5',
+    avatarClassName: 'bg-slate-500/10 text-slate-600 dark:text-slate-300',
+    statusClassName: 'bg-slate-500/10 text-slate-600 dark:text-slate-300',
+    actionClassName: DEFAULT_AGENT_CARD_ACTION,
+  },
 };
 
 const AGENT_STATUS_LABEL_KEYS: Record<EnterpriseLeadTaskStatusType, string> = {
   [EnterpriseLeadTaskStatus.Waiting]: 'enterpriseLeadAgentStatusWaiting',
+  [EnterpriseLeadTaskStatus.Ready]: 'enterpriseLeadAgentStatusReady',
   [EnterpriseLeadTaskStatus.Running]: 'enterpriseLeadAgentStatusRunning',
   [EnterpriseLeadTaskStatus.Completed]: 'enterpriseLeadAgentStatusCompleted',
   [EnterpriseLeadTaskStatus.NeedsInput]: 'enterpriseLeadAgentStatusNeedsInput',
+  [EnterpriseLeadTaskStatus.AwaitingApproval]: 'enterpriseLeadAgentStatusAwaitingApproval',
   [EnterpriseLeadTaskStatus.Blocked]: 'enterpriseLeadAgentStatusBlocked',
   [EnterpriseLeadTaskStatus.Error]: 'enterpriseLeadAgentStatusError',
   [EnterpriseLeadTaskStatus.Stale]: 'enterpriseLeadAgentStatusStale',
+  [EnterpriseLeadTaskStatus.Cancelled]: 'enterpriseLeadAgentStatusCancelled',
 };
 
 export const getLaunchMode = (
@@ -1403,6 +1433,24 @@ const getTaskConversationLabel = (
   };
 };
 
+const creationRecordControllerSummaryFallbackKey = 'enterpriseLeadWorkflowSummaryManualAttention';
+
+export const getCreationRecordControllerSummary = (
+  status: NonNullable<EnterpriseLeadWorkspaceSnapshot['currentRun']>['status'],
+  persistedControllerSummary?: string,
+): string => {
+  const summaryKey = getWorkflowControllerSummaryKey(status, persistedControllerSummary);
+  return i18nService.t(summaryKey || creationRecordControllerSummaryFallbackKey);
+};
+
+const getCreationRecordTaskContent = (task: EnterpriseLeadAgentTask): string => {
+  if (cleanText(task.error) || task.status === EnterpriseLeadTaskStatus.Error) {
+    return i18nService.t(getAgentStatusLabelKey(EnterpriseLeadTaskStatus.Error));
+  }
+
+  return cleanText(task.summary) || cleanText(task.missingInfo.join('\n'));
+};
+
 export const buildCreationRecordConversationMessages = (
   snapshot: EnterpriseLeadWorkspaceSnapshot,
 ): CreationRecordConversationMessage[] => {
@@ -1423,13 +1471,13 @@ export const buildCreationRecordConversationMessages = (
     },
   ];
 
-  const controllerSummary = cleanText(run.controllerSummary);
-  if (controllerSummary) {
+  const persistedControllerSummary = cleanText(run.controllerSummary);
+  if (persistedControllerSummary) {
     messages.push({
       id: `run:${run.id}:controller`,
       role: CreationRecordConversationRole.Assistant,
       labelKey: 'enterpriseLeadCreationConversationController',
-      content: controllerSummary,
+      content: getCreationRecordControllerSummary(run.status, persistedControllerSummary),
       createdAt: run.updatedAt,
       status: run.status,
       details: [],
@@ -1445,8 +1493,7 @@ export const buildCreationRecordConversationMessages = (
           value: stringifyConversationDetailValue(value),
         }))
         .filter(detail => detail.value.length > 0);
-      const content =
-        cleanText(task.summary) || cleanText(task.error) || cleanText(task.missingInfo.join('\n'));
+      const content = getCreationRecordTaskContent(task);
 
       messages.push({
         id: `${task.id}:reply`,
@@ -1635,7 +1682,7 @@ export const getWorkspaceStartActionTarget = (
   if (action === EnterpriseLeadWorkspaceStartAction.StartWorkflow) {
     return sourceState === EnterpriseLeadWorkspaceStartSourceState.Blank
       ? EnterpriseLeadWorkspaceInternalPage.KnowledgeBase
-      : EnterpriseLeadWorkspaceInternalPage.AiChat;
+      : EnterpriseLeadWorkspaceInternalPage.Workflow;
   }
 
   return EnterpriseLeadWorkspaceInternalPage.KnowledgeBase;

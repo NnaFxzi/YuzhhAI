@@ -133,6 +133,7 @@ import type {
   CoworkRuntimeEvents,
   CoworkStartOptions,
   PermissionResult,
+  SubagentSessionSummary,
 } from './types';
 
 const OPENCLAW_GATEWAY_TOOL_EVENTS_CAP = 'tool-events';
@@ -2662,8 +2663,8 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
     return true;
   }
 
-  async getSubTaskHistory(parentSessionId: string, agentId: string, sessionKey?: string) {
-    return this.subagentTracker.getSubTaskHistory(parentSessionId, agentId, sessionKey);
+  async getSubTaskHistory(parentSessionId: string, runId: string, sessionKey?: string) {
+    return this.subagentTracker.getSubTaskHistory(parentSessionId, runId, sessionKey);
   }
 
   private emitContextMaintenance(sessionId: string, active: boolean): void {
@@ -9713,6 +9714,14 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
 
   listSubagentRuns(parentSessionId: string) {
     return this.subagentTracker.listSubagentRuns(parentSessionId);
+  }
+
+  getWorkflowTaskSubagentSession(
+    parentSessionId: string,
+    workflowRunId: string,
+    taskId: string,
+  ): SubagentSessionSummary | null {
+    return this.subagentTracker.getWorkflowTaskSubagentRun(parentSessionId, workflowRunId, taskId);
   }
 
   /**

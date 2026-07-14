@@ -332,6 +332,9 @@ export interface SubagentSessionSummary {
   status: 'running' | 'done' | 'error';
   createdAt: number;
   endedAt: number | null;
+  workflowRunId?: string;
+  taskId?: string;
+  role?: string;
 }
 
 // Start session options

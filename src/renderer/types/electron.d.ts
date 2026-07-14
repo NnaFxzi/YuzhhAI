@@ -47,6 +47,7 @@ import type {
   EnterpriseLeadExtractionSource,
   EnterpriseLeadIpcResult,
   EnterpriseLeadPendingVersion,
+  EnterpriseLeadWorkflowLiveEvent,
   EnterpriseLeadWorkspace,
   EnterpriseLeadWorkspaceAgentBinding,
   EnterpriseLeadWorkspaceAgentCalibrationRequest,
@@ -57,6 +58,7 @@ import type {
   EnterpriseLeadWorkspaceSettingsUpdate,
   EnterpriseLeadWorkspaceSnapshot,
 } from '../../shared/enterpriseLeadWorkspace/types';
+import type { WorkflowStartOptions } from '../../shared/enterpriseLeadWorkspace/workflowContracts';
 import type {
   HtmlShareAccessMode,
   HtmlShareConfigurableStatus,
@@ -752,6 +754,31 @@ interface IElectronAPI {
       workspaceId: string,
       runId: string,
     ) => Promise<EnterpriseLeadIpcResult<EnterpriseLeadWorkspaceSnapshot>>;
+    startWorkflow: (
+      workspaceId: string,
+      runId: string,
+      options: WorkflowStartOptions,
+    ) => Promise<EnterpriseLeadIpcResult<EnterpriseLeadWorkspaceSnapshot>>;
+    resumeWorkflow: (
+      workspaceId: string,
+      runId: string,
+    ) => Promise<EnterpriseLeadIpcResult<EnterpriseLeadWorkspaceSnapshot>>;
+    cancelWorkflow: (
+      workspaceId: string,
+      runId: string,
+    ) => Promise<EnterpriseLeadIpcResult<EnterpriseLeadWorkspaceSnapshot>>;
+    approveWorkflowTask: (
+      workspaceId: string,
+      runId: string,
+      taskId: string,
+    ) => Promise<EnterpriseLeadIpcResult<EnterpriseLeadWorkspaceSnapshot>>;
+    rejectWorkflowTask: (
+      workspaceId: string,
+      runId: string,
+      taskId: string,
+      feedback: string,
+    ) => Promise<EnterpriseLeadIpcResult<EnterpriseLeadWorkspaceSnapshot>>;
+    onEvent: (listener: (event: EnterpriseLeadWorkflowLiveEvent) => void) => () => void;
   };
   getApiConfig: () => Promise<CoworkApiConfig | null>;
   checkApiConfig: (options?: {
@@ -1031,7 +1058,7 @@ interface IElectronAPI {
     cancelMediaTask: (taskId: string) => Promise<{ success: boolean; message?: string }>;
     getSubTaskHistory: (options: {
       parentSessionId: string;
-      agentId: string;
+      runId: string;
       sessionKey?: string;
     }) => Promise<{
       success: boolean;
@@ -1062,7 +1089,31 @@ interface IElectronAPI {
         status: 'running' | 'done' | 'error';
         createdAt: number;
         endedAt: number | null;
+        workflowRunId?: string;
+        taskId?: string;
+        role?: string;
       }>;
+      error?: string;
+    }>;
+    getWorkflowTaskSubagentSession: (options: {
+      parentSessionId: string;
+      workflowRunId: string;
+      taskId: string;
+    }) => Promise<{
+      success: boolean;
+      run?: {
+        id: string;
+        agentId: string | null;
+        task: string | null;
+        label: string | null;
+        sessionKey: string | null;
+        status: 'running' | 'done' | 'error';
+        createdAt: number;
+        endedAt: number | null;
+        workflowRunId?: string;
+        taskId?: string;
+        role?: string;
+      } | null;
       error?: string;
     }>;
     deleteSubagentSession: (options: {

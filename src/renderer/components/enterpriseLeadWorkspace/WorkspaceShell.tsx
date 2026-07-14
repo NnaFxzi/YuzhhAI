@@ -71,6 +71,7 @@ const navIconById: Record<
   React.ComponentType<{ className?: string }>
 > = {
   dashboard: RectangleGroupIcon,
+  workflow: RectangleGroupIcon,
   chat: ChatBubbleLeftRightIcon,
   search: MagnifyingGlassIcon,
   knowledge: BookOpenIcon,

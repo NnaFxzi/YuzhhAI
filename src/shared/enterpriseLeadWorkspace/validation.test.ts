@@ -6,6 +6,7 @@ import {
   EnterpriseLeadAgentRole,
   EnterpriseLeadContentPlatformId,
   EnterpriseLeadRiskLevel,
+  EnterpriseLeadTaskStatus,
   EnterpriseLeadTodoKind,
   EnterpriseLeadWorkspaceAgentSource,
 } from './constants';
@@ -100,6 +101,20 @@ describe('enterprise lead workspace validation', () => {
     expect(result.summary).toBe('已识别产品和客户方向');
     expect(result.missingInfo).toEqual(['承重范围']);
     expect(result.todos[0].kind).toBe(EnterpriseLeadTodoKind.MissingInfo);
+  });
+
+  test('keeps the legacy completed default when an Agent task result omits status', () => {
+    const result = normalizeAgentTaskResultInput({
+      role: EnterpriseLeadAgentRole.ProductUnderstanding,
+      summary: '已识别产品和客户方向',
+      outputs: {},
+      missingInfo: [],
+      todos: [],
+      risks: [],
+      handoffContext: {},
+    });
+
+    expect(result.status).toBe(EnterpriseLeadTaskStatus.Completed);
   });
 
   test('high risk prevents archive without explicit confirmation', () => {
@@ -534,6 +549,7 @@ describe('enterprise lead workspace validation', () => {
           systemPrompt: 'Workspace prompt',
           icon: 'briefcase',
           model: 'deepseek/deepseek-chat',
+          skillIds: ['docx', 'web-search'],
         },
       },
     ]);
@@ -632,6 +648,7 @@ describe('enterprise lead workspace validation', () => {
           systemPrompt: '先抽取产品能力，再标记缺失信息',
           icon: '产',
           model: 'deepseek/deepseek-v4-pro',
+          skillIds: ['product-profile', 'source-check'],
         },
       },
     ]);

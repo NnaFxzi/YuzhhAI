@@ -118,7 +118,9 @@ export const buildCoworkWorkspaceAgentTeamPrompt = ({
     manualTarget
       ? 'Answer under the selected Agent responsibility while keeping Cowork tools and context available.'
       : 'Choose the most relevant Agent responsibility for the user request, or combine responsibilities when useful.',
-    'This is role and routing context inside one Cowork runtime turn. Do not claim separate Agents executed unless runtime events explicitly provide those results.',
+    'Auto/manual selection only routes the current Cowork turn; it does not start or represent an executed workflow.',
+    'For a complete promotion plan, bulk lead generation, or ongoing monitoring, recommend the workflow run page.',
+    'Do not claim other Agents executed unless a corresponding Workflow Event or an OpenClaw child-session event provides that result.',
     `Enabled Agents (${agents.length}):`,
     ...agents.flatMap(agent => buildAgentLines(agent, agent.id === manualTarget?.id)),
   ].filter(Boolean);

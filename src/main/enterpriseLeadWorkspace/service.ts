@@ -11,11 +11,26 @@ import {
   EnterpriseLeadRiskLevel,
   EnterpriseLeadRunStatus,
   EnterpriseLeadTaskStatus,
+  type EnterpriseLeadTaskStatus as EnterpriseLeadTaskStatusType,
   EnterpriseLeadTodoKind,
   EnterpriseLeadWorkspaceAgentCalibrationCheckId,
   EnterpriseLeadWorkspaceAgentSource,
   EnterpriseLeadWorkspaceType,
 } from '../../shared/enterpriseLeadWorkspace/constants';
+import {
+  getPromotionMonitoringMissingInfo,
+  getPromotionWorkflowArtifactKind,
+  normalizePromotionMonitoringScheduleContext,
+  PromotionMonitoringPresentation,
+  PromotionMonitoringReason,
+  type PromotionMonitoringScheduleContext,
+} from '../../shared/enterpriseLeadWorkspace/promotionContracts';
+import {
+  isPromotionTaskContext,
+  parsePromotionTaskResult,
+  type PromotionTaskResult,
+} from '../../shared/enterpriseLeadWorkspace/promotionTaskContracts';
+import { PROMOTION_WORKFLOW_GRAPH } from '../../shared/enterpriseLeadWorkspace/promotionWorkflowGraph';
 import type {
   EnterpriseLeadAgentTask,
   EnterpriseLeadAgentTaskResult,
@@ -27,6 +42,8 @@ import type {
   EnterpriseLeadTaskAgentRole,
   EnterpriseLeadTodo,
   EnterpriseLeadTodoInput,
+  EnterpriseLeadWorkflowEvent,
+  EnterpriseLeadWorkflowHistory,
   EnterpriseLeadWorkspace,
   EnterpriseLeadWorkspaceAgentBinding,
   EnterpriseLeadWorkspaceAgentCalibrationRequest,
@@ -43,6 +60,16 @@ import {
   normalizeAgentTaskResultInput,
   normalizeWorkspaceDraftInput,
 } from '../../shared/enterpriseLeadWorkspace/validation';
+import {
+  normalizeWorkflowReviewFeedback,
+  normalizeWorkflowStartOptions,
+  projectWorkflowEventForRenderer,
+  WORKFLOW_HISTORY_MAX_ENTRIES,
+  type WorkflowArtifactRef,
+  WorkflowExecutionMode,
+  type WorkflowStartOptions,
+  type WorkflowTaskExecutionContext,
+} from '../../shared/enterpriseLeadWorkspace/workflowContracts';
 import {
   KnowledgeFactDomain,
   type KnowledgeFactDomain as KnowledgeFactDomainValue,
@@ -84,7 +111,11 @@ import type { CreateEnterpriseLeadTaskInput, EnterpriseLeadWorkspaceStore } from
 import {
   buildDefaultEnterpriseLeadWorkspaceAgents,
   getEnterpriseLeadAgentMetadata,
+  PROMOTION_WORKFLOW_VERSION,
 } from './workflow';
+import { WorkflowArtifactStore } from './workflowArtifactStore';
+import { InlineWorkflowExecutionAdapter } from './workflowExecutionAdapter';
+import { EnterpriseLeadWorkflowOrchestrator } from './workflowOrchestrator';
 
 interface EnterpriseLeadWorkspaceServiceOptions {
   store: EnterpriseLeadWorkspaceStore;
@@ -114,6 +145,12 @@ export interface EnterpriseLeadWorkspaceAgentProvider {
   getAgent(agentId: string): EnterpriseLeadWorkspaceAgentTemplate | null;
 }
 
+export interface ScheduledPromotionMonitoringResult {
+  status: EnterpriseLeadTaskStatusType;
+  duplicate: boolean;
+  snapshot: EnterpriseLeadWorkspaceSnapshot;
+}
+
 interface ResolvedWorkspaceAgent {
   id: string;
   name: string;
@@ -123,6 +160,12 @@ interface ResolvedWorkspaceAgent {
   icon: string;
   model: string;
   skillIds: string[];
+}
+
+interface EnterpriseLeadTaskContext {
+  workspace: EnterpriseLeadWorkspace;
+  task: EnterpriseLeadAgentTask;
+  upstreamTasks: EnterpriseLeadAgentTask[];
 }
 
 interface WorkspaceExtractionProgressUpdate {
@@ -343,6 +386,12 @@ const getUpstreamTasks = (
   tasks: EnterpriseLeadAgentTask[],
   task: EnterpriseLeadAgentTask,
 ): EnterpriseLeadAgentTask[] => {
+  if (task.nodeId || (task.dependsOnTaskIds?.length ?? 0) > 0) {
+    const tasksById = new Map(tasks.map(candidate => [candidate.id, candidate]));
+    return (task.dependsOnTaskIds ?? [])
+      .map(taskId => tasksById.get(taskId))
+      .filter((candidate): candidate is EnterpriseLeadAgentTask => Boolean(candidate));
+  }
   const taskIndex = tasks.findIndex(item => item.id === task.id);
   if (taskIndex === -1) {
     return [];
@@ -350,6 +399,9 @@ const getUpstreamTasks = (
 
   return tasks.slice(0, taskIndex);
 };
+
+const dedupeWorkflowArtifactRefs = (artifactRefs: WorkflowArtifactRef[]): WorkflowArtifactRef[] =>
+  Array.from(new Map(artifactRefs.map(artifact => [artifact.id, artifact])).values());
 
 const getTaskTitle = (task: EnterpriseLeadAgentTask): string => {
   if (task.agentSnapshot?.name) {
@@ -417,6 +469,120 @@ const sanitizeTaskResult = (
     : EnterpriseLeadTaskStatus.NeedsInput,
 });
 
+const normalizeWorkflowPayload = (value: unknown): Record<string, unknown> => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('Promotion task outputs must be an object');
+  }
+  return Object.fromEntries(Object.entries(value));
+};
+
+const normalizePromotionTaskResult = (
+  result: PromotionTaskResult,
+): EnterpriseLeadAgentTaskResult => ({
+  ...result,
+  outputs: normalizeWorkflowPayload(result.outputs),
+});
+
+const getPerformanceReviewKnowledgeConfirmation = (
+  result: EnterpriseLeadAgentTaskResult,
+  task: EnterpriseLeadAgentTask,
+): EnterpriseLeadAgentTaskResult => {
+  if (task.role !== EnterpriseLeadAgentRole.PromotionPerformanceReview) return result;
+  if (result.status !== EnterpriseLeadTaskStatus.Completed) return result;
+  const proposedKnowledge = Array.isArray(result.outputs.proposedKnowledge)
+    ? result.outputs.proposedKnowledge.filter(
+        (item): item is string => typeof item === 'string' && item.trim().length > 0,
+      )
+    : [];
+  if (proposedKnowledge.length === 0) return result;
+  return {
+    ...result,
+    status: EnterpriseLeadTaskStatus.AwaitingApproval,
+  };
+};
+
+type LegacyApprovalTaskStatus = Extract<
+  EnterpriseLeadTaskStatusType,
+  typeof EnterpriseLeadTaskStatus.Completed | typeof EnterpriseLeadTaskStatus.Stale
+>;
+
+const buildPromotionContractNeedsInputResult = (
+  task: EnterpriseLeadAgentTask,
+  modelResult: unknown,
+): EnterpriseLeadAgentTaskResult => {
+  try {
+    const result = normalizeAgentTaskResultInput(modelResult);
+    return {
+      ...result,
+      role: task.role,
+      status: EnterpriseLeadTaskStatus.NeedsInput,
+      outputs: {},
+      artifactRefs: [],
+    };
+  } catch {
+    return {
+      role: task.role,
+      status: EnterpriseLeadTaskStatus.NeedsInput,
+      summary: task.summary,
+      outputs: {},
+      artifactRefs: [],
+      missingInfo: [],
+      todos: [],
+      risks: [],
+      handoffContext: {},
+    };
+  }
+};
+
+const normalizeLiveTaskResult = (
+  modelResult: unknown,
+  task: EnterpriseLeadAgentTask,
+  upstreamTasks: EnterpriseLeadAgentTask[],
+): EnterpriseLeadAgentTaskResult => {
+  if (!isPromotionTaskContext(task.role, upstreamTasks.map(upstream => upstream.role))) {
+    return normalizeAgentTaskResultInput(modelResult);
+  }
+
+  try {
+    return normalizePromotionTaskResult(parsePromotionTaskResult(task.role, modelResult));
+  } catch {
+    return buildPromotionContractNeedsInputResult(task, modelResult);
+  }
+};
+
+const normalizePendingVersionTaskResult = (
+  pendingVersion: EnterpriseLeadPendingVersion,
+  task: EnterpriseLeadAgentTask,
+  upstreamTasks: EnterpriseLeadAgentTask[],
+): EnterpriseLeadAgentTaskResult => {
+  const artifactRefs = pendingVersion.artifactRefs ?? task.artifactRefs ?? [];
+  const promotion = isPromotionTaskContext(task.role, upstreamTasks.map(upstream => upstream.role));
+  const result = normalizeLiveTaskResult(
+    {
+      role: pendingVersion.role,
+      status: pendingVersion.taskStatus ?? EnterpriseLeadTaskStatus.Completed,
+      summary: pendingVersion.summary,
+      outputs: promotion
+        ? {
+            ...pendingVersion.outputPayload,
+            artifactRefs,
+          }
+        : pendingVersion.outputPayload,
+      missingInfo: pendingVersion.missingInfo,
+      todos: pendingVersion.todos,
+      risks: pendingVersion.risks,
+      handoffContext: pendingVersion.handoffContext,
+    },
+    task,
+    upstreamTasks,
+  );
+
+  return {
+    ...result,
+    artifactRefs: result.artifactRefs ?? artifactRefs,
+  };
+};
+
 const resolveWorkspaceApiConfig = (workspace: EnterpriseLeadWorkspace) =>
   resolveRawApiConfigFromAppConfig({
     model: {
@@ -471,6 +637,12 @@ export class EnterpriseLeadWorkspaceService {
 
   private readonly onTrustedRefreshCommitted?: (workspaceId: string) => void;
 
+  private readonly workflowOrchestrator: EnterpriseLeadWorkflowOrchestrator;
+
+  private readonly workflowArtifactStore: WorkflowArtifactStore;
+
+  private readonly workflowExecutionAdapter: InlineWorkflowExecutionAdapter;
+
   private documentProcessingQueue: Promise<void> = Promise.resolve();
 
   private readonly activeModelWork = new Set<Promise<unknown>>();
@@ -494,6 +666,32 @@ export class EnterpriseLeadWorkspaceService {
     );
     this.prepareWorkspaceDeletion = options.prepareWorkspaceDeletion;
     this.onTrustedRefreshCommitted = options.onTrustedRefreshCommitted;
+
+    this.workflowArtifactStore = new WorkflowArtifactStore(this.store.getDatabase());
+    this.workflowExecutionAdapter = new InlineWorkflowExecutionAdapter({
+      modelClient: this.modelClient,
+      resolvePromptContext: async context => {
+        const taskContext = this.getTaskContext(context.taskId);
+        return {
+          workspace: taskContext.workspace,
+          task: taskContext.task,
+          executionContext: context,
+          inputArtifacts: context.inputArtifacts,
+        };
+      },
+    });
+    this.workflowOrchestrator = new EnterpriseLeadWorkflowOrchestrator({
+      store: this.store,
+      artifactStore: this.workflowArtifactStore,
+      executionAdapter: this.workflowExecutionAdapter,
+      buildWorkflowTasks: (workspaceId, startOptions) => {
+        const workspace = this.store.getWorkspace(workspaceId);
+        if (!workspace) {
+          throw new Error('Enterprise lead workspace not found');
+        }
+        return this.resolvePromotionRunTasks(workspace, startOptions);
+      },
+    });
   }
 
   listWorkspaces(): EnterpriseLeadWorkspace[] {
@@ -1139,13 +1337,19 @@ export class EnterpriseLeadWorkspaceService {
     if (!workspace) {
       throw new Error('Enterprise lead workspace not found');
     }
-    const dynamicTasks = this.resolveRunTasksForWorkspace(workspace);
     const run =
-      dynamicTasks.length > 0
+      this.isPromotionWorkflowWorkspace(workspace)
         ? this.store.createRun({
             workspaceId,
             userGoal,
-            tasks: dynamicTasks,
+            workflowVersion: PROMOTION_WORKFLOW_VERSION,
+            tasks: this.resolvePromotionRunTasks(workspace),
+          })
+        : this.resolveRunTasksForWorkspace(workspace).length > 0
+        ? this.store.createRun({
+            workspaceId,
+            userGoal,
+            tasks: this.resolveRunTasksForWorkspace(workspace),
           })
         : this.store.createRun({
             workspaceId,
@@ -1153,21 +1357,158 @@ export class EnterpriseLeadWorkspaceService {
             roles: this.resolveLegacyRunRoles(workspace),
           });
 
+    if (run.workflowVersion) {
+      this.workflowArtifactStore.appendEvent({ runId: run.id, type: 'run_started' });
+    }
+
     return this.getSnapshot(workspaceId, run.id);
+  }
+
+  async runScheduledPromotionMonitoring(
+    input: PromotionMonitoringScheduleContext,
+  ): Promise<ScheduledPromotionMonitoringResult> {
+    const run = this.getRunForWorkspace(input.workspaceId, input.runId);
+    const monitoringTask = this.store
+      .listTasks(run.id)
+      .find(task => task.role === EnterpriseLeadAgentRole.PromotionAccountMonitoring);
+    const reviewTask = this.store
+      .listTasks(run.id)
+      .find(task => task.role === EnterpriseLeadAgentRole.PromotionPerformanceReview);
+    if (!monitoringTask || !reviewTask) {
+      throw new Error('Promotion monitoring and performance review tasks are required');
+    }
+
+    const normalizedSchedule = normalizePromotionMonitoringScheduleContext(input);
+    const normalizedContext = normalizedSchedule.context;
+    const missingInfo = [
+      ...normalizedSchedule.reasons,
+      ...(normalizedContext
+        ? getPromotionMonitoringMissingInfo(normalizedContext.metricSource, normalizedContext.window)
+        : []),
+    ];
+    if (!normalizedContext?.idempotencyKey) missingInfo.push(PromotionMonitoringReason.IdempotencyKey);
+    if (!normalizedContext?.workspaceId || normalizedContext.workspaceId !== run.workspaceId) {
+      missingInfo.push(PromotionMonitoringReason.Workspace);
+    }
+    if (!normalizedContext?.runId || normalizedContext.runId !== run.id) {
+      missingInfo.push(PromotionMonitoringReason.Run);
+    }
+    const monitoringAgentId =
+      monitoringTask.workspaceAgentId ??
+      monitoringTask.agentSnapshot?.agentId ??
+      EnterpriseLeadAgentRole.PromotionAccountMonitoring;
+    if (!normalizedContext?.agentId || normalizedContext.agentId !== monitoringAgentId) {
+      missingInfo.push(PromotionMonitoringReason.MonitoringAgent);
+    }
+
+    if (missingInfo.length > 0) {
+      this.store.updateWorkflowTaskResult(
+        monitoringTask.id,
+        {
+          role: monitoringTask.role,
+          status: EnterpriseLeadTaskStatus.NeedsInput,
+          summary: PromotionMonitoringPresentation.NeedsVerifiedInput,
+          outputs: monitoringTask.outputPayload,
+          artifactRefs: monitoringTask.artifactRefs,
+          missingInfo: Array.from(new Set(missingInfo)),
+          todos: monitoringTask.todos,
+          risks: monitoringTask.risks,
+          handoffContext: monitoringTask.handoffContext,
+        },
+        monitoringTask.attempt ?? 0,
+      );
+      this.store.updateRunProgress({
+        runId: run.id,
+        status: EnterpriseLeadRunStatus.NeedsInput,
+        currentRole: monitoringTask.role,
+        controllerSummary: PromotionMonitoringPresentation.ReviewBlocked,
+      });
+      return {
+        status: EnterpriseLeadTaskStatus.NeedsInput,
+        duplicate: false,
+        snapshot: this.getSnapshot(input.workspaceId, run.id),
+      };
+    }
+
+    const claimed = this.store.claimPromotionMonitoringWindow({
+      runId: run.id,
+      taskId: monitoringTask.id,
+      windowStart: normalizedContext.window.start,
+      windowEnd: normalizedContext.window.end,
+    });
+    if (!claimed) {
+      return {
+        status: EnterpriseLeadTaskStatus.Completed,
+        duplicate: true,
+        snapshot: this.getSnapshot(input.workspaceId, run.id),
+      };
+    }
+
+    this.store.updateWorkflowTaskInputPayload(monitoringTask.id, {
+      ...monitoringTask.inputPayload,
+      scheduledPromotionMonitoring: normalizedContext,
+    });
+    const completedMonitoring = await this.runTask(monitoringTask.id);
+    if (completedMonitoring.status !== EnterpriseLeadTaskStatus.Completed) {
+      return {
+        status: completedMonitoring.status,
+        duplicate: false,
+        snapshot: this.getSnapshot(input.workspaceId, run.id),
+      };
+    }
+
+    try {
+      const completedReview = await this.runTask(reviewTask.id);
+      return {
+        status: completedReview.status,
+        duplicate: false,
+        snapshot: this.getSnapshot(input.workspaceId, run.id),
+      };
+    } catch {
+      return {
+        status: EnterpriseLeadTaskStatus.Error,
+        duplicate: false,
+        snapshot: this.getSnapshot(input.workspaceId, run.id),
+      };
+    }
   }
 
   runTask(taskId: string): Promise<EnterpriseLeadAgentTask> {
     return this.trackModelWork(async () => {
       const taskContext = this.getTaskContext(taskId);
+      const run = this.store.getRun(taskContext.task.runId);
+      if (!run) {
+        throw new Error('Enterprise lead workspace not found for task');
+      }
+      if (this.isPromotionWorkflowRun(run)) {
+        return this.runPromotionTask(taskContext);
+      }
       const taskModel = taskContext.task.agentSnapshot?.model.trim();
       const result = await this.modelClient.generate({
-        prompt: buildAgentTaskPrompt(taskContext),
+        prompt: buildAgentTaskPrompt({
+          workspace: taskContext.workspace,
+          task: taskContext.task,
+          executionContext: {
+            runId: run.id,
+            taskId: taskContext.task.id,
+            role: taskContext.task.role,
+            userGoal: run.userGoal,
+            inputArtifacts: [],
+            acceptanceCriteria: [],
+            executionMode: taskContext.task.executionMode ?? WorkflowExecutionMode.Inline,
+          },
+          inputArtifacts: [],
+        }),
         apiConfig: resolveWorkspaceApiConfig(taskContext.workspace),
         ...(taskModel ? { model: taskModel } : {}),
       });
       this.ensureOpenForModelCall();
       const normalizedResult = sanitizeTaskResult(
-        normalizeAgentTaskResultInput(parseModelJsonObject(result.text)),
+        normalizeLiveTaskResult(
+          parseModelJsonObject(result.text),
+          taskContext.task,
+          taskContext.upstreamTasks,
+        ),
         taskContext.task,
       );
 
@@ -1182,13 +1523,40 @@ export class EnterpriseLeadWorkspaceService {
   }
 
   async rerunTask(taskId: string): Promise<EnterpriseLeadAgentTask> {
+    const task = this.store.getTask(taskId);
+    if (!task) {
+      throw new Error('Enterprise lead Agent task not found');
+    }
+    const run = this.store.getRun(task.runId);
+    if (run && this.isPromotionWorkflowRun(run)) {
+      this.store.markWorkflowDownstreamTasksStale(taskId);
+    }
     return this.runTask(taskId);
   }
 
   runWorkflow(workspaceId: string, runId: string): Promise<EnterpriseLeadWorkspaceSnapshot> {
     return this.trackModelWork(async () => {
       const run = this.getRunForWorkspace(workspaceId, runId);
-      const tasks = this.store.listTasks(run.id);
+      let tasks = this.store.listTasks(run.id);
+
+      if (tasks.length === 0) {
+        const workspace = this.store.getWorkspace(workspaceId);
+        if (workspace && this.isPromotionWorkflowWorkspace(workspace)) {
+          this.store.initializeWorkflowRun(
+            run.id,
+            this.resolvePromotionRunTasks(workspace),
+            normalizeWorkflowStartOptions(),
+            PROMOTION_WORKFLOW_VERSION,
+          );
+          tasks = this.store.listTasks(run.id);
+        }
+      }
+
+      const refreshedRun = this.store.getRun(run.id) ?? run;
+      if (this.isPromotionWorkflowRun(refreshedRun)) {
+        await this.workflowOrchestrator.resumeRun(workspaceId, run.id);
+        return this.getSnapshot(workspaceId, run.id);
+      }
 
       for (const task of tasks) {
         if (task.status === EnterpriseLeadTaskStatus.Completed && !task.stale) {
@@ -1229,6 +1597,333 @@ export class EnterpriseLeadWorkspaceService {
     });
   }
 
+  async startWorkflow(
+    workspaceId: string,
+    runId: string,
+    options: WorkflowStartOptions,
+  ): Promise<EnterpriseLeadWorkspaceSnapshot> {
+    const run = this.getRunForWorkspace(workspaceId, runId);
+    const workspace = this.store.getWorkspace(workspaceId);
+    if (!workspace) {
+      throw new Error('Enterprise lead workspace not found');
+    }
+    if (this.isPromotionWorkflowWorkspace(workspace) || this.isPromotionWorkflowRun(run)) {
+      return this.workflowOrchestrator.startRun(workspaceId, run.id, options);
+    }
+    return this.runWorkflow(workspaceId, run.id);
+  }
+
+  markRunError(
+    workspaceId: string,
+    runId: string,
+    error: string,
+  ): EnterpriseLeadWorkspaceSnapshot {
+    return this.markRunErrorOnce(workspaceId, runId, error).snapshot;
+  }
+
+  markRunErrorOnce(
+    workspaceId: string,
+    runId: string,
+    error: string,
+  ): {
+    transitioned: boolean;
+    event?: EnterpriseLeadWorkflowEvent;
+    snapshot: EnterpriseLeadWorkspaceSnapshot;
+  } {
+    const run = this.getRunForWorkspace(workspaceId, runId);
+    if (run.status === EnterpriseLeadRunStatus.Archived || run.archiveStatus === 'archived') {
+      throw new Error('Enterprise lead run is archived');
+    }
+    const result = this.workflowArtifactStore.markRunErrorOnce(run.id, error);
+    return {
+      ...result,
+      snapshot: this.getSnapshot(workspaceId, run.id),
+    };
+  }
+
+  async resumeRun(workspaceId: string, runId: string): Promise<EnterpriseLeadWorkspaceSnapshot> {
+    const run = this.getRunForWorkspace(workspaceId, runId);
+    if (
+      run.status === EnterpriseLeadRunStatus.Completed ||
+      run.status === EnterpriseLeadRunStatus.Cancelled
+    ) {
+      return this.getSnapshot(workspaceId, run.id);
+    }
+    if (this.isPromotionWorkflowRun(run)) {
+      await this.workflowOrchestrator.resumeRun(workspaceId, run.id);
+      return this.getSnapshot(workspaceId, run.id);
+    }
+    if (run.status === EnterpriseLeadRunStatus.Error) {
+      return this.getSnapshot(workspaceId, run.id);
+    }
+    return this.runWorkflow(workspaceId, run.id);
+  }
+
+  async cancelRun(workspaceId: string, runId: string): Promise<EnterpriseLeadWorkspaceSnapshot> {
+    const run = this.getRunForWorkspace(workspaceId, runId);
+    if (this.isPromotionWorkflowRun(run)) {
+      await this.workflowOrchestrator.cancelRun(workspaceId, run.id);
+    } else {
+      this.store.cancelWorkflowRun(run.id);
+    }
+    return this.getSnapshot(workspaceId, run.id);
+  }
+
+  async approveTask(
+    workspaceId: string,
+    runId: string,
+    taskId: string,
+  ): Promise<EnterpriseLeadWorkspaceSnapshot> {
+    const run = this.getRunForWorkspace(workspaceId, runId);
+    if (this.isPromotionWorkflowRun(run)) {
+      this.persistApprovedPromotionReviewKnowledge(workspaceId, run.id, taskId);
+      await this.workflowOrchestrator.approveTask(workspaceId, run.id, taskId);
+      return this.getSnapshot(workspaceId, run.id);
+    }
+    this.updateLegacyApprovalTask(run.id, taskId, EnterpriseLeadTaskStatus.Completed);
+    return this.getSnapshot(workspaceId, run.id);
+  }
+
+  async rejectTask(
+    workspaceId: string,
+    runId: string,
+    taskId: string,
+    feedback: string,
+  ): Promise<EnterpriseLeadWorkspaceSnapshot> {
+    const run = this.getRunForWorkspace(workspaceId, runId);
+    const normalizedFeedback = normalizeWorkflowReviewFeedback(feedback);
+    if (!normalizedFeedback) {
+      throw new Error('Workflow review feedback is required and must be within the allowed length');
+    }
+    if (this.isPromotionWorkflowRun(run)) {
+      await this.workflowOrchestrator.rejectTask(workspaceId, run.id, taskId, normalizedFeedback);
+      return this.getSnapshot(workspaceId, run.id);
+    }
+    this.updateLegacyApprovalTask(run.id, taskId, EnterpriseLeadTaskStatus.Stale);
+    return this.getSnapshot(workspaceId, run.id);
+  }
+
+  private async runPromotionTask(
+    taskContext: EnterpriseLeadTaskContext,
+  ): Promise<EnterpriseLeadAgentTask> {
+    if (
+      taskContext.upstreamTasks.some(
+        task => task.status !== EnterpriseLeadTaskStatus.Completed || task.stale,
+      )
+    ) {
+      throw new Error('Workflow task dependencies are not completed');
+    }
+    const run = this.store.getRun(taskContext.task.runId);
+    if (!run) {
+      throw new Error('Enterprise lead workspace not found for task');
+    }
+    if (taskContext.task.role === EnterpriseLeadAgentRole.PromotionAccountMonitoring) {
+      const monitoringSchedule = normalizePromotionMonitoringScheduleContext(
+        taskContext.task.inputPayload.scheduledPromotionMonitoring,
+      );
+      const monitoringContext = monitoringSchedule.context;
+      const missingInfo = monitoringContext
+        ? [
+            ...monitoringSchedule.reasons,
+            ...getPromotionMonitoringMissingInfo(monitoringContext.metricSource, monitoringContext.window),
+          ]
+        : [
+            ...monitoringSchedule.reasons,
+            PromotionMonitoringReason.MetricPlatform,
+            PromotionMonitoringReason.MetricSource,
+            PromotionMonitoringReason.MetricPeriod,
+          ];
+      if (missingInfo.length > 0) {
+        this.store.updateWorkflowTaskResult(
+          taskContext.task.id,
+          {
+            role: taskContext.task.role,
+            status: EnterpriseLeadTaskStatus.NeedsInput,
+            summary: PromotionMonitoringPresentation.NeedsVerifiedInput,
+            outputs: taskContext.task.outputPayload,
+            artifactRefs: taskContext.task.artifactRefs,
+            missingInfo: Array.from(new Set(missingInfo)),
+            todos: taskContext.task.todos,
+            risks: taskContext.task.risks,
+            handoffContext: taskContext.task.handoffContext,
+          },
+          (taskContext.task.attempt ?? 0) + 1,
+        );
+        const blockedTask = this.store.getTask(taskContext.task.id);
+        if (!blockedTask) {
+          throw new Error('Enterprise lead monitoring task disappeared after validation');
+        }
+        return blockedTask;
+      }
+    }
+    const inputArtifacts = dedupeWorkflowArtifactRefs([
+      ...(taskContext.task.artifactRefs ?? []),
+      ...taskContext.upstreamTasks.flatMap(task => task.artifactRefs ?? []),
+    ]);
+    const executionContext: WorkflowTaskExecutionContext = {
+      runId: run.id,
+      taskId: taskContext.task.id,
+      role: taskContext.task.role,
+      userGoal: run.userGoal,
+      inputArtifacts,
+      acceptanceCriteria: [],
+      executionMode: taskContext.task.executionMode ?? WorkflowExecutionMode.Inline,
+    };
+    const result = getPerformanceReviewKnowledgeConfirmation(
+      normalizePromotionTaskResult(await this.workflowExecutionAdapter.execute(executionContext)),
+      taskContext.task,
+    );
+    const invalidArtifactRefs = this.getInvalidTaskArtifactRefs(
+      result.artifactRefs,
+      inputArtifacts,
+      run.id,
+      taskContext.task.id,
+    );
+    const safeResult = invalidArtifactRefs.length > 0
+      ? {
+          ...result,
+          status: EnterpriseLeadTaskStatus.NeedsInput,
+          artifactRefs: [],
+          missingInfo: Array.from(new Set([...result.missingInfo, 'verified workflow artifacts'])),
+        }
+      : result;
+    if (safeResult.status !== EnterpriseLeadTaskStatus.Completed && safeResult.status !== EnterpriseLeadTaskStatus.AwaitingApproval) {
+      if (
+        taskContext.task.role === EnterpriseLeadAgentRole.PromotionPerformanceReview &&
+        (taskContext.task.status === EnterpriseLeadTaskStatus.Completed ||
+          taskContext.task.status === EnterpriseLeadTaskStatus.AwaitingApproval)
+      ) {
+        return {
+          ...taskContext.task,
+          status: safeResult.status as EnterpriseLeadTaskStatusType,
+        };
+      }
+      this.store.updateWorkflowTaskResult(
+        taskContext.task.id,
+        {
+          ...safeResult,
+          artifactRefs: dedupeWorkflowArtifactRefs([
+            ...inputArtifacts,
+            ...(taskContext.task.artifactRefs ?? []),
+          ]),
+        },
+        (taskContext.task.attempt ?? 0) + 1,
+      );
+      const failedTask = this.store.getTask(taskContext.task.id);
+      if (!failedTask) throw new Error('Enterprise lead Agent task disappeared after validation');
+      return failedTask;
+    }
+    const artifact = this.workflowArtifactStore.createArtifactIfRunActive({
+      runId: run.id,
+      taskId: taskContext.task.id,
+      kind: getPromotionWorkflowArtifactKind(taskContext.task.role),
+      schemaVersion: 1,
+      payload: {
+        ...safeResult.outputs,
+        ...(taskContext.task.role === EnterpriseLeadAgentRole.PromotionAccountMonitoring
+          ? { scheduledPromotionMonitoring: taskContext.task.inputPayload.scheduledPromotionMonitoring }
+          : {}),
+      },
+      evidenceIds: safeResult.artifactRefs.flatMap(artifactRef => artifactRef.evidenceIds),
+    });
+    const outputArtifact: WorkflowArtifactRef = {
+      id: artifact.id,
+      kind: artifact.kind,
+      schemaVersion: artifact.schemaVersion,
+      summary: safeResult.summary,
+      producerTaskId: taskContext.task.id,
+      evidenceIds: artifact.evidenceIds,
+    };
+    this.store.updateWorkflowTaskResult(
+      taskContext.task.id,
+      {
+        ...safeResult,
+        artifactRefs: dedupeWorkflowArtifactRefs([
+          ...inputArtifacts,
+          ...(taskContext.task.artifactRefs ?? []),
+          ...safeResult.artifactRefs,
+          outputArtifact,
+        ]),
+      },
+      (taskContext.task.attempt ?? 0) + 1,
+    );
+    const updatedTask = this.store.getTask(taskContext.task.id);
+    if (!updatedTask) {
+      throw new Error('Enterprise lead Agent task disappeared after update');
+    }
+    return updatedTask;
+  }
+
+  private getInvalidTaskArtifactRefs(
+    artifactRefs: WorkflowArtifactRef[],
+    inputArtifacts: WorkflowArtifactRef[],
+    runId: string,
+    taskId: string,
+  ): string[] {
+    const allowedRefIds = new Set(inputArtifacts.map(artifact => artifact.id));
+    return artifactRefs.flatMap(ref => {
+      const artifact = this.workflowArtifactStore.getArtifact(ref.id);
+      if (
+        !artifact ||
+        artifact.runId !== runId ||
+        artifact.taskId !== ref.producerTaskId ||
+        artifact.kind !== ref.kind ||
+        !allowedRefIds.has(ref.id) ||
+        artifact.taskId === taskId
+      ) {
+        return [ref.id];
+      }
+      return [];
+    });
+  }
+
+  private persistApprovedPromotionReviewKnowledge(
+    workspaceId: string,
+    runId: string,
+    taskId: string,
+  ): void {
+    const task = this.store.getTask(taskId);
+    if (
+      !task ||
+      task.runId !== runId ||
+      task.role !== EnterpriseLeadAgentRole.PromotionPerformanceReview ||
+      task.status !== EnterpriseLeadTaskStatus.AwaitingApproval
+    ) {
+      return;
+    }
+    const proposedKnowledge = Array.isArray(task.outputPayload.proposedKnowledge)
+      ? task.outputPayload.proposedKnowledge.filter(
+          (item): item is string => typeof item === 'string' && item.trim().length > 0,
+        )
+      : [];
+    if (proposedKnowledge.length === 0) return;
+    const workspace = this.store.getWorkspace(workspaceId);
+    if (!workspace) throw new Error('Enterprise lead workspace not found');
+    const sourceId = `promotion-review:${runId}:${taskId}`;
+    if (workspace.extractionSources.some(source => source.id === sourceId)) return;
+    this.updateWorkspaceSources(workspaceId, [
+      ...workspace.extractionSources,
+      {
+        id: sourceId,
+        kind: EnterpriseLeadExtractionSourceKind.Manual,
+        label: task.summary || task.id,
+        text: proposedKnowledge.join('\n'),
+      },
+    ]);
+  }
+
+  private updateLegacyApprovalTask(
+    runId: string,
+    taskId: string,
+    status: LegacyApprovalTaskStatus,
+  ): void {
+    const task = this.store.getTask(taskId);
+    if (!task || task.runId !== runId || task.status !== EnterpriseLeadTaskStatus.AwaitingApproval) {
+      throw new Error('Enterprise lead workflow task is not awaiting approval');
+    }
+    this.store.updateWorkflowTaskStatus(task.id, status);
+  }
+
   createPendingVersionFromChat(
     taskId: string,
     userMessage: string,
@@ -1246,7 +1941,11 @@ export class EnterpriseLeadWorkspaceService {
       });
       this.ensureOpenForModelCall();
       const normalizedResult = sanitizeTaskResult(
-        normalizeAgentTaskResultInput(parseModelJsonObject(result.text)),
+        normalizeLiveTaskResult(
+          parseModelJsonObject(result.text),
+          taskContext.task,
+          taskContext.upstreamTasks,
+        ),
         taskContext.task,
       );
 
@@ -1254,7 +1953,9 @@ export class EnterpriseLeadWorkspaceService {
         taskId,
         userMessage,
         summary: normalizedResult.summary,
+        taskStatus: normalizedResult.status as EnterpriseLeadTaskStatus,
         outputPayload: normalizedResult.outputs,
+        artifactRefs: normalizedResult.artifactRefs ?? taskContext.task.artifactRefs ?? [],
         missingInfo: normalizedResult.missingInfo,
         todos: normalizedResult.todos,
         risks: normalizedResult.risks,
@@ -1264,8 +1965,21 @@ export class EnterpriseLeadWorkspaceService {
   }
 
   applyPendingVersion(pendingVersionId: string): EnterpriseLeadWorkspaceSnapshot {
-    const pendingVersion = this.store.applyPendingVersion(pendingVersionId);
-    return this.getSnapshot(pendingVersion.workspaceId, pendingVersion.runId);
+    const pendingVersion = this.store.getPendingVersion(pendingVersionId);
+    if (!pendingVersion) {
+      throw new Error('Enterprise lead pending version not found');
+    }
+    const taskContext = this.getTaskContext(pendingVersion.taskId);
+    const taskResult = sanitizeTaskResult(
+      normalizePendingVersionTaskResult(
+        pendingVersion,
+        taskContext.task,
+        taskContext.upstreamTasks,
+      ),
+      taskContext.task,
+    );
+    const appliedPendingVersion = this.store.applyPendingVersion(pendingVersionId, taskResult);
+    return this.getSnapshot(appliedPendingVersion.workspaceId, appliedPendingVersion.runId);
   }
 
   archiveRun(workspaceId: string, runId: string): EnterpriseLeadWorkspaceSnapshot {
@@ -1296,11 +2010,70 @@ export class EnterpriseLeadWorkspaceService {
       deliverables: currentRun ? this.deriveDeliverables(workspace, currentRun, tasks) : [],
       todos: currentRun ? this.deriveTodos(workspace, currentRun, tasks) : [],
       archives: this.deriveArchives(workspace),
+      ...(currentRun ? { workflowHistory: this.getWorkflowHistory(currentRun.id) } : {}),
     };
+  }
+
+  private getWorkflowHistory(runId: string): EnterpriseLeadWorkflowHistory {
+    const events = this.workflowArtifactStore.listRecentEvents(runId, WORKFLOW_HISTORY_MAX_ENTRIES)
+      .map(event => {
+        const projectedEvent = projectWorkflowEventForRenderer(event);
+        return {
+          id: event.id ?? '',
+          ...projectedEvent,
+        };
+      });
+    const attempts = this.workflowArtifactStore.listRecentRunAttempts(runId, WORKFLOW_HISTORY_MAX_ENTRIES)
+      .map(attempt => ({
+        id: attempt.id,
+        taskId: attempt.taskId,
+        attempt: attempt.attempt,
+        executionMode: attempt.executionMode,
+        status: attempt.status,
+        startedAt: attempt.startedAt,
+        endedAt: attempt.endedAt,
+      }));
+
+    return { events, attempts };
   }
 
   private resolveLegacyRunRoles(workspace: EnterpriseLeadWorkspace): EnterpriseLeadAgentRole[] {
     return workspace.enabledAgentRoles.filter(isEnterpriseLeadAgentRole);
+  }
+
+  private isPromotionWorkflowWorkspace(workspace: EnterpriseLeadWorkspace): boolean {
+    const configuredRoles =
+      workspace.workspaceAgents.length > 0
+        ? workspace.workspaceAgents.filter(agent => agent.enabled).map(agent => agent.agentId)
+        : workspace.enabledAgentRoles;
+    return configuredRoles.includes(EnterpriseLeadAgentRole.PromotionController);
+  }
+
+  private isPromotionWorkflowRun(run: EnterpriseLeadRun): boolean {
+    return Boolean(run.workflowVersion);
+  }
+
+  private resolvePromotionRunTasks(
+    workspace: EnterpriseLeadWorkspace,
+    startOptions = normalizeWorkflowStartOptions(),
+  ): CreateEnterpriseLeadTaskInput[] {
+    const agentsById = new Map(
+      this.resolveEffectiveWorkspaceAgents(workspace).map(agent => [agent.id, agent]),
+    );
+    const enabledOptionalNodes = new Set(startOptions.enabledOptionalNodes);
+    return PROMOTION_WORKFLOW_GRAPH
+      .filter(node => !node.optional || Boolean(node.enableWhen && enabledOptionalNodes.has(node.enableWhen)))
+      .map(node => {
+        const agent = agentsById.get(node.role);
+        return {
+          role: node.role,
+          nodeId: node.role,
+          dependsOnTaskIds: [...node.dependsOn],
+          executionMode: node.executionMode,
+          workspaceAgentId: agent?.id ?? null,
+          agentSnapshot: agent ? this.toRunAgentSnapshot(agent) : null,
+        };
+      });
   }
 
   private resolveRunTasksForWorkspace(
@@ -1344,7 +2117,9 @@ export class EnterpriseLeadWorkspaceService {
         agent
           ? {
               ...agent,
-              skillIds: [...workspace.settings.skillIds],
+              skillIds: Array.from(
+                new Set([...workspace.settings.skillIds, ...agent.skillIds]),
+              ),
             }
           : agent,
       )

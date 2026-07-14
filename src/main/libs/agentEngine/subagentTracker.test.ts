@@ -19,6 +19,10 @@ const setupDb = (): void => {
       agent_id TEXT,
       task TEXT,
       label TEXT,
+      workflow_run_id TEXT,
+      enterprise_task_id TEXT,
+      workspace_agent_id TEXT,
+      role TEXT,
       status TEXT NOT NULL DEFAULT 'running',
       created_at INTEGER NOT NULL,
       ended_at INTEGER,
@@ -225,4 +229,100 @@ test('deleted subagent run is not reinserted by late spawn results', async () =>
 
   expect(deleted).toBe(true);
   expect(runStore.getSubagentRun('run-1')).toBeNull();
+});
+
+test('persists workflow metadata from sessions_spawn lobsterai arguments', () => {
+  const tracker = new SubagentTracker(runStore, messageStore, () => null);
+
+  tracker.onToolStart('spawn-1', {
+    agentId: 'promotion_data_scraping',
+    task: '抓取本周机械设备客户线索',
+    label: '数据抓取 Agent',
+    lobsterai: {
+      workflowRunId: 'run-1',
+      taskId: 'task-1',
+      role: 'promotion_data_scraping',
+    },
+  }, 'parent-1');
+  tracker.onSpawnResult('spawn-1', JSON.stringify({
+    childSessionKey: 'agent:main:subagent:spawn-1',
+    status: 'running',
+  }), {});
+
+  expect(runStore.getSubagentRun('spawn-1')).toMatchObject({
+    workflowRunId: 'run-1',
+    taskId: 'task-1',
+    workspaceAgentId: 'promotion_data_scraping',
+    role: 'promotion_data_scraping',
+  });
+  expect(tracker.listSubagentRuns('parent-1')).toEqual([
+    expect.objectContaining({
+      id: 'spawn-1',
+      workflowRunId: 'run-1',
+      taskId: 'task-1',
+      role: 'promotion_data_scraping',
+    }),
+  ]);
+});
+
+test('keeps sessions_spawn runs without workflow metadata backwards compatible', () => {
+  const tracker = new SubagentTracker(runStore, messageStore, () => null);
+
+  tracker.onToolStart('spawn-legacy', {
+    agentId: 'worker',
+    task: 'inspect files',
+    label: 'worker',
+  }, 'parent-1');
+  tracker.onSpawnResult('spawn-legacy', JSON.stringify({
+    childSessionKey: 'agent:main:subagent:spawn-legacy',
+    status: 'running',
+  }), {});
+
+  const [summary] = tracker.listSubagentRuns('parent-1');
+  expect(summary).toMatchObject({
+    id: 'spawn-legacy',
+    agentId: 'worker',
+  });
+  expect(summary).not.toHaveProperty('workflowRunId');
+  expect(summary).not.toHaveProperty('taskId');
+  expect(summary).not.toHaveProperty('role');
+});
+
+test('finds only the subagent run linked to a workflow task within its parent session', () => {
+  const tracker = new SubagentTracker(runStore, messageStore, () => null);
+  runStore.insertSubagentRun({
+    id: 'linked-run',
+    parentSessionId: 'parent-1',
+    sessionKey: 'agent:main:subagent:linked-run',
+    agentId: 'promotion_data_scraping',
+    task: 'collect leads',
+    label: 'scraper',
+    workflowRunId: 'run-1',
+    taskId: 'task-1',
+    workspaceAgentId: 'promotion_data_scraping',
+    role: 'promotion_data_scraping',
+    status: 'done',
+    createdAt: 1000,
+  });
+  runStore.insertSubagentRun({
+    id: 'wrong-parent',
+    parentSessionId: 'parent-2',
+    sessionKey: 'agent:main:subagent:wrong-parent',
+    agentId: 'promotion_data_scraping',
+    task: 'collect leads',
+    label: 'scraper',
+    workflowRunId: 'run-1',
+    taskId: 'task-1',
+    workspaceAgentId: 'promotion_data_scraping',
+    role: 'promotion_data_scraping',
+    status: 'done',
+    createdAt: 2000,
+  });
+
+  expect(tracker.getWorkflowTaskSubagentRun('parent-1', 'run-1', 'task-1')).toMatchObject({
+    id: 'linked-run',
+    workflowRunId: 'run-1',
+    taskId: 'task-1',
+  });
+  expect(tracker.getWorkflowTaskSubagentRun('parent-1', 'run-1', 'task-2')).toBeNull();
 });

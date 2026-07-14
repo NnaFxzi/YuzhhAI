@@ -1,8 +1,9 @@
-import { inferOriginAndBinding } from './origin';
-import type { TaskOrigin, ExecutionBinding } from './origin';
-import type { TaskPolicy, PolicyTaskModel, PolicyTaskInput, PolicyDelivery } from './policies/types';
 import type { SessionTarget, WakeMode } from './constants';
-import { BindingKind, ScheduleKind, PayloadKind, DeliveryMode, SessionTarget as ST, WakeMode as WM } from './constants';
+import { BindingKind, DeliveryMode, PayloadKind, ScheduleKind, SessionTarget as ST, WakeMode as WM } from './constants';
+import type { ExecutionBinding,TaskOrigin } from './origin';
+import { inferOriginAndBinding } from './origin';
+import type { PolicyDelivery,PolicyTaskInput, PolicyTaskModel, TaskPolicy } from './policies/types';
+import type { AgentTurnPayload } from './types';
 
 /** Minimal wire task shape for mapping (avoids importing renderer types) */
 export interface WireTask {
@@ -50,10 +51,29 @@ export class TaskModelMapper {
       schedule: model.schedule,
       sessionTarget: wireBinding.sessionTarget,
       wakeMode: model.wakeMode,
-      payload: model.payload,
+      payload: this.clonePayload(model.payload),
       delivery: model.delivery,
       agentId: model.agentId,
       sessionKey: wireBinding.sessionKey,
+    };
+  }
+
+  private clonePayload(payload: unknown): unknown {
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return payload;
+    const candidate = payload as Partial<AgentTurnPayload>;
+    if (candidate.kind !== PayloadKind.AgentTurn || !candidate.promotionMonitoring) return payload;
+    return {
+      ...candidate,
+      promotionMonitoring: {
+        ...candidate.promotionMonitoring,
+        metricSource: {
+          ...candidate.promotionMonitoring.metricSource,
+          ...(candidate.promotionMonitoring.metricSource.evidenceIds
+            ? { evidenceIds: [...candidate.promotionMonitoring.metricSource.evidenceIds] }
+            : {}),
+        },
+        window: { ...candidate.promotionMonitoring.window },
+      },
     };
   }
 

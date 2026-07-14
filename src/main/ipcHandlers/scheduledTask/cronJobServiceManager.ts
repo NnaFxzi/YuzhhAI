@@ -1,4 +1,5 @@
 import { CronJobService } from '../../../scheduledTask/cronJobService';
+import type { PromotionMonitoringScheduleContext } from '../../../shared/enterpriseLeadWorkspace/promotionContracts';
 
 type GatewayClientLike = {
   request: <T = Record<string, unknown>>(
@@ -13,6 +14,9 @@ export interface CronJobServiceDeps {
     getGatewayClient: () => GatewayClientLike | null;
     ensureReady: () => Promise<void>;
   } | null;
+  runScheduledPromotionMonitoring?: (
+    context: PromotionMonitoringScheduleContext,
+  ) => Promise<unknown>;
 }
 
 let cronJobService: CronJobService | null = null;
@@ -34,6 +38,7 @@ export function getCronJobService(): CronJobService {
     cronJobService = new CronJobService({
       getGatewayClient: () => adapter.getGatewayClient(),
       ensureGatewayReady: () => adapter.ensureReady(),
+      runScheduledPromotionMonitoring: deps.runScheduledPromotionMonitoring,
     });
   }
   return cronJobService;
