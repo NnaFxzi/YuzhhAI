@@ -9,7 +9,13 @@ import type { EnterpriseLeadAgentTask, EnterpriseLeadWorkspace, EnterpriseLeadWo
 import { enterpriseLeadWorkspaceService } from '../../services/enterpriseLeadWorkspace';
 import { i18nService } from '../../services/i18n';
 import { startCreatedWorkflowRun } from './workflowRunLifecycle';
-import { getWorkflowEventLabelKey, getWorkflowStartOptionsForMode, WorkflowRunMode, workflowRunModeOptions } from './workflowRunPresentation';
+import {
+  getWorkflowControllerSummaryKey,
+  getWorkflowEventLabelKey,
+  getWorkflowStartOptionsForMode,
+  WorkflowRunMode,
+  workflowRunModeOptions,
+} from './workflowRunPresentation';
 import { createWorkflowRunState, recoverWorkflowRunState, reduceWorkflowRunState, setWorkflowRunSnapshot } from './workflowRunState';
 import { createWorkflowSnapshotRefreshGate } from './workflowSnapshotRefresh';
 import WorkflowTaskCard from './WorkflowTaskCard';
@@ -51,6 +57,7 @@ export const WorkflowRunView: React.FC<WorkflowRunViewProps> = ({ workspace, onO
   const [error, setError] = useState('');
   const stateRef = useRef(state);
   const snapshotRefreshGateRef = useRef(createWorkflowSnapshotRefreshGate());
+  const snapshotRefreshPromiseRef = useRef<Promise<void> | null>(null);
   const workflowSubscriptionRef = useRef<(() => void) | null>(null);
   const subscribedRunIdRef = useRef<string | null>(null);
 
@@ -58,37 +65,80 @@ export const WorkflowRunView: React.FC<WorkflowRunViewProps> = ({ workspace, onO
     stateRef.current = state;
   }, [state]);
 
-  const refreshSnapshot = useCallback(async (
-    targetRunId: string,
-    sequence?: number,
-    reportError = true,
-  ): Promise<void> => {
-    const generation = snapshotRefreshGateRef.current.nextGeneration();
+  const refreshQueuedSnapshots = useCallback(async (): Promise<void> => {
+    const refresh = snapshotRefreshGateRef.current.takeNextRefresh();
+    if (!refresh) return;
+
+    let retryRecoverySequence: number | undefined;
     try {
-      const snapshot = await enterpriseLeadWorkspaceService.getRun(workspace.id, targetRunId);
-      setState(previous => {
-        if (!snapshotRefreshGateRef.current.isCurrentGeneration(generation) || previous.runId !== targetRunId) return previous;
-        const next = sequence === undefined
-          ? setWorkflowRunSnapshot(previous, snapshot)
-          : recoverWorkflowRunState(previous, snapshot, sequence);
+      const snapshot = await enterpriseLeadWorkspaceService.getRun(workspace.id, refresh.runId);
+      if (
+        snapshotRefreshGateRef.current.isCurrentGeneration(refresh.generation) &&
+        stateRef.current.runId === refresh.runId
+      ) {
+        const expectedSequence = Math.max(
+          refresh.eventSequence ?? 0,
+          refresh.recoverySequence ?? 0,
+        );
+        const next = expectedSequence === 0
+          ? setWorkflowRunSnapshot(stateRef.current, snapshot)
+          : recoverWorkflowRunState(stateRef.current, snapshot, expectedSequence);
         stateRef.current = next;
-        return next;
-      });
+        setState(next);
+        retryRecoverySequence = next.needsSnapshotRecovery
+          ? next.recoverySequence
+          : undefined;
+      }
     } catch {
-      if (snapshotRefreshGateRef.current.isCurrentGeneration(generation) && reportError) {
+      if (snapshotRefreshGateRef.current.isCurrentGeneration(refresh.generation) && refresh.reportError) {
         setError(i18nService.t('enterpriseLeadWorkflowLoadFailed'));
       }
+    } finally {
+      snapshotRefreshGateRef.current.completeRefresh(refresh, retryRecoverySequence);
     }
+
+    await refreshQueuedSnapshots();
   }, [workspace.id]);
+
+  const resetSnapshotRefreshes = useCallback((): void => {
+    snapshotRefreshGateRef.current.reset();
+    snapshotRefreshPromiseRef.current = null;
+  }, []);
+
+  const refreshSnapshot = useCallback((
+    targetRunId: string,
+    eventSequence?: number,
+    recoverySequence?: number,
+    reportError = true,
+  ): Promise<void> => {
+    snapshotRefreshGateRef.current.requestRefresh(targetRunId, {
+      eventSequence,
+      recoverySequence,
+      reportError,
+    });
+    const currentRefresh = snapshotRefreshPromiseRef.current;
+    if (currentRefresh) return currentRefresh;
+
+    const refreshPromise = Promise.resolve().then(refreshQueuedSnapshots);
+    snapshotRefreshPromiseRef.current = refreshPromise;
+    void refreshPromise.finally(() => {
+      if (snapshotRefreshPromiseRef.current === refreshPromise) {
+        snapshotRefreshPromiseRef.current = null;
+      }
+    });
+    return refreshPromise;
+  }, [refreshQueuedSnapshots]);
 
   const handleWorkflowEvent = useCallback((targetRunId: string, event: Parameters<typeof reduceWorkflowRunState>[1]): void => {
     const next = reduceWorkflowRunState(stateRef.current, event);
     if (next === stateRef.current) return;
     stateRef.current = next;
     setState(next);
-    if (next.needsSnapshotRecovery) {
-      void refreshSnapshot(targetRunId, next.recoverySequence);
-    }
+    void refreshSnapshot(
+      targetRunId,
+      event?.sequence,
+      next.needsSnapshotRecovery ? next.recoverySequence : undefined,
+    );
   }, [refreshSnapshot]);
 
   const clearWorkflowSubscription = useCallback((): void => {
@@ -109,12 +159,13 @@ export const WorkflowRunView: React.FC<WorkflowRunViewProps> = ({ workspace, onO
 
   useEffect(() => {
     const nextRunId = workspace.recentRunId;
+    resetSnapshotRefreshes();
     setRunId(nextRunId);
     const nextState = createWorkflowRunState(nextRunId ?? '');
     stateRef.current = nextState;
     setState(nextState);
     if (nextRunId) void refreshSnapshot(nextRunId);
-  }, [refreshSnapshot, workspace.id, workspace.recentRunId]);
+  }, [refreshSnapshot, resetSnapshotRefreshes, workspace.id, workspace.recentRunId]);
 
   useEffect(() => {
     if (runId) ensureWorkflowSubscription(runId);
@@ -124,7 +175,16 @@ export const WorkflowRunView: React.FC<WorkflowRunViewProps> = ({ workspace, onO
   useEffect(() => clearWorkflowSubscription, [clearWorkflowSubscription]);
 
   const snapshot = state.snapshot;
-  const currentRun = snapshot?.currentRun ?? null;
+  const storedCurrentRun = snapshot?.currentRun ?? null;
+  const currentRun = storedCurrentRun
+    ? {
+      ...storedCurrentRun,
+      controllerSummary: i18nService.t(getWorkflowControllerSummaryKey(
+        storedCurrentRun.status,
+        storedCurrentRun.controllerSummary,
+      )),
+    }
+    : null;
   const metrics = useMemo(() => ({
     artifacts: snapshot?.deliverables.length ?? 0,
     risks: snapshot?.tasks.reduce((count, task) => count + task.risks.length, 0) ?? 0,
@@ -132,11 +192,10 @@ export const WorkflowRunView: React.FC<WorkflowRunViewProps> = ({ workspace, onO
   }), [snapshot]);
 
   const applySnapshot = (nextSnapshot: EnterpriseLeadWorkspaceSnapshot | null): void => {
-    setState(previous => {
-      const next = setWorkflowRunSnapshot(previous, nextSnapshot);
-      stateRef.current = next;
-      return next;
-    });
+    resetSnapshotRefreshes();
+    const next = setWorkflowRunSnapshot(stateRef.current, nextSnapshot);
+    stateRef.current = next;
+    setState(next);
   };
 
   const start = async (): Promise<void> => {
@@ -150,13 +209,14 @@ export const WorkflowRunView: React.FC<WorkflowRunViewProps> = ({ workspace, onO
         createRun: enterpriseLeadWorkspaceService.createRun,
         startWorkflow: enterpriseLeadWorkspaceService.startWorkflow,
         activateRun: (createdRunId, created) => {
+          resetSnapshotRefreshes();
           const nextState = recoverWorkflowRunState(createWorkflowRunState(createdRunId), created, 0);
           stateRef.current = nextState;
           setRunId(createdRunId);
           setState(nextState);
           ensureWorkflowSubscription(createdRunId);
         },
-        reconcileRun: createdRunId => refreshSnapshot(createdRunId, undefined, false),
+        reconcileRun: createdRunId => refreshSnapshot(createdRunId, undefined, undefined, false),
       });
       if (result.error) throw result.error;
     } catch {

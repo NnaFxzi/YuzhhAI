@@ -42,6 +42,8 @@ const isRunnable = (task: EnterpriseLeadAgentTask): boolean =>
 const dedupeWorkflowArtifactRefs = (artifactRefs: WorkflowArtifactRef[]): WorkflowArtifactRef[] =>
   Array.from(new Map(artifactRefs.map(artifact => [artifact.id, artifact])).values());
 
+const EMPTY_WORKFLOW_CONTROLLER_SUMMARY = '';
+
 export class EnterpriseLeadWorkflowOrchestrator {
   private readonly activeRuns = new Map<string, Promise<EnterpriseLeadWorkspaceSnapshot>>();
   private readonly cancelledRuns = new Set<string>();
@@ -267,7 +269,7 @@ export class EnterpriseLeadWorkflowOrchestrator {
         runId,
         status: EnterpriseLeadRunStatus.Running,
         currentRole: runnable[0]?.role ?? null,
-        controllerSummary: 'Promotion workflow is processing ready tasks.',
+        controllerSummary: EMPTY_WORKFLOW_CONTROLLER_SUMMARY,
       });
       await Promise.allSettled(runnable.map(task => this.executeTask(runId, task, refreshedTasks)));
 
@@ -278,7 +280,7 @@ export class EnterpriseLeadWorkflowOrchestrator {
           runId,
           status: runStatus.status,
           currentRole: runStatus.task.role,
-          controllerSummary: runStatus.task.summary || 'Workflow requires manual attention.',
+          controllerSummary: EMPTY_WORKFLOW_CONTROLLER_SUMMARY,
         });
         return this.getSnapshot(workspaceId, runId);
       }
@@ -490,7 +492,7 @@ export class EnterpriseLeadWorkflowOrchestrator {
         runId,
         status: paused.status,
         currentRole: paused.task.role,
-        controllerSummary: paused.task.summary || 'Workflow requires manual attention.',
+        controllerSummary: EMPTY_WORKFLOW_CONTROLLER_SUMMARY,
       });
       return this.getSnapshot(workspaceId, runId);
     }
@@ -499,7 +501,7 @@ export class EnterpriseLeadWorkflowOrchestrator {
         runId,
         status: EnterpriseLeadRunStatus.Completed,
         currentRole: null,
-        controllerSummary: 'Promotion workflow completed with draft-only outputs.',
+        controllerSummary: EMPTY_WORKFLOW_CONTROLLER_SUMMARY,
       });
       this.options.artifactStore.appendEvent({ runId, type: 'run_completed' });
     }

@@ -112,6 +112,7 @@ describe('EnterpriseLeadWorkflowOrchestrator', () => {
       'task_ready',
     );
     expect(setupResult.artifacts.listRunArtifacts(setupResult.run.id)).not.toHaveLength(0);
+    expect(snapshot.currentRun?.controllerSummary).toBe('');
   });
 
   test('pauses downstream tasks when a worker needs input', async () => {
@@ -130,6 +131,7 @@ describe('EnterpriseLeadWorkflowOrchestrator', () => {
     );
 
     expect(snapshot.currentRun?.status).toBe(EnterpriseLeadRunStatus.NeedsInput);
+    expect(snapshot.currentRun?.controllerSummary).toBe('');
     expect(snapshot.tasks.find(task => task.role === EnterpriseLeadAgentRole.PromotionCompetitorInsight)?.status)
       .toBe(EnterpriseLeadTaskStatus.Waiting);
   });
@@ -460,6 +462,7 @@ describe('EnterpriseLeadWorkflowOrchestrator', () => {
     const cancelled = await setupResult.orchestrator.cancelRun(setupResult.workspace.id, setupResult.run.id);
 
     expect(cancelled.currentRun?.status).toBe(EnterpriseLeadRunStatus.Cancelled);
+    expect(cancelled.currentRun?.controllerSummary).toBe('');
     expect(cancelled.tasks.filter(task => task.status !== EnterpriseLeadTaskStatus.Completed))
       .toEqual(expect.arrayContaining([expect.objectContaining({ status: EnterpriseLeadTaskStatus.Cancelled })]));
     expect(setupResult.artifacts.listRunArtifacts(setupResult.run.id)).toHaveLength(artifactCount);

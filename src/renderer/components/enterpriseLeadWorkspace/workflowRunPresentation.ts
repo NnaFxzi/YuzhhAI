@@ -1,4 +1,8 @@
 import {
+  EnterpriseLeadRunStatus,
+  type EnterpriseLeadRunStatus as EnterpriseLeadRunStatusValue,
+} from '../../../shared/enterpriseLeadWorkspace/constants';
+import {
   DEFAULT_WORKFLOW_START_OPTIONS,
   WorkflowEventType,
   type WorkflowEventType as WorkflowEventTypeValue,
@@ -43,5 +47,28 @@ const workflowEventLabelKeys: Record<WorkflowEventTypeValue, string> = {
   [WorkflowEventType.RunError]: 'enterpriseLeadWorkflowEventRunError',
 };
 
+const workflowControllerSummaryKeys: Record<EnterpriseLeadRunStatusValue, string> = {
+  [EnterpriseLeadRunStatus.Draft]: 'enterpriseLeadWorkflowSummaryDraft',
+  [EnterpriseLeadRunStatus.Running]: 'enterpriseLeadWorkflowSummaryRunning',
+  [EnterpriseLeadRunStatus.NeedsInput]: 'enterpriseLeadWorkflowSummaryNeedsInput',
+  [EnterpriseLeadRunStatus.AwaitingApproval]: 'enterpriseLeadWorkflowSummaryAwaitingApproval',
+  [EnterpriseLeadRunStatus.Blocked]: 'enterpriseLeadWorkflowSummaryBlocked',
+  [EnterpriseLeadRunStatus.Completed]: 'enterpriseLeadWorkflowSummaryCompleted',
+  [EnterpriseLeadRunStatus.Cancelled]: 'enterpriseLeadWorkflowSummaryCancelled',
+  [EnterpriseLeadRunStatus.Archived]: 'enterpriseLeadWorkflowSummaryArchived',
+  [EnterpriseLeadRunStatus.Error]: 'enterpriseLeadWorkflowSummaryError',
+};
+
+const legacyWorkflowControllerSummaryKeys: Record<string, string> = {
+  'Promotion workflow is processing ready tasks.': 'enterpriseLeadWorkflowSummaryRunning',
+  'Workflow requires manual attention.': 'enterpriseLeadWorkflowSummaryManualAttention',
+  'Promotion workflow completed with draft-only outputs.': 'enterpriseLeadWorkflowSummaryCompleted',
+};
+
 export const getWorkflowEventLabelKey = (type: string): string =>
   workflowEventLabelKeys[type as WorkflowEventTypeValue] ?? 'enterpriseLeadWorkflowEventUnknown';
+
+export const getWorkflowControllerSummaryKey = (
+  status: EnterpriseLeadRunStatusValue,
+  legacyControllerSummary?: string,
+): string => legacyWorkflowControllerSummaryKeys[legacyControllerSummary ?? ''] ?? workflowControllerSummaryKeys[status];
