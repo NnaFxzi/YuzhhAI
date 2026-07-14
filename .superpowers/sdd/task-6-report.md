@@ -46,3 +46,10 @@ Feature commit: `6e8bf3c9 feat(workflow): expose promotion run control IPC`
 - Added per-sender/run stream guards, one rejection path per stream, and cleanup for terminal completion, rejection, and destroyed renderer `webContents`; controls retain cursor-based no-history replay behavior.
 - Cleared active-run cancellation markers in generation-aware finalization so cancellation bookkeeping does not accumulate or erase a newer generation's state.
 - Added focused coverage for Resume timing, duplicate Start and Resume calls, one persisted/sent `run_error`, destroyed-renderer stream cleanup, and post-settlement cancellation cleanup.
+
+## Review-fix3
+
+- Moved promotion workflow terminal ownership from sender-scoped streams to a shared workspace/run execution coordinator. Concurrent renderer senders now share one workflow execution and one terminal failure persistence path.
+- Persisted `markRunError` and the `run_error` event before subscriber delivery, so a renderer destroyed before rejection cannot suppress durable failure state.
+- Broadcast the one persisted failure event to every still-live sender stream, while destroyed streams are removed safely and terminal run bookkeeping is released after settlement.
+- Added coverage for two live senders receiving a single persisted failure event, durable failure persistence after the only sender is destroyed, and settling the destroyed-stream fixture to avoid leaking a pending run between tests.

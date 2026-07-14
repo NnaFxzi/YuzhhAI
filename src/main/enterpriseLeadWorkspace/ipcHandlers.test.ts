@@ -412,6 +412,57 @@ describe('registerEnterpriseLeadWorkspaceHandlers', () => {
     expect(send).toHaveBeenCalledWith(EnterpriseLeadWorkflowIpc.Event, runErrorEvent);
   });
 
+  test('persists one rejected run error and notifies each live sender stream', async () => {
+    const { deps, service } = makeDeps();
+    const snapshot = {
+      workspace: { id: 'workspace-1' },
+      currentRun: { id: 'run-1' },
+      tasks: [],
+      pendingVersions: [],
+      deliverables: [],
+      todos: [],
+      archives: [],
+    } as EnterpriseLeadWorkspaceSnapshot;
+    let rejectWorkflow: ((error: Error) => void) | undefined;
+    const runErrorEvent = {
+      runId: 'run-1',
+      sequence: 1,
+      type: 'run_error',
+      payload: {},
+      createdAt: '2026-07-14T00:00:00.000Z',
+    } satisfies EnterpriseLeadWorkflowEvent;
+    service.getSnapshot = vi.fn(() => snapshot);
+    service.startWorkflow = vi.fn(
+      () =>
+        new Promise<EnterpriseLeadWorkspaceSnapshot>((_resolve, reject) => {
+          rejectWorkflow = reject;
+        }),
+    );
+    service.markRunError = vi.fn(() => snapshot);
+    deps.appendWorkflowEvent = vi.fn(() => runErrorEvent);
+    const firstSend = vi.fn();
+    const secondSend = vi.fn();
+    registerEnterpriseLeadWorkspaceHandlers(deps);
+
+    const handler = registeredHandlers.get(EnterpriseLeadWorkflowIpc.Start);
+    const input = {
+      workspaceId: 'workspace-1',
+      runId: 'run-1',
+      options: { enabledOptionalNodes: [], maxConcurrency: 1 },
+    };
+    await handler?.({ sender: { send: firstSend } }, input);
+    await handler?.({ sender: { send: secondSend } }, input);
+    rejectWorkflow?.(new Error('gateway unavailable'));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(service.startWorkflow).toHaveBeenCalledTimes(1);
+    expect(service.markRunError).toHaveBeenCalledTimes(1);
+    expect(deps.appendWorkflowEvent).toHaveBeenCalledTimes(1);
+    expect(firstSend).toHaveBeenCalledWith(EnterpriseLeadWorkflowIpc.Event, runErrorEvent);
+    expect(secondSend).toHaveBeenCalledWith(EnterpriseLeadWorkflowIpc.Event, runErrorEvent);
+  });
+
   test('deduplicates Resume streams for one sender and run', async () => {
     const { deps, service } = makeDeps();
     const snapshot = {
@@ -458,7 +509,13 @@ describe('registerEnterpriseLeadWorkspaceHandlers', () => {
         archives: [],
       } as EnterpriseLeadWorkspaceSnapshot;
       service.getSnapshot = vi.fn(() => snapshot);
-      service.startWorkflow = vi.fn(() => new Promise<EnterpriseLeadWorkspaceSnapshot>(() => undefined));
+      let resolveWorkflow: (() => void) | undefined;
+      service.startWorkflow = vi.fn(
+        () =>
+          new Promise<EnterpriseLeadWorkspaceSnapshot>(resolve => {
+            resolveWorkflow = () => resolve(snapshot);
+          }),
+      );
       const destroyedListeners: Array<() => void> = [];
       const sender = {
         send: vi.fn(),
@@ -478,9 +535,68 @@ describe('registerEnterpriseLeadWorkspaceHandlers', () => {
 
       expect(vi.getTimerCount()).toBe(0);
       expect(sender.once).toHaveBeenCalledWith('destroyed', expect.any(Function));
+
+      resolveWorkflow?.();
+      await Promise.resolve();
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  test('persists a run error after its only sender is destroyed', async () => {
+    const { deps, service } = makeDeps();
+    const snapshot = {
+      workspace: { id: 'workspace-1' },
+      currentRun: { id: 'run-1' },
+      tasks: [],
+      pendingVersions: [],
+      deliverables: [],
+      todos: [],
+      archives: [],
+    } as EnterpriseLeadWorkspaceSnapshot;
+    let rejectWorkflow: ((error: Error) => void) | undefined;
+    const runErrorEvent = {
+      runId: 'run-1',
+      sequence: 1,
+      type: 'run_error',
+      payload: {},
+      createdAt: '2026-07-14T00:00:00.000Z',
+    } satisfies EnterpriseLeadWorkflowEvent;
+    service.getSnapshot = vi.fn(() => snapshot);
+    service.startWorkflow = vi.fn(
+      () =>
+        new Promise<EnterpriseLeadWorkspaceSnapshot>((_resolve, reject) => {
+          rejectWorkflow = reject;
+        }),
+    );
+    service.markRunError = vi.fn(() => snapshot);
+    deps.appendWorkflowEvent = vi.fn(() => runErrorEvent);
+    const destroyedListeners: Array<() => void> = [];
+    const send = vi.fn();
+    const sender = {
+      send,
+      once: vi.fn((_event: string, listener: () => void) => destroyedListeners.push(listener)),
+    };
+    registerEnterpriseLeadWorkspaceHandlers(deps);
+
+    const handler = registeredHandlers.get(EnterpriseLeadWorkflowIpc.Start);
+    await handler?.({ sender }, {
+      workspaceId: 'workspace-1',
+      runId: 'run-1',
+      options: { enabledOptionalNodes: [], maxConcurrency: 1 },
+    });
+    destroyedListeners.forEach(listener => listener());
+    rejectWorkflow?.(new Error('gateway unavailable'));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(service.markRunError).toHaveBeenCalledWith('workspace-1', 'run-1', 'gateway unavailable');
+    expect(deps.appendWorkflowEvent).toHaveBeenCalledWith({
+      runId: 'run-1',
+      type: 'run_error',
+      summary: 'gateway unavailable',
+    });
+    expect(send).not.toHaveBeenCalledWith(EnterpriseLeadWorkflowIpc.Event, runErrorEvent);
   });
 
   test('dispatches only newly produced control events without replaying run history', async () => {

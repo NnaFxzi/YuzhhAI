@@ -266,11 +266,20 @@ type WorkflowEventSender = {
 
 const workflowEventCursors = new WeakMap<WorkflowEventSender, Map<string, number>>();
 interface WorkflowEventStream {
+  sender: WorkflowEventSender;
   interval: ReturnType<typeof setInterval> | undefined;
   disposed: boolean;
+  execution: WorkflowRunExecution | undefined;
 }
 
 const workflowEventStreams = new WeakMap<WorkflowEventSender, Map<string, WorkflowEventStream>>();
+
+interface WorkflowRunExecution {
+  execution: Promise<EnterpriseLeadWorkspaceSnapshot>;
+  streams: Set<WorkflowEventStream>;
+}
+
+const workflowRunExecutions = new Map<string, Map<string, WorkflowRunExecution>>();
 
 const getWorkflowEventCursor = (sender: WorkflowEventSender, runId: string): number | undefined =>
   workflowEventCursors.get(sender)?.get(runId);
@@ -340,11 +349,88 @@ const clearWorkflowEventStream = (
   if (stream.disposed) return;
   stream.disposed = true;
   if (stream.interval) clearInterval(stream.interval);
+  stream.execution?.streams.delete(stream);
+  stream.execution = undefined;
 
   const streams = workflowEventStreams.get(sender);
   if (streams?.get(runId) !== stream) return;
   streams.delete(runId);
   if (streams.size === 0) workflowEventStreams.delete(sender);
+};
+
+const getWorkflowRunExecution = (
+  workspaceId: string,
+  runId: string,
+): WorkflowRunExecution | undefined => workflowRunExecutions.get(workspaceId)?.get(runId);
+
+const setWorkflowRunExecution = (
+  workspaceId: string,
+  runId: string,
+  execution: WorkflowRunExecution,
+): void => {
+  const executions = workflowRunExecutions.get(workspaceId) ?? new Map<string, WorkflowRunExecution>();
+  executions.set(runId, execution);
+  workflowRunExecutions.set(workspaceId, executions);
+};
+
+const clearWorkflowRunExecution = (
+  workspaceId: string,
+  runId: string,
+  execution: WorkflowRunExecution,
+): void => {
+  const executions = workflowRunExecutions.get(workspaceId);
+  if (executions?.get(runId) !== execution) return;
+  executions.delete(runId);
+  if (executions.size === 0) workflowRunExecutions.delete(workspaceId);
+};
+
+const settleWorkflowRunExecution = async (
+  deps: EnterpriseLeadWorkspaceHandlerDeps,
+  workspaceId: string,
+  runId: string,
+  runExecution: WorkflowRunExecution,
+): Promise<void> => {
+  try {
+    await runExecution.execution;
+  } catch (error) {
+    const message = toErrorMessage(error);
+    await deps.service.markRunError(workspaceId, runId, message);
+    const workflowEvent = deps.appendWorkflowEvent({ runId, type: 'run_error', summary: message });
+    runExecution.streams.forEach(stream => {
+      if (!stream.disposed) sendWorkflowEvent(stream.sender, workflowEvent);
+    });
+  } finally {
+    [...runExecution.streams].forEach(stream => {
+      if (!stream.disposed) {
+        sendNewWorkflowEvents(stream.sender, runId, deps.listWorkflowEvents);
+        clearWorkflowEventStream(stream.sender, runId, stream);
+      }
+    });
+    clearWorkflowRunExecution(workspaceId, runId, runExecution);
+  }
+};
+
+const getOrStartWorkflowRunExecution = (
+  deps: EnterpriseLeadWorkspaceHandlerDeps,
+  workspaceId: string,
+  runId: string,
+  execute: () => EnterpriseLeadWorkspaceSnapshot | Promise<EnterpriseLeadWorkspaceSnapshot>,
+): WorkflowRunExecution => {
+  const existingExecution = getWorkflowRunExecution(workspaceId, runId);
+  if (existingExecution) return existingExecution;
+
+  const runExecution: WorkflowRunExecution = {
+    execution: Promise.resolve({} as EnterpriseLeadWorkspaceSnapshot),
+    streams: new Set<WorkflowEventStream>(),
+  };
+  setWorkflowRunExecution(workspaceId, runId, runExecution);
+  try {
+    runExecution.execution = Promise.resolve(execute());
+  } catch (error) {
+    runExecution.execution = Promise.reject(error);
+  }
+  void settleWorkflowRunExecution(deps, workspaceId, runId, runExecution);
+  return runExecution;
 };
 
 const startWorkflowEventStream = (
@@ -356,14 +442,16 @@ const startWorkflowEventStream = (
 ): void => {
   if (getWorkflowEventStream(sender, runId)) return;
 
-  let execution: Promise<EnterpriseLeadWorkspaceSnapshot>;
-  try {
-    execution = Promise.resolve(execute());
-  } catch (error) {
-    execution = Promise.reject(error);
-  }
-  const stream: WorkflowEventStream = { interval: undefined, disposed: false };
+  const stream: WorkflowEventStream = {
+    sender,
+    interval: undefined,
+    disposed: false,
+    execution: undefined,
+  };
   setWorkflowEventStream(sender, runId, stream);
+  const runExecution = getOrStartWorkflowRunExecution(deps, workspaceId, runId, execute);
+  stream.execution = runExecution;
+  runExecution.streams.add(stream);
   const cleanup = () => clearWorkflowEventStream(sender, runId, stream);
 
   sendNewWorkflowEvents(sender, runId, deps.listWorkflowEvents);
@@ -372,24 +460,6 @@ const startWorkflowEventStream = (
     50,
   );
   sender.once?.('destroyed', cleanup);
-
-  void (async () => {
-    try {
-      await execution;
-    } catch (error) {
-      const message = toErrorMessage(error);
-      await deps.service.markRunError(workspaceId, runId, message);
-      if (!stream.disposed) {
-        sendWorkflowEvent(
-          sender,
-          deps.appendWorkflowEvent({ runId, type: 'run_error', summary: message }),
-        );
-      }
-    } finally {
-      if (!stream.disposed) sendNewWorkflowEvents(sender, runId, deps.listWorkflowEvents);
-      cleanup();
-    }
-  })();
 };
 
 export function registerEnterpriseLeadWorkspaceHandlers(
