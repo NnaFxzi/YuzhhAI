@@ -128,7 +128,10 @@ import {
 import { buildDevServerUnavailableDataUrl } from './devServerErrorPage';
 import { buildCoworkWorkspaceAgentTeamPrompt } from './enterpriseLeadWorkspace/coworkAgentTeamBridge';
 import { registerEnterpriseLeadWorkspaceHandlers } from './enterpriseLeadWorkspace/ipcHandlers';
-import { createEnterpriseLeadWorkflowHandlerDeps } from './enterpriseLeadWorkspace/mainBridge';
+import {
+  createEnterpriseLeadWorkflowEventDeps,
+  createEnterpriseLeadWorkflowHandlerDeps,
+} from './enterpriseLeadWorkspace/mainBridge';
 import { EnterpriseLeadWorkspaceService } from './enterpriseLeadWorkspace/service';
 import { EnterpriseLeadWorkspaceStore } from './enterpriseLeadWorkspace/store';
 import { WorkflowArtifactStore } from './enterpriseLeadWorkspace/workflowArtifactStore';
@@ -1354,6 +1357,7 @@ let industryPackLoader: IndustryPackLoader | null = null;
 let industryPackStore: IndustryPackStore | null = null;
 let enterpriseLeadWorkspaceStore: EnterpriseLeadWorkspaceStore | null = null;
 let enterpriseLeadWorkspaceService: EnterpriseLeadWorkspaceService | null = null;
+let enterpriseLeadWorkflowArtifactStore: WorkflowArtifactStore | null = null;
 let knowledgeBaseFoundation: KnowledgeBaseFoundation | null = null;
 let contentGenerationService: ContentGenerationService | null = null;
 let positioningService: PositioningService | null = null;
@@ -1648,6 +1652,13 @@ const getEnterpriseLeadWorkspaceService = (): EnterpriseLeadWorkspaceService => 
     });
   }
   return enterpriseLeadWorkspaceService;
+};
+
+const getEnterpriseLeadWorkflowArtifactStore = (): WorkflowArtifactStore => {
+  if (!enterpriseLeadWorkflowArtifactStore) {
+    enterpriseLeadWorkflowArtifactStore = new WorkflowArtifactStore(getStore().getDatabase());
+  }
+  return enterpriseLeadWorkflowArtifactStore;
 };
 
 const getKnowledgeBaseFoundation = (): KnowledgeBaseFoundation => {
@@ -6291,7 +6302,6 @@ if (!gotTheLock) {
       : [],
   );
 
-  const enterpriseLeadWorkflowArtifactStore = new WorkflowArtifactStore(getStore().getDatabase());
   registerEnterpriseLeadWorkspaceHandlers({
     service: {
       listWorkspaces: () => getEnterpriseLeadWorkspaceService().listWorkspaces(),
@@ -6350,7 +6360,7 @@ if (!gotTheLock) {
       rejectTask: (workspaceId, runId, taskId, feedback) =>
         getEnterpriseLeadWorkspaceService().rejectTask(workspaceId, runId, taskId, feedback),
     },
-    listWorkflowEvents: runId => enterpriseLeadWorkflowArtifactStore.listEvents(runId),
+    ...createEnterpriseLeadWorkflowEventDeps(getEnterpriseLeadWorkflowArtifactStore),
   });
 
   ipcMain.handle(OpenClawEngineIpc.GetStatus, async () => {
