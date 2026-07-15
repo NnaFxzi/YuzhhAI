@@ -384,6 +384,31 @@ describe('AgentManager managed preset agents', () => {
     });
   });
 
+  test('resolveRuntimeAgent preserves reusable Agent configuration fields', () => {
+    const reusableAgent = createStoredAgent({
+      id: 'reusable-writer',
+      name: 'Reusable Writer',
+      source: 'custom',
+      presetId: '',
+      systemPrompt: 'Write in the configured brand voice.',
+      model: 'provider/reusable-model',
+      workingDirectory: '/tmp/reusable-project',
+      skillIds: ['web-search', 'docx'],
+      enabled: true,
+    });
+    const store = new FakeCoworkStore([createMainAgent(), reusableAgent]);
+    const manager = new AgentManager(store as unknown as CoworkStore);
+
+    expect(manager.resolveRuntimeAgent(reusableAgent.id)).toMatchObject({
+      id: reusableAgent.id,
+      systemPrompt: 'Write in the configured brand voice.',
+      model: 'provider/reusable-model',
+      workingDirectory: '/tmp/reusable-project',
+      skillIds: ['web-search', 'docx'],
+      enabled: true,
+    });
+  });
+
   test('resolveRuntimeAgentForPrompt auto-routes content requests from main to 推广agent', () => {
     const store = new FakeCoworkStore([createMainAgent(), createStoredAgent({ enabled: true })]);
     const manager = new AgentManager(store as unknown as CoworkStore);

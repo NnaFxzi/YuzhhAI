@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { Provider } from 'react-redux';
@@ -6,6 +8,7 @@ import { describe, expect, test } from 'vitest';
 import { i18nService } from '../../services/i18n';
 import { store } from '../../store';
 import { setAgents, setCurrentAgentId } from '../../store/slices/agentSlice';
+import { setActiveKitIds, setMarketplaceKits } from '../../store/slices/kitSlice';
 
 describe('CoworkPromptInput', () => {
   test('omits the read-only context row below the conversation input', async () => {
@@ -75,5 +78,78 @@ describe('CoworkPromptInput', () => {
 
     expect(markup).not.toContain('专家套件');
     expect(markup).not.toContain('clip0_magic');
+  });
+
+  test('keeps Agent and Kit context for workspace Cowork without team controls or analytics', async () => {
+    Object.defineProperty(globalThis, 'navigator', {
+      value: { platform: 'MacIntel' },
+      configurable: true,
+    });
+
+    i18nService.setLanguage('en', { persist: false });
+    store.dispatch(
+      setAgents([
+        {
+          id: 'main',
+          name: 'main',
+          description: '',
+          icon: '',
+          model: '',
+          workingDirectory: '',
+          enabled: true,
+          pinned: false,
+          isDefault: true,
+          source: 'preset',
+          skillIds: [],
+        },
+        {
+          id: 'writing-agent',
+          name: 'writing-agent',
+          description: '',
+          icon: '',
+          model: '',
+          workingDirectory: '',
+          enabled: true,
+          pinned: false,
+          isDefault: false,
+          source: 'custom',
+          skillIds: [],
+        },
+      ]),
+    );
+    store.dispatch(setCurrentAgentId('writing-agent'));
+    store.dispatch(
+      setMarketplaceKits([
+        {
+          id: 'campaign-kit',
+          name: 'Campaign Kit',
+          description: 'Campaign workflows',
+        },
+      ]),
+    );
+    store.dispatch(setActiveKitIds(['campaign-kit']));
+
+    const { default: CoworkPromptInput } = await import('./CoworkPromptInput');
+    const markup = renderToStaticMarkup(
+      React.createElement(Provider, {
+        store,
+        children: React.createElement(CoworkPromptInput, {
+          onSubmit: () => undefined,
+          size: 'large',
+          showAgentSelector: true,
+        }),
+      }),
+    );
+
+    expect(markup).toContain('writing-agent');
+    expect(markup).toContain('Campaign Kit');
+    expect(markup).not.toContain('Agent Team');
+
+    const source = readFileSync(new URL('./CoworkPromptInput.tsx', import.meta.url), 'utf8');
+    expect(source).not.toContain(['workspace', '_agent_', 'team_'].join(''));
+
+    const viewSource = readFileSync(new URL('./CoworkView.tsx', import.meta.url), 'utf8');
+    expect(viewSource).not.toContain(['workspace', 'Agent', 'Team'].join(''));
+    expect(viewSource).not.toContain(['workspace', 'Agent', 'Selection'].join(''));
   });
 });

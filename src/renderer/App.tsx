@@ -21,7 +21,10 @@ import {
   type EnterpriseLeadWorkspaceShellModeType,
   EnterpriseLeadWorkspaceView,
 } from './components/enterpriseLeadWorkspace';
-import { resetEnterpriseLeadCoworkHandoffDraft } from './components/enterpriseLeadWorkspace/workspaceCoworkHandoffState';
+import {
+  discardEnterpriseLeadCoworkHandoffDraftWhenLeavingForGlobalCowork,
+  resetEnterpriseLeadCoworkHandoffDraft,
+} from './components/enterpriseLeadWorkspace/workspaceCoworkHandoffState';
 import KitsView from './components/kits/KitsView';
 import { McpView } from './components/mcp';
 import PrivacyDialog from './components/PrivacyDialog';
@@ -101,7 +104,7 @@ const App: React.FC = () => {
   const [settingsOptions, setSettingsOptions] = useState<
     SettingsOpenOptions & { requestId: number }
   >({ requestId: 0 });
-  const [mainView, setMainView] = useState<MainView>('enterpriseLeadWorkspace');
+  const [mainView, setMainView] = useState<MainView>('cowork');
   const [isInitialized, setIsInitialized] = useState(false);
   const [initError, setInitError] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -395,8 +398,9 @@ const App: React.FC = () => {
   }, []);
 
   const handleShowCowork = useCallback(() => {
+    discardEnterpriseLeadCoworkHandoffDraftWhenLeavingForGlobalCowork(dispatch, mainView);
     setMainView('cowork');
-  }, []);
+  }, [dispatch, mainView]);
 
   const handleShowScheduledTasks = useCallback(() => {
     setMainView('scheduledTasks');
@@ -430,7 +434,7 @@ const App: React.FC = () => {
       // CoworkPromptInput mounts/updates with draftKey='__home__', it picks up both.
       dispatch(setDraftPrompt({ sessionId: '__home__', draft: text }));
       dispatch(setDraftKitIds({ draftKey: '__home__', kitIds: [kitId] }));
-      setMainView('cowork');
+      handleShowCowork();
       window.setTimeout(() => {
         window.dispatchEvent(
           new CustomEvent(CoworkUiEvent.FocusInput, {
@@ -439,7 +443,7 @@ const App: React.FC = () => {
         );
       }, 0);
     },
-    [dispatch],
+    [dispatch, handleShowCowork],
   );
 
   const handlePrepareEnterpriseLeadCoworkChat = useCallback(
@@ -473,7 +477,7 @@ const App: React.FC = () => {
         mode: CoworkCollaborationMode.Default,
       }),
     );
-    setMainView('cowork');
+    handleShowCowork();
     window.setTimeout(() => {
       window.dispatchEvent(
         new CustomEvent(CoworkUiEvent.FocusInput, {
@@ -481,7 +485,7 @@ const App: React.FC = () => {
         }),
       );
     }, 0);
-  }, [dispatch, mainView, currentSessionId]);
+  }, [dispatch, handleShowCowork, mainView, currentSessionId]);
 
   const handleCreateSkillByChat = useCallback(() => {
     dispatch(setDraftPrompt({ sessionId: '__home__', draft: i18nService.t('skillCreatorPrompt') }));
@@ -493,8 +497,8 @@ const App: React.FC = () => {
         mode: CoworkCollaborationMode.Default,
       }),
     );
-    setMainView('cowork');
-  }, [dispatch]);
+    handleShowCowork();
+  }, [dispatch, handleShowCowork]);
 
   const showToast = useCallback((message: string) => {
     setToastMessage(message);
@@ -782,7 +786,7 @@ const App: React.FC = () => {
 
       if (matchesAction(ShortcutAction.FocusPrompt)) {
         event.preventDefault();
-        setMainView('cowork');
+        handleShowCowork();
         window.setTimeout(() => {
           window.dispatchEvent(
             new CustomEvent(CoworkUiEvent.FocusInput, {
@@ -811,7 +815,7 @@ const App: React.FC = () => {
 
       if (matchesAction(ShortcutAction.ToggleArtifacts)) {
         event.preventDefault();
-        setMainView('cowork');
+        handleShowCowork();
         window.setTimeout(() => {
           window.dispatchEvent(new CustomEvent(CoworkUiEvent.ShortcutToggleArtifacts));
         }, 0);
@@ -820,7 +824,7 @@ const App: React.FC = () => {
 
       if (matchesAction(ShortcutAction.PreviousAgent)) {
         event.preventDefault();
-        setMainView('cowork');
+        handleShowCowork();
         setIsSidebarCollapsed(false);
         window.dispatchEvent(
           new CustomEvent(CoworkUiEvent.ShortcutSwitchAgent, {
@@ -832,7 +836,7 @@ const App: React.FC = () => {
 
       if (matchesAction(ShortcutAction.NextAgent)) {
         event.preventDefault();
-        setMainView('cowork');
+        handleShowCowork();
         setIsSidebarCollapsed(false);
         window.dispatchEvent(
           new CustomEvent(CoworkUiEvent.ShortcutSwitchAgent, {
@@ -844,7 +848,7 @@ const App: React.FC = () => {
 
       if (matchesAction(ShortcutAction.ShowCurrentAgentTasks)) {
         event.preventDefault();
-        setMainView('cowork');
+        handleShowCowork();
         setIsSidebarCollapsed(false);
         window.dispatchEvent(new CustomEvent(CoworkUiEvent.ShortcutShowCurrentAgentTasks));
         return;
@@ -855,7 +859,7 @@ const App: React.FC = () => {
       );
       if (taskSlotIndex >= 0) {
         event.preventDefault();
-        setMainView('cowork');
+        handleShowCowork();
         setIsSidebarCollapsed(false);
         window.dispatchEvent(
           new CustomEvent(CoworkUiEvent.ShortcutOpenAgentTaskSlot, {
@@ -944,7 +948,7 @@ const App: React.FC = () => {
     const handler = (e: Event) => {
       const text = (e as CustomEvent<string>).detail;
       setShowSettings(false);
-      setMainView('cowork');
+      handleShowCowork();
       window.setTimeout(() => {
         window.dispatchEvent(
           new CustomEvent(CoworkUiEvent.FocusInput, {
@@ -955,7 +959,7 @@ const App: React.FC = () => {
     };
     window.addEventListener('app:ask-ai', handler);
     return () => window.removeEventListener('app:ask-ai', handler);
-  }, []);
+  }, [handleShowCowork]);
 
   // 监听托盘菜单打开设置的 IPC 事件
   useEffect(() => {
@@ -976,12 +980,12 @@ const App: React.FC = () => {
   useEffect(() => {
     const unsubscribe = window.electron.cowork.onOpenSessionFromNotification?.(({ sessionId }) => {
       setShowSettings(false);
-      setMainView('cowork');
+      handleShowCowork();
       void coworkService.loadSession(sessionId);
     });
     void window.electron.cowork.notifyOpenSessionFromNotificationReady?.();
     return unsubscribe;
-  }, []);
+  }, [handleShowCowork]);
 
   useEffect(() => {
     if (!isInitialized) return;

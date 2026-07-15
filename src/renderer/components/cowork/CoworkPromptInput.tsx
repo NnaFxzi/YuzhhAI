@@ -3,7 +3,6 @@ import {
   ChevronDownIcon,
   ChevronRightIcon,
   ExclamationTriangleIcon,
-  UserGroupIcon,
 } from '@heroicons/react/24/outline';
 import { ArrowUpIcon, FolderIcon } from '@heroicons/react/24/solid';
 import { AuthSubscriptionStatus } from '@shared/auth/constants';
@@ -18,10 +17,6 @@ import {
 } from '../../../shared/cowork/imageAttachments';
 import { isPlanImplementationApproval } from '../../../shared/cowork/planMode';
 import type { CoworkSelectedTextSnippet } from '../../../shared/cowork/selectedText';
-import {
-  CoworkWorkspaceAgentMode,
-  type CoworkWorkspaceAgentSelection,
-} from '../../../shared/cowork/workspaceAgentSelection';
 import { agentService } from '../../services/agent';
 import { configService } from '../../services/config';
 import { coworkService } from '../../services/cowork';
@@ -127,10 +122,6 @@ import { useCoworkVoiceInput } from './voiceInput/useCoworkVoiceInput';
 import VoiceInputButton from './voiceInput/VoiceInputButton';
 import VoiceInputRecordingStatus from './voiceInput/VoiceInputRecordingStatus';
 import { getCoworkVoiceRecordingUiState } from './voiceInput/voiceInputUiState';
-import type {
-  WorkspaceAgentTeamChoice,
-  WorkspaceAgentTeamChoiceState,
-} from './workspaceAgentTeamOptions';
 
 const logPromptModelSelection = (level: 'debug' | 'warn', message: string): void => {
   if (level === 'warn') {
@@ -347,7 +338,6 @@ interface CoworkPromptInputProps {
     mediaReferences?: MediaAttachmentRef[],
     selectedTextSnippets?: CoworkSelectedTextSnippet[],
     collaborationMode?: CoworkCollaborationMode,
-    workspaceAgentSelection?: CoworkWorkspaceAgentSelection | null,
   ) => boolean | void | Promise<boolean | void>;
   onStop?: () => void;
   isStreaming?: boolean;
@@ -365,8 +355,6 @@ interface CoworkPromptInputProps {
   onManageSkills?: () => void;
   sessionId?: string;
   contextUsageControl?: React.ReactNode;
-  workspaceAgentTeamState?: WorkspaceAgentTeamChoiceState;
-  onWorkspaceAgentSelectionChange?: (selection: CoworkWorkspaceAgentSelection | null) => void;
   /** When true, hides attachment/skill buttons but keeps the input box visible (disabled) */
   remoteManaged?: boolean;
 }
@@ -391,8 +379,6 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
       onManageSkills,
       sessionId,
       contextUsageControl,
-      workspaceAgentTeamState,
-      onWorkspaceAgentSelectionChange,
       remoteManaged = false,
     } = props;
     const dispatch = useDispatch();
@@ -422,7 +408,6 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
     const [imageVisionHint, setImageVisionHint] = useState(false);
     const [isPatchingModel, setIsPatchingModel] = useState(false);
     const [showAgentMenu, setShowAgentMenu] = useState(false);
-    const [showWorkspaceAgentTeamMenu, setShowWorkspaceAgentTeamMenu] = useState(false);
     const [mentionPickerOpen, setMentionPickerOpen] = useState(false);
     const [mentionFilter, setMentionFilter] = useState('');
     const [mentionCursorPos, setMentionCursorPos] = useState(0);
@@ -444,8 +429,6 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
     const folderButtonRef = useRef<HTMLButtonElement>(null);
     const agentButtonRef = useRef<HTMLButtonElement>(null);
     const agentMenuRef = useRef<HTMLDivElement>(null);
-    const workspaceAgentTeamButtonRef = useRef<HTMLButtonElement>(null);
-    const workspaceAgentTeamMenuRef = useRef<HTMLDivElement>(null);
     const dragDepthRef = useRef(0);
     const warningTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const modelPatchRequestIdRef = useRef(0);
@@ -892,33 +875,6 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
     }, [showAgentMenu]);
 
     useEffect(() => {
-      if (!showWorkspaceAgentTeamMenu) return;
-
-      const handleClickOutside = (event: MouseEvent) => {
-        const target = event.target as Node;
-        if (
-          !workspaceAgentTeamButtonRef.current?.contains(target) &&
-          !workspaceAgentTeamMenuRef.current?.contains(target)
-        ) {
-          setShowWorkspaceAgentTeamMenu(false);
-        }
-      };
-
-      const handleEscape = (event: KeyboardEvent) => {
-        if (event.key === 'Escape') {
-          setShowWorkspaceAgentTeamMenu(false);
-        }
-      };
-
-      document.addEventListener('mousedown', handleClickOutside, true);
-      document.addEventListener('keydown', handleEscape, true);
-      return () => {
-        document.removeEventListener('mousedown', handleClickOutside, true);
-        document.removeEventListener('keydown', handleEscape, true);
-      };
-    }, [showWorkspaceAgentTeamMenu]);
-
-    useEffect(() => {
       if (!showAddMenu) return;
 
       const handleClickOutside = (event: MouseEvent) => {
@@ -1327,7 +1283,6 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
           mediaReferences.length > 0 ? mediaReferences : undefined,
           selectedTextSnippets.length > 0 ? selectedTextSnippets : undefined,
           effectiveCollaborationMode,
-          workspaceAgentTeamState?.selection ?? null,
         );
         if (result === false) {
           reportPromptControl('submit_blocked', {
@@ -1406,7 +1361,6 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
         getPromptCapabilityAnalyticsParams,
         getPromptContextAnalyticsParams,
         getPromptInputSource,
-        workspaceAgentTeamState?.selection,
       ],
     );
 
@@ -2159,142 +2113,6 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
       ? getAgentDisplayName(currentAgentForDisplay)
       : i18nService.t('coworkSelectAgent');
     const homeContextAgentName = truncateDisplayText(currentAgentName, ContextLabelMaxLength.Agent);
-    const shouldShowWorkspaceAgentTeamSelector =
-      workspaceAgentTeamState?.shouldShow === true && Boolean(workspaceAgentTeamState.selection);
-    const workspaceAgentTeamSelection = workspaceAgentTeamState?.selection ?? null;
-    const workspaceAgentTeamTriggerLabel = truncateDisplayText(
-      workspaceAgentTeamState?.selectedChoice?.label ??
-        i18nService.t('coworkWorkspaceAgentTeamAuto'),
-      ContextLabelMaxLength.Agent,
-    );
-
-    const handleSelectWorkspaceAgentTeam = useCallback(
-      (choice: WorkspaceAgentTeamChoice | null) => {
-        const workspaceId = workspaceAgentTeamSelection?.workspaceId;
-        if (!workspaceId) {
-          setShowWorkspaceAgentTeamMenu(false);
-          return;
-        }
-
-        const nextSelection: CoworkWorkspaceAgentSelection = choice
-          ? {
-              workspaceId,
-              mode: CoworkWorkspaceAgentMode.Manual,
-              agentId: choice.id,
-            }
-          : {
-              workspaceId,
-              mode: CoworkWorkspaceAgentMode.Auto,
-            };
-
-        reportPromptControl('workspace_agent_team_selected', {
-          mode: nextSelection.mode,
-          agentId: nextSelection.agentId,
-          workspaceId,
-        });
-        onWorkspaceAgentSelectionChange?.(nextSelection);
-        setShowWorkspaceAgentTeamMenu(false);
-      },
-      [
-        onWorkspaceAgentSelectionChange,
-        reportPromptControl,
-        workspaceAgentTeamSelection?.workspaceId,
-      ],
-    );
-
-    const renderWorkspaceAgentTeamSelector = (): React.ReactNode => {
-      if (!shouldShowWorkspaceAgentTeamSelector || !workspaceAgentTeamSelection) return null;
-
-      return (
-        <div className="relative min-w-0 shrink">
-          <button
-            ref={workspaceAgentTeamButtonRef}
-            type="button"
-            onClick={() => {
-              reportPromptControl(
-                showWorkspaceAgentTeamMenu
-                  ? 'workspace_agent_team_selector_close'
-                  : 'workspace_agent_team_selector_open',
-                {
-                  agentCount: workspaceAgentTeamState?.choices.length ?? 0,
-                  mode: workspaceAgentTeamSelection.mode,
-                },
-              );
-              setShowWorkspaceAgentTeamMenu(!showWorkspaceAgentTeamMenu);
-            }}
-            className={`flex h-7 max-w-[240px] items-center gap-1.5 rounded-lg px-2 text-[13px] text-secondary transition-colors hover:bg-background/80 hover:text-foreground ${
-              showWorkspaceAgentTeamMenu ? 'bg-background/80 text-foreground' : ''
-            }`}
-            aria-label={i18nService.t('coworkWorkspaceAgentTeamSelect')}
-            title={`${i18nService.t('coworkWorkspaceAgentTeamLabel')}: ${workspaceAgentTeamTriggerLabel}`}
-          >
-            <UserGroupIcon className="h-4 w-4 shrink-0" />
-            <span className="shrink-0">{i18nService.t('coworkWorkspaceAgentTeamLabel')}:</span>
-            <span className="min-w-0 truncate">{workspaceAgentTeamTriggerLabel}</span>
-            <ChevronDownIcon className="h-3.5 w-3.5 shrink-0" />
-          </button>
-          {showWorkspaceAgentTeamMenu && (
-            <div
-              ref={workspaceAgentTeamMenuRef}
-              className="absolute bottom-full left-0 z-50 mb-1 max-h-72 w-72 overflow-y-auto rounded-xl border border-border bg-surface py-1 shadow-popover"
-            >
-              <button
-                type="button"
-                onClick={() => handleSelectWorkspaceAgentTeam(null)}
-                className={`flex w-full items-start gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-surface-raised ${
-                  workspaceAgentTeamSelection.mode === CoworkWorkspaceAgentMode.Auto
-                    ? 'bg-surface-raised/70 text-foreground'
-                    : 'text-foreground'
-                }`}
-              >
-                <UserGroupIcon className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate">
-                    {i18nService.t('coworkWorkspaceAgentTeamAuto')}
-                  </span>
-                  <span className="mt-0.5 block truncate text-xs text-secondary">
-                    {i18nService.t('coworkWorkspaceAgentTeamAutoDescription')}
-                  </span>
-                </span>
-                {workspaceAgentTeamSelection.mode === CoworkWorkspaceAgentMode.Auto && (
-                  <CheckIcon className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-                )}
-              </button>
-              <div className="mx-3 my-1 h-px bg-border" />
-              {workspaceAgentTeamState?.choices.map(choice => {
-                const isSelected =
-                  workspaceAgentTeamSelection.mode === CoworkWorkspaceAgentMode.Manual &&
-                  workspaceAgentTeamSelection.agentId === choice.id;
-                return (
-                  <button
-                    key={choice.id}
-                    type="button"
-                    onClick={() => handleSelectWorkspaceAgentTeam(choice)}
-                    className={`flex w-full items-start gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-surface-raised ${
-                      isSelected ? 'bg-surface-raised/70 text-foreground' : 'text-foreground'
-                    }`}
-                  >
-                    <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-primary-muted text-xs font-medium text-primary">
-                      {choice.iconText || choice.label.slice(0, 1)}
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate">{choice.label}</span>
-                      {(choice.description || choice.model) && (
-                        <span className="mt-0.5 block truncate text-xs text-secondary">
-                          {choice.description || choice.model}
-                        </span>
-                      )}
-                    </span>
-                    {isSelected && <CheckIcon className="mt-0.5 h-4 w-4 shrink-0 text-primary" />}
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      );
-    };
-
     // Sync when config is updated elsewhere (e.g. Settings panel)
     useEffect(() => {
       const syncFromConfig = () => {
@@ -2872,7 +2690,6 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
                       )}
                     </div>
                   )}
-                  {renderWorkspaceAgentTeamSelector()}
                   {shouldShowAgentSelector && (
                     <div className="relative min-w-0 shrink">
                       <button
@@ -3013,7 +2830,6 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
                         )}
                       </>
                     )}
-                    {renderWorkspaceAgentTeamSelector()}
                     {voiceRecordingUiState.showLargeInputControls && largeInputToolActions}
                   </div>
                   <div className="flex shrink-0 items-center gap-2">

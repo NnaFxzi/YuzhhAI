@@ -1,15 +1,15 @@
 import { ShieldCheckIcon } from '@heroicons/react/24/outline';
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 
 import { buildSessionTitleFromInput } from '../../../common/sessionTitle';
 import { buildCoworkImageAttachmentPreviews } from '../../../shared/cowork/imageAttachments';
 import type { CoworkSelectedTextSnippet } from '../../../shared/cowork/selectedText';
-import type { CoworkWorkspaceAgentSelection } from '../../../shared/cowork/workspaceAgentSelection';
 import type { EnterpriseLeadWorkspace } from '../../../shared/enterpriseLeadWorkspace/types';
 import { agentService } from '../../services/agent';
 import { coworkService } from '../../services/cowork';
 import { i18nService } from '../../services/i18n';
+import { kitService } from '../../services/kit';
 import { buildKitReferences, resolveSelectedKitCapabilities } from '../../services/kitCapability';
 import { quickActionService } from '../../services/quickAction';
 import { buildWorkflowPrompt } from '../../services/workflowPrompt';
@@ -28,7 +28,11 @@ import {
   setStreaming,
   updateSessionStatus,
 } from '../../store/slices/coworkSlice';
-import { clearActiveKits } from '../../store/slices/kitSlice';
+import {
+  clearActiveKits,
+  setInstalledKits,
+  setMarketplaceKits,
+} from '../../store/slices/kitSlice';
 import {
   clearSelection,
   selectAction,
@@ -44,6 +48,7 @@ import {
   type OpenClawEngineStatus,
   type SubagentSessionSummary,
 } from '../../types/cowork';
+import type { InstalledKit, MarketplaceKit } from '../../types/kit';
 import type { MediaAttachmentRef } from '../../types/mediaGeneration';
 import type { LocalizedPrompt } from '../../types/quickAction';
 import { toOpenClawModelRef } from '../../utils/openclawModelRef';
@@ -62,15 +67,54 @@ import { buildCoworkRuntimeSkillSelection } from './coworkSkillRouting';
 import { reportPromptTemplateAction } from './promptAnalytics';
 import { buildCoworkContinuationSystemPrompt, buildCoworkSystemPrompt } from './skillSystemPrompt';
 import SubagentSessionDetail from './SubagentSessionDetail';
-import {
-  deriveWorkspaceAgentTeamChoices,
-  resolveWorkspaceSelectionForCoworkKnowledge,
-} from './workspaceAgentTeamOptions';
 
 const logCoworkViewModel = (message: string): void => {
   console.debug(`[CoworkView] ${message}`);
   window.electron?.log?.fromRenderer?.('debug', 'CoworkView', message);
 };
+
+type KitData = {
+  installedKits: Record<string, InstalledKit>;
+  marketplaceKits: MarketplaceKit[];
+};
+
+type PendingStart = {
+  requestId: number;
+  cancelled: boolean;
+  cancellationAction: 'stop' | 'delete' | null;
+  cancellationPromise: Promise<void>;
+  cancel: (action: 'stop' | 'delete') => void;
+};
+
+const createPendingStart = (requestId: number): PendingStart => {
+  let resolveCancellation: () => void;
+  const cancellationPromise = new Promise<void>(resolve => {
+    resolveCancellation = resolve;
+  });
+  const pendingStart: PendingStart = {
+    requestId,
+    cancelled: false,
+    cancellationAction: null,
+    cancellationPromise,
+    cancel: action => {
+      if (pendingStart.cancelled) return;
+      pendingStart.cancelled = true;
+      pendingStart.cancellationAction = action;
+      resolveCancellation();
+    },
+  };
+  return pendingStart;
+};
+
+const hasSelectedKitMetadata = (
+  kitIds: string[],
+  installedKits: Record<string, InstalledKit>,
+  marketplaceKits: MarketplaceKit[],
+): boolean =>
+  kitIds.every(
+    kitId =>
+      installedKits[kitId] !== undefined && marketplaceKits.some(kit => kit.id === kitId),
+  );
 
 export interface CoworkViewProps {
   onRequestAppSettings?: (options?: SettingsOpenOptions) => void;
@@ -97,18 +141,13 @@ const CoworkView: React.FC<CoworkViewProps> = ({
   const [isInitialized, setIsInitialized] = useState(false);
   const [openClawStatus, setOpenClawStatus] = useState<OpenClawEngineStatus | null>(null);
   const [isRestartingGateway, setIsRestartingGateway] = useState(false);
-  const [workspaceAgentSelection, setWorkspaceAgentSelection] =
-    useState<CoworkWorkspaceAgentSelection | null>(null);
   // Track if we're starting/continuing a session to prevent duplicate submissions
   const isStartingRef = useRef(false);
   const isContinuingRef = useRef(false);
   // Track pending start request so stop can cancel delayed startup.
-  const pendingStartRef = useRef<{
-    requestId: number;
-    cancelled: boolean;
-    cancellationAction: 'stop' | 'delete' | null;
-  } | null>(null);
+  const pendingStartRef = useRef<PendingStart | null>(null);
   const startRequestIdRef = useRef(0);
+  const kitDataLoadRef = useRef<Promise<KitData> | null>(null);
   // Ref for CoworkPromptInput
   const promptInputRef = useRef<CoworkPromptInputRef>(null);
 
@@ -134,9 +173,61 @@ const CoworkView: React.FC<CoworkViewProps> = ({
     setViewingSubagent(null);
   }, [currentSession?.id]);
 
+  const loadKitData = useCallback((): Promise<KitData> => {
+    if (kitDataLoadRef.current) {
+      return kitDataLoadRef.current;
+    }
+
+    const loadPromise = Promise.all([
+      kitService.fetchMarketplaceKits(),
+      kitService.getInstalledKits(),
+    ]).then(([marketplaceKits, installedKits]) => ({ marketplaceKits, installedKits }));
+    kitDataLoadRef.current = loadPromise;
+    void loadPromise.then(
+      () => {
+        if (kitDataLoadRef.current === loadPromise) {
+          kitDataLoadRef.current = null;
+        }
+      },
+      () => {
+        if (kitDataLoadRef.current === loadPromise) {
+          kitDataLoadRef.current = null;
+        }
+      },
+    );
+    return loadPromise;
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+
+    void loadKitData()
+      .then(({ marketplaceKits: nextMarketplaceKits, installedKits: nextInstalledKits }) => {
+        if (!active) return;
+        dispatch(setMarketplaceKits(nextMarketplaceKits));
+        dispatch(setInstalledKits(nextInstalledKits));
+      })
+      .catch(error => {
+        console.error('[CoworkView] Failed to load Kit data:', error);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [dispatch, loadKitData]);
+
+  useEffect(() => {
+    return () => {
+      pendingStartRef.current?.cancel('stop');
+    };
+  }, []);
+
   const activeSkillIds = useSelector((state: RootState) => state.skill.activeSkillIds);
   const skills = useSelector((state: RootState) => state.skill.skills);
   const activeKitIds = useSelector((state: RootState) => state.kit.activeKitIds);
+  const currentSessionDraftKitIds = useSelector((state: RootState) =>
+    currentSession ? state.cowork.draftKitIds[currentSession.id] : undefined,
+  );
   const installedKits = useSelector((state: RootState) => state.kit.installedKits);
   const marketplaceKits = useSelector((state: RootState) => state.kit.marketplaceKits);
   const quickActions = useSelector((state: RootState) => state.quickAction.actions);
@@ -158,24 +249,17 @@ const CoworkView: React.FC<CoworkViewProps> = ({
     const key = currentSession?.id || '__home__';
     return state.cowork.mediaSelection[key];
   });
-  const workspaceAgentTeamState = useMemo(
-    () => deriveWorkspaceAgentTeamChoices(enterpriseLeadWorkspace, workspaceAgentSelection),
-    [enterpriseLeadWorkspace, workspaceAgentSelection],
-  );
-
-  useEffect(() => {
-    setWorkspaceAgentSelection(null);
-  }, [enterpriseLeadWorkspace?.id]);
-
   const buildCapabilitySelection = useCallback(
-    (skillIds: string[], kitIds: string[]) => {
-      const resolvedKitCapabilities = resolveSelectedKitCapabilities(kitIds, installedKits);
+    (skillIds: string[], kitIds: string[], kitData?: KitData) => {
+      const selectedInstalledKits = kitData?.installedKits ?? installedKits;
+      const selectedMarketplaceKits = kitData?.marketplaceKits ?? marketplaceKits;
+      const resolvedKitCapabilities = resolveSelectedKitCapabilities(kitIds, selectedInstalledKits);
       const { directSkillIds, runtimeSkillIds } = buildCoworkRuntimeSkillSelection({
         selectedSkillIds: skillIds,
         kitSkillIds: resolvedKitCapabilities.skillIds,
         skills,
       });
-      const kitReferences = buildKitReferences(kitIds, marketplaceKits);
+      const kitReferences = buildKitReferences(kitIds, selectedMarketplaceKits);
 
       return {
         directSkillIds,
@@ -297,7 +381,6 @@ const CoworkView: React.FC<CoworkViewProps> = ({
     mediaReferences?: MediaAttachmentRef[],
     selectedTextSnippets?: CoworkSelectedTextSnippet[],
     collaborationMode: CoworkCollaborationModeType = CoworkCollaborationMode.Default,
-    submittedWorkspaceAgentSelection?: CoworkWorkspaceAgentSelection | null,
   ): Promise<boolean | void> => {
     console.log('[CoworkView] handleStartSession: imageAttachments diagnosis', {
       hasImageAttachments: !!imageAttachments,
@@ -319,7 +402,8 @@ const CoworkView: React.FC<CoworkViewProps> = ({
     if (isStartingRef.current) return false;
     isStartingRef.current = true;
     const requestId = ++startRequestIdRef.current;
-    pendingStartRef.current = { requestId, cancelled: false, cancellationAction: null };
+    const pendingStart = createPendingStart(requestId);
+    pendingStartRef.current = pendingStart;
     const isPendingStartCancelled = () => {
       const pending = pendingStartRef.current;
       return !pending || pending.requestId !== requestId || pending.cancelled;
@@ -346,6 +430,27 @@ const CoworkView: React.FC<CoworkViewProps> = ({
       } catch (error) {
         console.error('Failed to check cowork API config:', error);
       }
+      if (isPendingStartCancelled()) {
+        return false;
+      }
+
+      // Capture selections before awaiting Kit data so this request reflects the submit action.
+      const sessionSkillIds = [...activeSkillIds];
+      const sessionKitIds = [...activeKitIds];
+      let refreshedKitData: KitData | undefined;
+      if (!hasSelectedKitMetadata(sessionKitIds, installedKits, marketplaceKits)) {
+        try {
+          refreshedKitData = await Promise.race([
+            loadKitData(),
+            pendingStart.cancellationPromise.then(() => undefined),
+          ]);
+        } catch (error) {
+          console.error('[CoworkView] Failed to refresh Kit data for session start:', error);
+        }
+        if (isPendingStartCancelled()) {
+          return false;
+        }
+      }
 
       // Create a temporary session with user message to show immediately
       const tempSessionId = `temp-${Date.now()}`;
@@ -355,12 +460,8 @@ const CoworkView: React.FC<CoworkViewProps> = ({
       );
       const now = Date.now();
 
-      // Capture active skill IDs and kit IDs before clearing them
-      const sessionSkillIds = [...activeSkillIds];
-      const sessionKitIds = [...activeKitIds];
-
       const { directSkillIds, runtimeSkillIds, kitReferences, resolvedKitCapabilities } =
-        buildCapabilitySelection(sessionSkillIds, sessionKitIds);
+        buildCapabilitySelection(sessionSkillIds, sessionKitIds, refreshedKitData);
       const isPlanMode = collaborationMode === CoworkCollaborationMode.Plan;
       const displayDirectSkillIds = directSkillIds;
       const displayKitIds = sessionKitIds;
@@ -455,11 +556,6 @@ const CoworkView: React.FC<CoworkViewProps> = ({
       const sessionModelOverride = currentAgentSelectedModel
         ? toOpenClawModelRef(currentAgentSelectedModel)
         : '';
-      const effectiveWorkspaceAgentSelection =
-        resolveWorkspaceSelectionForCoworkKnowledge(
-          enterpriseLeadWorkspace,
-          submittedWorkspaceAgentSelection ?? workspaceAgentTeamState.selection,
-        ) ?? undefined;
       logCoworkViewModel(
         `creating session with model ${sessionModelOverride || 'default'}; agent model is ${currentAgent?.model || 'empty'}; server model is ${currentAgentSelectedModel?.isServerModel === true}`,
       );
@@ -484,7 +580,7 @@ const CoworkView: React.FC<CoworkViewProps> = ({
           mediaSelection && mediaSelection.mode !== 'none' ? mediaSelection : undefined,
         mediaReferences,
         selectedTextSnippets,
-        workspaceAgentSelection: effectiveWorkspaceAgentSelection,
+        ...(enterpriseLeadWorkspace?.id ? { workspaceId: enterpriseLeadWorkspace.id } : {}),
       });
 
       if (!startedSession && startError) {
@@ -539,7 +635,6 @@ const CoworkView: React.FC<CoworkViewProps> = ({
     mediaReferences?: MediaAttachmentRef[],
     selectedTextSnippets?: CoworkSelectedTextSnippet[],
     collaborationMode: CoworkCollaborationModeType = CoworkCollaborationMode.Default,
-    submittedWorkspaceAgentSelection?: CoworkWorkspaceAgentSelection | null,
   ) => {
     if (!currentSession) return false;
     // Prevent duplicate submissions
@@ -562,7 +657,7 @@ const CoworkView: React.FC<CoworkViewProps> = ({
 
       // Capture active skill IDs and kit IDs before clearing
       const sessionSkillIds = [...activeSkillIds];
-      const sessionKitIds = [...activeKitIds];
+      const sessionKitIds = [...(currentSessionDraftKitIds ?? [])];
 
       const { directSkillIds, runtimeSkillIds, kitReferences, resolvedKitCapabilities } =
         buildCapabilitySelection(sessionSkillIds, sessionKitIds);
@@ -583,12 +678,6 @@ const CoworkView: React.FC<CoworkViewProps> = ({
         skillPrompt,
         config.systemPrompt,
       );
-      const effectiveWorkspaceAgentSelection =
-        resolveWorkspaceSelectionForCoworkKnowledge(
-          enterpriseLeadWorkspace,
-          submittedWorkspaceAgentSelection ?? workspaceAgentTeamState.selection,
-        ) ?? undefined;
-
       const sent = await coworkService.continueSession({
         sessionId: currentSession.id,
         prompt,
@@ -607,7 +696,7 @@ const CoworkView: React.FC<CoworkViewProps> = ({
           mediaSelection && mediaSelection.mode !== 'none' ? mediaSelection : undefined,
         mediaReferences,
         selectedTextSnippets,
-        workspaceAgentSelection: effectiveWorkspaceAgentSelection,
+        ...(enterpriseLeadWorkspace?.id ? { workspaceId: enterpriseLeadWorkspace.id } : {}),
       });
       if (sent && (sessionSkillIds.length > 0 || sessionKitIds.length > 0)) {
         dispatch(clearActiveSkills());
@@ -622,11 +711,10 @@ const CoworkView: React.FC<CoworkViewProps> = ({
   };
 
   const handleStopSession = useCallback(async () => {
-    if (!currentSession) return;
-    if (currentSession.id.startsWith('temp-') && pendingStartRef.current) {
-      pendingStartRef.current.cancelled = true;
-      pendingStartRef.current.cancellationAction = 'stop';
+    if (pendingStartRef.current && (!currentSession || currentSession.id.startsWith('temp-'))) {
+      pendingStartRef.current.cancel('stop');
     }
+    if (!currentSession) return;
     await coworkService.stopSession(currentSession.id);
   }, [currentSession]);
 
@@ -887,8 +975,6 @@ const CoworkView: React.FC<CoworkViewProps> = ({
             onToggleSidebar={onToggleSidebar}
             onNewChat={onNewChat}
             updateBadge={updateBadge}
-            workspaceAgentTeamState={workspaceAgentTeamState}
-            onWorkspaceAgentSelectionChange={setWorkspaceAgentSelection}
           />
         </div>
       </div>
@@ -950,8 +1036,6 @@ const CoworkView: React.FC<CoworkViewProps> = ({
                   showModelSelector={true}
                   showAgentSelector={true}
                   onManageSkills={() => onShowSkills?.()}
-                  workspaceAgentTeamState={workspaceAgentTeamState}
-                  onWorkspaceAgentSelectionChange={setWorkspaceAgentSelection}
                 />
               </div>
 

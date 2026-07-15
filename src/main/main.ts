@@ -69,10 +69,6 @@ import type { LayeredCoworkSettingsUpdate } from '../shared/cowork/layeredSettin
 import { containsPlanModePrompt } from '../shared/cowork/planMode';
 import { type CoworkSelectedTextSnippet, normalizeCoworkSelectedTextSnippets, } from '../shared/cowork/selectedText';
 import {
-  type CoworkWorkspaceAgentSelection,
-  normalizeCoworkWorkspaceAgentSelection,
-} from '../shared/cowork/workspaceAgentSelection';
-import {
   DataMigrationIpc,
   type DataMigrationLastRestoreResult,
   DataMigrationRestoreStatus,
@@ -126,7 +122,6 @@ import {
   CoworkStore,
 } from './coworkStore';
 import { buildDevServerUnavailableDataUrl } from './devServerErrorPage';
-import { buildCoworkWorkspaceAgentTeamPrompt } from './enterpriseLeadWorkspace/coworkAgentTeamBridge';
 import { registerEnterpriseLeadWorkspaceHandlers } from './enterpriseLeadWorkspace/ipcHandlers';
 import {
   createEnterpriseLeadWorkflowEventDeps,
@@ -2982,26 +2977,6 @@ function mergeCoworkSystemPrompt(systemPrompt?: string): string | undefined {
   }
   const sections = [scheduledTaskPrompt, normalizedSystemPrompt].filter(Boolean);
   return sections.length > 0 ? sections.join('\n\n') : undefined;
-}
-
-function appendCoworkWorkspaceAgentTeamPrompt(
-  systemPrompt: string | undefined,
-  rawSelection: CoworkWorkspaceAgentSelection | null | undefined,
-): string | undefined {
-  const selection = normalizeCoworkWorkspaceAgentSelection(rawSelection);
-  if (!selection) return systemPrompt;
-
-  try {
-    const workspace = getEnterpriseLeadWorkspaceStore().getWorkspace(selection.workspaceId);
-    const agentTeamPrompt = buildCoworkWorkspaceAgentTeamPrompt({ workspace, selection });
-    if (!agentTeamPrompt) return systemPrompt;
-
-    const sections = [systemPrompt?.trim() || '', agentTeamPrompt].filter(Boolean);
-    return sections.length > 0 ? sections.join('\n\n') : undefined;
-  } catch (error) {
-    console.warn('[Cowork] failed to build workspace Agent team prompt:', error);
-    return systemPrompt;
-  }
 }
 
 type CoworkImageAttachmentMain = {
@@ -6902,7 +6877,7 @@ if (!gotTheLock) {
         };
         mediaReferences?: MediaAttachmentRefMain[];
         selectedTextSnippets?: CoworkSelectedTextSnippet[];
-        workspaceAgentSelection?: CoworkWorkspaceAgentSelection | null;
+        workspaceId?: string;
       },
     ) => {
       try {
@@ -6924,16 +6899,12 @@ if (!gotTheLock) {
           options.agentId,
           options.prompt,
         );
-        const baseSystemPrompt = mergeCoworkSystemPrompt(
+        const systemPrompt = mergeCoworkSystemPrompt(
           options.systemPrompt ?? config.systemPrompt,
         );
-        const systemPrompt = appendCoworkWorkspaceAgentTeamPrompt(
-          baseSystemPrompt,
-          options.workspaceAgentSelection,
-        );
-        const persistedSystemPrompt = containsPlanModePrompt(baseSystemPrompt)
+        const persistedSystemPrompt = containsPlanModePrompt(systemPrompt)
           ? mergeCoworkSystemPrompt(config.systemPrompt)
-          : baseSystemPrompt;
+          : systemPrompt;
         const selectedTaskDirectory = resolveSessionWorkingDirectory({
           cwd: options.cwd,
           agentId: runtimeAgent.id,
@@ -7056,7 +7027,7 @@ if (!gotTheLock) {
             mediaSelection: normalizedMediaSelection,
             mediaReferences: options.mediaReferences,
             selectedTextSnippets,
-            workspaceAgentSelection: options.workspaceAgentSelection ?? null,
+            workspaceId: options.workspaceId,
           })
           .catch(error => {
             console.error('[Cowork] session error:', error);
@@ -7117,7 +7088,7 @@ if (!gotTheLock) {
         };
         mediaReferences?: MediaAttachmentRefMain[];
         selectedTextSnippets?: CoworkSelectedTextSnippet[];
-        workspaceAgentSelection?: CoworkWorkspaceAgentSelection | null;
+        workspaceId?: string;
       },
     ) => {
       try {
@@ -7138,13 +7109,9 @@ if (!gotTheLock) {
         const existingSession = coworkStoreInstance.getSession(options.sessionId);
         const config = coworkStoreInstance.getConfig();
         const hasLegacyPersistedPlanMode = containsPlanModePrompt(existingSession?.systemPrompt);
-        const continuationBaseSystemPrompt = mergeCoworkSystemPrompt(
+        const continuationSystemPrompt = mergeCoworkSystemPrompt(
           options.systemPrompt ??
             (hasLegacyPersistedPlanMode ? config.systemPrompt : existingSession?.systemPrompt),
-        );
-        const continuationSystemPrompt = appendCoworkWorkspaceAgentTeamPrompt(
-          continuationBaseSystemPrompt,
-          options.workspaceAgentSelection,
         );
         if (hasLegacyPersistedPlanMode) {
           coworkStoreInstance.updateSession(options.sessionId, {
@@ -7217,7 +7184,7 @@ if (!gotTheLock) {
             mediaSelection: normalizedMediaSelection,
             mediaReferences: options.mediaReferences,
             selectedTextSnippets,
-            workspaceAgentSelection: options.workspaceAgentSelection ?? null,
+            workspaceId: options.workspaceId,
           })
           .catch(error => {
             console.error('[Cowork] continue error:', error);

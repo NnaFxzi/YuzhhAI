@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest';
 
 import type { InstalledKit, MarketplaceKit } from '../../types/kit';
+import { mergeWorkspaceKitIds } from '../enterpriseLeadWorkspace/workspaceKitSelection';
 import { buildSelectedKitContextPrompt } from './selectedKitContextPrompt';
 
 describe('buildSelectedKitContextPrompt', () => {
@@ -63,5 +64,23 @@ describe('buildSelectedKitContextPrompt', () => {
     const prompt = buildSelectedKitContextPrompt(['local'], [], installedKits);
 
     expect(prompt).toContain('<skill id="local-skill" name="local-skill" />');
+  });
+
+  test('keeps defaults-first Kit context when a new workspace turn adds a temporary Kit', () => {
+    const snapshotKitIds = mergeWorkspaceKitIds(['research', 'content'], ['content', 'risk']);
+    const marketplaceKits: MarketplaceKit[] = [
+      { id: 'research', name: 'Research', description: 'Research workflows' },
+      { id: 'content', name: 'Content', description: 'Content workflows' },
+      { id: 'risk', name: 'Risk', description: 'Risk workflows' },
+    ];
+
+    const prompt = buildSelectedKitContextPrompt(snapshotKitIds, marketplaceKits, {});
+
+    expect(snapshotKitIds).toEqual(['research', 'content', 'risk']);
+    expect(prompt).toContain('<id>research</id>');
+    expect(prompt).toContain('<id>content</id>');
+    expect(prompt).toContain('<id>risk</id>');
+    expect(prompt?.indexOf('<id>research</id>')).toBeLessThan(prompt?.indexOf('<id>content</id>') ?? 0);
+    expect(prompt?.indexOf('<id>content</id>')).toBeLessThan(prompt?.indexOf('<id>risk</id>') ?? 0);
   });
 });

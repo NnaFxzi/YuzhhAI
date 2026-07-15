@@ -2,18 +2,17 @@ import {
   ArrowLeftIcon,
   BookOpenIcon,
   ChatBubbleLeftRightIcon,
-  ClockIcon,
   Cog6ToothIcon,
   ExclamationTriangleIcon,
   MagnifyingGlassIcon,
   RectangleGroupIcon,
   TrashIcon,
-  UserGroupIcon,
 } from '@heroicons/react/24/outline';
 import React, { useCallback, useState } from 'react';
 
 import type { EnterpriseLeadWorkspace } from '../../../shared/enterpriseLeadWorkspace/types';
 import { i18nService } from '../../services/i18n';
+import SidebarKitsIcon from '../icons/SidebarKitsIcon';
 import {
   type EnterpriseLeadWorkbenchNavIcon as EnterpriseLeadWorkbenchNavIconType,
   EnterpriseLeadWorkspaceInternalPage,
@@ -71,12 +70,10 @@ const navIconById: Record<
   React.ComponentType<{ className?: string }>
 > = {
   dashboard: RectangleGroupIcon,
-  workflow: RectangleGroupIcon,
   chat: ChatBubbleLeftRightIcon,
   search: MagnifyingGlassIcon,
   knowledge: BookOpenIcon,
-  records: ClockIcon,
-  agents: UserGroupIcon,
+  kits: SidebarKitsIcon,
   settings: Cog6ToothIcon,
 };
 

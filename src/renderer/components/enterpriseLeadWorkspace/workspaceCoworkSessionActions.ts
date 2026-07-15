@@ -19,6 +19,7 @@ interface OpenEmbeddedCoworkConversationRecordOptions {
   sessionId: string;
   setActiveSessionId: (sessionId: string | null) => void;
   setActiveInternalPage: (page: EnterpriseLeadWorkspaceInternalPageType) => void;
+  discardHandoffDraft?: () => void;
   loadSession: (sessionId: string) => Promise<unknown | null>;
 }
 
@@ -26,8 +27,10 @@ export const openEmbeddedCoworkConversationRecord = async ({
   sessionId,
   setActiveSessionId,
   setActiveInternalPage,
+  discardHandoffDraft,
   loadSession,
 }: OpenEmbeddedCoworkConversationRecordOptions): Promise<void> => {
+  discardHandoffDraft?.();
   setActiveSessionId(sessionId);
   setActiveInternalPage(EnterpriseLeadWorkspaceInternalPage.AiChat);
 

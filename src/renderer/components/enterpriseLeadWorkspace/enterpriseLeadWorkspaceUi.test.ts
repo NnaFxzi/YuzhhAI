@@ -4,7 +4,6 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { Provider } from 'react-redux';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 
-import { EnterpriseLeadAgentGroupId } from '../../../shared/enterpriseLeadWorkspace/agentOrganization';
 import {
   EnterpriseLeadAgentRole,
   EnterpriseLeadContentDeliveryMode,
@@ -15,8 +14,6 @@ import {
   EnterpriseLeadKnowledgeIndexStatus,
   EnterpriseLeadRunStatus,
   EnterpriseLeadTaskStatus,
-  EnterpriseLeadWorkspaceAgentCalibrationCheckId,
-  EnterpriseLeadWorkspaceAgentSource,
 } from '../../../shared/enterpriseLeadWorkspace/constants';
 import type {
   EnterpriseLeadAgentTask,
@@ -42,13 +39,13 @@ import authReducer from '../../store/slices/authSlice';
 import modelReducer from '../../store/slices/modelSlice';
 import skillReducer from '../../store/slices/skillSlice';
 import type { Skill } from '../../types/skill';
+import * as workspaceUi from './enterpriseLeadWorkspaceUi';
 import {
   buildCreationRecordConversationMessages,
   buildManualEnterpriseLeadWorkspaceDraft,
   EnterpriseLeadEntryAction,
   EnterpriseLeadKnowledgeItemKind,
   EnterpriseLeadKnowledgeSection,
-  EnterpriseLeadWorkbenchSidebarMode,
   EnterpriseLeadWorkspaceHistoryState,
   EnterpriseLeadWorkspaceInternalPage,
   EnterpriseLeadWorkspaceLaunchMode,
@@ -57,24 +54,15 @@ import {
   EnterpriseLeadWorkspaceStartAction,
   EnterpriseLeadWorkspaceStartSourceState,
   getAgentCardTone,
-  getAgentRoleLabel,
   getAgentStatusLabelKey,
   getCreationRecordSummary,
-  getDefaultWorkbenchSidebarMode,
-  getDefaultWorkspaceInternalPage,
   getEditableKnowledgeField,
-  getEffectiveWorkspaceAgent,
   getEnterpriseLeadTaskDisplay,
   getEntryHomeActions,
   getHistoryModalState,
   getLaunchMode,
-  getPromotionDepartmentSections,
   getShellModeForEnterpriseLeadWorkspaceScreen,
-  getWorkbenchAgentItems,
-  getWorkbenchConfigSections,
-  getWorkbenchLayoutSpec,
   getWorkbenchSidebarItems,
-  getWorkbenchSidebarWidth,
   getWorkspaceCompletionPercent,
   getWorkspaceCreateBranchScreen,
   getWorkspaceInternalPages,
@@ -84,6 +72,7 @@ import {
   getWorkspaceStartSourceState,
   hasTaskOutput,
   isWorkspaceOperationCurrent,
+  normalizeWorkspaceInternalPage,
   shouldRefreshHistoryOnEntryAction,
   sortWorkspacesByRecentUpdate,
   summarizeWorkspaceDraft,
@@ -120,32 +109,6 @@ import WorkspaceShell, {
   WorkspaceShellNavAction,
 } from './WorkspaceShell';
 import WorkspaceStart from './WorkspaceStart';
-import {
-  addLocalAgentBindingToWorkspace,
-  addSystemAgentBindingsToWorkspace,
-  addSystemAgentBindingToWorkspace,
-  buildWorkspaceAgentCalibrationRequest,
-  buildWorkspaceAgentOverrides,
-  buildWorkspaceAgentStabilityPrompt,
-  createAndBindWorkspaceAgent,
-  createDefaultWorkspaceAgentStabilityDraft,
-  createEmptyWorkspaceAgentStabilityDraft,
-  createWorkspaceAgentStabilityDraft,
-  getWorkspaceAgentActionsMenuPosition,
-  getWorkspaceAgentCalibrationScore,
-  getWorkspaceAgentOperationFeedbackLabelKey,
-  mergeWorkspaceAgentStabilityPrompt,
-  moveWorkspaceAgentBinding,
-  parseWorkspaceAgentStabilityDraft,
-  prepareWorkspaceAgentBindings,
-  saveWorkbenchWorkspaceAgents,
-  saveWorkspaceAgentBindings,
-  validateWorkspaceAgentDraft,
-  WorkspaceAgentActionsMenu,
-  WorkspaceAgentEditorDialog,
-  WorkspaceAgentOperation,
-  WorkspaceWorkbench,
-} from './WorkspaceWorkbench';
 
 const emptyProfile = (): EnterpriseLeadWorkspaceProfile => ({
   companySummary: '',
@@ -362,9 +325,6 @@ const renderEnterpriseLeadComponent = (
     }),
   );
 };
-
-const renderWorkbench = (props: React.ComponentProps<typeof WorkspaceWorkbench>): string =>
-  renderEnterpriseLeadComponent(React.createElement(WorkspaceWorkbench, props));
 
 const createDeferred = <T>(): {
   promise: Promise<T>;
@@ -852,8 +812,7 @@ interface CapturedWorkspaceKnowledgeDocumentsPanelProps {
   onAiKnowledgeMetricsRefresh?: () => Promise<void> | void;
 }
 
-type KnowledgeBaseServiceApi =
-  typeof import('../../services/knowledgeBase').knowledgeBaseService;
+type KnowledgeBaseServiceApi = typeof import('../../services/knowledgeBase').knowledgeBaseService;
 
 interface WorkspaceKnowledgeBaseMountHarness {
   ReactInner: typeof React;
@@ -902,6 +861,7 @@ const mountIsolatedWorkspaceKnowledgeBase = async (input: {
     };
     return {
       default: ControlledWorkspaceKnowledgeDocumentsPanel,
+      workspaceKnowledgeUploadButtonSlotId: 'enterprise-knowledge-upload-slot',
     };
   });
   vi.doMock('./WorkspaceAiKnowledgePanel', () => {
@@ -1066,16 +1026,10 @@ const mountIsolatedWorkspaceKnowledgeBase = async (input: {
   };
 };
 
-const getFakeDomElementByTestId = (
-  root: FakeDomNode,
-  testId: string,
-): FakeDomElement | null =>
+const getFakeDomElementByTestId = (root: FakeDomNode, testId: string): FakeDomElement | null =>
   findFakeDomElement(root, element => element.getAttribute('data-testid') === testId);
 
-const getKnowledgeMetricButton = (
-  root: FakeDomNode,
-  label: string,
-): FakeDomElement | null =>
+const getKnowledgeMetricButton = (root: FakeDomNode, label: string): FakeDomElement | null =>
   findFakeDomElement(
     root,
     element => element.tagName.toLowerCase() === 'button' && element.textContent.includes(label),
@@ -1127,11 +1081,7 @@ describe('enterprise lead workspace UI helpers', () => {
     };
     const prepare = vi.fn(async () => preparation);
     const permanentSuspension = new Promise<void>(() => undefined);
-    const SuspendAfterDialog = ({
-      suspension,
-    }: {
-      suspension?: Promise<void>;
-    }): null => {
+    const SuspendAfterDialog = ({ suspension }: { suspension?: Promise<void> }): null => {
       if (suspension) {
         throw suspension;
       }
@@ -1164,17 +1114,12 @@ describe('enterprise lead workspace UI helpers', () => {
           await Promise.resolve();
         }
       });
-      const sendButton = getFakeDomElementByTestId(
-        container,
-        'knowledge-extraction-send',
-      );
+      const sendButton = getFakeDomElementByTestId(container, 'knowledge-extraction-send');
       expect(sendButton).not.toBeNull();
 
       await React.act(async () => {
         React.startTransition(() => {
-          root.render(
-            renderDialog(abortedSend, abortedClose, permanentSuspension),
-          );
+          root.render(renderDialog(abortedSend, abortedClose, permanentSuspension));
         });
         await Promise.resolve();
       });
@@ -1207,24 +1152,22 @@ describe('enterprise lead workspace UI helpers', () => {
     const oldClose = vi.fn();
     const committedSend = vi.fn(async () => undefined);
     const committedClose = vi.fn();
-    const prepare = vi.fn(
-      async (): Promise<KnowledgeExtractionAuthorizationPreparation> => ({
-        authorizationToken: 'single-use-token',
-        descriptor: {
-          workspaceId: 'workspace-committed',
-          documentId: 'document-committed',
-          documentVersionId: 'version-committed',
-          documentDisplayName: 'Committed.pdf',
-          providerId: 'provider-private-id',
-          providerLabel: 'Provider',
-          modelId: 'model-private-id',
-          modelLabel: 'Model',
-          plannedModelCalls: 1,
-          partial: false,
-          expiresAt: '2026-07-14T00:00:00.000Z',
-        },
-      }),
-    );
+    const prepare = vi.fn(async (): Promise<KnowledgeExtractionAuthorizationPreparation> => ({
+      authorizationToken: 'single-use-token',
+      descriptor: {
+        workspaceId: 'workspace-committed',
+        documentId: 'document-committed',
+        documentVersionId: 'version-committed',
+        documentDisplayName: 'Committed.pdf',
+        providerId: 'provider-private-id',
+        providerLabel: 'Provider',
+        modelId: 'model-private-id',
+        modelLabel: 'Model',
+        plannedModelCalls: 1,
+        partial: false,
+        expiresAt: '2026-07-14T00:00:00.000Z',
+      },
+    }));
     const renderDialog = (
       send: (authorizationToken: string) => Promise<void>,
       onClose: () => void,
@@ -1250,10 +1193,7 @@ describe('enterprise lead workspace UI helpers', () => {
         root.render(renderDialog(committedSend, committedClose));
         await Promise.resolve();
       });
-      const sendButton = getFakeDomElementByTestId(
-        container,
-        'knowledge-extraction-send',
-      );
+      const sendButton = getFakeDomElementByTestId(container, 'knowledge-extraction-send');
       expect(sendButton).not.toBeNull();
 
       await React.act(async () => {
@@ -1647,11 +1587,7 @@ describe('enterprise lead workspace UI helpers', () => {
         profileRevision: workspaceA.profileRevision,
       });
 
-      await harness.startSuspendedRender(
-        workspaceB,
-        suspendedRender.promise,
-        onWorkspaceUpdated,
-      );
+      await harness.startSuspendedRender(workspaceB, suspendedRender.promise, onWorkspaceUpdated);
       expect(harness.aiPanelProps()).toBe(committedAiProps);
       await harness.ReactInner.act(async () => {
         pendingWorkspace.resolve(refreshedWorkspaceA);
@@ -1704,10 +1640,7 @@ describe('enterprise lead workspace UI helpers', () => {
         )?.click();
       });
       await harness.ReactInner.act(async () => {
-        getFakeDomElementByTestId(
-          harness.container,
-          'controlled-ai-maintain-company',
-        )?.click();
+        getFakeDomElementByTestId(harness.container, 'controlled-ai-maintain-company')?.click();
       });
       const companyTextarea = findFakeDomElement(
         harness.container,
@@ -1733,11 +1666,7 @@ describe('enterprise lead workspace UI helpers', () => {
       });
       expect(updateWorkspaceProfile).toHaveBeenCalledTimes(1);
 
-      await harness.startSuspendedRender(
-        workspaceB,
-        suspendedRender.promise,
-        onWorkspaceUpdated,
-      );
+      await harness.startSuspendedRender(workspaceB, suspendedRender.promise, onWorkspaceUpdated);
       await harness.ReactInner.act(async () => {
         pendingSave.resolve(savedWorkspaceA);
         await Promise.resolve();
@@ -1785,8 +1714,7 @@ describe('enterprise lead workspace UI helpers', () => {
         .spyOn(harness.service, 'getWorkspace')
         .mockReturnValueOnce(pendingDocumentWorkspace.promise)
         .mockReturnValueOnce(pendingAiWorkspace.promise);
-      const pendingDocumentRefresh =
-        harness.documentPanelProps()?.onWorkspaceProjectionChange();
+      const pendingDocumentRefresh = harness.documentPanelProps()?.onWorkspaceProjectionChange();
       await harness.ReactInner.act(async () => {
         getKnowledgeMetricButton(
           harness.container,
@@ -1857,8 +1785,7 @@ describe('enterprise lead workspace UI helpers', () => {
       vi.spyOn(harness.service, 'getWorkspace').mockReturnValueOnce(
         pendingDocumentWorkspace.promise,
       );
-      const pendingDocumentRefresh =
-        harness.documentPanelProps()?.onWorkspaceProjectionChange();
+      const pendingDocumentRefresh = harness.documentPanelProps()?.onWorkspaceProjectionChange();
 
       await harness.ReactInner.act(async () => {
         getKnowledgeMetricButton(
@@ -1867,10 +1794,7 @@ describe('enterprise lead workspace UI helpers', () => {
         )?.click();
       });
       await harness.ReactInner.act(async () => {
-        getFakeDomElementByTestId(
-          harness.container,
-          'controlled-ai-maintain-company',
-        )?.click();
+        getFakeDomElementByTestId(harness.container, 'controlled-ai-maintain-company')?.click();
       });
       const companyTextarea = findFakeDomElement(
         harness.container,
@@ -2510,10 +2434,7 @@ describe('enterprise lead workspace UI helpers', () => {
         aiTab?.click();
       });
       await harness.ReactInner.act(async () => {
-        getFakeDomElementByTestId(
-          harness.container,
-          'controlled-ai-maintain-company',
-        )?.click();
+        getFakeDomElementByTestId(harness.container, 'controlled-ai-maintain-company')?.click();
       });
       const companyTextarea = findFakeDomElement(
         harness.container,
@@ -2658,9 +2579,6 @@ describe('enterprise lead workspace UI helpers', () => {
     vi.doMock('./WorkspaceKnowledgeBase', () => ({
       default: () => ReactInner.createElement('div', { 'data-testid': 'workspace-knowledge-base' }),
     }));
-    vi.doMock('./WorkspaceWorkbench', () => ({
-      default: () => ReactInner.createElement('div', { 'data-testid': 'workspace-workbench' }),
-    }));
     vi.doMock('./WorkspaceCreate', () => ({
       default: () => ReactInner.createElement('div', { 'data-testid': 'workspace-create' }),
     }));
@@ -2780,9 +2698,6 @@ describe('enterprise lead workspace UI helpers', () => {
     vi.doMock('./WorkspaceKnowledgeBase', () => ({
       default: () => ReactInner.createElement('div', { 'data-testid': 'workspace-knowledge-base' }),
     }));
-    vi.doMock('./WorkspaceWorkbench', () => ({
-      default: () => ReactInner.createElement('div', { 'data-testid': 'workspace-workbench' }),
-    }));
     vi.doMock('../cowork/CoworkSearchModal', () => ({
       default: () => ReactInner.createElement('div', { 'data-testid': 'cowork-search-modal' }),
     }));
@@ -2893,9 +2808,6 @@ describe('enterprise lead workspace UI helpers', () => {
     vi.doMock('./WorkspaceKnowledgeBase', () => ({
       default: () => ReactInner.createElement('div', { 'data-testid': 'workspace-knowledge-base' }),
     }));
-    vi.doMock('./WorkspaceWorkbench', () => ({
-      default: () => ReactInner.createElement('div', { 'data-testid': 'workspace-workbench' }),
-    }));
     vi.doMock('./WorkspaceCreate', () => ({
       default: () => ReactInner.createElement('div', { 'data-testid': 'workspace-create' }),
     }));
@@ -2952,7 +2864,7 @@ describe('enterprise lead workspace UI helpers', () => {
     }
   });
 
-  test('embeds SkillsView when the workspace skills nav item is selected', async () => {
+  test('renders the Kits panel and keeps SkillsView on the settings page', async () => {
     await vi.resetModules();
     const restoreDom = installFakeDom();
 
@@ -2970,6 +2882,8 @@ describe('enterprise lead workspace UI helpers', () => {
       onPageChange: (page: EnterpriseLeadWorkspaceInternalPage) => void;
     } | null = null;
     let workspaceSettingsRenderCount = 0;
+    let workspaceKitsPanelRenderCount = 0;
+    let workspaceKitsPanelWorkspaceId = '';
     let skillsViewRenderCount = 0;
 
     vi.doMock('./WorkspaceEntryHome', () => ({
@@ -2997,6 +2911,13 @@ describe('enterprise lead workspace UI helpers', () => {
         return ReactInner.createElement('div', { 'data-testid': 'workspace-settings' });
       },
     }));
+    vi.doMock('./WorkspaceKitsPanel', () => ({
+      default: ({ workspace }: { workspace: EnterpriseLeadWorkspace }) => {
+        workspaceKitsPanelRenderCount += 1;
+        workspaceKitsPanelWorkspaceId = workspace.id;
+        return ReactInner.createElement('div', { 'data-testid': 'workspace-kits-panel' });
+      },
+    }));
     vi.doMock('../skills', () => ({
       SkillsView: () => {
         skillsViewRenderCount += 1;
@@ -3008,9 +2929,6 @@ describe('enterprise lead workspace UI helpers', () => {
     }));
     vi.doMock('./WorkspaceKnowledgeBase', () => ({
       default: () => ReactInner.createElement('div', { 'data-testid': 'workspace-knowledge-base' }),
-    }));
-    vi.doMock('./WorkspaceWorkbench', () => ({
-      default: () => ReactInner.createElement('div', { 'data-testid': 'workspace-workbench' }),
     }));
     vi.doMock('./WorkspaceCreate', () => ({
       default: () => ReactInner.createElement('div', { 'data-testid': 'workspace-create' }),
@@ -3059,6 +2977,13 @@ describe('enterprise lead workspace UI helpers', () => {
       expect(shellProps).not.toBeNull();
 
       await act(async () => {
+        shellProps?.onPageChange(EnterpriseLeadWorkspaceInternalPage.Kits);
+      });
+
+      expect(workspaceKitsPanelRenderCount).toBe(1);
+      expect(workspaceKitsPanelWorkspaceId).toBe(workspace.id);
+
+      await act(async () => {
         shellProps?.onPageChange(EnterpriseLeadWorkspaceInternalPage.Settings);
       });
 
@@ -3087,46 +3012,6 @@ describe('enterprise lead workspace UI helpers', () => {
     expect(
       getShellModeForEnterpriseLeadWorkspaceScreen(EnterpriseLeadWorkspaceScreen.Workspace),
     ).toBe(EnterpriseLeadWorkspaceShellMode.Workspace);
-  });
-
-  test('resolves workspace-owned Agent fields with overrides taking precedence', () => {
-    const effective = getEffectiveWorkspaceAgent({
-      agentId: 'agent-a',
-      enabled: true,
-      order: 0,
-      name: 'Workspace Writer',
-      description: 'Workspace description',
-      identity: 'Workspace identity',
-      systemPrompt: 'Workspace prompt',
-      icon: 'briefcase',
-      model: 'deepseek/deepseek-chat',
-      skillIds: ['docx'],
-      overrides: {
-        name: 'Edited Writer',
-        skillIds: ['web-search'],
-      },
-    });
-
-    expect(effective.name).toBe('Edited Writer');
-    expect(effective.description).toBe('Workspace description');
-    expect(effective.model).toBe('deepseek/deepseek-chat');
-    expect(effective.skillIds).toEqual([]);
-  });
-
-  test('uses workspace Agent id fallback without marking a missing global Agent', () => {
-    const effective = getEffectiveWorkspaceAgent({
-      agentId: 'missing-agent',
-      enabled: false,
-      order: 2,
-      overrides: {},
-    });
-
-    expect(effective.id).toBe('missing-agent');
-    expect(effective.name).toBe('missing-agent');
-    expect(effective.description).toBe('');
-    expect(effective.enabled).toBe(false);
-    expect(effective.order).toBe(2);
-    expect(effective.missing).toBe(false);
   });
 
   test('defines exactly two entry home actions', () => {
@@ -3629,10 +3514,14 @@ describe('enterprise lead workspace UI helpers', () => {
 
     try {
       i18nService.setLanguage('zh', { persist: false });
-      expect(buildCreationRecordConversationMessages(snapshot)[1]?.content).toBe('推广工作流正在处理任务。');
+      expect(buildCreationRecordConversationMessages(snapshot)[1]?.content).toBe(
+        '推广工作流正在处理任务。',
+      );
 
       i18nService.setLanguage('en', { persist: false });
-      expect(buildCreationRecordConversationMessages(snapshot)[1]?.content).toBe('Promotion workflow is processing tasks.');
+      expect(buildCreationRecordConversationMessages(snapshot)[1]?.content).toBe(
+        'Promotion workflow is processing tasks.',
+      );
     } finally {
       i18nService.setLanguage(previousLanguage, { persist: false });
     }
@@ -3649,19 +3538,23 @@ describe('enterprise lead workspace UI helpers', () => {
 
     const messages = buildCreationRecordConversationMessages(snapshot);
 
-    expect(messages[1]?.content).toBe(i18nService.t('enterpriseLeadWorkflowSummaryManualAttention'));
+    expect(messages[1]?.content).toBe(
+      i18nService.t('enterpriseLeadWorkflowSummaryManualAttention'),
+    );
     expect(messages[1]?.content).not.toContain('api-key=secret');
   });
 
   test('never includes persisted task errors in creation history', () => {
     const workspace = createWorkspace('workspace-1');
     const snapshot = createSnapshot(workspace);
-    snapshot.tasks = [{
-      ...createTask(workspace.id),
-      summary: '',
-      error: 'Provider request failed: api-key=secret',
-      status: EnterpriseLeadTaskStatus.Error,
-    }];
+    snapshot.tasks = [
+      {
+        ...createTask(workspace.id),
+        summary: '',
+        error: 'Provider request failed: api-key=secret',
+        status: EnterpriseLeadTaskStatus.Error,
+      },
+    ];
 
     const messages = buildCreationRecordConversationMessages(snapshot);
     const taskMessage = messages.find(message => message.id === 'task-content_planning:reply');
@@ -3670,46 +3563,16 @@ describe('enterprise lead workspace UI helpers', () => {
     expect(taskMessage?.content).not.toContain('api-key=secret');
   });
 
-  test('returns localized label metadata for known agent roles', () => {
-    expect(getAgentRoleLabel(EnterpriseLeadAgentRole.RiskReview)).toMatchObject({
-      role: EnterpriseLeadAgentRole.RiskReview,
-      titleKey: 'enterpriseLeadAgentRoleRiskReviewTitle',
-      shortLabelKey: 'enterpriseLeadAgentRoleRiskReviewShortLabel',
-      descriptionKey: 'enterpriseLeadAgentRoleRiskReviewDescription',
-      inputKey: 'enterpriseLeadAgentRoleRiskReviewInput',
-      outputKey: 'enterpriseLeadAgentRoleRiskReviewOutput',
-      safetyCritical: true,
+  test('does not expose retired workspace Agent-team contracts', () => {
+    [
+      'EnterpriseLeadWorkbenchMode',
+      'getEffectiveWorkspaceAgent',
+      'getWorkspaceAgentDisplayName',
+      'getPromotionDepartmentSections',
+      'getWorkbenchAgentItems',
+    ].forEach(symbol => {
+      expect(workspaceUi).not.toHaveProperty(symbol);
     });
-  });
-
-  test('returns promotion department sections with localized role metadata', () => {
-    expect(getAgentRoleLabel(EnterpriseLeadAgentRole.PromotionAccountMonitoring)).toMatchObject({
-      role: EnterpriseLeadAgentRole.PromotionAccountMonitoring,
-      titleKey: 'enterpriseLeadAgentRolePromotionAccountMonitoringTitle',
-      outputKey: 'enterpriseLeadAgentRolePromotionAccountMonitoringOutput',
-      safetyCritical: true,
-    });
-
-    const sections = getPromotionDepartmentSections();
-
-    expect(sections.map(section => section.groupId)).toContain(
-      EnterpriseLeadAgentGroupId.MonitoringReview,
-    );
-    expect(
-      sections.find(section => section.groupId === EnterpriseLeadAgentGroupId.MonitoringReview)
-        ?.roles,
-    ).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          role: EnterpriseLeadAgentRole.PromotionAccountMonitoring,
-          titleKey: 'enterpriseLeadAgentRolePromotionAccountMonitoringTitle',
-        }),
-        expect.objectContaining({
-          role: EnterpriseLeadAgentRole.PromotionPerformanceReview,
-          titleKey: 'enterpriseLeadAgentRolePromotionPerformanceReviewTitle',
-        }),
-      ]),
-    );
   });
 
   test('returns display metadata for dynamic workspace Agent tasks', () => {
@@ -3795,14 +3658,13 @@ describe('enterprise lead workspace UI helpers', () => {
     expect(isWorkspaceOperationCurrent(token, 'workspace-1', 2, false)).toBe(false);
   });
 
-  test('defines workbench sidebar navigation with knowledge base entry', () => {
+  test('defines workspace navigation without retired workflow and Agent-team pages', () => {
     expect(getWorkbenchSidebarItems().map(item => item.labelKey)).toEqual([
       'enterpriseLeadWorkbenchNavWorkbench',
-      'enterpriseLeadWorkbenchNavWorkflow',
       'enterpriseLeadWorkbenchNavAiChat',
       'enterpriseLeadWorkbenchNavSearch',
       'enterpriseLeadWorkbenchNavKnowledgeBase',
-      'enterpriseLeadWorkbenchNavAgentManagement',
+      'enterpriseLeadWorkspaceNavKits',
       'enterpriseLeadWorkbenchNavSettings',
     ]);
   });
@@ -3810,13 +3672,28 @@ describe('enterprise lead workspace UI helpers', () => {
   test('defines workspace internal pages in sidebar order', () => {
     expect(getWorkspaceInternalPages().map(page => page.id)).toEqual([
       'workbench',
-      'workflow',
       'ai_chat',
       'search',
       'knowledge_base',
-      'agent_management',
+      'kits',
       'settings',
     ]);
+  });
+
+  test('normalizes retired persisted workspace pages to accessible destinations', () => {
+    expect(normalizeWorkspaceInternalPage('workflow')).toBe(
+      EnterpriseLeadWorkspaceInternalPage.Workbench,
+    );
+    expect(normalizeWorkspaceInternalPage('agent_management')).toBe(
+      EnterpriseLeadWorkspaceInternalPage.Workbench,
+    );
+    expect(normalizeWorkspaceInternalPage('creation_records')).toBe(
+      EnterpriseLeadWorkspaceInternalPage.KnowledgeBase,
+    );
+    expect(normalizeWorkspaceInternalPage('kits')).toBe(EnterpriseLeadWorkspaceInternalPage.Kits);
+    expect(normalizeWorkspaceInternalPage('unknown')).toBe(
+      EnterpriseLeadWorkspaceInternalPage.Workbench,
+    );
   });
 
   test('resolves start dashboard state for material workspaces', () => {
@@ -3847,10 +3724,10 @@ describe('enterprise lead workspace UI helpers', () => {
     ]);
     expect(
       getWorkspaceStartActionTarget(
-        EnterpriseLeadWorkspaceStartAction.StartWorkflow,
+        EnterpriseLeadWorkspaceStartAction.AddMaterial,
         EnterpriseLeadWorkspaceStartSourceState.Material,
       ),
-    ).toBe(EnterpriseLeadWorkspaceInternalPage.Workflow);
+    ).toBe(EnterpriseLeadWorkspaceInternalPage.KnowledgeBase);
   });
 
   test('resolves start dashboard state for pasted-content workspaces', () => {
@@ -3882,7 +3759,7 @@ describe('enterprise lead workspace UI helpers', () => {
     ).toBe(EnterpriseLeadWorkspaceInternalPage.KnowledgeBase);
   });
 
-  test('guides blank workspaces back to material before workflow actions', () => {
+  test('guides blank workspaces back to material', () => {
     const workspace = {
       ...createWorkspace('blank'),
       extractionSources: [
@@ -3903,7 +3780,7 @@ describe('enterprise lead workspace UI helpers', () => {
     ]);
     expect(
       getWorkspaceStartActionTarget(
-        EnterpriseLeadWorkspaceStartAction.StartWorkflow,
+        EnterpriseLeadWorkspaceStartAction.AddMaterial,
         EnterpriseLeadWorkspaceStartSourceState.Blank,
       ),
     ).toBe(EnterpriseLeadWorkspaceInternalPage.KnowledgeBase);
@@ -3925,13 +3802,15 @@ describe('enterprise lead workspace UI helpers', () => {
     expect(markup).toContain('搜索');
     expect(markup).toContain('工作台');
     expect(markup).toContain('知识库');
-    expect(markup).toContain('Agent 团队');
+    expect(markup).toContain('专家套件');
     expect(markup).toContain('空间技能');
     expect(markup).toContain('对话');
     expect(markup).not.toContain('空间设置');
     expect(markup).not.toContain('rounded-lg border border-border/70 bg-background/70 p-1');
     expect(markup).not.toContain('border-t border-border/70 pt-3');
     expect(markup).not.toContain('创作记录');
+    expect(markup).not.toContain('推广工作流');
+    expect(markup).not.toContain('Agent 团队');
     expect(markup).not.toContain('AI 对话');
     expect(markup).not.toContain('企业获客空间');
     expect(markup).not.toContain(workspace.name);
@@ -4145,6 +4024,7 @@ describe('enterprise lead workspace UI helpers', () => {
     expect(markup).toContain('上传资料');
     expect(markup).toContain('下一步');
     expect(markup).toContain('查看业务画像');
+    expect(markup).not.toContain('开始生成线索动作');
     expect(markup).toContain('准备进度');
     expect(markup).toContain('当前资料');
     expect(markup).toContain('制造业客户名单.csv');
@@ -4159,998 +4039,6 @@ describe('enterprise lead workspace UI helpers', () => {
     expect(getInitialCreationRecordId(summaries, 'run-target')).toBe('run-target');
     expect(getInitialCreationRecordId(summaries, 'missing-run')).toBe('run-newest');
     expect(getInitialCreationRecordId([], 'run-target')).toBeNull();
-  });
-
-  test('uses workbench as default workspace internal page', () => {
-    expect(getDefaultWorkspaceInternalPage()).toBe('workbench');
-  });
-
-  test('defines icon navigation for the workbench rail', () => {
-    expect(getWorkbenchSidebarItems().map(item => item.icon)).toEqual([
-      'dashboard',
-      'workflow',
-      'chat',
-      'search',
-      'knowledge',
-      'agents',
-      'settings',
-    ]);
-  });
-
-  test('uses the expanded workbench sidebar as the default mode', () => {
-    expect(getDefaultWorkbenchSidebarMode()).toBe(EnterpriseLeadWorkbenchSidebarMode.Expanded);
-    expect(getWorkbenchSidebarWidth(EnterpriseLeadWorkbenchSidebarMode.Expanded)).toBe(292);
-    expect(getWorkbenchSidebarWidth(EnterpriseLeadWorkbenchSidebarMode.Collapsed)).toBe(76);
-  });
-
-  test('returns defensive copies of workbench sidebar items', () => {
-    const sidebarItems = getWorkbenchSidebarItems();
-
-    sidebarItems[0].labelKey = 'mutatedNavLabel';
-    sidebarItems[0].icon = 'records';
-
-    expect(getWorkbenchSidebarItems()[0].labelKey).toBe('enterpriseLeadWorkbenchNavWorkbench');
-    expect(getWorkbenchSidebarItems()[0].icon).toBe('dashboard');
-  });
-
-  test('defines management cards for the fixed content production Agent team', () => {
-    const agentItems = getWorkbenchAgentItems();
-
-    expect(agentItems).toHaveLength(6);
-    expect(agentItems.map(item => item.role)).toEqual([
-      EnterpriseLeadAgentRole.ProductSellingPoint,
-      EnterpriseLeadAgentRole.TopicPlanning,
-      EnterpriseLeadAgentRole.ShortVideoScript,
-      EnterpriseLeadAgentRole.SocialCopy,
-      EnterpriseLeadAgentRole.PrivateDomainConversion,
-      EnterpriseLeadAgentRole.ContentQuality,
-    ]);
-    expect(agentItems[0]).toMatchObject({
-      roleLabelKey: 'enterpriseLeadWorkbenchAgentProductSellingPointRole',
-      capabilitySummaryKey: 'enterpriseLeadWorkbenchAgentProductSellingPointCapabilitySummary',
-    });
-  });
-
-  test('returns defensive copies of workbench agent items', () => {
-    const agentItems = getWorkbenchAgentItems();
-
-    agentItems[0].roleLabelKey = 'mutatedAgentRole';
-
-    expect(getWorkbenchAgentItems()[0].roleLabelKey).toBe(
-      'enterpriseLeadWorkbenchAgentProductSellingPointRole',
-    );
-  });
-
-  test('defines workbench configuration sections with management actions', () => {
-    const sections = getWorkbenchConfigSections();
-
-    expect(sections.map(section => section.actionKey)).toEqual([
-      'enterpriseLeadWorkbenchManageSkills',
-      'enterpriseLeadWorkbenchConfigureResearch',
-      'enterpriseLeadWorkbenchManagePlatforms',
-    ]);
-    expect(sections.flatMap(section => section.items)).toHaveLength(13);
-  });
-
-  test('returns defensive copies of workbench configuration sections and items', () => {
-    const sections = getWorkbenchConfigSections();
-
-    sections[0].titleKey = 'mutatedSectionTitle';
-    sections[0].items[0].titleKey = 'mutatedItemTitle';
-    sections[0].items.pop();
-
-    const freshSections = getWorkbenchConfigSections();
-    expect(freshSections[0].titleKey).toBe('enterpriseLeadWorkbenchSkillsTitle');
-    expect(freshSections[0].items[0].titleKey).toBe('enterpriseLeadWorkbenchSkillDocumentParsing');
-    expect(freshSections[0].items).toHaveLength(4);
-  });
-
-  test('defines compact workbench navigation for single-screen management', () => {
-    expect(getWorkbenchLayoutSpec()).toMatchObject({
-      minimumContentWidth: 1168,
-      sidebarWidth: 292,
-      expandedSidebarWidth: 292,
-      collapsedSidebarWidth: 76,
-      agentPanelMinWidth: 552,
-      configPanelMinWidth: 388,
-      configPanelMaxWidth: 460,
-      agentColumnCount: 3,
-      agentCardRowHeight: 136,
-      agentRowCount: 3,
-      configColumnCount: 1,
-      usesNestedScrollRegion: true,
-    });
-  });
-
-  test('does not render a nested workbench sidebar', () => {
-    const markup = renderWorkbench({
-      workspace: createWorkspace('workspace-1'),
-    });
-
-    expect(markup).not.toContain('data-workbench-sidebar-mode');
-    expect(markup).not.toContain('grid-template-columns:196px');
-  });
-
-  test('omits the workspace identity header from the workbench sidebar', () => {
-    const markup = renderWorkbench({
-      workspace: createWorkspace('workspace-1'),
-    });
-
-    expect(markup).not.toContain('Workspace workspace-1');
-  });
-
-  test('omits the workbench sidebar collapse control', () => {
-    const markup = renderWorkbench({
-      workspace: createWorkspace('workspace-1'),
-    });
-
-    expect(markup).not.toContain('收起工作区');
-    expect(markup).not.toContain('展开工作区');
-  });
-
-  test('renders agent management as a collapsed workspace-bound Agent hierarchy', () => {
-    const markup = renderWorkbench({
-      workspace: createWorkspace(
-        'workspace-1',
-        [],
-        [
-          {
-            agentId: 'agent-a',
-            enabled: true,
-            order: 0,
-            overrides: {
-              name: 'Workspace Writer',
-              description: 'Workspace-only writer.',
-            },
-          },
-        ],
-      ),
-    });
-
-    expect(markup).toContain('Agent 团队');
-    expect(markup).toContain('role="table"');
-    expect(markup).toContain('role="columnheader"');
-    expect(markup).toContain('Agent');
-    expect(markup).toContain('职责');
-    expect(markup).toContain('模型 / 技能');
-    expect(markup).toContain('状态');
-    expect(markup).toContain('操作');
-    expect(markup).toContain('推广管理组');
-    expect(markup).toContain('其他工作区 Agent');
-    expect(markup).toContain('aria-expanded="false"');
-    expect(markup).not.toContain('系统 Agent 只作为内置模板');
-    expect(markup).not.toContain('Workspace Writer');
-    expect(markup).not.toContain('Workspace-only writer.');
-    expect(markup).not.toContain('本空间自建');
-    expect(markup).not.toContain('已启用');
-    expect(markup).not.toContain('继承空间技能');
-    expect(markup).not.toContain('选择要添加到工作区的已有 Agent');
-    expect(markup).not.toContain('编辑');
-    expect(markup).not.toContain('更多操作');
-    expect(markup).not.toContain('移出工作区');
-    expect(markup).not.toContain('大模型');
-    expect(markup).not.toContain('调研');
-    expect(markup).not.toContain('内容来源');
-    expect(markup).not.toContain('空间设置');
-    expect(markup).not.toContain('任务执行');
-    expect(markup).not.toContain('还没有当前任务');
-    expect(markup).not.toContain('启动 Agent 任务');
-    expect(markup).not.toContain('文档处理');
-    expect(markup).not.toContain('Tavily');
-    expect(markup).not.toContain('Firecrawl');
-    expect(markup).not.toContain('DeepSeek');
-  });
-
-  test('renders workspace Agent table without the secondary intro and filters', () => {
-    const markup = renderWorkbench({
-      workspace: createWorkspace(
-        'workspace-1',
-        [],
-        [
-          {
-            agentId: 'agent-a',
-            source: EnterpriseLeadWorkspaceAgentSource.WorkspaceCreated,
-            enabled: true,
-            order: 0,
-            overrides: {
-              name: 'Workspace Writer',
-              description: 'Workspace-only writer.',
-            },
-          },
-          {
-            agentId: EnterpriseLeadAgentRole.ProductUnderstanding,
-            source: EnterpriseLeadWorkspaceAgentSource.SystemTemplate,
-            templateId: EnterpriseLeadAgentRole.ProductUnderstanding,
-            enabled: true,
-            order: 1,
-            overrides: {},
-          },
-        ],
-      ),
-    });
-
-    expect(markup).toContain('从本地添加');
-    expect(markup).not.toContain('本工作空间 Agent');
-    expect(markup).not.toContain('只在当前空间中执行和维护');
-    expect(markup).not.toContain('系统 Agent 只作为内置模板');
-    expect(markup).not.toContain('对新的对话和新运行生效');
-    expect(markup).not.toContain('搜索 Agent 名称、职责或模型');
-    expect(markup).not.toContain('全部状态');
-    expect(markup).not.toContain('全部模型');
-    expect(markup).not.toContain('空间能力检查');
-    expect(markup).not.toContain('系统 Agent 模板');
-    expect(markup).not.toContain('产品内置的只读模板');
-    expect(markup).not.toContain('展开模板库');
-    expect(markup).toContain('推广管理组');
-    expect(markup).toContain('其他工作区 Agent');
-    expect(markup).toContain('aria-expanded="false"');
-    expect(markup).not.toContain('添加到本空间');
-    expect(markup).not.toContain('系统内置模板');
-    expect(markup).not.toContain('本空间自建');
-  });
-
-  test('keeps workspace configuration status out of agent management panel', () => {
-    const workspace = createWorkspace('workspace-1');
-    workspace.settings.model.providers.deepseek = {
-      enabled: true,
-      apiKey: 'sk-deepseek',
-      baseUrl: 'https://api.deepseek.com',
-      apiFormat: 'openai',
-      models: [
-        {
-          id: 'deepseek-chat',
-          name: 'DeepSeek Chat',
-        },
-      ],
-    };
-    workspace.settings.model.defaultModelProvider = 'deepseek';
-    workspace.settings.model.defaultModel = 'deepseek-chat';
-    workspace.settings.externalResearch.providers.tavily.enabled = true;
-    workspace.settings.externalResearch.providers.tavily.apiKey = 'tvly-key';
-    workspace.settings.contentPlatforms.platforms[
-      EnterpriseLeadContentOutputPlatformId.XiaohongshuDraft
-    ].enabled = true;
-    workspace.settings.contentPlatforms.platforms[
-      EnterpriseLeadContentOutputPlatformId.XiaohongshuDraft
-    ].token = 'xhs-token';
-
-    expect(getWorkspaceSettingsReadiness(workspace.settings).map(item => item.statusKey)).toEqual([
-      'enterpriseLeadWorkspaceSettingsReady',
-      'enterpriseLeadWorkspaceSettingsReady',
-      'enterpriseLeadWorkspaceSettingsReady',
-    ]);
-
-    const markup = renderWorkbench({ workspace });
-
-    expect(markup).not.toContain('大模型');
-    expect(markup).not.toContain('调研');
-    expect(markup).not.toContain('内容来源');
-    expect(markup).not.toContain('0 个来源');
-  });
-
-  test('renders low-frequency Agent actions inside the row menu', () => {
-    const noop = (): void => undefined;
-    const markup = renderEnterpriseLeadComponent(
-      React.createElement(WorkspaceAgentActionsMenu, {
-        agentId: 'agent-a',
-        enabled: true,
-        canMoveUp: true,
-        canMoveDown: false,
-        onToggle: noop,
-        onMoveUp: noop,
-        onMoveDown: noop,
-        onRemove: noop,
-      }),
-    );
-
-    expect(markup).toContain('停用');
-    expect(markup).toContain('上移 Agent');
-    expect(markup).not.toContain('下移 Agent');
-    expect(markup).toContain('移出工作区');
-    expect(markup).not.toContain('确认移出');
-    expect(markup).not.toContain('只会从当前工作空间移出');
-  });
-
-  test('renders workspace Agent remove confirmation in the row menu', () => {
-    const noop = (): void => undefined;
-    const markup = renderEnterpriseLeadComponent(
-      React.createElement(WorkspaceAgentActionsMenu, {
-        agentId: 'agent-a',
-        enabled: true,
-        canMoveUp: true,
-        canMoveDown: true,
-        confirmingRemove: true,
-        onToggle: noop,
-        onMoveUp: noop,
-        onMoveDown: noop,
-        onRequestRemove: noop,
-        onCancelRemove: noop,
-        onRemove: noop,
-      }),
-    );
-
-    expect(markup).toContain('确认移出？');
-    expect(markup).not.toContain('只会从当前工作空间移出');
-    expect(markup).not.toContain('历史任务快照不受影响');
-    expect(markup).toContain('确认移出');
-    expect(markup).toContain('取消');
-    expect(markup).not.toContain('移出工作区</button>');
-  });
-
-  test('positions workspace Agent row menu outside the scroll list', () => {
-    const bottomPosition = getWorkspaceAgentActionsMenuPosition({
-      anchorRect: {
-        top: 700,
-        bottom: 732,
-        right: 960,
-      },
-      menuHeight: 132,
-      menuWidth: 160,
-      viewportHeight: 760,
-      viewportWidth: 1000,
-    });
-    const topPosition = getWorkspaceAgentActionsMenuPosition({
-      anchorRect: {
-        top: 80,
-        bottom: 112,
-        right: 960,
-      },
-      menuHeight: 132,
-      menuWidth: 160,
-      viewportHeight: 760,
-      viewportWidth: 1000,
-    });
-
-    expect(bottomPosition.top).toBeLessThan(700);
-    expect(bottomPosition.left).toBe(800);
-    expect(topPosition.top).toBe(120);
-    expect(topPosition.left).toBe(800);
-  });
-
-  test('renders workspace Agent management as the default workbench surface', () => {
-    const workspace = createWorkspace(
-      'workspace-1',
-      [],
-      [
-        {
-          agentId: 'agent-a',
-          enabled: true,
-          order: 0,
-          overrides: {
-            name: 'Workspace Writer',
-          },
-        },
-      ],
-    );
-    const snapshot: EnterpriseLeadWorkspaceSnapshot = {
-      workspace,
-      currentRun: null,
-      tasks: [],
-      pendingVersions: [],
-      deliverables: [],
-      todos: [],
-      archives: [],
-    };
-
-    const markup = renderWorkbench({
-      workspace,
-      initialSnapshot: snapshot,
-    });
-
-    expect(markup).toContain('Agent 团队');
-    expect(markup).toContain('其他工作区 Agent');
-    expect(markup).toContain('aria-expanded="false"');
-    expect(markup).not.toContain('Workspace Writer');
-    expect(markup).not.toContain('任务执行');
-    expect(markup).not.toContain('还没有当前任务');
-    expect(markup).not.toContain('启动 Agent 任务');
-  });
-
-  test('renders local Agents added to the workspace from local agent state', () => {
-    const workspace = createWorkspace(
-      'workspace-1',
-      [],
-      [
-        {
-          agentId: 'agent-a',
-          source: EnterpriseLeadWorkspaceAgentSource.LocalAgent,
-          enabled: true,
-          order: 0,
-          overrides: {},
-        },
-      ],
-    );
-
-    const markup = renderWorkbench({ workspace });
-
-    expect(markup).toContain('其他工作区 Agent');
-    expect(markup).toContain('aria-expanded="false"');
-    expect(markup).not.toContain('Global Writer');
-    expect(markup).not.toContain('Global writer description.');
-    expect(markup).not.toContain('本地 Agent');
-    expect(markup).not.toContain('deepseek/deepseek-chat');
-  });
-
-  test('renders legacy enabled roles under collapsed other workspace Agents', () => {
-    const markup = renderWorkbench({
-      workspace: createWorkspace('workspace-1', [EnterpriseLeadAgentRole.Controller]),
-    });
-
-    expect(markup).toContain('其他工作区 Agent');
-    expect(markup).toContain('aria-expanded="false"');
-    expect(markup).not.toContain('项目总控 Agent');
-    expect(markup).not.toContain('编辑');
-    expect(markup).not.toContain('系统内置模板');
-    expect(markup).not.toContain('旧版角色');
-    expect(markup).not.toContain('选择要添加到工作区的已有 Agent');
-  });
-
-  test('renders default execution Agents inside collapsed promotion groups', () => {
-    const markup = renderWorkbench({
-      workspace: createWorkspace('workspace-1', [EnterpriseLeadAgentRole.ProductSellingPoint]),
-    });
-
-    expect(markup).toContain('商机策略组');
-    expect(markup).toContain('1/2 已添加');
-    expect(markup).toContain('aria-expanded="false"');
-    expect(markup).not.toContain('产品卖点 Agent');
-    expect(markup).not.toContain('编辑');
-    expect(markup).not.toContain('系统内置模板');
-    expect(markup).not.toContain('旧版角色');
-    expect(markup).not.toContain('选择要添加到工作区的已有 Agent');
-  });
-
-  test('renders promotion department template entry in agent management', () => {
-    const markup = renderWorkbench({ workspace: createWorkspace('workspace-1') });
-
-    expect(markup).toContain('添加推广部模板');
-  });
-
-  test('renders current workspace Agents in collapsed promotion department hierarchy', () => {
-    const markup = renderWorkbench({
-      workspace: createWorkspace('workspace-1', [
-        EnterpriseLeadAgentRole.Controller,
-        EnterpriseLeadAgentRole.ProductSellingPoint,
-      ]),
-    });
-
-    expect(markup).toContain('推广管理组');
-    expect(markup).toContain('数据情报组');
-    expect(markup).toContain('商机策略组');
-    expect(markup).toContain('1/2 已添加');
-    expect(markup).toContain('aria-expanded="false"');
-    expect(markup).toContain('其他工作区 Agent');
-    expect(markup).not.toContain('数据抓取 Agent');
-    expect(markup).not.toContain('未添加');
-    expect(markup).not.toContain('项目总控 Agent');
-  });
-
-  test('does not leak run task controls into agent management cards', () => {
-    const workspace = createWorkspace('workspace-1');
-    const markup = renderWorkbench({
-      workspace,
-      initialSnapshot: createSnapshot(workspace),
-    });
-
-    expect(markup).toContain('还没有工作区 Agent');
-    expect(markup).toContain('当前工作空间不会自动配置 Agent');
-    expect(markup).not.toContain('产品卖点 Agent');
-    expect(markup).not.toContain('内容质检 Agent');
-    expect(markup).not.toContain('系统 Agent 模板');
-    expect(markup).not.toContain('当前目标');
-    expect(markup).not.toContain('交给总控运行');
-    expect(markup).not.toContain('归档本次任务');
-    expect(markup).not.toContain('已生成本周精密制造获客内容草稿。');
-    expect(markup).not.toContain('应用版本');
-  });
-
-  test('renders workspace Agent editing as a modal dialog', () => {
-    const noop = (): void => undefined;
-    const markup = renderEnterpriseLeadComponent(
-      React.createElement(WorkspaceAgentEditorDialog, {
-        draft: {
-          name: '产品理解 Agent',
-          description: '整理产品资料。',
-          identity: '产品专家',
-          systemPrompt: '只处理产品理解。',
-          model: 'gpt-4.1',
-          icon: '产',
-          skillIds: ['docx'],
-        },
-        saveState: 'idle',
-        onCancel: noop,
-        onDraftChange: noop,
-        onSave: noop,
-      }),
-    );
-
-    expect(markup).toContain('role="dialog"');
-    expect(markup).toContain('aria-modal="true"');
-    expect(markup).toContain('编辑工作区 Agent');
-    expect(markup).toContain('这里的修改只保存到当前工作空间');
-    expect(markup).toContain('基本信息');
-    expect(markup).toContain('执行规范');
-    expect(markup).toContain('工作方式');
-    expect(markup).toContain('输入要求');
-    expect(markup).toContain('输出格式');
-    expect(markup).toContain('边界规则');
-    expect(markup).toContain('按角色重新生成');
-    expect(markup).toContain('运行时预览');
-    expect(markup).toContain('# Agent 稳定执行规范');
-    expect(markup).toContain('示例与校验');
-    expect(markup).toContain('高意向询盘');
-    expect(markup).toContain('信息不足');
-    expect(markup).toContain('需要人工确认');
-    expect(markup).toContain('稳定性检查');
-    expect(markup).toContain('产品理解 Agent');
-    expect(markup).not.toContain('执行设定');
-    expect(markup).not.toContain('Agent 系统提示词');
-    expect(markup).not.toContain('Agent 模型');
-    expect(markup).not.toContain('Agent 技能');
-    expect(markup).not.toContain('高级设置');
-    expect(markup).toContain('只处理产品理解');
-    expect(markup).toContain('保存');
-  });
-
-  test('keeps workspace Agent model and skills out of the Agent editor', () => {
-    const noop = (): void => undefined;
-    const markup = renderEnterpriseLeadComponent(
-      React.createElement(WorkspaceAgentEditorDialog, {
-        draft: {
-          name: '产品理解 Agent',
-          description: '',
-          identity: '',
-          systemPrompt: '',
-          model: '',
-          icon: '',
-          skillIds: [],
-        },
-        saveState: 'idle',
-        onCancel: noop,
-        onDraftChange: noop,
-        onSave: noop,
-      }),
-    );
-
-    expect(markup).toContain('执行规范');
-    expect(markup).not.toContain('Agent 模型');
-    expect(markup).not.toContain('Agent 技能');
-    expect(markup).not.toContain('h-[420px]');
-    expect(markup).not.toContain('推荐筛选会优先显示');
-    expect(markup).not.toContain('逗号分隔');
-  });
-
-  test('renders expanded workspace Agent calibration examples in the editor', () => {
-    const noop = (): void => undefined;
-    const markup = renderEnterpriseLeadComponent(
-      React.createElement(WorkspaceAgentEditorDialog, {
-        draft: {
-          name: '商机雷达 Agent',
-          description: '',
-          identity: '',
-          systemPrompt: '',
-          model: '',
-          icon: '',
-          skillIds: [],
-        },
-        saveState: 'idle',
-        onCancel: noop,
-        onDraftChange: noop,
-        onSave: noop,
-      }),
-    );
-
-    expect(markup).toContain('高意向询盘');
-    expect(markup).toContain('客户来自汽车零部件行业');
-    expect(markup).toContain('信息不足');
-    expect(markup).toContain('客户只说');
-    expect(markup).toContain('需要人工确认');
-    expect(markup).toContain('正式报价');
-    expect(markup).toContain('输出必须覆盖这个 Agent 的固定结构：客户优先级');
-    expect(markup).toContain('保存示例');
-    expect(markup).toContain('试运行');
-  });
-
-  test('generates role-specific execution rules, examples, and checks for a batch of system Agents', () => {
-    const agentDrafts = [
-      {
-        agentId: EnterpriseLeadAgentRole.ProductUnderstanding,
-        name: '产品理解 Agent',
-        outputMarker: '产品画像',
-      },
-      {
-        agentId: EnterpriseLeadAgentRole.OpportunityRadar,
-        name: '商机雷达 Agent',
-        outputMarker: '客户优先级',
-      },
-      {
-        agentId: EnterpriseLeadAgentRole.ContentPlanning,
-        name: '内容策划 Agent',
-        outputMarker: '内容目标',
-      },
-      {
-        agentId: EnterpriseLeadAgentRole.SocialOperation,
-        name: '社媒运营 Agent',
-        outputMarker: '社媒动作',
-      },
-      {
-        agentId: EnterpriseLeadAgentRole.SalesHandoff,
-        name: '销售交接 Agent',
-        outputMarker: '销售交接摘要',
-      },
-    ];
-    const stabilityDrafts = agentDrafts.map(agent =>
-      createWorkspaceAgentStabilityDraft({ agentId: agent.agentId, name: agent.name }),
-    );
-
-    expect(new Set(stabilityDrafts.map(draft => draft.rules.workStyle)).size).toBe(5);
-    expect(new Set(stabilityDrafts.map(draft => draft.rules.outputFormat)).size).toBe(5);
-    expect(new Set(stabilityDrafts.map(draft => draft.examples[0].sampleInput)).size).toBe(5);
-    expect(new Set(stabilityDrafts.map(draft => draft.checks?.['high-intent']?.[0])).size).toBe(5);
-    agentDrafts.forEach((agent, index) => {
-      expect(stabilityDrafts[index].rules.outputFormat).toContain(agent.outputMarker);
-      expect(stabilityDrafts[index].checks?.['high-intent']?.[0]).toContain(agent.outputMarker);
-    });
-  });
-
-  test('generates distinct promotion department rules, examples, and checks', () => {
-    const agentDrafts = [
-      {
-        agentId: EnterpriseLeadAgentRole.PromotionDataScraping,
-        outputMarker: '来源链接',
-      },
-      {
-        agentId: EnterpriseLeadAgentRole.PromotionLeadScoring,
-        outputMarker: '商机评分',
-      },
-      {
-        agentId: EnterpriseLeadAgentRole.PromotionMultiPlatformAssets,
-        outputMarker: '平台物料',
-      },
-      {
-        agentId: EnterpriseLeadAgentRole.PromotionAccountMonitoring,
-        outputMarker: '异常指标',
-      },
-      {
-        agentId: EnterpriseLeadAgentRole.PromotionPerformanceReview,
-        outputMarker: '复盘结论',
-      },
-    ];
-    const stabilityDrafts = agentDrafts.map(agent =>
-      createWorkspaceAgentStabilityDraft({ agentId: agent.agentId }),
-    );
-
-    expect(new Set(stabilityDrafts.map(draft => draft.rules.workStyle)).size).toBe(5);
-    expect(new Set(stabilityDrafts.map(draft => draft.rules.outputFormat)).size).toBe(5);
-    expect(new Set(stabilityDrafts.map(draft => draft.examples[0].sampleInput)).size).toBe(5);
-    expect(new Set(stabilityDrafts.map(draft => draft.checks?.['high-intent']?.[0])).size).toBe(5);
-    agentDrafts.forEach((agent, index) => {
-      expect(stabilityDrafts[index].rules.outputFormat).toContain(agent.outputMarker);
-      expect(stabilityDrafts[index].checks?.['high-intent']?.[0]).toContain(agent.outputMarker);
-    });
-  });
-
-  test('scores workspace Agent calibration checks for quick result review', () => {
-    expect(
-      getWorkspaceAgentCalibrationScore([
-        { id: EnterpriseLeadWorkspaceAgentCalibrationCheckId.Priority, passed: true },
-        { id: EnterpriseLeadWorkspaceAgentCalibrationCheckId.Reason, passed: true },
-        { id: EnterpriseLeadWorkspaceAgentCalibrationCheckId.Missing, passed: true },
-        { id: EnterpriseLeadWorkspaceAgentCalibrationCheckId.NextStep, passed: true },
-      ]),
-    ).toMatchObject({
-      passed: 4,
-      total: 4,
-      status: 'passed',
-      failedCheckIds: [],
-      labelKey: 'enterpriseLeadWorkbenchCalibrationScorePassed',
-    });
-
-    expect(
-      getWorkspaceAgentCalibrationScore([
-        { id: EnterpriseLeadWorkspaceAgentCalibrationCheckId.Priority, passed: true },
-        { id: EnterpriseLeadWorkspaceAgentCalibrationCheckId.Reason, passed: false },
-      ]),
-    ).toMatchObject({
-      passed: 1,
-      total: 2,
-      status: 'partial',
-      failedCheckIds: [EnterpriseLeadWorkspaceAgentCalibrationCheckId.Reason],
-      labelKey: 'enterpriseLeadWorkbenchCalibrationScorePartial',
-    });
-  });
-
-  test('round trips edited workspace Agent stability settings through the system prompt', () => {
-    const stabilityDraft = createDefaultWorkspaceAgentStabilityDraft();
-    const nextDraft = {
-      ...stabilityDraft,
-      rules: {
-        ...stabilityDraft.rules,
-        workStyle: '先识别客户行业和采购紧急度，再给出优先级。',
-        guardrails: '不承诺价格、交期或合作结果；需要外发确认时明确标记。',
-      },
-      examples: stabilityDraft.examples.map(example =>
-        example.id === 'manual-review'
-          ? {
-              ...example,
-              sampleInput: '客户要求今天给正式报价，但缺少材料牌号和验收标准。',
-              expectedNextStep: '先标记为人工确认，并请销售补齐材料牌号和验收标准。',
-            }
-          : example,
-      ),
-    };
-
-    const prompt = buildWorkspaceAgentStabilityPrompt(nextDraft);
-    const parsedDraft = parseWorkspaceAgentStabilityDraft(prompt);
-
-    expect(parsedDraft.rules.workStyle).toBe(nextDraft.rules.workStyle);
-    expect(parsedDraft.rules.guardrails).toBe(nextDraft.rules.guardrails);
-    expect(parsedDraft.examples.find(example => example.id === 'manual-review')).toMatchObject({
-      sampleInput: '客户要求今天给正式报价，但缺少材料牌号和验收标准。',
-      expectedNextStep: '先标记为人工确认，并请销售补齐材料牌号和验收标准。',
-    });
-  });
-
-  test('parses empty execution rules for manual workspace Agent creation', () => {
-    const parsedDraft = parseWorkspaceAgentStabilityDraft(
-      '',
-      createEmptyWorkspaceAgentStabilityDraft(),
-    );
-
-    expect(Object.values(parsedDraft.rules).every(value => value === '')).toBe(true);
-    expect(parsedDraft.examples.every(example => example.sampleInput === '')).toBe(true);
-  });
-
-  test('keeps legacy Agent prompt text when merging edited stability settings', () => {
-    const stabilityDraft = createDefaultWorkspaceAgentStabilityDraft();
-    const nextDraft = {
-      ...stabilityDraft,
-      rules: {
-        ...stabilityDraft.rules,
-        workStyle: '先按行业匹配度、采购明确度和交期紧急度排序。',
-      },
-    };
-
-    const prompt = mergeWorkspaceAgentStabilityPrompt('只处理当前空间的问题', nextDraft);
-    const parsedDraft = parseWorkspaceAgentStabilityDraft(prompt);
-
-    expect(prompt.startsWith('只处理当前空间的问题')).toBe(true);
-    expect(parsedDraft.rules.workStyle).toBe(nextDraft.rules.workStyle);
-  });
-
-  test('does not auto-generate execution rules when workspace Agent prompt is empty', () => {
-    const overrides = buildWorkspaceAgentOverrides({
-      name: '商机雷达 Agent',
-      description: '判断客户方向、采购信号、商机评分和跟进优先级。',
-      identity: '',
-      systemPrompt: '',
-      model: '',
-      icon: '商',
-      skillIds: [],
-    });
-
-    expect(overrides.systemPrompt).toBeUndefined();
-  });
-
-  test('builds workspace Agent overrides from manually filled execution rules', () => {
-    const stabilityDraft = createDefaultWorkspaceAgentStabilityDraft();
-    const overrides = buildWorkspaceAgentOverrides({
-      name: '商机雷达 Agent',
-      description: '判断客户方向、采购信号、商机评分和跟进优先级。',
-      identity: '',
-      systemPrompt: buildWorkspaceAgentStabilityPrompt(stabilityDraft),
-      model: '',
-      icon: '商',
-      skillIds: [],
-    });
-
-    expect(overrides.systemPrompt).toContain('lobsterai-agent-stability:rule.workStyle');
-    expect(overrides.systemPrompt).toContain('客户来自汽车零部件行业');
-    expect(overrides.systemPrompt).toContain('不编造客户需求');
-  });
-
-  test('builds workspace Agent calibration requests from the current editor draft', () => {
-    const stabilityDraft = createDefaultWorkspaceAgentStabilityDraft();
-    const prompt = buildWorkspaceAgentStabilityPrompt({
-      ...stabilityDraft,
-      rules: {
-        ...stabilityDraft.rules,
-        workStyle: '先按采购信号排序，再列缺失信息。',
-      },
-    });
-    const request = buildWorkspaceAgentCalibrationRequest({
-      agentId: 'agent-opportunity',
-      draft: {
-        name: '商机雷达 Agent',
-        description: '判断客户方向、采购信号、商机评分和跟进优先级。',
-        identity: '商机判断助手',
-        systemPrompt: prompt,
-        model: '',
-        icon: '商',
-        skillIds: [],
-      },
-      example: stabilityDraft.examples[0],
-    });
-
-    expect(request.agentId).toBe('agent-opportunity');
-    expect(request.agent.name).toBe('商机雷达 Agent');
-    expect(request.agent.systemPrompt).toContain('先按采购信号排序');
-    expect(request.example.sampleInput).toContain('客户来自汽车零部件行业');
-    expect(request.example.expectedPriority).toBe('高');
-  });
-
-  test('maps workspace Agent operation feedback to action-specific labels', () => {
-    expect(
-      i18nService.t(
-        getWorkspaceAgentOperationFeedbackLabelKey(WorkspaceAgentOperation.AddTemplate, 'saving'),
-      ),
-    ).toBe('正在添加模板到本空间');
-    expect(
-      i18nService.t(
-        getWorkspaceAgentOperationFeedbackLabelKey(WorkspaceAgentOperation.AddTemplate, 'saved'),
-      ),
-    ).toBe('模板已添加到本空间');
-    expect(
-      i18nService.t(
-        getWorkspaceAgentOperationFeedbackLabelKey(WorkspaceAgentOperation.AddTemplate, 'error'),
-      ),
-    ).toBe('添加模板失败，工作区 Agent 未变更');
-    expect(
-      i18nService.t(
-        getWorkspaceAgentOperationFeedbackLabelKey(WorkspaceAgentOperation.AddLocalAgent, 'saved'),
-      ),
-    ).toBe('本地 Agent 已添加到本空间');
-    expect(
-      i18nService.t(
-        getWorkspaceAgentOperationFeedbackLabelKey(WorkspaceAgentOperation.Enable, 'saved'),
-      ),
-    ).toBe('Agent 已启用');
-    expect(
-      i18nService.t(
-        getWorkspaceAgentOperationFeedbackLabelKey(WorkspaceAgentOperation.Disable, 'error'),
-      ),
-    ).toBe('停用失败，Agent 仍保持原状态');
-    expect(
-      i18nService.t(
-        getWorkspaceAgentOperationFeedbackLabelKey(WorkspaceAgentOperation.Reorder, 'saved'),
-      ),
-    ).toBe('Agent 排序已更新');
-    expect(
-      i18nService.t(
-        getWorkspaceAgentOperationFeedbackLabelKey(WorkspaceAgentOperation.Remove, 'error'),
-      ),
-    ).toBe('移出失败，Agent 仍在本空间');
-    expect(
-      i18nService.t(
-        getWorkspaceAgentOperationFeedbackLabelKey(WorkspaceAgentOperation.SaveEdits, 'saved'),
-      ),
-    ).toBe('Agent 修改已保存');
-    expect(
-      i18nService.t(
-        getWorkspaceAgentOperationFeedbackLabelKey(WorkspaceAgentOperation.Create, 'error'),
-      ),
-    ).toBe('创建失败，草稿已保留');
-    expect(
-      getWorkspaceAgentOperationFeedbackLabelKey(WorkspaceAgentOperation.SaveEdits, 'idle'),
-    ).toBe('');
-  });
-
-  test('validates workspace Agent drafts before saving', () => {
-    expect(
-      validateWorkspaceAgentDraft({
-        draft: {
-          name: '',
-          description: '',
-          identity: '',
-          systemPrompt: '',
-          model: '',
-          icon: '',
-          skillIds: [],
-        },
-        source: EnterpriseLeadWorkspaceAgentSource.WorkspaceCreated,
-        availableModelRefs: new Set(['openai/gpt-4.1']),
-        enabledSkillIds: new Set(['docx']),
-      }),
-    ).toEqual({
-      valid: false,
-      errors: ['name'],
-    });
-
-    expect(
-      validateWorkspaceAgentDraft({
-        draft: {
-          name: 'Agent',
-          description: '',
-          identity: '',
-          systemPrompt: '',
-          model: '',
-          icon: '',
-          skillIds: [],
-        },
-        source: EnterpriseLeadWorkspaceAgentSource.WorkspaceCreated,
-        availableModelRefs: new Set(['openai/gpt-4.1']),
-        enabledSkillIds: new Set(['docx']),
-        requireExecutionRules: true,
-      }),
-    ).toEqual({
-      valid: false,
-      errors: ['systemPrompt'],
-    });
-
-    expect(
-      validateWorkspaceAgentDraft({
-        draft: {
-          name: 'Agent',
-          description: '',
-          identity: '',
-          systemPrompt: buildWorkspaceAgentStabilityPrompt(
-            createDefaultWorkspaceAgentStabilityDraft(),
-          ),
-          model: 'missing-provider/missing-model',
-          icon: '',
-          skillIds: ['missing-skill'],
-        },
-        source: EnterpriseLeadWorkspaceAgentSource.WorkspaceCreated,
-        availableModelRefs: new Set(['openai/gpt-4.1']),
-        enabledSkillIds: new Set(['docx']),
-        requireExecutionRules: true,
-      }),
-    ).toEqual({
-      valid: true,
-      errors: [],
-    });
-  });
-
-  test('renders workspace Agent draft validation messages in the editor', () => {
-    const noop = (): void => undefined;
-    const markup = renderEnterpriseLeadComponent(
-      React.createElement(WorkspaceAgentEditorDialog, {
-        draft: {
-          name: '',
-          description: '',
-          identity: '',
-          systemPrompt: '',
-          model: 'missing-provider/missing-model',
-          icon: '',
-          skillIds: ['missing-skill'],
-        },
-        saveState: 'idle',
-        validationErrors: ['name', 'systemPrompt'],
-        onCancel: noop,
-        onDraftChange: noop,
-        onSave: noop,
-      }),
-    );
-
-    expect(markup).toContain('请输入 Agent 名称。');
-    expect(markup).toContain('请手动填写完整的执行规范。');
-    expect(markup).not.toContain('请选择可用模型。');
-    expect(markup).not.toContain('请移除不可用技能后再保存。');
-  });
-
-  test('renders action-specific workspace Agent save feedback in the editor', () => {
-    const noop = (): void => undefined;
-    const markup = renderEnterpriseLeadComponent(
-      React.createElement(WorkspaceAgentEditorDialog, {
-        draft: {
-          name: '产品理解 Agent',
-          description: '',
-          identity: '',
-          systemPrompt: '',
-          model: '',
-          icon: '',
-          skillIds: [],
-        },
-        saveState: 'error',
-        feedbackLabelKey: 'enterpriseLeadWorkbenchAgentOperationSaveEditsError',
-        onCancel: noop,
-        onDraftChange: noop,
-        onSave: noop,
-      }),
-    );
-
-    expect(markup).toContain('Agent 修改保存失败，草稿已保留');
-    expect(markup).not.toContain('保存失败，当前草稿已保留');
   });
 
   test('renders workspace settings as a focused space skills manager', () => {
@@ -5459,431 +4347,6 @@ describe('enterprise lead workspace UI helpers', () => {
     expect(markup).toContain('交付稳定');
   });
 
-  test('workbench agent save sends only workspace agent bindings', async () => {
-    const binding = {
-      agentId: 'agent-a',
-      source: EnterpriseLeadWorkspaceAgentSource.WorkspaceCreated,
-      enabled: true,
-      order: 0,
-      overrides: {},
-    };
-    const updateWorkspaceAgents = vi
-      .spyOn(enterpriseLeadWorkspaceService, 'updateWorkspaceAgents')
-      .mockResolvedValue(createWorkspace('workspace-1'));
-    const onSaved = vi.fn();
-    const onError = vi.fn();
-
-    await saveWorkspaceAgentBindings({
-      workspaceId: 'workspace-1',
-      workspaceAgents: [binding],
-      isCurrentSave: () => true,
-      onSaved,
-      onError,
-    });
-
-    expect(updateWorkspaceAgents).toHaveBeenCalledWith('workspace-1', [binding]);
-    expect(onSaved).toHaveBeenCalledWith(expect.objectContaining({ id: 'workspace-1' }));
-    expect(onError).not.toHaveBeenCalled();
-  });
-
-  test('prepares workspace agent bindings with last duplicate agent winning', () => {
-    const prepared = prepareWorkspaceAgentBindings([
-      {
-        agentId: 'agent-a',
-        enabled: true,
-        order: 10,
-        overrides: {
-          name: 'First A',
-        },
-      },
-      {
-        agentId: 'agent-b',
-        enabled: false,
-        order: -1,
-        overrides: {},
-      },
-      {
-        agentId: 'agent-a',
-        enabled: false,
-        order: 4,
-        overrides: {
-          name: 'Last A',
-          skillIds: ['web-search'],
-        },
-      },
-    ]);
-
-    expect(prepared).toEqual([
-      {
-        agentId: 'agent-b',
-        source: EnterpriseLeadWorkspaceAgentSource.WorkspaceCreated,
-        enabled: false,
-        order: 0,
-        overrides: {},
-      },
-      {
-        agentId: 'agent-a',
-        source: EnterpriseLeadWorkspaceAgentSource.WorkspaceCreated,
-        enabled: false,
-        order: 1,
-        overrides: {
-          name: 'Last A',
-        },
-      },
-    ]);
-  });
-
-  test('prepares legacy role bindings as system templates in the workbench', () => {
-    const prepared = prepareWorkspaceAgentBindings([
-      {
-        agentId: EnterpriseLeadAgentRole.ContentPlanning,
-        enabled: true,
-        order: 0,
-        overrides: {},
-      },
-    ]);
-
-    expect(prepared).toEqual([
-      {
-        agentId: EnterpriseLeadAgentRole.ContentPlanning,
-        source: EnterpriseLeadWorkspaceAgentSource.SystemTemplate,
-        templateId: EnterpriseLeadAgentRole.ContentPlanning,
-        enabled: true,
-        order: 0,
-        overrides: {},
-      },
-    ]);
-  });
-
-  test('adds system templates as workspace-local Agent bindings without duplicates', () => {
-    const template = {
-      agentId: EnterpriseLeadAgentRole.ContentPlanning,
-      source: EnterpriseLeadWorkspaceAgentSource.SystemTemplate,
-      templateId: EnterpriseLeadAgentRole.ContentPlanning,
-      enabled: true,
-      order: 0,
-      overrides: {
-        name: '内容策划 Agent',
-        description: '生成内容草稿。',
-      },
-    };
-
-    const added = addSystemAgentBindingToWorkspace([], template);
-    const duplicate = addSystemAgentBindingToWorkspace(added, template);
-
-    expect(added).toEqual([
-      {
-        ...template,
-        order: 0,
-      },
-    ]);
-    expect(duplicate).toEqual(added);
-  });
-
-  test('adds a batch of system templates without duplicating existing promotion roles', () => {
-    const existing = [
-      {
-        agentId: EnterpriseLeadAgentRole.PromotionDataScraping,
-        source: EnterpriseLeadWorkspaceAgentSource.SystemTemplate,
-        templateId: EnterpriseLeadAgentRole.PromotionDataScraping,
-        enabled: true,
-        order: 0,
-        overrides: {
-          name: '数据抓取 Agent',
-        },
-      },
-    ];
-    const added = addSystemAgentBindingsToWorkspace(existing, [
-      {
-        agentId: EnterpriseLeadAgentRole.PromotionDataScraping,
-        source: EnterpriseLeadWorkspaceAgentSource.SystemTemplate,
-        templateId: EnterpriseLeadAgentRole.PromotionDataScraping,
-        enabled: true,
-        order: 0,
-        overrides: {
-          name: '数据抓取 Agent',
-        },
-      },
-      {
-        agentId: EnterpriseLeadAgentRole.PromotionAccountMonitoring,
-        source: EnterpriseLeadWorkspaceAgentSource.SystemTemplate,
-        templateId: EnterpriseLeadAgentRole.PromotionAccountMonitoring,
-        enabled: true,
-        order: 1,
-        overrides: {
-          name: '账户监控 Agent',
-        },
-      },
-    ]);
-
-    expect(added).toEqual([
-      expect.objectContaining({
-        agentId: EnterpriseLeadAgentRole.PromotionDataScraping,
-        order: 0,
-      }),
-      expect.objectContaining({
-        agentId: EnterpriseLeadAgentRole.PromotionAccountMonitoring,
-        order: 1,
-      }),
-    ]);
-  });
-
-  test('adds local Agents as workspace bindings without duplicating agent ids', () => {
-    const added = addLocalAgentBindingToWorkspace([], {
-      id: 'agent-a',
-      name: 'Global Writer',
-      description: 'Global writer description.',
-      identity: '',
-      systemPrompt: '',
-      icon: 'briefcase',
-      model: 'deepseek/deepseek-chat',
-      enabled: true,
-    });
-    const duplicate = addLocalAgentBindingToWorkspace(added, {
-      id: 'agent-a',
-      name: 'Global Writer',
-      description: 'Global writer description.',
-      identity: '',
-      systemPrompt: '',
-      icon: 'briefcase',
-      model: 'deepseek/deepseek-chat',
-      enabled: true,
-    });
-
-    expect(added).toEqual([
-      {
-        agentId: 'agent-a',
-        source: EnterpriseLeadWorkspaceAgentSource.LocalAgent,
-        enabled: true,
-        order: 0,
-        overrides: {},
-      },
-    ]);
-    expect(duplicate).toEqual(added);
-  });
-
-  test('moves workspace agent bindings and remaps order', () => {
-    const moved = moveWorkspaceAgentBinding(
-      [
-        {
-          agentId: 'agent-a',
-          enabled: true,
-          order: 0,
-          overrides: {},
-        },
-        {
-          agentId: 'agent-b',
-          enabled: true,
-          order: 1,
-          overrides: {},
-        },
-        {
-          agentId: 'agent-c',
-          enabled: true,
-          order: 2,
-          overrides: {},
-        },
-      ],
-      'agent-b',
-      -1,
-    );
-
-    expect(moved.map(binding => [binding.agentId, binding.order])).toEqual([
-      ['agent-b', 0],
-      ['agent-a', 1],
-      ['agent-c', 2],
-    ]);
-  });
-
-  test('creates a workspace-owned Agent inside the current workspace', async () => {
-    const updateWorkspaceAgents = vi
-      .spyOn(enterpriseLeadWorkspaceService, 'updateWorkspaceAgents')
-      .mockResolvedValue(createWorkspace('workspace-1'));
-    const onSaved = vi.fn();
-    const onError = vi.fn();
-
-    await createAndBindWorkspaceAgent({
-      workspaceId: 'workspace-1',
-      workspaceAgents: [],
-      name: ' 新 Agent ',
-      description: ' 新建的全局模板 ',
-      systemPrompt: ' 只处理当前空间的问题 ',
-      identity: ' 空间助手 ',
-      model: ' gpt-4.1 ',
-      icon: ' compass ',
-      isCurrentSave: () => true,
-      onSaved,
-      onError,
-    });
-
-    expect(updateWorkspaceAgents).toHaveBeenCalledWith('workspace-1', [
-      expect.objectContaining({
-        agentId: '新-agent',
-        source: EnterpriseLeadWorkspaceAgentSource.WorkspaceCreated,
-        enabled: true,
-        order: 0,
-        overrides: expect.objectContaining({
-          name: '新 Agent',
-          description: '新建的全局模板',
-          systemPrompt: expect.stringContaining('只处理当前空间的问题'),
-          identity: '空间助手',
-          model: 'gpt-4.1',
-          icon: 'compass',
-        }),
-      }),
-    ]);
-    const savedBindings = updateWorkspaceAgents.mock.calls[0]?.[1] ?? [];
-    expect(savedBindings[0]?.overrides).not.toHaveProperty('skillIds');
-    expect(savedBindings[0]?.overrides.systemPrompt).toContain(
-      'lobsterai-agent-stability:rule.workStyle',
-    );
-    expect(onSaved).toHaveBeenCalledWith(expect.objectContaining({ id: 'workspace-1' }));
-    expect(onError).not.toHaveBeenCalled();
-  });
-
-  test('workbench agent save ignores overlapping saves from the same instance', async () => {
-    const deferred = createDeferred<EnterpriseLeadWorkspace | null>();
-    const updateWorkspaceAgents = vi
-      .spyOn(enterpriseLeadWorkspaceService, 'updateWorkspaceAgents')
-      .mockReturnValue(deferred.promise);
-    const onSaved = vi.fn();
-    const onError = vi.fn();
-    const saveInFlightRef = { current: false };
-    const binding = {
-      agentId: 'agent-a',
-      source: EnterpriseLeadWorkspaceAgentSource.WorkspaceCreated,
-      enabled: true,
-      order: 0,
-      overrides: {},
-    };
-
-    const firstSave = saveWorkspaceAgentBindings({
-      workspaceId: 'workspace-1',
-      workspaceAgents: [binding],
-      isCurrentSave: () => true,
-      onSaved,
-      onError,
-      saveInFlightRef,
-    });
-    const secondSave = saveWorkspaceAgentBindings({
-      workspaceId: 'workspace-1',
-      workspaceAgents: [
-        {
-          ...binding,
-          enabled: false,
-        },
-      ],
-      isCurrentSave: () => true,
-      onSaved,
-      onError,
-      saveInFlightRef,
-    });
-
-    expect(updateWorkspaceAgents).toHaveBeenCalledTimes(1);
-    deferred.resolve(createWorkspace('workspace-1'));
-    await Promise.all([firstSave, secondSave]);
-
-    expect(updateWorkspaceAgents).toHaveBeenCalledTimes(1);
-    expect(saveInFlightRef.current).toBe(false);
-    expect(onSaved).toHaveBeenCalledTimes(1);
-    expect(onError).not.toHaveBeenCalled();
-  });
-
-  test('rapid workbench save attempt does not invalidate first save callback', async () => {
-    const deferred = createDeferred<EnterpriseLeadWorkspace | null>();
-    const updatedWorkspace = createWorkspace('workspace-1');
-    const updateWorkspaceAgents = vi
-      .spyOn(enterpriseLeadWorkspaceService, 'updateWorkspaceAgents')
-      .mockReturnValue(deferred.promise);
-    const onSaving = vi.fn();
-    const onSaved = vi.fn();
-    const onError = vi.fn();
-    const workspaceIdRef = { current: 'workspace-1' };
-    const saveSequenceRef = { current: 0 };
-    const saveInFlightRef = { current: false };
-    const binding = {
-      agentId: 'agent-a',
-      enabled: true,
-      order: 0,
-      overrides: {},
-    };
-
-    const firstSave = saveWorkbenchWorkspaceAgents({
-      workspaceId: 'workspace-1',
-      workspaceAgents: [binding],
-      workspaceIdRef,
-      saveSequenceRef,
-      saveInFlightRef,
-      onSaving,
-      onSaved,
-      onError,
-    });
-    const secondSave = saveWorkbenchWorkspaceAgents({
-      workspaceId: 'workspace-1',
-      workspaceAgents: [
-        {
-          ...binding,
-          enabled: false,
-        },
-      ],
-      workspaceIdRef,
-      saveSequenceRef,
-      saveInFlightRef,
-      onSaving,
-      onSaved,
-      onError,
-    });
-
-    expect(updateWorkspaceAgents).toHaveBeenCalledTimes(1);
-    expect(saveSequenceRef.current).toBe(1);
-    deferred.resolve(updatedWorkspace);
-    await Promise.all([firstSave, secondSave]);
-
-    expect(updateWorkspaceAgents).toHaveBeenCalledTimes(1);
-    expect(saveSequenceRef.current).toBe(1);
-    expect(saveInFlightRef.current).toBe(false);
-    expect(onSaving).toHaveBeenCalledTimes(1);
-    expect(onSaved).toHaveBeenCalledWith(updatedWorkspace);
-    expect(onError).not.toHaveBeenCalled();
-  });
-
-  test('stale workspace agent save does not clear newer in-flight guard', async () => {
-    const deferred = createDeferred<EnterpriseLeadWorkspace | null>();
-    const updateWorkspaceAgents = vi
-      .spyOn(enterpriseLeadWorkspaceService, 'updateWorkspaceAgents')
-      .mockReturnValue(deferred.promise);
-    const onSaved = vi.fn();
-    const onError = vi.fn();
-    const saveInFlightRef = { current: false };
-    let currentWorkspaceId = 'workspace-a';
-
-    const savePromise = saveWorkspaceAgentBindings({
-      workspaceId: 'workspace-a',
-      workspaceAgents: [
-        {
-          agentId: 'agent-a',
-          enabled: true,
-          order: 0,
-          overrides: {},
-        },
-      ],
-      isCurrentSave: () => currentWorkspaceId === 'workspace-a',
-      onSaved,
-      onError,
-      saveInFlightRef,
-    });
-
-    expect(updateWorkspaceAgents).toHaveBeenCalledTimes(1);
-    currentWorkspaceId = 'workspace-b';
-    saveInFlightRef.current = true;
-    deferred.resolve(createWorkspace('workspace-a'));
-    await savePromise;
-
-    expect(saveInFlightRef.current).toBe(true);
-    expect(onSaved).not.toHaveBeenCalled();
-    expect(onError).not.toHaveBeenCalled();
-  });
-
   test('workspace settings save sends only settings', async () => {
     const settings = buildDefaultEnterpriseLeadWorkspaceSettings();
     const updateWorkspaceSettings = vi
@@ -5904,38 +4367,6 @@ describe('enterprise lead workspace UI helpers', () => {
     });
     expect(updateWorkspaceSettings.mock.calls[0]?.[1]).not.toHaveProperty('enabledAgentRoles');
     expect(onSaved).toHaveBeenCalledWith(expect.objectContaining({ id: 'workspace-1' }));
-    expect(onError).not.toHaveBeenCalled();
-  });
-
-  test('stale workbench save completion does not update current UI callbacks', async () => {
-    const deferred = createDeferred<EnterpriseLeadWorkspace | null>();
-    vi.spyOn(enterpriseLeadWorkspaceService, 'updateWorkspaceAgents').mockReturnValue(
-      deferred.promise,
-    );
-    let currentWorkspaceId = 'workspace-a';
-    const onSaved = vi.fn();
-    const onError = vi.fn();
-
-    const savePromise = saveWorkspaceAgentBindings({
-      workspaceId: 'workspace-a',
-      workspaceAgents: [
-        {
-          agentId: 'agent-a',
-          enabled: true,
-          order: 0,
-          overrides: {},
-        },
-      ],
-      isCurrentSave: () => currentWorkspaceId === 'workspace-a',
-      onSaved,
-      onError,
-    });
-
-    currentWorkspaceId = 'workspace-b';
-    deferred.resolve(createWorkspace('workspace-a'));
-    await savePromise;
-
-    expect(onSaved).not.toHaveBeenCalled();
     expect(onError).not.toHaveBeenCalled();
   });
 });

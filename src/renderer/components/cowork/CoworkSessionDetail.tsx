@@ -14,7 +14,6 @@ import {
   type CoworkSelectedTextValidationError,
   normalizeCoworkSelectedTextSnippets,
 } from '../../../shared/cowork/selectedText';
-import type { CoworkWorkspaceAgentSelection } from '../../../shared/cowork/workspaceAgentSelection';
 import {
   dedupeArtifactsForDisplay,
   normalizeFilePathForDedup,
@@ -123,7 +122,6 @@ import {
 } from './sessionExport';
 import UserMessageContent from './UserMessageContent';
 import UserMessageItem from './UserMessageItem';
-import type { WorkspaceAgentTeamChoiceState } from './workspaceAgentTeamOptions';
 
 interface CoworkSessionDetailProps {
   onManageSkills?: () => void;
@@ -134,15 +132,12 @@ interface CoworkSessionDetailProps {
     mediaReferences?: MediaAttachmentRef[],
     selectedTextSnippets?: CoworkSelectedTextSnippet[],
     collaborationMode?: CoworkCollaborationModeType,
-    workspaceAgentSelection?: CoworkWorkspaceAgentSelection | null,
   ) => boolean | void | Promise<boolean | void>;
   onStop: () => void;
   isSidebarCollapsed?: boolean;
   onToggleSidebar?: () => void;
   onNewChat?: () => void;
   updateBadge?: React.ReactNode;
-  workspaceAgentTeamState?: WorkspaceAgentTeamChoiceState;
-  onWorkspaceAgentSelectionChange?: (selection: CoworkWorkspaceAgentSelection | null) => void;
 }
 
 const AUTO_SCROLL_THRESHOLD = 120;
@@ -1143,8 +1138,6 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
   onToggleSidebar,
   onNewChat,
   updateBadge,
-  workspaceAgentTeamState,
-  onWorkspaceAgentSelectionChange,
 }) => {
   const dispatch = useDispatch();
   const isMac = window.electron.platform === 'darwin';
@@ -5061,8 +5054,6 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
                 workingDirectory={currentSession?.cwd ?? ''}
                 contextAgentId={currentSession?.agentId}
                 sessionId={currentSession?.id}
-                workspaceAgentTeamState={workspaceAgentTeamState}
-                onWorkspaceAgentSelectionChange={onWorkspaceAgentSelectionChange}
                 contextUsageControl={
                   <div ref={compactConfirmRef} className="relative inline-flex flex-shrink-0">
                     <ContextUsageIndicator

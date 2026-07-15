@@ -53,6 +53,11 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 
 const cleanText = (value: unknown): string => (typeof value === 'string' ? value.trim() : '');
 
+export const normalizeWorkspaceKitIds = (value: unknown): string[] => {
+  if (!Array.isArray(value)) return [];
+  return Array.from(new Set(value.map(cleanText).filter(Boolean)));
+};
+
 const cleanOptionalText = (value: unknown): string | undefined => {
   const text = cleanText(value);
   return text || undefined;
@@ -709,6 +714,7 @@ export function buildDefaultEnterpriseLeadWorkspaceSettings(): EnterpriseLeadWor
       providers: {},
     },
     skillIds: [],
+    kitIds: [],
     externalResearch: buildDefaultExternalResearchConfig(AgentExternalResearchMode.Override),
     domesticResearch: buildDefaultDomesticResearchConfig(),
     contentPlatforms: buildDefaultContentPlatformSettings(),
@@ -730,6 +736,7 @@ export function normalizeEnterpriseLeadWorkspaceSettings(
   const hasNewShape =
     isRecord(record.model) ||
     Array.isArray(record.skillIds) ||
+    Array.isArray(record.kitIds) ||
     isRecord(record.externalResearch) ||
     isRecord(record.domesticResearch) ||
     hasNewContentPlatformsShape ||
@@ -747,6 +754,10 @@ export function normalizeEnterpriseLeadWorkspaceSettings(
         : hasNewShape
           ? [...fallback.skillIds]
           : legacySkillIdsFromCapabilities(record.skillCapabilities),
+    kitIds:
+      hasNewShape && hasOwn(record, 'kitIds')
+        ? normalizeWorkspaceKitIds(record.kitIds)
+        : [...fallback.kitIds],
     externalResearch:
       hasNewShape && hasOwn(record, 'externalResearch')
         ? mergeExternalResearchConfigInput(record.externalResearch, fallback.externalResearch)
