@@ -25,7 +25,6 @@ import {
   buildSelectedTextPromptSection,
   type CoworkSelectedTextSnippet,
 } from '../../../shared/cowork/selectedText';
-import type { CoworkWorkspaceAgentSelection } from '../../../shared/cowork/workspaceAgentSelection';
 import { buildEnterpriseLeadWorkspaceKnowledgeScopeId } from '../../../shared/enterpriseLeadWorkspace/constants';
 import type { KitReference, ResolvedKitCapabilities } from '../../../shared/kit/constants';
 import { APP_DISPLAY_NAME } from '../../appConstants';
@@ -2110,7 +2109,7 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
       mediaSelection: options.mediaSelection,
       mediaReferences: options.mediaReferences,
       selectedTextSnippets: options.selectedTextSnippets,
-      workspaceAgentSelection: options.workspaceAgentSelection,
+      workspaceId: options.workspaceId,
     });
   }
 
@@ -2131,7 +2130,7 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
       mediaSelection: options.mediaSelection,
       mediaReferences: options.mediaReferences,
       selectedTextSnippets: options.selectedTextSnippets,
-      workspaceAgentSelection: options.workspaceAgentSelection,
+      workspaceId: options.workspaceId,
     });
   }
 
@@ -3964,9 +3963,9 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
 
   private rememberEnterpriseWorkspaceKnowledgeScope(
     sessionId: string,
-    selection?: CoworkWorkspaceAgentSelection | null,
+    rawWorkspaceId?: string | null,
   ): void {
-    const workspaceId = selection?.workspaceId?.trim();
+    const workspaceId = rawWorkspaceId?.trim();
     if (!workspaceId) {
       this.enterpriseWorkspaceKnowledgeScopeBySession.delete(sessionId);
       return;
@@ -4190,7 +4189,7 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
       mediaSelection?: CoworkMediaSelection;
       mediaReferences?: CoworkMediaAttachmentRef[];
       selectedTextSnippets?: CoworkSelectedTextSnippet[];
-      workspaceAgentSelection?: CoworkWorkspaceAgentSelection | null;
+      workspaceId?: string;
     },
   ): Promise<void> {
     if (!prompt.trim() && (!options.imageAttachments || options.imageAttachments.length === 0)) {
@@ -4268,7 +4267,7 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
     }
 
     const agentId = options.agentId || session.agentId || 'main';
-    this.rememberEnterpriseWorkspaceKnowledgeScope(sessionId, options.workspaceAgentSelection);
+    this.rememberEnterpriseWorkspaceKnowledgeScope(sessionId, options.workspaceId);
     const sessionKey = this.toSessionKey(sessionId, agentId);
     this.rememberSessionKey(sessionId, sessionKey);
 

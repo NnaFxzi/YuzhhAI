@@ -28,7 +28,7 @@ import {
   type WorkspaceMaterialSelectionItem,
 } from './workspaceCreationKnowledgeImport';
 import { WorkspaceMaterialUpload } from './WorkspaceMaterialUpload';
-import { buildEnterpriseLeadWorkspaceSettingsFromCurrentConfig } from './WorkspaceWorkbench';
+import { buildEnterpriseLeadWorkspaceSettingsFromCurrentConfig } from './WorkspaceSettings';
 
 interface WorkspaceCreateProps {
   onCreated: (workspaceId: string, initialImportResult?: KnowledgeImportBatchResult) => void;

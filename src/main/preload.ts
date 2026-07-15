@@ -23,7 +23,6 @@ import {
 } from '../shared/contentQualityRegression/constants';
 import { CoworkIpcChannel } from '../shared/cowork/constants';
 import type { LayeredCoworkSettingsUpdate } from '../shared/cowork/layeredSettings';
-import type { CoworkWorkspaceAgentSelection } from '../shared/cowork/workspaceAgentSelection';
 import { DataMigrationIpc } from '../shared/dataMigration/constants';
 import { DialogIpc } from '../shared/dialog/constants';
 import {
@@ -542,7 +541,7 @@ contextBridge.exposeInMainWorld('electron', {
         dataUrl?: string;
         role?: string;
       }>;
-      workspaceAgentSelection?: CoworkWorkspaceAgentSelection | null;
+      workspaceId?: string;
     }) => ipcRenderer.invoke('cowork:session:start', options),
     continueSession: (options: {
       sessionId: string;
@@ -595,7 +594,7 @@ contextBridge.exposeInMainWorld('electron', {
         dataUrl?: string;
         role?: string;
       }>;
-      workspaceAgentSelection?: CoworkWorkspaceAgentSelection | null;
+      workspaceId?: string;
     }) => ipcRenderer.invoke('cowork:session:continue', options),
     stopSession: (sessionId: string) => ipcRenderer.invoke('cowork:session:stop', sessionId),
     deleteSession: (sessionId: string) => ipcRenderer.invoke('cowork:session:delete', sessionId),

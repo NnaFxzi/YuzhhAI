@@ -21,6 +21,7 @@ import {
   normalizeEnterpriseLeadWorkspaceSettingsUpdate,
   normalizeRiskReviewOutput,
   normalizeWorkspaceDraftInput,
+  normalizeWorkspaceKitIds,
 } from './validation';
 
 describe('enterprise lead workspace validation', () => {
@@ -141,6 +142,7 @@ describe('enterprise lead workspace validation', () => {
       providers: {},
     });
     expect(settings.skillIds).toEqual([]);
+    expect(settings.kitIds).toEqual([]);
     expect(settings.externalResearch.providers.tavily).toEqual({
       enabled: false,
       apiKey: '',
@@ -165,6 +167,10 @@ describe('enterprise lead workspace validation', () => {
     });
   });
 
+  test('normalizes workspace Expert Kit ids', () => {
+    expect(normalizeWorkspaceKitIds([' marketing ', '', 'marketing'])).toEqual(['marketing']);
+  });
+
   test('normalizes workspace provider, skill, output preference, external research, and domestic platform settings', () => {
     const settings = normalizeEnterpriseLeadWorkspaceSettings({
       model: {
@@ -181,6 +187,7 @@ describe('enterprise lead workspace validation', () => {
         },
       },
       skillIds: ['docx', 'web-search', 'docx', ' '],
+      kitIds: [' marketing ', '', 'marketing'],
       externalResearch: {
         mode: 'override',
         providers: {
@@ -250,6 +257,7 @@ describe('enterprise lead workspace validation', () => {
       { id: 'gpt-4.1', name: 'GPT-4.1', supportsImage: true },
     ]);
     expect(settings.skillIds).toEqual(['docx', 'web-search']);
+    expect(settings.kitIds).toEqual(['marketing']);
     expect(settings.externalResearch.providers.tavily.apiKey).toBe('tvly-workspace');
     expect(settings.domesticResearch.sources.xiaohongshu.urls).toEqual([
       'https://www.xiaohongshu.com/explore/1',

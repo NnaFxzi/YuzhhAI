@@ -17,11 +17,20 @@ import XMarkIcon from '../icons/XMarkIcon';
 const ActiveKitBadge: React.FC = () => {
   const dispatch = useDispatch();
   const activeKitIds = useSelector((state: RootState) => state.kit.activeKitIds);
+  const installedKits = useSelector((state: RootState) => state.kit.installedKits);
   const marketplaceKits = useSelector((state: RootState) => state.kit.marketplaceKits);
 
   const activeKits = activeKitIds
-    .map(id => marketplaceKits.find(k => k.id === id))
-    .filter((k): k is NonNullable<typeof k> => k !== undefined);
+    .map(id => {
+      const marketplaceKit = marketplaceKits.find(kit => kit.id === id);
+      if (!marketplaceKit && !installedKits[id]) return undefined;
+
+      return {
+        id,
+        name: marketplaceKit ? resolveLocalizedText(marketplaceKit.name) : id,
+      };
+    })
+    .filter((kit): kit is NonNullable<typeof kit> => kit !== undefined);
 
   if (activeKits.length === 0) return null;
 
@@ -44,9 +53,7 @@ const ActiveKitBadge: React.FC = () => {
             <SidebarKitsIcon className={ACTIVE_CONTEXT_BADGE_ICON_CLASS} />
             <XMarkIcon className={ACTIVE_CONTEXT_BADGE_REMOVE_ICON_CLASS} />
           </span>
-          <span className="min-w-0 truncate">
-            {resolveLocalizedText(kit.name)}
-          </span>
+          <span className="min-w-0 truncate">{kit.name}</span>
         </button>
       ))}
     </>

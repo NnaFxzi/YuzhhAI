@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useSelector } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
 
 import {
   EnterpriseLeadDocumentExtractionStatus,
@@ -25,10 +25,14 @@ import {
   type EnterpriseLeadWorkspaceShellMode as EnterpriseLeadWorkspaceShellModeType,
   getDefaultWorkspaceInternalPage,
   getShellModeForEnterpriseLeadWorkspaceScreen,
+  normalizeWorkspaceInternalPage,
   sortWorkspacesByRecentUpdate,
 } from './enterpriseLeadWorkspaceUi';
-import WorkflowRunView from './WorkflowRunView';
 import { buildEnterpriseLeadCoworkHandoffRequest } from './workspaceCoworkHandoff';
+import {
+  discardEnterpriseLeadCoworkHandoffDraft,
+  resetEnterpriseLeadCoworkHandoffDraft,
+} from './workspaceCoworkHandoffState';
 import {
   getWorkspaceSidebarActiveChatSessionId,
   openEmbeddedCoworkConversationRecord,
@@ -37,10 +41,11 @@ import {
 import { mapCoworkSessionsToWorkspaceConversationRecords } from './workspaceCoworkSessionRecords';
 import WorkspaceCreate from './WorkspaceCreate';
 import WorkspaceEntryHome from './WorkspaceEntryHome';
+import { getWorkspaceDefaultKitIds } from './workspaceKitSelection';
+import WorkspaceKitsPanel from './WorkspaceKitsPanel';
 import WorkspaceKnowledgeBase from './WorkspaceKnowledgeBase';
 import WorkspaceShell from './WorkspaceShell';
 import WorkspaceStart from './WorkspaceStart';
-import WorkspaceWorkbench from './WorkspaceWorkbench';
 
 interface EnterpriseLeadWorkspaceViewProps {
   isSidebarCollapsed?: boolean;
@@ -71,13 +76,16 @@ export interface EnterpriseLeadWorkspacePageRouting {
 
 export const getEnterpriseLeadWorkspacePageRouting = (
   page: EnterpriseLeadWorkspaceInternalPageType,
-): EnterpriseLeadWorkspacePageRouting => ({
-  target:
-    page === EnterpriseLeadWorkspaceInternalPage.AiChat
-      ? EnterpriseLeadWorkspacePageTarget.EmbeddedCoworkChat
-      : EnterpriseLeadWorkspacePageTarget.WorkspacePanel,
-  usesDedicatedEnterpriseLeadChatSessions: false,
-});
+): EnterpriseLeadWorkspacePageRouting => {
+  const normalizedPage = normalizeWorkspaceInternalPage(page);
+  return {
+    target:
+      normalizedPage === EnterpriseLeadWorkspaceInternalPage.AiChat
+        ? EnterpriseLeadWorkspacePageTarget.EmbeddedCoworkChat
+        : EnterpriseLeadWorkspacePageTarget.WorkspacePanel,
+    usesDedicatedEnterpriseLeadChatSessions: false,
+  };
+};
 
 const WORKSPACE_PROCESSING_REFRESH_INTERVAL_MS = 1500;
 const WORKSPACE_PROCESSING_REFRESH_MAX_ATTEMPTS = 120;
@@ -111,6 +119,7 @@ export const EnterpriseLeadWorkspaceView: React.FC<EnterpriseLeadWorkspaceViewPr
   onCreateSkillByChat,
   skillsReadOnly,
 }) => {
+  const dispatch = useDispatch();
   const [screen, setScreen] = useState<EnterpriseLeadWorkspaceScreen>(
     EnterpriseLeadWorkspaceScreen.Entry,
   );
@@ -131,10 +140,25 @@ export const EnterpriseLeadWorkspaceView: React.FC<EnterpriseLeadWorkspaceViewPr
   } | null>(null);
   const navigationRevisionRef = useRef(0);
   const refreshRequestRef = useRef(0);
+  const currentCoworkSessionIdRef = useRef<string | null>(null);
   const isMac = window.electron.platform === 'darwin';
   const shellMode = getShellModeForEnterpriseLeadWorkspaceScreen(screen);
   const coworkSessions = useSelector((state: RootState) => state.cowork.sessions);
   const currentCoworkSessionId = useSelector((state: RootState) => state.cowork.currentSessionId);
+
+  useEffect(() => {
+    currentCoworkSessionIdRef.current = currentCoworkSessionId;
+  }, [currentCoworkSessionId]);
+
+  useEffect(
+    () => () => {
+      discardEnterpriseLeadCoworkHandoffDraft(
+        dispatch,
+        currentCoworkSessionIdRef.current !== null,
+      );
+    },
+    [dispatch],
+  );
 
   useEffect(() => {
     onShellModeChange?.(shellMode);
@@ -165,7 +189,7 @@ export const EnterpriseLeadWorkspaceView: React.FC<EnterpriseLeadWorkspaceViewPr
         if (preferredWorkspaceId && isSameNavigation) {
           setActiveWorkspace(null);
           setActiveWorkspaceId(preferredWorkspaceId);
-          setActiveInternalPage(preferredPage);
+          setActiveInternalPage(normalizeWorkspaceInternalPage(preferredPage));
           setScreen(EnterpriseLeadWorkspaceScreen.Workspace);
         } else if (!preferredWorkspaceId && isSameNavigation) {
           setActiveWorkspace(null);
@@ -390,6 +414,7 @@ export const EnterpriseLeadWorkspaceView: React.FC<EnterpriseLeadWorkspaceViewPr
 
   const handleExitWorkspace = (): void => {
     navigationRevisionRef.current += 1;
+    discardEnterpriseLeadCoworkHandoffDraft(dispatch, false);
     setActiveWorkspace(null);
     setActiveWorkspaceId(null);
     setInitialKnowledgeImportResult(null);
@@ -407,15 +432,21 @@ export const EnterpriseLeadWorkspaceView: React.FC<EnterpriseLeadWorkspaceViewPr
       setActiveChatSessionId(null);
       setActiveInternalPage(request.nextInternalPage);
       onPrepareCoworkChat(request.draft);
+      resetEnterpriseLeadCoworkHandoffDraft(
+        dispatch,
+        request.draft,
+        getWorkspaceDefaultKitIds(workspace),
+      );
     },
-    [onPrepareCoworkChat],
+    [dispatch, onPrepareCoworkChat],
   );
 
   const handleInternalPageChange = (
     page: EnterpriseLeadWorkspaceInternalPageType,
     workspaceForCowork: EnterpriseLeadWorkspace,
   ): void => {
-    const pageRouting = getEnterpriseLeadWorkspacePageRouting(page);
+    const normalizedPage = normalizeWorkspaceInternalPage(page);
+    const pageRouting = getEnterpriseLeadWorkspacePageRouting(normalizedPage);
 
     if (pageRouting.target === EnterpriseLeadWorkspacePageTarget.EmbeddedCoworkChat) {
       prepareEmbeddedCoworkChat(workspaceForCowork);
@@ -423,7 +454,7 @@ export const EnterpriseLeadWorkspaceView: React.FC<EnterpriseLeadWorkspaceViewPr
     }
 
     navigationRevisionRef.current += 1;
-    setActiveInternalPage(page);
+    setActiveInternalPage(normalizedPage);
   };
 
   const handleChatSessionSelect = useCallback((sessionId: string): void => {
@@ -432,9 +463,10 @@ export const EnterpriseLeadWorkspaceView: React.FC<EnterpriseLeadWorkspaceViewPr
       sessionId,
       setActiveSessionId: setActiveChatSessionId,
       setActiveInternalPage,
+      discardHandoffDraft: () => discardEnterpriseLeadCoworkHandoffDraft(dispatch, true),
       loadSession: selectedSessionId => coworkService.loadSession(selectedSessionId),
     });
-  }, []);
+  }, [dispatch]);
 
   const visibleChatSessions = useMemo(
     () =>
@@ -480,15 +512,11 @@ export const EnterpriseLeadWorkspaceView: React.FC<EnterpriseLeadWorkspaceViewPr
   const renderPreparingPanel = (page: EnterpriseLeadWorkspaceInternalPageType): React.ReactNode => {
     const pageLabels = {
       [EnterpriseLeadWorkspaceInternalPage.Workbench]: 'enterpriseLeadWorkbenchNavWorkbench',
-      [EnterpriseLeadWorkspaceInternalPage.Workflow]: 'enterpriseLeadWorkbenchNavWorkflow',
       [EnterpriseLeadWorkspaceInternalPage.AiChat]: 'enterpriseLeadWorkbenchNavAiChat',
       [EnterpriseLeadWorkspaceInternalPage.Search]: 'enterpriseLeadWorkbenchNavSearch',
       [EnterpriseLeadWorkspaceInternalPage.KnowledgeBase]:
         'enterpriseLeadWorkbenchNavKnowledgeBase',
-      [EnterpriseLeadWorkspaceInternalPage.CreationRecords]:
-        'enterpriseLeadWorkbenchNavCreationRecords',
-      [EnterpriseLeadWorkspaceInternalPage.AgentManagement]:
-        'enterpriseLeadWorkbenchNavAgentManagement',
+      [EnterpriseLeadWorkspaceInternalPage.Kits]: 'enterpriseLeadWorkspaceNavKits',
       [EnterpriseLeadWorkspaceInternalPage.Settings]: 'enterpriseLeadWorkbenchNavSettings',
     } satisfies Record<EnterpriseLeadWorkspaceInternalPageType, string>;
 
@@ -513,9 +541,10 @@ export const EnterpriseLeadWorkspaceView: React.FC<EnterpriseLeadWorkspaceViewPr
     page: EnterpriseLeadWorkspaceInternalPageType,
     workspace: EnterpriseLeadWorkspace,
   ): React.ReactNode => {
-    const pageRouting = getEnterpriseLeadWorkspacePageRouting(page);
+    const normalizedPage = normalizeWorkspaceInternalPage(page);
+    const pageRouting = getEnterpriseLeadWorkspacePageRouting(normalizedPage);
 
-    if (page === EnterpriseLeadWorkspaceInternalPage.Workbench) {
+    if (normalizedPage === EnterpriseLeadWorkspaceInternalPage.Workbench) {
       return (
         <WorkspaceStart
           workspace={workspace}
@@ -524,22 +553,7 @@ export const EnterpriseLeadWorkspaceView: React.FC<EnterpriseLeadWorkspaceViewPr
       );
     }
 
-    if (page === EnterpriseLeadWorkspaceInternalPage.Workflow) {
-      return (
-        <WorkflowRunView
-          workspace={workspace}
-          onOpenCowork={() => handleInternalPageChange(EnterpriseLeadWorkspaceInternalPage.AiChat, workspace)}
-        />
-      );
-    }
-
-    if (page === EnterpriseLeadWorkspaceInternalPage.AgentManagement) {
-      return (
-        <WorkspaceWorkbench workspace={workspace} onWorkspaceUpdated={handleWorkspaceUpdated} />
-      );
-    }
-
-    if (page === EnterpriseLeadWorkspaceInternalPage.KnowledgeBase) {
+    if (normalizedPage === EnterpriseLeadWorkspaceInternalPage.KnowledgeBase) {
       return (
         <WorkspaceKnowledgeBase
           key={workspace.id}
@@ -555,7 +569,17 @@ export const EnterpriseLeadWorkspaceView: React.FC<EnterpriseLeadWorkspaceViewPr
       );
     }
 
-    if (page === EnterpriseLeadWorkspaceInternalPage.Settings) {
+    if (normalizedPage === EnterpriseLeadWorkspaceInternalPage.Kits) {
+      return (
+        <WorkspaceKitsPanel
+          workspace={workspace}
+          onWorkspaceUpdated={handleWorkspaceUpdated}
+          onShowKits={onShowKits}
+        />
+      );
+    }
+
+    if (normalizedPage === EnterpriseLeadWorkspaceInternalPage.Settings) {
       return (
         <SkillsView
           isSidebarCollapsed={false}
@@ -579,7 +603,7 @@ export const EnterpriseLeadWorkspaceView: React.FC<EnterpriseLeadWorkspaceViewPr
       );
     }
 
-    return renderPreparingPanel(page);
+    return renderPreparingPanel(normalizedPage);
   };
 
   const renderContent = (): React.ReactNode => {

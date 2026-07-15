@@ -23,8 +23,9 @@ type EnterpriseLeadCoworkHandoffDispatch = (action: EnterpriseLeadCoworkHandoffA
 export const resetEnterpriseLeadCoworkHandoffDraft = (
   dispatch: EnterpriseLeadCoworkHandoffDispatch,
   draft: string,
+  kitIds: string[] = [],
 ): void => {
-  dispatch(setActiveKitIds([]));
+  dispatch(setActiveKitIds(kitIds));
   dispatch(clearActiveSkills());
   dispatch(
     setDraftCollaborationMode({
@@ -33,6 +34,25 @@ export const resetEnterpriseLeadCoworkHandoffDraft = (
     }),
   );
   dispatch(setDraftPrompt({ sessionId: ENTERPRISE_LEAD_COWORK_HOME_DRAFT_KEY, draft }));
-  dispatch(setDraftKitIds({ draftKey: ENTERPRISE_LEAD_COWORK_HOME_DRAFT_KEY, kitIds: [] }));
+  dispatch(setDraftKitIds({ draftKey: ENTERPRISE_LEAD_COWORK_HOME_DRAFT_KEY, kitIds }));
   dispatch(setDraftSkillIds({ draftKey: ENTERPRISE_LEAD_COWORK_HOME_DRAFT_KEY, skillIds: [] }));
+};
+
+export const discardEnterpriseLeadCoworkHandoffDraft = (
+  dispatch: EnterpriseLeadCoworkHandoffDispatch,
+  preserveActiveKitIds: boolean,
+): void => {
+  if (!preserveActiveKitIds) {
+    dispatch(setActiveKitIds([]));
+  }
+  dispatch(setDraftKitIds({ draftKey: ENTERPRISE_LEAD_COWORK_HOME_DRAFT_KEY, kitIds: [] }));
+};
+
+export const discardEnterpriseLeadCoworkHandoffDraftWhenLeavingForGlobalCowork = (
+  dispatch: EnterpriseLeadCoworkHandoffDispatch,
+  previousMainView: string,
+): void => {
+  if (previousMainView === 'enterpriseLeadWorkspace') {
+    discardEnterpriseLeadCoworkHandoffDraft(dispatch, false);
+  }
 };

@@ -41,15 +41,18 @@ describe('openEmbeddedCoworkConversationRecord', () => {
   test('activates the AI chat page and loads the selected Cowork session', async () => {
     const setActiveSessionId = vi.fn();
     const setActiveInternalPage = vi.fn();
+    const discardHandoffDraft = vi.fn();
     const loadSession = vi.fn(async () => ({ id: 'cowork-session-1' }));
 
     await openEmbeddedCoworkConversationRecord({
       sessionId: 'cowork-session-1',
       setActiveSessionId,
       setActiveInternalPage,
+      discardHandoffDraft,
       loadSession,
     });
 
+    expect(discardHandoffDraft).toHaveBeenCalledBefore(loadSession);
     expect(setActiveSessionId).toHaveBeenCalledWith('cowork-session-1');
     expect(setActiveInternalPage).toHaveBeenCalledWith(EnterpriseLeadWorkspaceInternalPage.AiChat);
     expect(loadSession).toHaveBeenCalledWith('cowork-session-1');

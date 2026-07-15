@@ -1,8 +1,4 @@
 import {
-  type EnterpriseLeadAgentGroupId,
-  getPromotionDepartmentGroups,
-} from '../../../shared/enterpriseLeadWorkspace/agentOrganization';
-import {
   EnterpriseLeadAgentRole,
   type EnterpriseLeadAgentRole as EnterpriseLeadAgentRoleType,
   EnterpriseLeadContentPlatformId,
@@ -17,7 +13,6 @@ import type {
   EnterpriseLeadAgentTask,
   EnterpriseLeadTaskAgentRole,
   EnterpriseLeadWorkspace,
-  EnterpriseLeadWorkspaceAgentBinding,
   EnterpriseLeadWorkspaceDraft,
   EnterpriseLeadWorkspaceProfile,
   EnterpriseLeadWorkspaceRunSummary,
@@ -92,7 +87,6 @@ export type EnterpriseLeadWorkspaceStartSourceState =
 export const EnterpriseLeadWorkspaceStartAction = {
   AddMaterial: 'add_material',
   ReviewProfile: 'review_profile',
-  StartWorkflow: 'start_workflow',
 } as const;
 export type EnterpriseLeadWorkspaceStartAction =
   (typeof EnterpriseLeadWorkspaceStartAction)[keyof typeof EnterpriseLeadWorkspaceStartAction];
@@ -378,7 +372,7 @@ const sortByRecentTimestamp = <T extends { createdAt?: string; updatedAt?: strin
     return (Number.isNaN(bTime) ? 0 : bTime) - (Number.isNaN(aTime) ? 0 : aTime);
   });
 
-export interface AgentRoleLabelMetadata {
+interface AgentRoleLabelMetadata {
   role: EnterpriseLeadAgentRoleType;
   titleKey: string;
   shortLabelKey: string;
@@ -386,12 +380,6 @@ export interface AgentRoleLabelMetadata {
   inputKey: string;
   outputKey: string;
   safetyCritical: boolean;
-}
-
-export interface PromotionDepartmentAgentSection {
-  groupId: EnterpriseLeadAgentGroupId;
-  titleKey: string;
-  roles: AgentRoleLabelMetadata[];
 }
 
 export interface AgentCardTone {
@@ -418,12 +406,10 @@ export interface AgentTaskDisplayMetadata {
 
 export const EnterpriseLeadWorkbenchNavItem = {
   Workbench: 'workbench',
-  Workflow: 'workflow',
   AiChat: 'ai_chat',
   Search: 'search',
   KnowledgeBase: 'knowledge_base',
-  CreationRecords: 'creation_records',
-  AgentManagement: 'agent_management',
+  Kits: 'kits',
   Settings: 'settings',
 } as const;
 export type EnterpriseLeadWorkbenchNavItem =
@@ -435,12 +421,10 @@ export type EnterpriseLeadWorkspaceInternalPage =
 
 export const EnterpriseLeadWorkbenchNavIcon = {
   Dashboard: 'dashboard',
-  Workflow: 'workflow',
   Chat: 'chat',
   Search: 'search',
   Knowledge: 'knowledge',
-  Records: 'records',
-  Agents: 'agents',
+  Kits: 'kits',
   Settings: 'settings',
 } as const;
 export type EnterpriseLeadWorkbenchNavIcon =
@@ -472,13 +456,6 @@ export const EnterpriseLeadWorkbenchStatusTone = {
 export type EnterpriseLeadWorkbenchStatusTone =
   (typeof EnterpriseLeadWorkbenchStatusTone)[keyof typeof EnterpriseLeadWorkbenchStatusTone];
 
-export const EnterpriseLeadWorkbenchMode = {
-  Execution: 'execution',
-  Agents: 'agents',
-} as const;
-export type EnterpriseLeadWorkbenchMode =
-  (typeof EnterpriseLeadWorkbenchMode)[keyof typeof EnterpriseLeadWorkbenchMode];
-
 export interface WorkbenchSidebarItem {
   id: EnterpriseLeadWorkbenchNavItem;
   icon: EnterpriseLeadWorkbenchNavIcon;
@@ -496,14 +473,6 @@ export interface WorkspaceStartReadinessItem {
   labelKey: string;
   status: EnterpriseLeadWorkspaceStartReadinessStatus;
   statusKey: string;
-}
-
-export interface WorkbenchAgentItem {
-  role: EnterpriseLeadAgentRoleType;
-  roleLabelKey: string;
-  capabilitySummaryKey: string;
-  accentClassName: string;
-  accentTextClassName: string;
 }
 
 export interface WorkbenchConfigItem {
@@ -542,59 +511,6 @@ export interface WorkspaceOperationToken {
   workspaceId: string;
   revision: number;
 }
-
-export type WorkspaceAgentTemplate = Pick<
-  EnterpriseLeadWorkspaceAgentBinding['overrides'],
-  'name' | 'description' | 'identity' | 'systemPrompt' | 'icon' | 'model'
-> & {
-  id: string;
-  enabled?: boolean;
-};
-
-export interface EffectiveWorkspaceAgent {
-  id: string;
-  name: string;
-  description: string;
-  identity: string;
-  systemPrompt: string;
-  icon: string;
-  model: string;
-  skillIds: string[];
-  enabled: boolean;
-  order: number;
-  missing: boolean;
-}
-
-export const getEffectiveWorkspaceAgent = (
-  binding: EnterpriseLeadWorkspaceAgentBinding,
-  globalAgent?: WorkspaceAgentTemplate | null,
-): EffectiveWorkspaceAgent => {
-  const overrides = binding.overrides ?? {};
-  const overrideName = overrides.name?.trim();
-  const directName = binding.name?.trim();
-  const fallbackName = directName || globalAgent?.name?.trim() || binding.agentId;
-
-  return {
-    id: binding.agentId,
-    name: overrideName || fallbackName,
-    description:
-      overrides.description?.trim() || binding.description || globalAgent?.description || '',
-    identity: overrides.identity?.trim() || binding.identity || globalAgent?.identity || '',
-    systemPrompt:
-      overrides.systemPrompt?.trim() || binding.systemPrompt || globalAgent?.systemPrompt || '',
-    icon: overrides.icon?.trim() || binding.icon || globalAgent?.icon || '',
-    model: overrides.model?.trim() || binding.model || globalAgent?.model || '',
-    skillIds: [],
-    enabled: binding.enabled,
-    order: binding.order,
-    missing: false,
-  };
-};
-
-export const getWorkspaceAgentDisplayName = (
-  binding: EnterpriseLeadWorkspaceAgentBinding,
-  globalAgent?: WorkspaceAgentTemplate | null,
-): string => getEffectiveWorkspaceAgent(binding, globalAgent).name;
 
 const AGENT_ROLE_LABELS: Record<EnterpriseLeadAgentRoleType, AgentRoleLabelMetadata> = {
   [EnterpriseLeadAgentRole.ProductSellingPoint]: {
@@ -839,11 +755,6 @@ const WORKBENCH_SIDEBAR_ITEMS: WorkbenchSidebarItem[] = [
     labelKey: 'enterpriseLeadWorkbenchNavWorkbench',
   },
   {
-    id: EnterpriseLeadWorkbenchNavItem.Workflow,
-    icon: EnterpriseLeadWorkbenchNavIcon.Workflow,
-    labelKey: 'enterpriseLeadWorkbenchNavWorkflow',
-  },
-  {
     id: EnterpriseLeadWorkbenchNavItem.AiChat,
     icon: EnterpriseLeadWorkbenchNavIcon.Chat,
     labelKey: 'enterpriseLeadWorkbenchNavAiChat',
@@ -859,59 +770,14 @@ const WORKBENCH_SIDEBAR_ITEMS: WorkbenchSidebarItem[] = [
     labelKey: 'enterpriseLeadWorkbenchNavKnowledgeBase',
   },
   {
-    id: EnterpriseLeadWorkbenchNavItem.AgentManagement,
-    icon: EnterpriseLeadWorkbenchNavIcon.Agents,
-    labelKey: 'enterpriseLeadWorkbenchNavAgentManagement',
+    id: EnterpriseLeadWorkbenchNavItem.Kits,
+    icon: EnterpriseLeadWorkbenchNavIcon.Kits,
+    labelKey: 'enterpriseLeadWorkspaceNavKits',
   },
   {
     id: EnterpriseLeadWorkbenchNavItem.Settings,
     icon: EnterpriseLeadWorkbenchNavIcon.Settings,
     labelKey: 'enterpriseLeadWorkbenchNavSettings',
-  },
-];
-
-const WORKBENCH_AGENT_ITEMS: WorkbenchAgentItem[] = [
-  {
-    role: EnterpriseLeadAgentRole.ProductSellingPoint,
-    roleLabelKey: 'enterpriseLeadWorkbenchAgentProductSellingPointRole',
-    capabilitySummaryKey: 'enterpriseLeadWorkbenchAgentProductSellingPointCapabilitySummary',
-    accentClassName: 'border-emerald-500 bg-emerald-50/55 dark:bg-emerald-950/20',
-    accentTextClassName: 'text-emerald-700 dark:text-emerald-300',
-  },
-  {
-    role: EnterpriseLeadAgentRole.TopicPlanning,
-    roleLabelKey: 'enterpriseLeadWorkbenchAgentTopicPlanningRole',
-    capabilitySummaryKey: 'enterpriseLeadWorkbenchAgentTopicPlanningCapabilitySummary',
-    accentClassName: 'border-blue-500 bg-blue-50/55 dark:bg-blue-950/20',
-    accentTextClassName: 'text-blue-700 dark:text-blue-300',
-  },
-  {
-    role: EnterpriseLeadAgentRole.ShortVideoScript,
-    roleLabelKey: 'enterpriseLeadWorkbenchAgentShortVideoScriptRole',
-    capabilitySummaryKey: 'enterpriseLeadWorkbenchAgentShortVideoScriptCapabilitySummary',
-    accentClassName: 'border-orange-500 bg-orange-50/45 dark:bg-orange-950/20',
-    accentTextClassName: 'text-orange-700 dark:text-orange-300',
-  },
-  {
-    role: EnterpriseLeadAgentRole.SocialCopy,
-    roleLabelKey: 'enterpriseLeadWorkbenchAgentSocialCopyRole',
-    capabilitySummaryKey: 'enterpriseLeadWorkbenchAgentSocialCopyCapabilitySummary',
-    accentClassName: 'border-purple-500 bg-purple-50/55 dark:bg-purple-950/20',
-    accentTextClassName: 'text-purple-700 dark:text-purple-300',
-  },
-  {
-    role: EnterpriseLeadAgentRole.PrivateDomainConversion,
-    roleLabelKey: 'enterpriseLeadWorkbenchAgentPrivateDomainConversionRole',
-    capabilitySummaryKey: 'enterpriseLeadWorkbenchAgentPrivateDomainConversionCapabilitySummary',
-    accentClassName: 'border-indigo-500 bg-indigo-50/55 dark:bg-indigo-950/20',
-    accentTextClassName: 'text-indigo-700 dark:text-indigo-300',
-  },
-  {
-    role: EnterpriseLeadAgentRole.ContentQuality,
-    roleLabelKey: 'enterpriseLeadWorkbenchAgentContentQualityRole',
-    capabilitySummaryKey: 'enterpriseLeadWorkbenchAgentContentQualityCapabilitySummary',
-    accentClassName: 'border-red-500 bg-red-50/50 dark:bg-red-950/20',
-    accentTextClassName: 'text-red-700 dark:text-red-300',
   },
 ];
 
@@ -1509,15 +1375,8 @@ export const buildCreationRecordConversationMessages = (
   return messages;
 };
 
-export const getAgentRoleLabel = (role: EnterpriseLeadAgentRoleType): AgentRoleLabelMetadata =>
+const getAgentRoleLabel = (role: EnterpriseLeadAgentRoleType): AgentRoleLabelMetadata =>
   AGENT_ROLE_LABELS[role];
-
-export const getPromotionDepartmentSections = (): PromotionDepartmentAgentSection[] =>
-  getPromotionDepartmentGroups().map(group => ({
-    groupId: group.id,
-    titleKey: group.titleKey,
-    roles: group.roles.map(role => getAgentRoleLabel(role)),
-  }));
 
 const isEnterpriseLeadAgentRole = (
   role: EnterpriseLeadTaskAgentRole,
@@ -1598,6 +1457,17 @@ export const getWorkspaceInternalPages = (): WorkspaceInternalPageMetadata[] =>
 export const getDefaultWorkspaceInternalPage = (): EnterpriseLeadWorkspaceInternalPage =>
   EnterpriseLeadWorkspaceInternalPage.Workbench;
 
+export const normalizeWorkspaceInternalPage = (
+  page: unknown,
+): EnterpriseLeadWorkspaceInternalPage => {
+  if (page === 'creation_records') {
+    return EnterpriseLeadWorkspaceInternalPage.KnowledgeBase;
+  }
+
+  const activePage = getWorkspaceInternalPages().find(item => item.id === page);
+  return activePage?.id ?? EnterpriseLeadWorkspaceInternalPage.Workbench;
+};
+
 const hasWorkspaceProfileContent = (profile: EnterpriseLeadWorkspaceProfile): boolean =>
   profile.companySummary.trim().length > 0 ||
   profile.productList.length > 0 ||
@@ -1676,17 +1546,9 @@ export const getWorkspaceStartReadiness = (
 };
 
 export const getWorkspaceStartActionTarget = (
-  action: EnterpriseLeadWorkspaceStartAction,
-  sourceState: EnterpriseLeadWorkspaceStartSourceState,
-): EnterpriseLeadWorkspaceInternalPage => {
-  if (action === EnterpriseLeadWorkspaceStartAction.StartWorkflow) {
-    return sourceState === EnterpriseLeadWorkspaceStartSourceState.Blank
-      ? EnterpriseLeadWorkspaceInternalPage.KnowledgeBase
-      : EnterpriseLeadWorkspaceInternalPage.Workflow;
-  }
-
-  return EnterpriseLeadWorkspaceInternalPage.KnowledgeBase;
-};
+  _action: EnterpriseLeadWorkspaceStartAction,
+  _sourceState: EnterpriseLeadWorkspaceStartSourceState,
+): EnterpriseLeadWorkspaceInternalPage => EnterpriseLeadWorkspaceInternalPage.KnowledgeBase;
 
 export const getDefaultWorkbenchSidebarMode = (): EnterpriseLeadWorkbenchSidebarMode =>
   EnterpriseLeadWorkbenchSidebarMode.Expanded;
@@ -1695,9 +1557,6 @@ export const getWorkbenchSidebarWidth = (mode: EnterpriseLeadWorkbenchSidebarMod
   mode === EnterpriseLeadWorkbenchSidebarMode.Collapsed
     ? WORKBENCH_LAYOUT_SPEC.collapsedSidebarWidth
     : WORKBENCH_LAYOUT_SPEC.expandedSidebarWidth;
-
-export const getWorkbenchAgentItems = (): WorkbenchAgentItem[] =>
-  WORKBENCH_AGENT_ITEMS.map(item => ({ ...item }));
 
 export const getWorkbenchConfigSections = (): WorkbenchConfigSection[] =>
   WORKBENCH_CONFIG_SECTIONS.map(section => ({

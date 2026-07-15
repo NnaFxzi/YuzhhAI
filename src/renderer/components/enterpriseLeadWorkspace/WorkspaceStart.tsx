@@ -3,7 +3,6 @@ import {
   CheckIcon,
   DocumentTextIcon,
   FolderPlusIcon,
-  PlayIcon,
 } from '@heroicons/react/24/outline';
 import React from 'react';
 
@@ -85,12 +84,6 @@ const getAddMaterialDescriptionKey = (
   return 'enterpriseLeadStartActionAddMaterialDescBlank';
 };
 
-const getStartWorkflowDescriptionKey = (
-  sourceState: EnterpriseLeadWorkspaceStartSourceState,
-): string => sourceState === EnterpriseLeadWorkspaceStartSourceState.Blank
-  ? 'enterpriseLeadStartActionStartWorkflowDescBlank'
-  : 'enterpriseLeadStartActionStartWorkflowDesc';
-
 export const WorkspaceStart: React.FC<WorkspaceStartProps> = ({
   workspace,
   onOpenPage,
@@ -111,12 +104,6 @@ export const WorkspaceStart: React.FC<WorkspaceStartProps> = ({
       titleKey: 'enterpriseLeadStartActionReviewProfileTitle',
       descriptionKey: 'enterpriseLeadStartActionReviewProfileDesc',
       icon: <DocumentTextIcon className="h-5 w-5" />,
-    },
-    {
-      id: EnterpriseLeadWorkspaceStartAction.StartWorkflow,
-      titleKey: 'enterpriseLeadStartActionStartWorkflowTitle',
-      descriptionKey: getStartWorkflowDescriptionKey(sourceState),
-      icon: <PlayIcon className="h-5 w-5" />,
     },
   ];
 

@@ -13,7 +13,6 @@ import type {
   LayeredCoworkSettingsValues,
 } from '../../shared/cowork/layeredSettings';
 import type { CoworkSelectedTextSnippet } from '../../shared/cowork/selectedText';
-import type { CoworkWorkspaceAgentSelection } from '../../shared/cowork/workspaceAgentSelection';
 import type {
   KitReference,
   ResolvedKitCapabilities,
@@ -360,7 +359,7 @@ export interface CoworkStartOptions {
   };
   mediaReferences?: import('./mediaGeneration').MediaAttachmentRef[];
   selectedTextSnippets?: CoworkSelectedTextSnippet[];
-  workspaceAgentSelection?: CoworkWorkspaceAgentSelection | null;
+  workspaceId?: string;
 }
 
 // Continue session options
@@ -383,7 +382,7 @@ export interface CoworkContinueOptions {
   };
   mediaReferences?: import('./mediaGeneration').MediaAttachmentRef[];
   selectedTextSnippets?: CoworkSelectedTextSnippet[];
-  workspaceAgentSelection?: CoworkWorkspaceAgentSelection | null;
+  workspaceId?: string;
 }
 
 // IPC result types

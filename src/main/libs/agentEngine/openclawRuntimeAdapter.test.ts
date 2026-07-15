@@ -905,7 +905,7 @@ test('enterprise workspace scope clears when the session no longer selects a wor
     enterpriseWorkspaceKnowledgeScopeBySession: Map<string, string>;
     rememberEnterpriseWorkspaceKnowledgeScope: (
       sessionId: string,
-      selection?: { workspaceId: string; mode: 'auto' | 'manual'; agentId?: string } | null,
+      workspaceId?: string | null,
     ) => void;
     buildOutboundPrompt: (
       sessionId: string,
@@ -915,10 +915,7 @@ test('enterprise workspace scope clears when the session no longer selects a wor
     ) => Promise<string>;
   };
   internal.bridgedSessions.add('session-1');
-  internal.rememberEnterpriseWorkspaceKnowledgeScope('session-1', {
-    workspaceId: 'factory-a',
-    mode: 'auto',
-  });
+  internal.rememberEnterpriseWorkspaceKnowledgeScope('session-1', 'factory-a');
 
   const promptWithWorkspace = await internal.buildOutboundPrompt(
     'session-1',
@@ -952,21 +949,15 @@ test('enterprise workspace scope switches to the latest selected workspace', asy
     enterpriseWorkspaceKnowledgeScopeBySession: Map<string, string>;
     rememberEnterpriseWorkspaceKnowledgeScope: (
       sessionId: string,
-      selection?: { workspaceId: string; mode: 'auto' | 'manual'; agentId?: string } | null,
+      workspaceId?: string | null,
     ) => void;
   };
-  internal.rememberEnterpriseWorkspaceKnowledgeScope('session-1', {
-    workspaceId: 'factory-a',
-    mode: 'auto',
-  });
+  internal.rememberEnterpriseWorkspaceKnowledgeScope('session-1', 'factory-a');
   expect(internal.enterpriseWorkspaceKnowledgeScopeBySession.get('session-1')).toBe(
     'enterprise-workspace:factory-a',
   );
 
-  internal.rememberEnterpriseWorkspaceKnowledgeScope('session-1', {
-    workspaceId: 'factory-b',
-    mode: 'auto',
-  });
+  internal.rememberEnterpriseWorkspaceKnowledgeScope('session-1', 'factory-b');
 
   expect(internal.enterpriseWorkspaceKnowledgeScopeBySession.get('session-1')).toBe(
     'enterprise-workspace:factory-b',

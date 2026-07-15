@@ -36,7 +36,6 @@ import type {
   LayeredCoworkSettingsValues,
 } from '../../shared/cowork/layeredSettings';
 import type { CoworkMessageRailIndexItem } from '../../shared/cowork/rail';
-import type { CoworkWorkspaceAgentSelection } from '../../shared/cowork/workspaceAgentSelection';
 import type {
   DataMigrationBackupResult,
   DataMigrationLastRestoreResponse,
@@ -902,7 +901,7 @@ interface IElectronAPI {
         dataUrl?: string;
         role?: string;
       }>;
-      workspaceAgentSelection?: CoworkWorkspaceAgentSelection | null;
+      workspaceId?: string;
     }) => Promise<{
       success: boolean;
       session?: CoworkSession;
@@ -961,7 +960,7 @@ interface IElectronAPI {
         dataUrl?: string;
         role?: string;
       }>;
-      workspaceAgentSelection?: CoworkWorkspaceAgentSelection | null;
+      workspaceId?: string;
     }) => Promise<{
       success: boolean;
       session?: CoworkSession;

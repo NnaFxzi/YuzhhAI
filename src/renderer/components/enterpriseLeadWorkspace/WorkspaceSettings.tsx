@@ -278,7 +278,7 @@ export const WorkspaceSettings: React.FC<WorkspaceSettingsProps> = ({
               {i18nService.t('enterpriseLeadWorkbenchNavSettings')}
             </h1>
             <p className="mt-1 text-sm leading-6 text-secondary">
-              {i18nService.t('enterpriseLeadWorkbenchSettingsQuickDesc')}
+              {i18nService.t('enterpriseLeadWorkspaceSettingsQuickDesc')}
             </p>
           </div>
           <span
@@ -425,7 +425,7 @@ export const WorkspaceSettings: React.FC<WorkspaceSettingsProps> = ({
               {i18nService.t('enterpriseLeadWorkbenchQuickSaveDockTitle')}
             </div>
             <div className="mt-0.5 truncate text-xs leading-5 text-secondary">
-              {i18nService.t('enterpriseLeadWorkbenchQuickSaveDockDesc')}
+              {i18nService.t('enterpriseLeadWorkspaceQuickSaveDockDesc')}
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-2">

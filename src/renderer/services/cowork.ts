@@ -889,7 +889,7 @@ class CoworkService {
       mediaSelection: options.mediaSelection,
       mediaReferences: options.mediaReferences,
       selectedTextSnippets: options.selectedTextSnippets,
-      workspaceAgentSelection: options.workspaceAgentSelection ?? null,
+      workspaceId: options.workspaceId,
     });
     if (!result.success) {
       store.dispatch(setStreaming(false));

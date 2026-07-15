@@ -111,6 +111,13 @@ const renderWorkflowRun = async (snapshot: EnterpriseLeadWorkspaceSnapshot): Pro
 };
 
 describe('getWorkflowRunActions', () => {
+  test('does not render the removed workflow navigation label', async () => {
+    const workspace = createWorkspace();
+    const { markup } = await renderWorkflowRun(createSnapshot(workspace));
+
+    expect(markup).not.toContain('enterpriseLeadWorkbenchNavWorkflow');
+  });
+
   test.each([
     [EnterpriseLeadRunStatus.Draft, ['resume', 'cancel']],
     [EnterpriseLeadRunStatus.Running, ['cancel']],

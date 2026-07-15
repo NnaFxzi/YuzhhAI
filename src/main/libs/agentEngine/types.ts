@@ -1,7 +1,6 @@
 import type { OpenClawSessionPatch } from '../../../common/openclawSession';
 import type { CoworkImageAttachmentPayload } from '../../../shared/cowork/imageAttachments';
 import type { CoworkSelectedTextSnippet } from '../../../shared/cowork/selectedText';
-import type { CoworkWorkspaceAgentSelection } from '../../../shared/cowork/workspaceAgentSelection';
 import type { KitReference, ResolvedKitCapabilities } from '../../../shared/kit/constants';
 import type { CoworkMessage, CoworkSessionStatus } from '../../coworkStore';
 
@@ -126,7 +125,7 @@ export type CoworkStartOptions = {
   mediaSelection?: CoworkMediaSelection;
   mediaReferences?: CoworkMediaAttachmentRef[];
   selectedTextSnippets?: CoworkSelectedTextSnippet[];
-  workspaceAgentSelection?: CoworkWorkspaceAgentSelection | null;
+  workspaceId?: string;
 };
 
 export type CoworkContinueOptions = {
@@ -140,7 +139,7 @@ export type CoworkContinueOptions = {
   mediaSelection?: CoworkMediaSelection;
   mediaReferences?: CoworkMediaAttachmentRef[];
   selectedTextSnippets?: CoworkSelectedTextSnippet[];
-  workspaceAgentSelection?: CoworkWorkspaceAgentSelection | null;
+  workspaceId?: string;
 };
 
 export interface CoworkRuntime {

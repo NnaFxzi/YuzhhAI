@@ -204,6 +204,7 @@ export interface EnterpriseLeadWorkspaceOutputPreferences {
 export interface EnterpriseLeadWorkspaceSettings {
   model: EnterpriseLeadWorkspaceModelSettings;
   skillIds: string[];
+  kitIds: string[];
   externalResearch: ExternalResearchConfig;
   domesticResearch: DomesticResearchConfig;
   contentPlatforms: EnterpriseLeadWorkspaceContentPlatformSettings;
@@ -216,6 +217,7 @@ export interface EnterpriseLeadWorkspaceSettingsUpdate {
   settings?: Partial<{
     model: Partial<EnterpriseLeadWorkspaceModelSettings>;
     skillIds: string[];
+    kitIds: string[];
     externalResearch: Partial<ExternalResearchConfig>;
     domesticResearch: Partial<DomesticResearchConfig>;
     outputPreferences: Partial<EnterpriseLeadWorkspaceOutputPreferences>;
